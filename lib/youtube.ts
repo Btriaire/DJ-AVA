@@ -3,7 +3,9 @@
 // and (b) offer an MP3 download, we extract the audio server-side with yt-dlp
 // and transcode to MP3 with ffmpeg, streaming the bytes same-origin.
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, copyFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 export interface YTTrack {
   id: string;
@@ -31,9 +33,31 @@ const FFMPEG = bin("ffmpeg", "FFMPEG_PATH");
 // confirm you're not a bot"). Pointing yt-dlp at an exported cookies.txt makes
 // it authenticate like a logged-in browser, which unblocks extraction. Set
 // YT_DLP_COOKIES to the path of a Netscape cookie file (mounted on the VPS).
+//
+// yt-dlp rewrites the cookie jar after each run (to keep the session fresh), so
+// we copy the (read-only mounted) source to a writable temp once and hand that
+// to yt-dlp — the original secret file stays pristine and can't be corrupted.
+let cookieFile: string | null | undefined; // undefined = not yet resolved
+function cookiePath(): string | null {
+  if (cookieFile === undefined) {
+    const src = process.env.YT_DLP_COOKIES;
+    if (src && existsSync(src)) {
+      try {
+        const dst = join(tmpdir(), "djsynth-yt-cookies.txt");
+        copyFileSync(src, dst);
+        cookieFile = dst;
+      } catch {
+        cookieFile = src; // fall back to the source directly
+      }
+    } else {
+      cookieFile = null;
+    }
+  }
+  return cookieFile;
+}
 function cookieArgs(): string[] {
-  const f = process.env.YT_DLP_COOKIES;
-  return f && existsSync(f) ? ["--cookies", f] : [];
+  const f = cookiePath();
+  return f ? ["--cookies", f] : [];
 }
 
 export function videoUrl(idOrUrl: string): string {
@@ -119,9 +143,14 @@ export async function getTitle(idOrUrl: string): Promise<string> {
 // web ReadableStream. Both processes are torn down if the client cancels.
 export function createMp3Stream(idOrUrl: string): ReadableStream<Uint8Array> {
   const url = videoUrl(idOrUrl);
-  const dl = spawn(YTDLP, ["-f", "bestaudio", "-o", "-", "--no-warnings", "--no-playlist", ...cookieArgs(), url], {
-    stdio: ["ignore", "pipe", "ignore"],
-  });
+  // --remote-components ejs:github lets yt-dlp fetch the EJS challenge-solver
+  // script that deno runs to solve YouTube's signature/n challenges. Without it,
+  // only storyboard (image) formats are returned and bestaudio is "unavailable".
+  const dl = spawn(
+    YTDLP,
+    ["-f", "bestaudio", "-o", "-", "--no-warnings", "--no-playlist", "--remote-components", "ejs:github", ...cookieArgs(), url],
+    { stdio: ["ignore", "pipe", "ignore"] }
+  );
   const ff = spawn(
     FFMPEG,
     ["-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-vn", "-f", "mp3", "-b:a", "192k", "pipe:1"],
