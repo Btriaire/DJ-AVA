@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DJSynth — contrôleur DJ + synthé live</title>
+  <meta name="description" content="DJSynth : un contrôleur DJ web avec un synthé qui agit sur la chanson en direct. Decks A/B, stems IA, Audius / YouTube / SoundCloud." />
+  <meta name="theme-color" content="#050506" />
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       PAGE D'ACCUEIL (Vercel). L'application complète tourne sur le VPS.
+       👉 Remplace l'URL ci-dessous (data-app-url + le href du bouton) par
+          l'adresse de ton app VPS, ex: https://dj.tondomaine.fr
+       ════════════════════════════════════════════════════════════════════ -->
+  <style>
+    :root{ --o:#ff8a1e; --g:#4dff84; }
+    *{ box-sizing:border-box; }
+    html,body{ margin:0; height:100%; }
+    body{
+      font-family:ui-sans-serif,system-ui,Arial,Helvetica,sans-serif;
+      color:#e7e7ea; min-height:100%;
+      background:
+        radial-gradient(1200px 600px at 50% -8%, #16161b 0%, transparent 60%),
+        linear-gradient(180deg,#0b0b0d 0%,#050506 100%);
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      padding:5vh 1.25rem; gap:.4rem; text-align:center;
+    }
+    .svg{ width:min(82vw,560px); height:auto; }
+
+    /* platter accent arc + tonearm fade-in */
+    .arc{ opacity:0; animation:fade .9s ease .25s forwards; }
+    .arm{ opacity:0; animation:fade .7s ease .35s forwards; }
+    @keyframes fade{ to{opacity:1} }
+    /* waveform self-draw */
+    .wave{ stroke-dasharray:560; stroke-dashoffset:560; opacity:.95;
+      animation:draw 1.5s ease .3s forwards; }
+    @keyframes draw{ to{stroke-dashoffset:0} }
+    /* EQ bars */
+    .bar{ transform-box:fill-box; transform-origin:bottom; transform:scaleY(.15);
+      animation:bar 1.05s ease-in-out infinite alternate; }
+    @keyframes bar{ from{transform:scaleY(.15)} to{transform:scaleY(1)} }
+
+    .word{ margin-top:-.3rem; font-weight:900; letter-spacing:-.02em; line-height:1;
+      font-size:clamp(40px,8vw,72px); display:flex; gap:.06em; justify-content:center;
+      opacity:0; animation:rise .7s cubic-bezier(.2,.9,.25,1) .5s forwards; }
+    .dj{ color:var(--o); text-shadow:0 0 16px rgba(255,138,30,.55),0 0 34px rgba(255,138,30,.25); }
+    .syn{ color:var(--g); text-shadow:0 0 16px rgba(77,255,132,.5),0 0 34px rgba(77,255,132,.22); }
+    @keyframes rise{ from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+
+    .tag{ margin-top:.6rem; font-size:clamp(10px,1.6vw,12px); font-weight:700;
+      text-transform:uppercase; letter-spacing:.42em; color:#7a7a82; padding-left:.42em;
+      opacity:0; animation:rise .6s ease .85s forwards; }
+    .lede{ margin:1.1rem auto 0; max-width:46ch; font-size:clamp(14px,2vw,16px);
+      line-height:1.6; color:#a6a6ad; opacity:0; animation:rise .6s ease 1s forwards; }
+
+    .cta{ display:inline-flex; align-items:center; gap:.5rem; margin-top:1.6rem;
+      padding:.85rem 1.7rem; border-radius:11px; font-weight:800; font-size:1rem;
+      letter-spacing:.02em; color:#061018; text-decoration:none; cursor:pointer;
+      background:linear-gradient(180deg, color-mix(in srgb,var(--o) 90%,#fff), var(--o));
+      border:1px solid color-mix(in srgb,var(--o) 60%,#000);
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.4),
+        0 0 16px rgba(255,138,30,.45), 0 0 34px rgba(255,138,30,.22),
+        0 4px 14px rgba(0,0,0,.5);
+      transition:transform .08s ease, box-shadow .2s ease;
+      opacity:0; animation:rise .6s ease 1.15s forwards; }
+    .cta:hover{ box-shadow:inset 0 1px 0 rgba(255,255,255,.5),
+      0 0 22px rgba(255,138,30,.6), 0 0 46px rgba(255,138,30,.3), 0 4px 14px rgba(0,0,0,.5); }
+    .cta:active{ transform:translateY(1px); }
+
+    .feats{ display:flex; flex-wrap:wrap; gap:.5rem; justify-content:center;
+      margin-top:1.6rem; max-width:640px; opacity:0; animation:rise .6s ease 1.3s forwards; }
+    .chip{ font-size:11px; font-weight:700; letter-spacing:.03em; color:#c7c7cd;
+      padding:.4rem .7rem; border-radius:999px;
+      background:linear-gradient(180deg,#1a1a1e,#0d0d10);
+      border:1px solid #2a2a30; box-shadow:inset 0 1px 0 rgba(255,255,255,.04); }
+    .chip b{ color:var(--g); font-weight:800; }
+    .chip i{ color:var(--o); font-style:normal; font-weight:800; }
+
+    footer{ margin-top:2.2rem; font-size:11px; color:#4b4b52; letter-spacing:.04em;
+      opacity:0; animation:fade .6s ease 1.5s forwards; }
+
+    @media (prefers-reduced-motion: reduce){
+      .bar{ animation:none; transform:scaleY(1); }
+    }
+  </style>
+</head>
+<body>
+
+  <svg viewBox="0 0 520 300" class="svg" aria-label="DJSynth" role="img">
+    <defs>
+      <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#ff8a1e"/><stop offset="100%" stop-color="#4dff84"/>
+      </linearGradient>
+      <radialGradient id="platter" cx="50%" cy="42%" r="65%">
+        <stop offset="0%" stop-color="#1c1c21"/><stop offset="70%" stop-color="#0d0d10"/>
+        <stop offset="100%" stop-color="#070709"/>
+      </radialGradient>
+      <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="2.4" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+
+    <!-- spinning platter -->
+    <g transform="translate(120 130)">
+      <animateTransform attributeName="transform" type="rotate" from="0" to="360"
+        dur="3.6s" repeatCount="indefinite" additive="sum"/>
+      <circle r="78" fill="url(#platter)" stroke="#2a2a30" stroke-width="1.5"/>
+      <circle r="66" fill="none" stroke="rgba(255,255,255,0.045)"/>
+      <circle r="56" fill="none" stroke="rgba(255,255,255,0.04)"/>
+      <circle r="46" fill="none" stroke="rgba(255,255,255,0.035)"/>
+      <circle r="36" fill="none" stroke="rgba(255,255,255,0.03)"/>
+      <circle class="arc" r="72" fill="none" stroke="url(#accent)" stroke-width="2.5"
+        stroke-linecap="round" stroke-dasharray="120 332" filter="url(#glow)"/>
+      <circle r="22" fill="#0a0a0c" stroke="#ff8a1e" stroke-width="1.5"/>
+      <circle r="22" fill="none" stroke="#ff8a1e" stroke-opacity="0.25" stroke-width="6"/>
+      <circle r="3" fill="#e7e7ea"/>
+    </g>
+
+    <!-- tonearm -->
+    <g class="arm" stroke="#3a3a42" stroke-width="3" stroke-linecap="round" fill="none">
+      <line x1="212" y1="34" x2="150" y2="118"/>
+      <circle cx="212" cy="34" r="6" fill="#15151a" stroke="#3a3a42" stroke-width="2"/>
+    </g>
+
+    <!-- waveform -->
+    <path class="wave"
+      d="M232 130 q12 -34 24 0 t24 0 t24 0 t24 0 t24 0 t24 0 t24 0 t24 0 t24 0"
+      fill="none" stroke="url(#accent)" stroke-width="2.5" stroke-linecap="round" filter="url(#glow)"/>
+
+    <!-- EQ bars -->
+    <g transform="translate(232 226)">
+      <rect class="bar" x="0"   y="-14" width="11" height="14" rx="2.5" fill="url(#accent)" style="animation-delay:0s"/>
+      <rect class="bar" x="21"  y="-22" width="11" height="22" rx="2.5" fill="url(#accent)" style="animation-delay:.08s"/>
+      <rect class="bar" x="42"  y="-34" width="11" height="34" rx="2.5" fill="url(#accent)" style="animation-delay:.16s"/>
+      <rect class="bar" x="63"  y="-26" width="11" height="26" rx="2.5" fill="url(#accent)" style="animation-delay:.24s"/>
+      <rect class="bar" x="84"  y="-40" width="11" height="40" rx="2.5" fill="url(#accent)" style="animation-delay:.32s"/>
+      <rect class="bar" x="105" y="-30" width="11" height="30" rx="2.5" fill="url(#accent)" style="animation-delay:.40s"/>
+      <rect class="bar" x="126" y="-18" width="11" height="18" rx="2.5" fill="url(#accent)" style="animation-delay:.48s"/>
+      <rect class="bar" x="147" y="-36" width="11" height="36" rx="2.5" fill="url(#accent)" style="animation-delay:.56s"/>
+      <rect class="bar" x="168" y="-24" width="11" height="24" rx="2.5" fill="url(#accent)" style="animation-delay:.64s"/>
+      <rect class="bar" x="189" y="-44" width="11" height="44" rx="2.5" fill="url(#accent)" style="animation-delay:.72s"/>
+      <rect class="bar" x="210" y="-28" width="11" height="28" rx="2.5" fill="url(#accent)" style="animation-delay:.80s"/>
+      <rect class="bar" x="231" y="-16" width="11" height="16" rx="2.5" fill="url(#accent)" style="animation-delay:.88s"/>
+    </g>
+  </svg>
+
+  <div class="word"><span class="dj">DJ</span><span class="syn">Synth</span></div>
+  <div class="tag">performance controller</div>
+
+  <p class="lede">
+    Un contrôleur DJ dans le navigateur — deux platines, un mixeur, et surtout
+    un <strong style="color:#e7e7ea">synthé qui agit sur la chanson en direct</strong>.
+  </p>
+
+  <!-- 👇 REMPLACE l'URL par ton app VPS -->
+  <a class="cta" id="enter" href="https://dj.tondomaine.fr" data-app-url="https://dj.tondomaine.fr">
+    ▶ Entrer dans le studio
+  </a>
+
+  <div class="feats">
+    <span class="chip">Decks <i>A</i> / <b>B</b> + crossfade</span>
+    <span class="chip">Synthé live sur la piste</span>
+    <span class="chip">Séparation de <b>stems</b> (IA)</span>
+    <span class="chip"><i>Audius</i> · YouTube · SoundCloud</span>
+    <span class="chip">Auto-playlist IA</span>
+    <span class="chip">Automix <i>A</i>→<b>B</b>→<i>A</i></span>
+  </div>
+
+  <footer>© DJSynth — l'application complète est hébergée sur le serveur.</footer>
+
+  <script>
+    // Confort : si tu passes ?app=https://... à l'URL de la vitrine, le bouton
+    // pointe dessus (pratique pour tester sans rebuild). Sinon, l'URL data-app-url.
+    (function () {
+      var p = new URLSearchParams(location.search).get("app");
+      var a = document.getElementById("enter");
+      if (p && /^https?:\/\//.test(p)) a.href = p;
+    })();
+  </script>
+</body>
+</html>
