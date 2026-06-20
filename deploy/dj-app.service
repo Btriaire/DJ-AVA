@@ -1,0 +1,33 @@
+# systemd — déploiement VPS SANS Docker (alternative à docker-compose).
+# Pré-requis sur le VPS : node >= 20, ffmpeg, yt-dlp, (demucs si stems).
+#
+# Build : `npm ci && npm run build`, puis recopie à côté de server.js les assets :
+#   cp -r public .next/standalone/ && cp -r .next/static .next/standalone/.next/
+#
+# Install :
+#   sudo cp deploy/dj-app.service /etc/systemd/system/djsynth.service
+#   sudo cp .env.example /etc/djsynth.env   # puis renseigne GROQ_API_KEY etc.
+#   sudo systemctl daemon-reload && sudo systemctl enable --now djsynth
+
+[Unit]
+Description=DJSynth (Next.js standalone)
+After=network.target
+
+[Service]
+Type=simple
+# adapte le chemin à ton checkout sur le VPS
+WorkingDirectory=/opt/dj-app/.next/standalone
+EnvironmentFile=/etc/djsynth.env
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=HOSTNAME=127.0.0.1
+Environment=STEMS_CACHE_DIR=/var/lib/djsynth/stems-cache
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=3
+# durcissement raisonnable
+NoNewPrivileges=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,20 @@
+# DJSynth sur le VPS. Lance :  docker compose up -d --build
+# Le reverse proxy (nginx, voir deploy/nginx.conf) tape sur 127.0.0.1:3000.
+services:
+  djsynth:
+    build:
+      context: .
+      args:
+        WITH_STEMS: "1" # mets "0" pour une image légère sans séparation de stems
+    image: djsynth
+    container_name: djsynth
+    ports:
+      - "127.0.0.1:3000:3000" # exposé seulement en local, derrière le proxy
+    env_file:
+      - .env.local # fournis GROQ_API_KEY etc. (voir .env.example)
+    volumes:
+      - stems-cache:/data/stems-cache # séparations persistées entre redéploiements
+    restart: unless-stopped
+
+volumes:
+  stems-cache:

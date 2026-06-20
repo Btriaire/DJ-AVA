@@ -1,0 +1,1067 @@
+@import "tailwindcss";
+
+body {
+  background: #050506;
+  color: #e7e7ea;
+  font-family: ui-sans-serif, system-ui, Arial, Helvetica, sans-serif;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---- hardware body & panels (XDJ-style brushed black metal) ---- */
+.hw-body {
+  background:
+    radial-gradient(1200px 500px at 50% -10%, #1b1b20 0%, transparent 60%),
+    linear-gradient(180deg, #0c0c0e 0%, #050506 100%);
+}
+.hw-panel {
+  background: linear-gradient(180deg, #1a1a1e 0%, #121215 60%, #0d0d10 100%);
+  border: 1px solid #2a2a30;
+  border-radius: 14px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 -2px 6px rgba(0, 0, 0, 0.6),
+    0 6px 18px rgba(0, 0, 0, 0.55);
+}
+/* recessed inner area for knob banks / screens */
+.hw-recess {
+  background: linear-gradient(180deg, #08080a, #101014);
+  border: 1px solid #000;
+  border-radius: 10px;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.8), inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+.hw-screen {
+  background: radial-gradient(120% 120% at 50% 0%, #0a1420 0%, #04070c 70%);
+  border: 1px solid #19324a;
+  border-radius: 10px;
+  box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+
+/* ---- rubber buttons with LED states ---- */
+.hw-btn {
+  --led: #3a82f6;
+  position: relative;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #26262c 0%, #161619 100%);
+  border: 1px solid #000;
+  color: #b6b6bd;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 2px 4px rgba(0, 0, 0, 0.5);
+  transition: all 0.08s ease;
+}
+.hw-btn:hover {
+  color: #fff;
+  border-color: #333;
+}
+.hw-btn:active {
+  transform: translateY(1px);
+}
+.hw-btn-on {
+  color: #061018;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--led) 90%, #fff) 0%, var(--led) 100%);
+  border-color: color-mix(in srgb, var(--led) 60%, #000);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    0 0 12px color-mix(in srgb, var(--led) 70%, transparent),
+    0 0 22px color-mix(in srgb, var(--led) 40%, transparent);
+}
+
+/* ---- red backlit PANIC button (reset all, keep tracks) ---- */
+.hw-panic {
+  position: relative;
+  padding: 0.5rem 1.1rem;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  color: #fff5f5;
+  text-shadow: 0 0 6px rgba(255, 60, 60, 0.9), 0 1px 0 rgba(0, 0, 0, 0.6);
+  background:
+    radial-gradient(120% 80% at 50% 16%, #ff6a5a 0%, #e21f1f 46%, #8c0d0d 100%);
+  border: 1px solid #4a0606;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -2px 6px rgba(0, 0, 0, 0.55),
+    0 0 14px rgba(226, 31, 31, 0.7),
+    0 0 28px rgba(226, 31, 31, 0.45),
+    0 2px 5px rgba(0, 0, 0, 0.6);
+  animation: panicGlow 1.8s ease-in-out infinite;
+  transition: transform 0.08s ease;
+}
+.hw-panic:hover {
+  background: radial-gradient(120% 80% at 50% 16%, #ff8070 0%, #f02525 46%, #a01010 100%);
+}
+.hw-panic:active {
+  transform: translateY(1px);
+  box-shadow:
+    inset 0 2px 8px rgba(0, 0, 0, 0.7),
+    0 0 10px rgba(226, 31, 31, 0.6);
+}
+@keyframes panicGlow {
+  0%, 100% { box-shadow: inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -2px 6px rgba(0,0,0,0.55), 0 0 14px rgba(226,31,31,0.7), 0 0 28px rgba(226,31,31,0.45), 0 2px 5px rgba(0,0,0,0.6); }
+  50% { box-shadow: inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -2px 6px rgba(0,0,0,0.55), 0 0 20px rgba(255,60,60,0.95), 0 0 40px rgba(255,60,60,0.6), 0 2px 5px rgba(0,0,0,0.6); }
+}
+
+/* ---- RGB performance pads ---- */
+.hw-pad {
+  --rgb: #ff8a1e;
+  position: relative;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #1b1b20 0%, #0d0d10 100%);
+  border: 1px solid #000;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 -3px 8px rgba(0, 0, 0, 0.7);
+  color: color-mix(in srgb, var(--rgb) 70%, #5a5a62);
+  transition: all 0.07s ease;
+}
+.hw-pad::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rgb) 35%, transparent);
+  opacity: 0.5;
+}
+.hw-pad-loaded {
+  color: #fff;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, transparent 30%),
+    radial-gradient(120% 90% at 50% 18%, color-mix(in srgb, var(--rgb) 88%, #fff) 0%, var(--rgb) 55%, color-mix(in srgb, var(--rgb) 70%, #000) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 0 14px color-mix(in srgb, var(--rgb) 50%, transparent),
+    0 0 14px color-mix(in srgb, var(--rgb) 70%, transparent),
+    0 0 28px color-mix(in srgb, var(--rgb) 45%, transparent);
+}
+.hw-pad-hit {
+  color: #050506;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--rgb) 95%, #fff), var(--rgb));
+  box-shadow:
+    0 0 18px var(--rgb),
+    0 0 34px color-mix(in srgb, var(--rgb) 60%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  transform: translateY(1px);
+}
+
+/* ---- DDJ-REV5 style jog wheel ---- */
+/* outer grippy rubber rim with radial notches */
+.hw-jog {
+  background:
+    repeating-conic-gradient(from 0deg, #1c1c20 0deg 1.4deg, #070708 1.4deg 2.8deg);
+  border: 1px solid #000;
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, 0.06),
+    inset 0 2px 10px rgba(0, 0, 0, 0.85),
+    0 8px 20px rgba(0, 0, 0, 0.7);
+}
+/* bright white illuminated edge ring just inside the grip */
+.hw-jog-ring {
+  border-radius: 999px;
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.85),
+    0 0 8px rgba(255, 255, 255, 0.4),
+    inset 0 0 6px rgba(0, 0, 0, 0.9);
+}
+/* glossy black platter face */
+.hw-jog-face {
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 50% 30%, rgba(255, 255, 255, 0.10) 0%, transparent 38%),
+    radial-gradient(circle at 50% 50%, #15151a 0%, #0a0a0d 55%, #030304 100%);
+  box-shadow: inset 0 2px 14px rgba(0, 0, 0, 0.9);
+}
+/* red radial tach lines in the inner display ring */
+.hw-jog-tach {
+  border-radius: 999px;
+  background: repeating-conic-gradient(
+    from -90deg,
+    #ff2330 0deg 0.5deg,
+    transparent 0.5deg 4deg
+  );
+  -webkit-mask: radial-gradient(circle, transparent 34%, #000 35%, #000 72%, transparent 73%);
+  mask: radial-gradient(circle, transparent 34%, #000 35%, #000 72%, transparent 73%);
+  filter: drop-shadow(0 0 3px rgba(255, 40, 50, 0.7));
+}
+/* metallic center hub with deck number */
+.hw-jog-hub {
+  border-radius: 999px;
+  background: radial-gradient(circle at 45% 35%, #2a2a30, #141418 60%, #08080a);
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.18),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.85),
+    0 2px 5px rgba(0, 0, 0, 0.8);
+}
+
+/* ============ Teenage Engineering OP-1 synth section (light alu) ============ */
+/* light brushed-aluminium chassis */
+.op1-panel {
+  background:
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.018) 0px, rgba(0, 0, 0, 0.018) 1px, transparent 1px, transparent 3px),
+    linear-gradient(180deg, #e9e8e4 0%, #d8d7d2 55%, #cfcec9 100%);
+  border: 1px solid #b7b6b0;
+  border-radius: 14px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -3px 8px rgba(0, 0, 0, 0.12),
+    0 6px 18px rgba(0, 0, 0, 0.5);
+}
+/* colored rotary encoder */
+.op1-knob {
+  border-radius: 999px;
+  background: radial-gradient(circle at 50% 40%, #f4f3f0, #cdccc6);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.9), 0 2px 4px rgba(0, 0, 0, 0.35);
+}
+.op1-knob-cap {
+  box-shadow:
+    inset 0 2px 3px rgba(255, 255, 255, 0.45),
+    inset 0 -3px 5px rgba(0, 0, 0, 0.35),
+    0 1px 3px rgba(0, 0, 0, 0.45);
+}
+/* round white function button */
+.op1-btn {
+  border-radius: 999px;
+  background: radial-gradient(circle at 50% 35%, #fbfbf9, #e2e1dc);
+  border: 1px solid #b9b8b2;
+  color: #4a4a46;
+  font-weight: 700;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 2px 4px rgba(0, 0, 0, 0.3);
+  transition: all 0.08s ease;
+}
+.op1-btn:hover { background: radial-gradient(circle at 50% 35%, #fff, #ebeae5); }
+.op1-btn:active { transform: translateY(1px); }
+.op1-btn-on {
+  background: radial-gradient(circle at 50% 35%, #ff7a4d, #e8451f);
+  border-color: #c2380f;
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 0 10px rgba(232, 69, 31, 0.55);
+}
+/* white domino keyboard key */
+.op1-key {
+  background: linear-gradient(180deg, #fdfdfb 0%, #eceae4 100%);
+  border: 1px solid #c0bfb8;
+  border-radius: 7px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 2px 3px rgba(0, 0, 0, 0.28);
+  transition: all 0.05s ease;
+}
+.op1-key-down {
+  background: linear-gradient(180deg, #d9d8d2 0%, #c5c4be 100%);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+  transform: translateY(1px);
+}
+/* black oval accidental key */
+.op1-key-black {
+  background: radial-gradient(circle at 50% 30%, #2c2c2e, #0c0c0e);
+  border: 1px solid #000;
+  border-radius: 999px;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.12), 0 2px 4px rgba(0, 0, 0, 0.6);
+}
+.op1-key-black-down { background: radial-gradient(circle at 50% 30%, #444, #1a1a1c); transform: translateY(1px); }
+/* small LCD screen */
+.op1-screen {
+  position: relative;
+  overflow: hidden;
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.28) 0px, rgba(0, 0, 0, 0.28) 1px, transparent 1px, transparent 3px),
+    radial-gradient(120% 130% at 50% 0%, #14202c 0%, #05080c 75%);
+  border: 1px solid #9a9994;
+  border-radius: 8px;
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+/* subtle screen glass glare */
+.op1-screen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(155deg, rgba(120, 200, 255, 0.1) 0%, transparent 38%);
+  pointer-events: none;
+}
+/* perforated speaker grille */
+.op1-grille {
+  background-image: radial-gradient(circle, #a7a6a0 0.8px, transparent 1.2px);
+  background-size: 5px 5px;
+  border-radius: 6px;
+  opacity: 0.85;
+}
+
+/* ============ Teenage Engineering OP-XY synth section (black anodized) ============ */
+.opxy-panel {
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.012) 0px, rgba(255, 255, 255, 0.012) 1px, transparent 1px, transparent 3px),
+    linear-gradient(180deg, #2b2c2f 0%, #1b1c1e 55%, #121214 100%);
+  border: 1px solid #050506;
+  border-radius: 16px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -4px 10px rgba(0, 0, 0, 0.6),
+    0 8px 22px rgba(0, 0, 0, 0.6);
+}
+/* recessed sub-panel for button rows */
+.opxy-recess {
+  border-radius: 10px;
+  background: linear-gradient(180deg, #121214 0%, #1c1d20 100%);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.7), inset 0 -1px 0 rgba(255, 255, 255, 0.04);
+}
+/* grayscale LCD */
+.opxy-screen {
+  border-radius: 7px;
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.06) 0px, rgba(0, 0, 0, 0.06) 1px, transparent 1px, transparent 3px),
+    linear-gradient(180deg, #d7d7d3 0%, #bdbdb8 60%, #a9a9a4 100%);
+  border: 1px solid #050506;
+  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.35), 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.opxy-screen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.4) 0%, transparent 42%);
+  pointer-events: none;
+  border-radius: 7px;
+}
+/* small round dark icon button */
+.opxy-iconbtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  color: #b9bbc0;
+  background: radial-gradient(circle at 50% 32%, #34353a, #17181b);
+  border: 1px solid #050506;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 2px 4px rgba(0, 0, 0, 0.55);
+  transition: all 0.08s ease;
+}
+.opxy-iconbtn:hover { background: radial-gradient(circle at 50% 32%, #3d3e44, #1c1d20); }
+.opxy-iconbtn:active { transform: translateY(1px); }
+.opxy-iconbtn:disabled { opacity: 0.5; }
+.opxy-iconbtn-on {
+  color: #2a2200;
+  background: radial-gradient(circle at 50% 32%, #fff7cc, #ffd95e);
+  border-color: #d9b13e;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 0 12px rgba(255, 214, 90, 0.6);
+}
+.opxy-iconbtn-rec {
+  color: #fff;
+  background: radial-gradient(circle at 50% 32%, #ff5a4d, #c81f12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 0 12px rgba(232, 31, 18, 0.7);
+}
+/* rounded-square track button */
+.opxy-tbtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  color: #c2c4c9;
+  background: linear-gradient(180deg, #303135 0%, #1a1b1e 100%);
+  border: 1px solid #050506;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 2px 4px rgba(0, 0, 0, 0.5);
+  transition: all 0.08s ease;
+}
+.opxy-tbtn:hover { background: linear-gradient(180deg, #383a3f 0%, #202125 100%); }
+.opxy-tbtn:active { transform: translateY(1px); }
+.opxy-tbtn-on {
+  color: #2a2200;
+  background: linear-gradient(180deg, #fff7cc 0%, #ffd95e 100%);
+  border-color: #d9b13e;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 0 12px rgba(255, 214, 90, 0.6);
+}
+.opxy-oct-readout {
+  min-width: 30px;
+  text-align: center;
+  padding: 2px 4px;
+  border-radius: 6px;
+  background: #0d0e10;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+/* tiny pill button for the sample editor */
+.opxy-minibtn {
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #c2c4c9;
+  background: linear-gradient(180deg, #303135 0%, #1a1b1e 100%);
+  border: 1px solid #050506;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 1px 3px rgba(0, 0, 0, 0.5);
+  transition: all 0.08s ease;
+}
+.opxy-minibtn:hover { background: linear-gradient(180deg, #3a3b40 0%, #202125 100%); }
+.opxy-minibtn:active { transform: translateY(1px); }
+.opxy-minibtn-go {
+  color: #052e1a;
+  background: linear-gradient(180deg, #6ee7b7 0%, #34d399 100%);
+  border-color: #14916a;
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.4);
+}
+/* chromatic pad key */
+.opxy-pad {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 52px;
+  border-radius: 8px;
+  color: #c8cacf;
+  background: linear-gradient(180deg, #34353a 0%, #1d1e21 100%);
+  border: 1px solid #050506;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 2px 5px rgba(0, 0, 0, 0.55);
+  transition: all 0.05s ease;
+}
+.opxy-pad-sharp {
+  background: linear-gradient(180deg, #1a1b1d 0%, #0c0d0f 100%);
+  color: #8a8c92;
+}
+.opxy-pad:active,
+.opxy-pad-on {
+  color: #131314;
+  background: linear-gradient(180deg, #f4f4f1 0%, #d2d2cd 100%);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.25), 0 0 14px rgba(255, 255, 255, 0.45);
+  transform: translateY(1px);
+}
+
+/* ============ BOSS-style master FX / metering unit (dark matte deck) ============ */
+.boss-panel {
+  border-radius: 12px;
+  background:
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.015) 0px, rgba(255, 255, 255, 0.015) 1px, transparent 1px, transparent 3px),
+    linear-gradient(180deg, #2a2b2e 0%, #161618 60%, #0e0e10 100%);
+  border: 1px solid #000;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 -3px 8px rgba(0, 0, 0, 0.7),
+    0 10px 24px rgba(0, 0, 0, 0.6);
+}
+.boss-led-power {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #d6ffe6 0%, #4dff84 45%, #0b6e3d 100%);
+  box-shadow: 0 0 8px rgba(77, 255, 132, 0.8), inset 0 -1px 2px rgba(0, 0, 0, 0.5);
+}
+.boss-tbtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 26px;
+  border-radius: 7px;
+  font-size: 0.8rem;
+  color: #c9ccd1;
+  background: linear-gradient(180deg, #303135 0%, #161619 100%);
+  border: 1px solid #000;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 2px 4px rgba(0, 0, 0, 0.6);
+  transition: all 0.08s ease;
+}
+.boss-tbtn:active {
+  transform: translateY(1px);
+}
+.boss-tbtn-play {
+  border-color: #4a2e0e;
+  box-shadow: inset 0 0 0 1px rgba(255, 138, 30, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 8px rgba(255, 138, 30, 0.35);
+  color: #ffb15e;
+}
+.boss-tbtn-rec {
+  border-color: #4a0e0e;
+  box-shadow: inset 0 0 0 1px rgba(248, 60, 60, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 8px rgba(248, 60, 60, 0.35);
+  color: #f87171;
+}
+.boss-tbtn-on {
+  color: #1a1205;
+  background: linear-gradient(180deg, #ffb15e 0%, #ff8a1e 100%);
+  box-shadow: 0 0 14px rgba(255, 138, 30, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+.boss-tbtn-rec-on {
+  color: #fff;
+  background: radial-gradient(120% 90% at 50% 20%, #ff6a5a, #e21f1f 70%);
+  box-shadow: 0 0 16px rgba(226, 31, 31, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  animation: panicGlow 1.2s ease-in-out infinite;
+}
+.boss-screen {
+  border-radius: 8px;
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.25) 0px, rgba(0, 0, 0, 0.25) 1px, transparent 1px, transparent 3px),
+    radial-gradient(130% 130% at 50% 0%, #1a1d22 0%, #050608 80%);
+  border: 1px solid #000;
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.95), 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.boss-recdot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #3a1414;
+  box-shadow: inset 0 0 3px rgba(0, 0, 0, 0.8);
+}
+.boss-recdot-on {
+  background: radial-gradient(circle at 40% 35%, #ff8a7a, #e21f1f 70%);
+  box-shadow: 0 0 8px rgba(226, 31, 31, 0.9);
+  animation: panicGlow 1s ease-in-out infinite;
+}
+.boss-meter {
+  border-radius: 2px;
+  background: linear-gradient(180deg, #0a0d10, #04060a);
+  box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.9), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+}
+.boss-meter-fill {
+  width: 100%;
+  border-radius: 2px 2px 0 0;
+  background: linear-gradient(180deg, #ff3b3b 0%, #ffd23b 22%, #46e83b 48%, #1f9e2a 100%);
+  box-shadow: 0 0 6px rgba(70, 232, 59, 0.4);
+  transition: height 0.05s linear;
+}
+.boss-fxicon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  color: #6b7280;
+  transition: color 0.1s ease, transform 0.08s ease;
+}
+.boss-fxicon:hover {
+  color: #cbd5e1;
+}
+.boss-fxicon:active {
+  transform: translateY(1px);
+}
+.boss-logo {
+  font-weight: 900;
+  font-style: italic;
+  font-size: 0.82rem;
+  letter-spacing: 0.03em;
+  color: #e9e9ec;
+  padding: 1px 5px;
+  border: 1.5px solid #d0d0d4;
+  border-radius: 5px;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.6);
+  box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.5);
+}
+
+/* ====== Roland SPD-SX sampling pad — black woven mesh + glowing red strips ====== */
+.spd-chassis {
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, #2c2d30 0%, #161618 18%, #0c0c0e 100%);
+  border: 1px solid #000;
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -4px 12px rgba(0, 0, 0, 0.8),
+    0 14px 30px rgba(0, 0, 0, 0.65);
+}
+.spd-grid {
+  padding: 6px;
+  border-radius: 10px;
+  background: #050506;
+  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.9);
+}
+/* glowing red divider strips */
+.spd-div {
+  position: absolute;
+  pointer-events: none;
+  z-index: 4;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #7a0a0a, #ff2a33 35%, #ff5a5a 50%, #ff2a33 65%, #7a0a0a);
+  box-shadow: 0 0 6px rgba(255, 42, 51, 0.85), 0 0 12px rgba(255, 42, 51, 0.5);
+}
+.spd-div-v {
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+}
+.spd-div-h {
+  left: 8px;
+  right: 8px;
+  height: 3px;
+  background: linear-gradient(0deg, #7a0a0a, #ff2a33 35%, #ff5a5a 50%, #ff2a33 65%, #7a0a0a);
+}
+/* dark woven-mesh rubber pad */
+.spd-pad {
+  --rgb: #f87171;
+  border-radius: 7px;
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.045) 0px, rgba(255, 255, 255, 0.045) 1px, transparent 1px, transparent 4px),
+    repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0.5) 0px, rgba(0, 0, 0, 0.5) 1px, transparent 1px, transparent 4px),
+    radial-gradient(130% 110% at 50% 0%, #2a2a2e 0%, #161618 45%, #0c0c0d 100%);
+  border: 1px solid #000;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 -6px 14px rgba(0, 0, 0, 0.7),
+    0 1px 2px rgba(0, 0, 0, 0.6);
+  transition: box-shadow 0.08s ease, transform 0.05s ease;
+}
+.spd-pad:hover {
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.06) 0px, rgba(255, 255, 255, 0.06) 1px, transparent 1px, transparent 4px),
+    repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0.5) 0px, rgba(0, 0, 0, 0.5) 1px, transparent 1px, transparent 4px),
+    radial-gradient(130% 110% at 50% 0%, #313135 0%, #191a1c 45%, #0d0d0f 100%);
+}
+/* loaded pad gets a soft colored edge glow */
+.spd-pad-loaded {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 18px color-mix(in srgb, var(--rgb) 22%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--rgb) 45%, transparent),
+    0 0 8px color-mix(in srgb, var(--rgb) 30%, transparent);
+}
+/* selected pad: stronger colored ring */
+.spd-pad-sel {
+  box-shadow:
+    inset 0 0 0 2px color-mix(in srgb, var(--rgb) 80%, transparent),
+    inset 0 0 22px color-mix(in srgb, var(--rgb) 30%, transparent),
+    0 0 12px color-mix(in srgb, var(--rgb) 45%, transparent);
+}
+/* hit flash */
+.spd-pad-hit {
+  transform: translateY(1px);
+  background:
+    radial-gradient(120% 110% at 50% 30%, color-mix(in srgb, var(--rgb) 85%, #fff) 0%, var(--rgb) 55%, color-mix(in srgb, var(--rgb) 60%, #000) 100%) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    0 0 18px color-mix(in srgb, var(--rgb) 80%, transparent),
+    0 0 32px color-mix(in srgb, var(--rgb) 55%, transparent) !important;
+}
+.spd-loop-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ff8a1e;
+  box-shadow: 0 0 8px #ff8a1e;
+  animation: panicGlow 1s ease-in-out infinite;
+}
+/* control strip */
+.spd-strip {
+  border-radius: 10px;
+  background:
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.012) 0px, rgba(255, 255, 255, 0.012) 1px, transparent 1px, transparent 3px),
+    linear-gradient(180deg, #232326 0%, #141416 100%);
+  border: 1px solid #000;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), inset 0 -3px 8px rgba(0, 0, 0, 0.6);
+}
+.spd-lcd {
+  border-radius: 6px;
+  background: radial-gradient(130% 130% at 50% 0%, #10161c 0%, #04070a 80%);
+  border: 1px solid #000;
+  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.9);
+}
+.spd-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #b6b6bd;
+  background: linear-gradient(180deg, #2c2d31 0%, #161619 100%);
+  border: 1px solid #000;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 2px 3px rgba(0, 0, 0, 0.5);
+  transition: all 0.08s ease;
+}
+.spd-btn:hover {
+  color: #fff;
+}
+.spd-btn:active {
+  transform: translateY(1px);
+}
+.spd-btn-on {
+  color: #fff;
+  background: linear-gradient(180deg, #ff6a5a 0%, #e21f1f 100%);
+  box-shadow: 0 0 12px rgba(226, 31, 31, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+.spd-btn-on-cyan {
+  background: linear-gradient(180deg, #ffb15e 0%, #ff8a1e 100%);
+  color: #2a1a05;
+  box-shadow: 0 0 12px rgba(255, 138, 30, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+.spd-logo {
+  font-family: ui-serif, Georgia, serif;
+  font-style: italic;
+  font-weight: 700;
+  font-size: 12px;
+  color: #e9e9ec;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.7);
+}
+
+/* step-sequencer cells (per pad) */
+.spd-step {
+  min-width: 0;
+  cursor: pointer;
+  background: linear-gradient(180deg, #232327 0%, #121214 100%);
+  border: 1px solid #000;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: background 0.06s ease, box-shadow 0.06s ease;
+}
+.spd-step:hover {
+  background: linear-gradient(180deg, #303035 0%, #1a1a1d 100%);
+}
+.spd-step-on {
+  background: var(--rgb);
+  box-shadow: 0 0 8px var(--rgb), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+.spd-step-head {
+  outline: 2px solid #fff;
+  outline-offset: -1px;
+}
+
+/* brushed dark-metal strip (top of decks on the REV5) */
+.hw-brushed {
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.035) 0px, rgba(255, 255, 255, 0.035) 1px, transparent 1px, transparent 3px),
+    linear-gradient(180deg, #26262b 0%, #1a1a1e 100%);
+  border: 1px solid #000;
+  border-radius: 8px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -2px 5px rgba(0, 0, 0, 0.6);
+}
+
+/* ---- photoreal faders (metallic ridged caps in a recessed slot) ---- */
+/* recessed dark slot, shared look */
+.dj-fader {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 7px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #050506, #1c1c20);
+  outline: none;
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.95),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03),
+    0 1px 0 rgba(255, 255, 255, 0.05);
+}
+/* metallic cap: vertical bevel + dark center indicator + horizontal grip ridges + cross hatch */
+.dj-fader::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 38px;
+  border-radius: 4px;
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0px, rgba(0, 0, 0, 0.22) 1px, transparent 1px, transparent 4px),
+    linear-gradient(180deg, #fbfbfb 0%, #d2d2d2 44%, #6f6f6f 50%, #d2d2d2 56%, #f3f3f3 100%);
+  border: 1px solid #15151a;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.4),
+    0 3px 6px rgba(0, 0, 0, 0.75);
+  cursor: pointer;
+}
+.dj-fader::-moz-range-thumb {
+  width: 20px;
+  height: 38px;
+  border-radius: 4px;
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0px, rgba(0, 0, 0, 0.22) 1px, transparent 1px, transparent 4px),
+    linear-gradient(180deg, #fbfbfb 0%, #d2d2d2 44%, #6f6f6f 50%, #d2d2d2 56%, #f3f3f3 100%);
+  border: 1px solid #15151a;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 3px 6px rgba(0, 0, 0, 0.75);
+  cursor: pointer;
+}
+
+/* vertical channel / pitch / FX fader */
+.dj-fader-v {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 7px;
+  height: 90px;
+}
+/* wide-and-short cap for vertical faders (matches photo orientation) */
+.dj-fader-v::-webkit-slider-thumb {
+  width: 30px;
+  height: 22px;
+  border-radius: 4px;
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0px, rgba(0, 0, 0, 0.22) 1px, transparent 1px, transparent 4px),
+    linear-gradient(180deg, #fbfbfb 0%, #d2d2d2 44%, #6f6f6f 50%, #d2d2d2 56%, #f3f3f3 100%);
+}
+.dj-fader-v::-moz-range-thumb {
+  width: 30px;
+  height: 22px;
+  border-radius: 4px;
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0px, rgba(0, 0, 0, 0.22) 1px, transparent 1px, transparent 4px),
+    linear-gradient(180deg, #fbfbfb 0%, #d2d2d2 44%, #6f6f6f 50%, #d2d2d2 56%, #f3f3f3 100%);
+}
+
+/* horizontal fader with graduation ticks + travel voyants (Pitch / Scratch) */
+.dj-fader-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+/* small discreet white dashes evenly spaced under the cap, stronger at centre */
+.dj-fader-ticks {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: 50%;
+  height: 9px;
+  transform: translateY(-50%);
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.28) 0,
+    rgba(255, 255, 255, 0.28) 1px,
+    transparent 1px,
+    transparent 14px
+  );
+}
+/* a touch brighter mark dead-centre so neutral is easy to find */
+.dj-fader-ticks::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -1px;
+  bottom: -1px;
+  width: 1px;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.5);
+}
+.dj-fader-voyant {
+  position: absolute;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  transform: translateY(-50%);
+  background: currentColor;
+  opacity: 0.16;
+  transition: opacity 0.08s ease, box-shadow 0.08s ease;
+}
+.dj-fader-voyant-l {
+  left: -3px;
+}
+.dj-fader-voyant-r {
+  right: -3px;
+}
+.dj-fader-voyant[data-on] {
+  opacity: 1;
+  box-shadow: 0 0 7px currentColor, 0 0 2px currentColor;
+}
+
+/* FX-intensity faders reuse the exact crossfader look (.dj-fader / .dj-fader-v):
+   recessed dark slot + brushed silver ridged cap. See .dj-fader-v above. */
+
+/* tick-mark scale strip placed beside a vertical fader (level graduations) */
+.fader-ticks {
+  width: 3px;
+  align-self: stretch;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.32) 0px,
+    rgba(255, 255, 255, 0.32) 1px,
+    transparent 1px,
+    transparent 20%
+  );
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+}
+
+/* horizontal variant: ticks run left-to-right under the crossfader */
+.fader-ticks-h {
+  height: 6px;
+  width: 100%;
+  background-image: repeating-linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0.32) 0px,
+    rgba(255, 255, 255, 0.32) 1px,
+    transparent 1px,
+    transparent 10%
+  );
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+}
+
+/* blinking FX-intensity LED — pulses while its fader is above zero */
+@keyframes fxBlink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.2;
+  }
+}
+.fx-led-blink {
+  animation: fxBlink 1.6s ease-in-out infinite;
+}
+
+/* library "à suivre" cue — the next track to play blinks in its deck colour
+   (--cue is set inline: orange for Deck A, green for Deck B) */
+@keyframes libNextBlink {
+  0%,
+  100% {
+    box-shadow: inset 3px 0 0 var(--cue);
+  }
+  50% {
+    box-shadow: inset 3px 0 0 var(--cue), 0 0 12px var(--cue);
+  }
+}
+.lib-next-blink {
+  animation: libNextBlink 0.85s ease-in-out infinite;
+}
+
+/* ===== double-click "metal" zoom — pop a zone to the centre, dim the rest ===== */
+.zoom-zone {
+  transition: opacity 0.2s ease, filter 0.2s ease;
+}
+body.has-zoom {
+  overflow: hidden;
+}
+body.has-zoom::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(2px);
+}
+.zoom-zone.zoomed {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  /* actually magnify the controls, not just re-fit the panel */
+  transform: translate(-50%, -50%) scale(1.55);
+  transform-origin: center center;
+  width: min(60vw, 880px);
+  max-height: 60vh;
+  overflow: auto;
+  z-index: 60;
+  border-radius: 16px;
+  box-shadow: 0 0 0 2px rgba(255, 138, 30, 0.55), 0 24px 70px rgba(0, 0, 0, 0.85);
+  cursor: zoom-out;
+}
+
+/* fake recessed corner screws — purely decorative, painted in an overlay so
+   they don't disturb each module's own background texture */
+.hw-screwed {
+  position: relative;
+}
+.hw-screwed::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  background-repeat: no-repeat;
+  background-image: radial-gradient(
+      circle at 11px 11px,
+      #7a7a80,
+      #4a4a4f 2px,
+      #232327 5.5px,
+      rgba(0, 0, 0, 0.65) 7px,
+      transparent 8.5px
+    ),
+    radial-gradient(
+      circle at 11px 11px,
+      #7a7a80,
+      #4a4a4f 2px,
+      #232327 5.5px,
+      rgba(0, 0, 0, 0.65) 7px,
+      transparent 8.5px
+    ),
+    radial-gradient(
+      circle at 11px 11px,
+      #7a7a80,
+      #4a4a4f 2px,
+      #232327 5.5px,
+      rgba(0, 0, 0, 0.65) 7px,
+      transparent 8.5px
+    ),
+    radial-gradient(
+      circle at 11px 11px,
+      #7a7a80,
+      #4a4a4f 2px,
+      #232327 5.5px,
+      rgba(0, 0, 0, 0.65) 7px,
+      transparent 8.5px
+    );
+  background-size: 22px 22px;
+  background-position: 0 0, 100% 0, 0 100%, 100% 100%;
+}
+
+/* tall channel fader for the mixer strips */
+.hw-cfader {
+  -webkit-appearance: none;
+  appearance: none;
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 8px;
+  height: 130px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #050506, #1c1c20);
+  box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.95), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  outline: none;
+}
+.hw-cfader::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 38px;
+  height: 24px;
+  border-radius: 4px;
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0px, rgba(0, 0, 0, 0.22) 1px, transparent 1px, transparent 4px),
+    linear-gradient(180deg, #fbfbfb 0%, #cccccc 44%, #6f6f6f 50%, #cccccc 56%, #f3f3f3 100%);
+  border: 1px solid #111;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 3px 7px rgba(0, 0, 0, 0.85);
+  cursor: pointer;
+}
+.hw-cfader::-moz-range-thumb {
+  width: 38px;
+  height: 24px;
+  border-radius: 4px;
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0px, rgba(0, 0, 0, 0.22) 1px, transparent 1px, transparent 4px),
+    linear-gradient(180deg, #fbfbfb 0%, #cccccc 44%, #6f6f6f 50%, #cccccc 56%, #f3f3f3 100%);
+  border: 1px solid #111;
+  cursor: pointer;
+}
+
+/* LED label */
+.hw-led {
+  text-shadow: 0 0 6px currentColor;
+}
+
+/* ---- photoreal rotary knob ---- */
+.hw-knob {
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 50% 120%, rgba(255, 255, 255, 0.06), transparent 60%),
+    #0a0a0c;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.08),
+    0 3px 6px rgba(0, 0, 0, 0.7);
+}
+.hw-knob-cap {
+  background:
+    radial-gradient(circle at 50% 30%, #4a4a52 0%, #2b2b31 38%, #161619 70%, #0c0c0e 100%);
+  box-shadow:
+    inset 0 2px 3px rgba(255, 255, 255, 0.22),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.85),
+    0 2px 5px rgba(0, 0, 0, 0.8);
+  border: 1px solid #000;
+}
+.hw-knob-cap::after {
+  content: "";
+  position: absolute;
+  inset: 22%;
+  border-radius: 999px;
+  background: radial-gradient(circle at 50% 35%, #2e2e34, #18181c 70%, #0d0d0f);
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.12), inset 0 -2px 4px rgba(0, 0, 0, 0.8);
+}

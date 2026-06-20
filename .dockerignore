@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.stems-cache
+.venv-stems
+npm-debug.log*
+.env.local
+.env*.local
+.DS_Store
+*.md
+landing
+deploy
