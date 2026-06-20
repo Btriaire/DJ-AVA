@@ -27,6 +27,15 @@ function bin(name: string, envKey: string): string {
 const YTDLP = bin("yt-dlp", "YT_DLP_PATH");
 const FFMPEG = bin("ffmpeg", "FFMPEG_PATH");
 
+// On a datacenter/VPS IP, YouTube bot-blocks anonymous requests ("Sign in to
+// confirm you're not a bot"). Pointing yt-dlp at an exported cookies.txt makes
+// it authenticate like a logged-in browser, which unblocks extraction. Set
+// YT_DLP_COOKIES to the path of a Netscape cookie file (mounted on the VPS).
+function cookieArgs(): string[] {
+  const f = process.env.YT_DLP_COOKIES;
+  return f && existsSync(f) ? ["--cookies", f] : [];
+}
+
 export function videoUrl(idOrUrl: string): string {
   const s = idOrUrl.trim();
   if (/^[\w-]{11}$/.test(s)) return `https://www.youtube.com/watch?v=${s}`;
@@ -72,6 +81,7 @@ export async function searchYouTube(q: string, opts: YTSearchOpts = {}): Promise
     "--flat-playlist",
     "--dump-single-json",
     "--no-warnings",
+    ...cookieArgs(),
   ]);
   const j = JSON.parse(raw) as { entries?: RawEntry[] };
   const min = opts.minDur && opts.minDur > 0 ? opts.minDur : 0;
@@ -109,7 +119,7 @@ export async function getTitle(idOrUrl: string): Promise<string> {
 // web ReadableStream. Both processes are torn down if the client cancels.
 export function createMp3Stream(idOrUrl: string): ReadableStream<Uint8Array> {
   const url = videoUrl(idOrUrl);
-  const dl = spawn(YTDLP, ["-f", "bestaudio", "-o", "-", "--no-warnings", "--no-playlist", url], {
+  const dl = spawn(YTDLP, ["-f", "bestaudio", "-o", "-", "--no-warnings", "--no-playlist", ...cookieArgs(), url], {
     stdio: ["ignore", "pipe", "ignore"],
   });
   const ff = spawn(

@@ -10,3 +10,4 @@ npm-debug.log*
 *.md
 landing
 deploy
+secrets

@@ -12,8 +12,13 @@ services:
       - "127.0.0.1:3000:3000" # exposé seulement en local, derrière le proxy
     env_file:
       - .env.local # fournis GROQ_API_KEY etc. (voir .env.example)
+    environment:
+      # cookies YouTube exportés (auth comme un navigateur connecté) — débloque
+      # yt-dlp sur l'IP datacenter du VPS. Le fichier est dans ./secrets (hors git).
+      YT_DLP_COOKIES: /secrets/yt-cookies.txt
     volumes:
       - stems-cache:/data/stems-cache # séparations persistées entre redéploiements
+      - ./secrets:/secrets:ro # cookies YouTube (lecture seule)
     restart: unless-stopped
 
 volumes:

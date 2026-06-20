@@ -44,3 +44,6 @@ next-env.d.ts
 # stem separation (Demucs)
 .venv-stems
 .stems-cache
+
+# YouTube cookies (secret — never commit)
+secrets/*.txt
