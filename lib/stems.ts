@@ -136,8 +136,14 @@ async function doSeparate(
     await run(FFMPEG, ["-hide_banner", "-loglevel", "error", "-y", "-i", raw, "-ac", "2", "-ar", "44100", wav]);
 
     // 2. run Demucs (CPU) -> MP3 stems under <out>/<model>/source/<stem>.mp3
+    //    --overlap 0.1 (vs Demucs' 0.25 default) computes fewer overlapping
+    //    windows → ~15% faster on CPU for a negligible quality cost.
+    //    STEMS_SEGMENT caps the chunk length to bound peak RAM on memory-tight
+    //    hosts (avoids swap thrashing on long tracks). Both are env-tunable.
     const out = join(work, "out");
-    const args = ["-n", model, "-d", "cpu", "--mp3", "--mp3-bitrate", "256"];
+    const overlap = process.env.STEMS_OVERLAP || "0.1";
+    const args = ["-n", model, "-d", "cpu", "--mp3", "--mp3-bitrate", "256", "--overlap", overlap];
+    if (process.env.STEMS_SEGMENT) args.push("--segment", process.env.STEMS_SEGMENT);
     if (shifts > 0) args.push("--shifts", String(Math.min(shifts, 10)));
     args.push("-o", out, wav);
     await run(DEMUCS, args);

@@ -16,6 +16,9 @@ services:
       # cookies YouTube exportés (auth comme un navigateur connecté) — débloque
       # yt-dlp sur l'IP datacenter du VPS. Le fichier est dans ./secrets (hors git).
       YT_DLP_COOKIES: /secrets/yt-cookies.txt
+      # Demucs : plafonne la longueur de chunk pour borner la RAM (évite le swap
+      # sur cette machine à 1 cœur / 4 Go partagée avec une autre app).
+      STEMS_SEGMENT: "7"
     volumes:
       - stems-cache:/data/stems-cache # séparations persistées entre redéploiements
       - ./secrets:/secrets:ro # cookies YouTube (lecture seule)
