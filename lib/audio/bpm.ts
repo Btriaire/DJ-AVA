@@ -45,6 +45,90 @@ function mixToMono(buffer: AudioBuffer): Float32Array {
   return out;
 }
 
+// Serato-style colored waveform: per bucket we keep the overall peak plus the
+// energy split into low / mid / high bands (→ R / G / B), so bass hits render
+// red, mids green and hats/treble blue. One cheap pass with three one-pole
+// lowpasses (low, low+mid) derives the bands; the remainder is treble.
+export interface ColoredPeaks {
+  amp: Float32Array; // 0..1 peak per bucket
+  r: Uint8Array; // low-band intensity 0..255
+  g: Uint8Array; // mid-band
+  b: Uint8Array; // high-band
+}
+
+export function buildColoredPeaks(buffer: AudioBuffer, buckets = 1600): ColoredPeaks {
+  const data = buffer.numberOfChannels > 1 ? mixToMono(buffer) : buffer.getChannelData(0);
+  const sr = buffer.sampleRate;
+  const n = data.length;
+  // one-pole lowpass coefficients
+  const coeff = (fc: number) => {
+    const rc = 1 / (2 * Math.PI * fc);
+    const dt = 1 / sr;
+    return dt / (rc + dt);
+  };
+  const aLow = coeff(220); // bass below ~220 Hz
+  const aMid = coeff(2500); // everything below ~2.5 kHz (low+mid)
+
+  const amp = new Float32Array(buckets);
+  const r = new Uint8Array(buckets);
+  const g = new Uint8Array(buckets);
+  const b = new Uint8Array(buckets);
+  const step = Math.floor(n / buckets) || 1;
+
+  let lpLow = 0;
+  let lpMid = 0;
+  let bucket = 0;
+  let peak = 0;
+  let eLow = 0;
+  let eMid = 0;
+  let eHigh = 0;
+  let count = 0;
+  const flush = () => {
+    if (bucket >= buckets) return;
+    amp[bucket] = Math.min(1, peak);
+    const lo = Math.sqrt(eLow / Math.max(1, count));
+    const mi = Math.sqrt(eMid / Math.max(1, count));
+    const hi = Math.sqrt(eHigh / Math.max(1, count));
+    const m = Math.max(lo, mi, hi, 1e-6);
+    // normalize so the dominant band is vivid; scale by peak for brightness
+    const bright = 0.35 + 0.65 * Math.min(1, peak);
+    r[bucket] = Math.min(255, (lo / m) * 255 * bright);
+    g[bucket] = Math.min(255, (mi / m) * 255 * bright);
+    b[bucket] = Math.min(255, (hi / m) * 255 * bright);
+    bucket++;
+    peak = 0;
+    eLow = eMid = eHigh = 0;
+    count = 0;
+  };
+
+  for (let i = 0; i < n; i++) {
+    const x = data[i];
+    lpLow += aLow * (x - lpLow);
+    lpMid += aMid * (x - lpMid);
+    const low = lpLow;
+    const mid = lpMid - lpLow;
+    const high = x - lpMid;
+    eLow += low * low;
+    eMid += mid * mid;
+    eHigh += high * high;
+    const a = Math.abs(x);
+    if (a > peak) peak = a;
+    count++;
+    if (count >= step) flush();
+  }
+  if (count > 0) flush();
+  return { amp, r, g, b };
+}
+
+// Beat times (seconds) across a buffer for a given BPM, anchored at `offset`.
+export function buildBeatGrid(durationSec: number, bpm: number, offset = 0): number[] {
+  if (!bpm || bpm <= 0) return [];
+  const beat = 60 / bpm;
+  const beats: number[] = [];
+  for (let t = offset; t < durationSec; t += beat) if (t >= 0) beats.push(t);
+  return beats;
+}
+
 // Downsampled peak data for waveform rendering.
 export function buildWaveformPeaks(buffer: AudioBuffer, buckets = 1600): Float32Array {
   const data = buffer.numberOfChannels > 1 ? mixToMono(buffer) : buffer.getChannelData(0);

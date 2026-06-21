@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { DJEngine } from "@/lib/audio/engine";
-import { loadPadPresets, savePadPresets } from "@/lib/audio/Sampler";
+import { loadPadPresets, savePadPresets, type Sampler } from "@/lib/audio/Sampler";
 import { Knob } from "./Knob";
 
 interface Props {
@@ -10,6 +10,236 @@ interface Props {
 
 // single luminous-yellow used by every per-pad potentiometer
 const PAD_YELLOW = "#ffe000";
+
+// one-octave note names for the Key-Shift pad keyboard
+const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B", "C"];
+
+// Serato-style colored-waveform editor for the selected pad. Renders the
+// 3-band peaks (bass=red, mid=green, treble=blue), the beat grid, slice
+// divisions, cue markers and draggable start/end trim handles. Clicking in
+// "SET CUE" mode drops a cue at the pointer; slice/cue trigger buttons fire
+// the corresponding region through the sampler's voice builder.
+function WaveformEditor({
+  sampler,
+  sel,
+  rev,
+  onChange,
+}: {
+  sampler: Sampler;
+  sel: number;
+  rev: number;
+  onChange: () => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [cueMode, setCueMode] = useState(false);
+  const drag = useRef<null | "start" | "end">(null);
+  const pad = sampler.pads[sel];
+
+  useEffect(() => {
+    const cv = canvasRef.current;
+    if (!cv) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w = cv.clientWidth;
+    const h = cv.clientHeight;
+    if (w === 0) return;
+    cv.width = w * dpr;
+    cv.height = h * dpr;
+    const ctx = cv.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = "#0b0b0d";
+    ctx.fillRect(0, 0, w, h);
+
+    const peaks = pad.peaks;
+    if (!peaks) {
+      ctx.fillStyle = "#3a3a3a";
+      ctx.font = "11px ui-monospace, monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("— pad vide —", w / 2, h / 2);
+      return;
+    }
+    const n = peaks.amp.length;
+    const mid = h / 2;
+    // colored waveform
+    for (let x = 0; x < w; x++) {
+      const b = Math.min(n - 1, Math.floor((x / w) * n));
+      const a = peaks.amp[b];
+      const bh = Math.max(0.5, a * mid * 0.95);
+      ctx.strokeStyle = `rgb(${peaks.r[b]},${peaks.g[b]},${peaks.b[b]})`;
+      ctx.beginPath();
+      ctx.moveTo(x + 0.5, mid - bh);
+      ctx.lineTo(x + 0.5, mid + bh);
+      ctx.stroke();
+    }
+    // beat grid
+    const dur = pad.buffer?.duration ?? 0;
+    if (dur > 0 && pad.beats.length > 1) {
+      ctx.lineWidth = 1;
+      pad.beats.forEach((t, idx) => {
+        const x = (t / dur) * w;
+        ctx.strokeStyle = idx % 4 === 0 ? "rgba(255,196,80,0.45)" : "rgba(255,255,255,0.10)";
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
+        ctx.stroke();
+      });
+    }
+    // slice divisions (within the trimmed region)
+    if (pad.slices > 0) {
+      ctx.strokeStyle = "rgba(90,200,255,0.55)";
+      ctx.setLineDash([3, 3]);
+      for (let k = 1; k < pad.slices; k++) {
+        const frac = pad.start + (pad.end - pad.start) * (k / pad.slices);
+        const x = frac * w;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    }
+    // dim the trimmed-away regions
+    const sx = pad.start * w;
+    const ex = pad.end * w;
+    ctx.fillStyle = "rgba(0,0,0,0.62)";
+    ctx.fillRect(0, 0, sx, h);
+    ctx.fillRect(ex, 0, w - ex, h);
+    // trim handles
+    ctx.fillStyle = "#ff8a1e";
+    ctx.fillRect(sx - 1, 0, 2, h);
+    ctx.fillRect(sx - 5, 0, 10, 7);
+    ctx.fillStyle = "#4dff84";
+    ctx.fillRect(ex - 1, 0, 2, h);
+    ctx.fillRect(ex - 5, 0, 10, 7);
+    // cue markers
+    pad.cues.forEach((c, idx) => {
+      const x = c * w;
+      ctx.fillStyle = "#facc15";
+      ctx.fillRect(x - 1, 0, 2, h);
+      ctx.fillRect(x, h - 11, 11, 11);
+      ctx.fillStyle = "#000";
+      ctx.font = "bold 8px ui-monospace, monospace";
+      ctx.textAlign = "left";
+      ctx.fillText(String(idx + 1), x + 2.5, h - 2.5);
+    });
+  }, [pad, sel, rev, pad.peaks, pad.start, pad.end, pad.slices, pad.cues, pad.beats]);
+
+  const fracFromEvent = (clientX: number) => {
+    const cv = canvasRef.current;
+    if (!cv) return 0;
+    const rect = cv.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  };
+  const applyDrag = (f: number) => {
+    if (drag.current === "start") sampler.setParam(sel, "start", Math.min(f, pad.end - 0.01));
+    else if (drag.current === "end") sampler.setParam(sel, "end", Math.max(f, pad.start + 0.01));
+    onChange();
+  };
+  const onDown = (e: React.PointerEvent) => {
+    if (!pad.buffer) return;
+    const f = fracFromEvent(e.clientX);
+    if (cueMode) {
+      sampler.addCue(sel, f);
+      onChange();
+      return;
+    }
+    drag.current = Math.abs(f - pad.start) <= Math.abs(f - pad.end) ? "start" : "end";
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+    applyDrag(f);
+  };
+  const onMove = (e: React.PointerEvent) => {
+    if (drag.current) applyDrag(fracFromEvent(e.clientX));
+  };
+  const onUp = () => {
+    drag.current = null;
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-2">
+        <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-500">
+          Forme d&apos;onde
+        </span>
+        {pad.bpm > 0 && (
+          <span className="rounded bg-black/50 px-1.5 py-0.5 font-mono text-[9px] text-amber-300">
+            {pad.bpm} BPM
+          </span>
+        )}
+        <span className="font-mono text-[9px] text-neutral-600">
+          trim {Math.round(pad.start * 100)}–{Math.round(pad.end * 100)}%
+        </span>
+        <div className="ml-auto flex items-center gap-1.5">
+          <button
+            onClick={() => setCueMode((c) => !c)}
+            className={`spd-btn px-1.5 text-[10px] ${cueMode ? "spd-btn-on" : ""}`}
+            style={{ ["--led" as string]: "#facc15" }}
+            title="Active puis clique la forme d'onde pour poser un point de repère (cue)"
+          >
+            ✚ SET CUE
+          </button>
+          <button
+            onClick={() => {
+              sampler.clearCues(sel);
+              onChange();
+            }}
+            className="spd-btn px-1.5 text-[10px]"
+            title="Effacer les cues"
+          >
+            CLR CUE
+          </button>
+          <button
+            onClick={() => {
+              sampler.setParam(sel, "start", 0);
+              sampler.setParam(sel, "end", 1);
+              onChange();
+            }}
+            className="spd-btn px-1.5 text-[10px]"
+            title="Réinitialiser le trim sur tout le sample"
+          >
+            ⤢ FULL
+          </button>
+        </div>
+      </div>
+      <canvas
+        ref={canvasRef}
+        className="h-24 w-full touch-none rounded-md border border-[#3a1414] bg-black"
+        style={{ cursor: cueMode ? "copy" : "ew-resize" }}
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        onPointerCancel={onUp}
+      />
+      {/* slice / cue trigger pads */}
+      {(pad.slices > 0 || pad.cues.length > 0) && (
+        <div className="flex flex-wrap items-center gap-1">
+          {pad.slices > 0 &&
+            Array.from({ length: pad.slices }).map((_, k) => (
+              <button
+                key={`s${k}`}
+                onMouseDown={() => sampler.playSlice(sel, k)}
+                className="spd-btn px-1.5 text-[10px]"
+                style={{ ["--led" as string]: "#5ac8ff" }}
+                title={`Jouer la tranche ${k + 1}`}
+              >
+                ▷{k + 1}
+              </button>
+            ))}
+          {pad.cues.map((_, k) => (
+            <button
+              key={`c${k}`}
+              onMouseDown={() => sampler.playCue(sel, k)}
+              className="spd-btn px-1.5 text-[10px]"
+              style={{ ["--led" as string]: "#facc15" }}
+              title={`Jouer le cue ${k + 1}`}
+            >
+              ◆{k + 1}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // physical-key map (event.code) -> pad index, layout independent (AZERTY/QWERTY).
 // Digits 1-9 mirror the 3x3 pad grid, row by row.
@@ -25,7 +255,7 @@ const PAD_KEYS: Record<string, number> = {
 // loop). Double-tap a pad to load a file. GRAB captures 4 beats of a deck.
 export function SamplerPanel({ engine }: Props) {
   const sampler = engine.sampler;
-  const [, force] = useState(0);
+  const [rev, force] = useState(0);
   const rerender = () => force((n) => n + 1);
   const [flash, setFlash] = useState<number | null>(null);
   const [sel, setSel] = useState(0);
@@ -144,7 +374,7 @@ export function SamplerPanel({ engine }: Props) {
   const padNo = (sel + 1).toString().padStart(3, "0");
   const playhead = seqOn ? sampler.currentStep() : -1; // lit step column
 
-  const setP = (key: Parameters<typeof sampler.setParam>[1], v: number | boolean) => {
+  const setP = (key: Parameters<typeof sampler.setParam>[1], v: number | boolean | string) => {
     sampler.setParam(sel, key, v);
     rerender();
   };
@@ -288,8 +518,243 @@ export function SamplerPanel({ engine }: Props) {
         </div>
       </div>
 
+      {/* ===== SCULPT : Serato-style sound design for the selected pad ===== */}
+      <div className="spd-strip order-2 flex flex-col gap-2 p-2">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-black uppercase tracking-widest text-amber-300">
+            ✦ Sculpteur de son
+          </span>
+          <span className="rounded px-1.5 py-0.5 font-mono text-[10px] font-bold" style={{ color: pad.color }}>
+            {padNo} · {pad.name}
+          </span>
+        </div>
+
+        <WaveformEditor sampler={sampler} sel={sel} rev={rev} onChange={rerender} />
+
+        {/* mode bar — voicing / playback mode / performance flags / slicer */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {/* voicing */}
+          <div className="flex items-center gap-0.5 rounded bg-black/40 p-0.5">
+            {(["poly", "mono"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setP("voicing", m)}
+                className={`spd-btn px-1.5 text-[10px] ${pad.voicing === m ? "spd-btn-on" : ""}`}
+                style={{ ["--led" as string]: "#4dff84" }}
+                title={m === "poly" ? "Polyphonique : les voix se superposent" : "Monophonique : chaque frappe coupe la précédente"}
+              >
+                {m === "poly" ? "POLY" : "MONO"}
+              </button>
+            ))}
+          </div>
+          {/* playback mode */}
+          <div className="flex items-center gap-0.5 rounded bg-black/40 p-0.5">
+            {([
+              ["oneshot", "1-SHOT"],
+              ["hold", "HOLD"],
+              ["trigger", "TRIG"],
+              ["key", "KEY"],
+            ] as const).map(([m, label]) => (
+              <button
+                key={m}
+                onClick={() => setP("mode", m)}
+                className={`spd-btn px-1.5 text-[10px] ${pad.mode === m ? "spd-btn-on" : ""}`}
+                style={{ ["--led" as string]: "#ff8a1e" }}
+                title={
+                  m === "oneshot"
+                    ? "One-shot : joue jusqu'au bout"
+                    : m === "hold"
+                      ? "Hold : ne joue que tant que le pad est tenu"
+                      : m === "trigger"
+                        ? "Trigger : redéclenche depuis le début à chaque frappe"
+                        : "Key : clavier de transposition (voir touches ci-dessous)"
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {/* performance flags */}
+          <button
+            onClick={() => setP("velo", !pad.velo)}
+            className={`spd-btn px-1.5 text-[10px] ${pad.velo ? "spd-btn-on" : ""}`}
+            style={{ ["--led" as string]: "#facc15" }}
+            title="Mode vélocité : la force de frappe règle le volume"
+          >
+            VELO
+          </button>
+          <button
+            onClick={() => setP("quantize", !pad.quantize)}
+            className={`spd-btn px-1.5 text-[10px] ${pad.quantize ? "spd-btn-on" : ""}`}
+            style={{ ["--led" as string]: "#4dff84" }}
+            title="Quantize : aligne les frappes sur la grille du séquenceur"
+          >
+            QUANT
+          </button>
+          <button
+            onClick={() => setP("sync", !pad.sync)}
+            disabled={pad.bpm <= 0}
+            className={`spd-btn px-1.5 text-[10px] disabled:opacity-30 ${pad.sync ? "spd-btn-on" : ""}`}
+            style={{ ["--led" as string]: "#5ac8ff" }}
+            title={pad.bpm > 0 ? "Sync : cale le tempo du sample sur le BPM du séquenceur" : "BPM inconnu (sample trop court)"}
+          >
+            SYNC
+          </button>
+          <button
+            onClick={() => setP("random", !pad.random)}
+            className={`spd-btn px-1.5 text-[10px] ${pad.random ? "spd-btn-on" : ""}`}
+            style={{ ["--led" as string]: "#ef4444" }}
+            title="Random : chaque frappe joue une tranche / un cue au hasard"
+          >
+            RND
+          </button>
+          {/* slicer count */}
+          <div className="flex items-center gap-1 rounded bg-black/40 px-1 py-0.5">
+            <span className="text-[9px] font-bold uppercase text-neutral-500">Slices</span>
+            <button
+              onClick={() => setP("slices", Math.max(0, pad.slices - 1))}
+              className="spd-btn px-1.5 text-[10px]"
+            >
+              −
+            </button>
+            <span className="w-4 text-center font-mono text-[11px] font-bold text-cyan-300">
+              {pad.slices || "—"}
+            </span>
+            <button
+              onClick={() => setP("slices", Math.min(16, pad.slices + 1))}
+              className="spd-btn px-1.5 text-[10px]"
+              style={{ ["--led" as string]: "#5ac8ff" }}
+            >
+              +
+            </button>
+          </div>
+        </div>
+
+        {/* sculpt knobs : ADSR envelope + filter resonance + tune / drive / pan */}
+        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1 border-t border-[#3a1414] pt-2">
+          <Knob
+            label="Attack"
+            value={pad.attack}
+            min={0}
+            max={2}
+            defaultValue={0.002}
+            size={44}
+            color={PAD_YELLOW}
+            led
+            format={(v) => `${Math.round(v * 1000)}ms`}
+            onChange={(v) => setP("attack", v)}
+          />
+          <Knob
+            label="Decay"
+            value={pad.decay}
+            min={0}
+            max={2}
+            defaultValue={0}
+            size={44}
+            color={PAD_YELLOW}
+            led
+            format={(v) => `${Math.round(v * 1000)}ms`}
+            onChange={(v) => setP("decay", v)}
+          />
+          <Knob
+            label="Sustain"
+            value={pad.sustain}
+            min={0}
+            max={1}
+            defaultValue={1}
+            size={44}
+            color={PAD_YELLOW}
+            led
+            format={(v) => `${Math.round(v * 100)}`}
+            onChange={(v) => setP("sustain", v)}
+          />
+          <Knob
+            label="Release"
+            value={pad.release}
+            min={0.005}
+            max={3}
+            defaultValue={0.04}
+            size={44}
+            color={PAD_YELLOW}
+            led
+            format={(v) => `${Math.round(v * 1000)}ms`}
+            onChange={(v) => setP("release", v)}
+          />
+          <Knob
+            label="Reso"
+            value={pad.reso}
+            min={0}
+            max={1}
+            defaultValue={0}
+            size={44}
+            color={PAD_YELLOW}
+            led
+            format={(v) => `${Math.round(v * 100)}`}
+            onChange={(v) => setP("reso", v)}
+          />
+          <Knob
+            label="Tune"
+            value={pad.tune}
+            min={-100}
+            max={100}
+            defaultValue={0}
+            size={44}
+            color={PAD_YELLOW}
+            led
+            format={(v) => `${v > 0 ? "+" : ""}${v.toFixed(0)}¢`}
+            onChange={(v) => setP("tune", v)}
+          />
+          <Knob
+            label="Drive"
+            value={pad.drive}
+            min={0}
+            max={1}
+            defaultValue={0}
+            size={44}
+            color={PAD_YELLOW}
+            led
+            format={(v) => `${Math.round(v * 100)}`}
+            onChange={(v) => setP("drive", v)}
+          />
+          <Knob
+            label="Pan"
+            value={pad.pan}
+            min={-1}
+            max={1}
+            defaultValue={0}
+            size={44}
+            color={PAD_YELLOW}
+            led
+            format={(v) => (Math.abs(v) < 0.02 ? "C" : `${v < 0 ? "L" : "R"}${Math.round(Math.abs(v) * 100)}`)}
+            onChange={(v) => setP("pan", v)}
+          />
+        </div>
+
+        {/* key-shift keyboard : play the selected pad melodically (one octave) */}
+        {pad.mode === "key" && (
+          <div className="flex items-center gap-1 border-t border-[#3a1414] pt-2">
+            <span className="mr-1 text-[9px] font-bold uppercase text-neutral-500">Clavier</span>
+            {NOTE_NAMES.map((nm, semi) => {
+              const sharp = nm.includes("#");
+              return (
+                <button
+                  key={semi}
+                  onMouseDown={() => sampler.playKey(sel, semi)}
+                  className={`h-8 flex-1 rounded-sm text-[9px] font-bold ${
+                    sharp ? "bg-neutral-800 text-neutral-300" : "bg-neutral-200 text-neutral-900"
+                  } active:brightness-125`}
+                  title={`Jouer ${nm} (+${semi} demi-tons)`}
+                >
+                  {nm}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* ===== mesh pad grid with red divider strips ===== */}
-      <div className="spd-grid order-3 relative grid grid-cols-3 gap-2">
+      <div className="spd-grid order-4 relative grid grid-cols-3 gap-2">
         {/* glowing red divider strips */}
         <div className="spd-div spd-div-v" style={{ left: "calc(33.333% - 1px)" }} />
         <div className="spd-div spd-div-v" style={{ left: "calc(66.666% - 1px)" }} />
@@ -323,7 +788,7 @@ export function SamplerPanel({ engine }: Props) {
       </div>
 
       {/* ===== 24-step sequencer (per pad) ===== */}
-      <div className="spd-seq order-2 flex flex-col gap-2 rounded-md border border-[#3a1414] bg-black/40 p-2">
+      <div className="spd-seq order-3 flex flex-col gap-2 rounded-md border border-[#3a1414] bg-black/40 p-2">
         <div className="flex items-center gap-2">
           <button
             onClick={() => setSeqOn(sampler.toggleSeq())}
@@ -550,8 +1015,8 @@ export function SamplerPanel({ engine }: Props) {
         )}
       </div>
 
-      <p className="order-4 text-center text-[10px] text-neutral-600">
-        Volume = niveau global des pads (sauvegardé) · Tape un pad (souris ou touches 1-9) = jouer + sélectionner · LOAD = charger un fichier · règle Pitch/Filter/Vol/Reverb du pad sélectionné · REV/LOOP par pad · SEQ = séquenceur par pad · REC = enregistrement live (tape les pads pendant la lecture pour écrire le pattern) · GRILLE = voir/programmer plusieurs sons par pas (1 ligne par pad)
+      <p className="order-5 text-center text-[10px] text-neutral-600">
+        Tape un pad (souris ou touches 1-9) = jouer + sélectionner · LOAD/GRAB chargent un son · Sculpteur : glisse les poignées de la forme d&apos;onde pour rogner (trim), SET CUE pose des repères, Slices découpe le sample, POLY/MONO + 1-SHOT/HOLD/TRIG/KEY règlent la lecture, VELO/QUANT/SYNC/RND, et les boutons ADSR/Reso/Tune/Drive/Pan modèlent le son · SEQ = séquenceur par pad · REC = enregistrement live · GRILLE = plusieurs sons par pas
       </p>
 
       <input

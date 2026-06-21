@@ -1,17 +1,54 @@
+import { buildBeatGrid, buildColoredPeaks, detectBPM, type ColoredPeaks } from "./bpm";
+
+export type Voicing = "poly" | "mono"; // poly = overlap; mono = retrigger cuts last
+export type PadMode = "oneshot" | "hold" | "trigger" | "key"; // playback behaviour
+
 export interface Pad {
   name: string;
   buffer: AudioBuffer | null;
   color: string;
-  // per-pad performance effects (SPD-SX style)
+  // --- performance effects (SPD-SX style) ---
   pitch: number; // semitones, -12..+12
   filter: number; // 0 = open, 1 = fully closed lowpass
   gain: number; // per-pad volume, 0..2
   reverb: number; // 0..1 reverb send
   reverse: boolean;
   loop: boolean;
+  // --- sound design / "sculpt" ---
+  tune: number; // fine pitch, cents -100..+100
+  attack: number; // amp envelope, seconds
+  decay: number; // seconds
+  sustain: number; // 0..1 sustain level
+  release: number; // seconds
+  reso: number; // 0..1 -> filter resonance (Q)
+  drive: number; // 0..1 saturation
+  pan: number; // -1 (L) .. +1 (R) stereo placement
+  start: number; // sample trim start, fraction 0..1
+  end: number; // sample trim end, fraction 0..1
+  // --- Serato-style sampler ---
+  cues: number[]; // cue points as fractions 0..1 (DJ cue points / hot cues)
+  slices: number; // slicer divisions (0 = off) — equal slices across the sample
+  voicing: Voicing; // mono / poly
+  mode: PadMode; // oneshot / hold / trigger / key-shift
+  velo: boolean; // velocity mode — hit strength drives level
+  quantize: boolean; // snap triggers to the sequencer grid
+  sync: boolean; // beat-sync playback rate to the sequencer BPM
+  keyShift: number; // semitone offset (key-shift pad layout / transpose)
+  random: boolean; // each trigger fires a random slice / cue
+  // --- analysis (recomputed on load, NOT persisted) ---
+  bpm: number;
+  beats: number[]; // beat-grid times (seconds)
+  peaks: ColoredPeaks | null; // colored waveform peaks
 }
 
-export type PadParam = "pitch" | "filter" | "gain" | "reverb" | "reverse" | "loop";
+// keys writable through setParam (scalar performance + sculpt params)
+export type PadParam =
+  | "pitch" | "filter" | "gain" | "reverb" | "reverse" | "loop"
+  | "tune" | "attack" | "decay" | "sustain" | "release" | "reso" | "drive" | "pan"
+  | "start" | "end" | "slices" | "voicing" | "mode" | "velo" | "quantize" | "sync" | "keyShift" | "random";
+
+// the subset of pad config we persist (everything except buffer + analysis)
+type PadFx = Omit<Pad, "name" | "buffer" | "color" | "bpm" | "beats" | "peaks">;
 
 // A saved pad sequence: the step patterns plus the per-pad FX + transport. The
 // audio samples themselves are NOT stored — a recalled pattern plays through
@@ -21,7 +58,7 @@ export interface PadSeqPreset {
   steps: number;
   bpm: number;
   patterns: boolean[][];
-  padFx: { pitch: number; filter: number; gain: number; reverb: number; reverse: boolean; loop: boolean }[];
+  padFx: Partial<PadFx>[];
 }
 
 const PAD_SEQ_KEY = "djsynth.padseq.v1";
@@ -51,7 +88,7 @@ export class Sampler {
 
   private limiter: DynamicsCompressorNode; // tames peaks so we can push volume hot
   private reverb: ConvolverNode;
-  private active: (AudioBufferSourceNode | null)[];
+  private active: ({ src: AudioBufferSourceNode; gain: GainNode } | null)[];
   private reversedCache = new Map<AudioBuffer, AudioBuffer>();
 
   // --- per-pad step sequencer (16th notes) ---
@@ -114,6 +151,31 @@ export class Sampler {
       reverb: 0,
       reverse: false,
       loop: false,
+      // sculpt defaults (neutral)
+      tune: 0,
+      attack: 0.002,
+      decay: 0,
+      sustain: 1,
+      release: 0.04,
+      reso: 0,
+      drive: 0,
+      pan: 0,
+      start: 0,
+      end: 1,
+      // serato sampler defaults
+      cues: [],
+      slices: 0,
+      voicing: "poly" as Voicing,
+      mode: "oneshot" as PadMode,
+      velo: false,
+      quantize: false,
+      sync: false,
+      keyShift: 0,
+      random: false,
+      // analysis
+      bpm: 0,
+      beats: [],
+      peaks: null,
     }));
     this.active = this.pads.map(() => null);
     this.seqPatterns = this.pads.map(() => new Array(Sampler.seqMax).fill(false));
@@ -133,15 +195,37 @@ export class Sampler {
 
   setBuffer(i: number, buf: AudioBuffer, name: string) {
     if (i < 0 || i >= this.pads.length) return;
-    this.pads[i].buffer = buf;
-    this.pads[i].name = name;
+    const pad = this.pads[i];
+    pad.buffer = buf;
+    pad.name = name;
+    pad.start = 0;
+    pad.end = 1;
+    pad.cues = [];
+    pad.slices = 0;
     this.reversedCache.delete(buf);
+    this.analyze(i);
   }
 
-  setParam(i: number, key: PadParam, value: number | boolean) {
+  // Sample analysis (Serato-style): colored waveform peaks always; BPM + beat
+  // grid only for clips long enough to carry a tempo (skips drum one-shots).
+  analyze(i: number) {
+    const pad = this.pads[i];
+    if (!pad?.buffer) return;
+    const buf = pad.buffer;
+    pad.peaks = buildColoredPeaks(buf, 1600);
+    if (buf.duration >= 1.5) {
+      pad.bpm = detectBPM(buf);
+      pad.beats = buildBeatGrid(buf.duration, pad.bpm, 0);
+    } else {
+      pad.bpm = 0;
+      pad.beats = [];
+    }
+  }
+
+  setParam(i: number, key: PadParam, value: number | boolean | string) {
     const pad = this.pads[i];
     if (!pad) return;
-    // @ts-expect-error indexed write across mixed types
+    // @ts-expect-error indexed write across mixed scalar/string types
     pad[key] = value;
   }
 
@@ -154,11 +238,19 @@ export class Sampler {
       pad.reverb = 0;
       pad.reverse = false;
       pad.loop = false;
+      pad.tune = 0;
+      pad.attack = 0.002;
+      pad.decay = 0;
+      pad.sustain = 1;
+      pad.release = 0.04;
+      pad.reso = 0;
+      pad.drive = 0;
+      pad.pan = 0;
     }
     this.active.forEach((s, i) => {
       if (s) {
         try {
-          s.stop();
+          s.src.stop();
         } catch {}
         this.active[i] = null;
       }
@@ -170,37 +262,76 @@ export class Sampler {
     this.setBuffer(i, buf, file.name.replace(/\.[^.]+$/, ""));
   }
 
-  play(i: number) {
+  // The single voice builder behind every trigger (live + sequenced + cue +
+  // slice). Honours trim (start/end), reverse, pitch + fine tune + key-shift +
+  // optional beat-sync rate, drive (saturation), lowpass + resonance, an amp
+  // ADSR, pan and the reverb send. Returns the source + amp gain so callers can
+  // hold (loop / mono / hold mode) and release it cleanly.
+  private buildVoice(
+    i: number,
+    when: number,
+    velocity: number,
+    startFrac: number,
+    endFrac: number,
+    loop: boolean,
+    extraSemis = 0
+  ): { src: AudioBufferSourceNode; gain: GainNode } | null {
     const pad = this.pads[i];
-    if (!pad?.buffer) return;
+    if (!pad?.buffer) return null;
+    const buf = pad.reverse ? this.reversed(pad.buffer) : pad.buffer;
+    const dur = buf.duration;
 
-    // a looping pad toggles off on the next hit
-    if (pad.loop && this.active[i]) {
-      try {
-        this.active[i]!.stop();
-      } catch {}
-      this.active[i] = null;
-      return;
-    }
+    let s = Math.max(0, Math.min(1, startFrac));
+    let e = Math.max(0, Math.min(1, endFrac));
+    if (e <= s) e = Math.min(1, s + 0.002);
+    const windowSec = (e - s) * dur;
+    // trim fractions refer to the displayed (forward) waveform; flip for reverse
+    const offset = (pad.reverse ? 1 - e : s) * dur;
 
     const src = this.ctx.createBufferSource();
-    src.buffer = pad.reverse ? this.reversed(pad.buffer) : pad.buffer;
-    src.playbackRate.value = Math.pow(2, pad.pitch / 12);
-    src.loop = pad.loop;
+    src.buffer = buf;
+    const semis = pad.pitch + pad.keyShift + extraSemis + pad.tune / 100;
+    let rate = Math.pow(2, semis / 12);
+    if (pad.sync && pad.bpm > 0) rate *= this.seqBpm / pad.bpm; // beat-sync
+    src.playbackRate.value = rate;
 
+    let head: AudioNode = src;
+    // saturation / drive
+    if (pad.drive > 0.001) {
+      const ws = this.ctx.createWaveShaper();
+      ws.curve = this.driveCurve(pad.drive) as Float32Array<ArrayBuffer>;
+      ws.oversample = "2x";
+      head.connect(ws);
+      head = ws;
+    }
+    // lowpass + resonance
     const lp = this.ctx.createBiquadFilter();
     lp.type = "lowpass";
     lp.frequency.value =
       pad.filter <= 0.001 ? 20000 : 20000 * Math.pow(120 / 20000, pad.filter);
-    lp.Q.value = 1 + pad.filter * 4;
-
+    lp.Q.value = 1 + pad.filter * 4 + pad.reso * 18;
+    head.connect(lp);
+    head = lp;
+    // amp ADSR
     const g = this.ctx.createGain();
-    g.gain.value = pad.gain;
-
-    src.connect(lp);
-    lp.connect(g);
-    g.connect(this.out);
-
+    const peak = Math.max(0, pad.gain) * Math.max(0, velocity);
+    const atk = Math.max(0.001, pad.attack);
+    const dec = Math.max(0, pad.decay);
+    const sus = Math.max(0, Math.min(1, pad.sustain));
+    g.gain.cancelScheduledValues(when);
+    g.gain.setValueAtTime(0.0001, when);
+    g.gain.linearRampToValueAtTime(peak, when + atk);
+    if (dec > 0) g.gain.linearRampToValueAtTime(Math.max(0.0001, peak * sus), when + atk + dec);
+    head.connect(g);
+    // pan
+    let tail: AudioNode = g;
+    if (Math.abs(pad.pan) > 0.001) {
+      const p = this.ctx.createStereoPanner();
+      p.pan.value = Math.max(-1, Math.min(1, pad.pan));
+      g.connect(p);
+      tail = p;
+    }
+    tail.connect(this.out);
     if (pad.reverb > 0.001) {
       const send = this.ctx.createGain();
       send.gain.value = pad.reverb;
@@ -208,50 +339,135 @@ export class Sampler {
       send.connect(this.reverb);
     }
 
-    src.start();
-    if (pad.loop) {
-      this.active[i] = src;
-      src.onended = () => {
-        if (this.active[i] === src) this.active[i] = null;
+    if (loop) {
+      src.loop = true;
+      src.loopStart = offset;
+      src.loopEnd = Math.min(dur, offset + windowSec);
+      src.start(when, offset);
+    } else {
+      const playSec = windowSec / rate; // real-time length of the trimmed window
+      const rel = Math.min(playSec * 0.5, Math.max(0.005, pad.release));
+      g.gain.setTargetAtTime(0.0001, when + playSec - rel, Math.max(0.003, rel / 3));
+      src.start(when, offset, windowSec);
+    }
+    return { src, gain: g };
+  }
+
+  // hard-knee soft saturation curve, cached per drive amount
+  private driveCurves = new Map<number, Float32Array>();
+  private driveCurve(amount: number): Float32Array {
+    const key = Math.round(amount * 20) / 20;
+    const hit = this.driveCurves.get(key);
+    if (hit) return hit;
+    const k = key * 100;
+    const n = 1024;
+    const curve = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const x = (i / (n - 1)) * 2 - 1;
+      curve[i] = ((1 + k) * x) / (1 + k * Math.abs(x));
+    }
+    this.driveCurves.set(key, curve);
+    return curve;
+  }
+
+  // next 16th-note grid time (for pad-quantized live triggers)
+  private nextGridTime(): number {
+    const now = this.ctx.currentTime;
+    for (const s of this.scheduled) if (s.time > now + 0.001) return s.time;
+    return Math.max(now, this.nextStepTime);
+  }
+
+  // fade out and stop a held voice (loop / mono / hold) with the pad's release
+  private stopVoice(i: number, when = this.ctx.currentTime) {
+    const v = this.active[i];
+    if (!v) return;
+    const rel = Math.max(0.01, this.pads[i]?.release ?? 0.04);
+    try {
+      v.gain.gain.cancelScheduledValues(when);
+      v.gain.gain.setTargetAtTime(0.0001, when, rel / 3);
+      v.src.stop(when + rel * 4);
+    } catch {}
+    this.active[i] = null;
+  }
+
+  // live trigger (pad press / keyboard). `velocity` 0..1 drives level in velo mode.
+  play(i: number, velocity = 1) {
+    const pad = this.pads[i];
+    if (!pad?.buffer) return;
+    const vel = pad.velo ? Math.max(0.05, Math.min(1, velocity)) : 1;
+
+    // random mode: fire a random slice or cue instead of the head
+    if (pad.random && (pad.slices > 0 || pad.cues.length)) {
+      if (pad.slices > 0) this.playSlice(i, Math.floor(Math.random() * pad.slices), vel);
+      else this.playCue(i, Math.floor(Math.random() * pad.cues.length), vel);
+      return;
+    }
+
+    // a looping / held pad toggles off on the next hit
+    if ((pad.loop || pad.mode === "hold") && this.active[i]) {
+      this.stopVoice(i);
+      if (pad.loop) return;
+    }
+    // mono voicing (and Trigger mode) cut the previous voice on this pad
+    if ((pad.voicing === "mono" || pad.mode === "trigger") && this.active[i]) this.stopVoice(i);
+
+    const when = pad.quantize && this.seqPlaying ? this.nextGridTime() : this.ctx.currentTime;
+    const v = this.buildVoice(i, when, vel, pad.start, pad.end, pad.loop);
+    if (!v) return;
+    // hold the voice so we can stop it (loop toggle, mono retrigger, hold release)
+    if (pad.loop || pad.mode === "hold" || pad.voicing === "mono") {
+      this.active[i] = v;
+      v.src.onended = () => {
+        if (this.active[i] === v) this.active[i] = null;
       };
     }
+  }
+
+  // pad released (for Hold mode: stop while-held playback)
+  release(i: number) {
+    if (this.pads[i]?.mode === "hold") this.stopVoice(i);
   }
 
   isLooping(i: number): boolean {
     return !!this.active[i];
   }
 
-  // one-shot voice scheduled at an exact context time (used by the sequencer).
-  // Honours the pad's pitch / filter / gain / reverb / reverse, but never loops.
-  playAt(i: number, when: number) {
+  // --- cue points / slicer / key-shift ---
+  addCue(i: number, frac: number) {
+    const pad = this.pads[i];
+    if (!pad) return;
+    const f = Math.max(0, Math.min(1, frac));
+    pad.cues = [...pad.cues, f].sort((a, b) => a - b).slice(0, 8);
+  }
+  clearCues(i: number) {
+    if (this.pads[i]) this.pads[i].cues = [];
+  }
+  playCue(i: number, cueIdx: number, velocity = 1) {
+    const pad = this.pads[i];
+    const s = pad?.cues[cueIdx];
+    if (s == null) return;
+    this.buildVoice(i, this.ctx.currentTime, velocity, s, pad.end, false);
+  }
+  playSlice(i: number, k: number, velocity = 1) {
+    const pad = this.pads[i];
+    if (!pad?.buffer || pad.slices <= 0) return;
+    const span = (pad.end - pad.start) / pad.slices;
+    const s = pad.start + span * k;
+    this.buildVoice(i, this.ctx.currentTime, velocity, s, s + span, false);
+  }
+  // play pad i transposed by `semitone` (key-shift pad layout / melodic play)
+  playKey(i: number, semitone: number, velocity = 1) {
     const pad = this.pads[i];
     if (!pad?.buffer) return;
+    this.buildVoice(i, this.ctx.currentTime, velocity, pad.start, pad.end, false, semitone);
+  }
 
-    const src = this.ctx.createBufferSource();
-    src.buffer = pad.reverse ? this.reversed(pad.buffer) : pad.buffer;
-    src.playbackRate.value = Math.pow(2, pad.pitch / 12);
-
-    const lp = this.ctx.createBiquadFilter();
-    lp.type = "lowpass";
-    lp.frequency.value =
-      pad.filter <= 0.001 ? 20000 : 20000 * Math.pow(120 / 20000, pad.filter);
-    lp.Q.value = 1 + pad.filter * 4;
-
-    const g = this.ctx.createGain();
-    g.gain.value = pad.gain;
-
-    src.connect(lp);
-    lp.connect(g);
-    g.connect(this.out);
-
-    if (pad.reverb > 0.001) {
-      const send = this.ctx.createGain();
-      send.gain.value = pad.reverb;
-      g.connect(send);
-      send.connect(this.reverb);
-    }
-
-    src.start(when);
+  // one-shot voice scheduled at an exact context time (used by the sequencer).
+  // Full sculpt chain, never loops.
+  playAt(i: number, when: number, velocity = 1) {
+    const pad = this.pads[i];
+    if (!pad?.buffer) return;
+    this.buildVoice(i, when, velocity, pad.start, pad.end, false);
   }
 
   // ---- save / recall the programmed sequence ----
@@ -267,6 +483,25 @@ export class Sampler {
         reverb: p.reverb,
         reverse: p.reverse,
         loop: p.loop,
+        tune: p.tune,
+        attack: p.attack,
+        decay: p.decay,
+        sustain: p.sustain,
+        release: p.release,
+        reso: p.reso,
+        drive: p.drive,
+        pan: p.pan,
+        start: p.start,
+        end: p.end,
+        cues: p.cues.slice(),
+        slices: p.slices,
+        voicing: p.voicing,
+        mode: p.mode,
+        velo: p.velo,
+        quantize: p.quantize,
+        sync: p.sync,
+        keyShift: p.keyShift,
+        random: p.random,
       })),
     };
   }
@@ -284,12 +519,35 @@ export class Sampler {
       preset.padFx.forEach((fx, i) => {
         const pad = this.pads[i];
         if (!pad || !fx) return;
+        // performance (back-compat with old presets via ?? defaults)
         pad.pitch = fx.pitch ?? 0;
         pad.filter = fx.filter ?? 0;
         pad.gain = fx.gain ?? 1;
         pad.reverb = fx.reverb ?? 0;
         pad.reverse = !!fx.reverse;
         pad.loop = !!fx.loop;
+        // sculpt
+        pad.tune = fx.tune ?? 0;
+        pad.attack = fx.attack ?? 0.002;
+        pad.decay = fx.decay ?? 0;
+        pad.sustain = fx.sustain ?? 1;
+        pad.release = fx.release ?? 0.04;
+        pad.reso = fx.reso ?? 0;
+        pad.drive = fx.drive ?? 0;
+        pad.pan = fx.pan ?? 0;
+        pad.start = fx.start ?? 0;
+        pad.end = fx.end ?? 1;
+        // serato sampler
+        pad.cues = Array.isArray(fx.cues) ? fx.cues.slice() : [];
+        pad.slices = fx.slices ?? 0;
+        pad.voicing = fx.voicing === "mono" ? "mono" : "poly";
+        pad.mode =
+          fx.mode === "hold" || fx.mode === "trigger" || fx.mode === "key" ? fx.mode : "oneshot";
+        pad.velo = !!fx.velo;
+        pad.quantize = !!fx.quantize;
+        pad.sync = !!fx.sync;
+        pad.keyShift = fx.keyShift ?? 0;
+        pad.random = !!fx.random;
       });
     }
   }
