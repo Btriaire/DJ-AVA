@@ -35,7 +35,9 @@ export class Deck {
   //   htdemucs_6s            -> 6 (+ guitar/piano)
   static readonly STEM_MAX = 6;
   private stemBuffers: (AudioBuffer | null)[] = []; // length === stemNames.length when loaded
-  private stemGains: GainNode[] = []; // STEM_MAX gains, all summed into trim
+  private stemGains: GainNode[] = []; // STEM_MAX gains, all summed into stemBus
+  private stemBus!: GainNode; // sum of the stem gains, carries the makeup gain
+  stemMakeup = true; // auto-compensate level when stem faders are pulled down
   stemNames: string[] = []; // active stem labels (drives the fader count)
   stemModel: "htdemucs" | "htdemucs_ft" | "htdemucs_6s" = "htdemucs";
   stemsActive = false; // play the stems (with per-stem gain) instead of the full mix
@@ -121,12 +123,16 @@ export class Deck {
 
     this.fx = new FXRack(ctx);
 
-    // per-stem gains (up to STEM_MAX), all summed back into trim (so the rest of
-    // the chain — EQ, filter, FX, volume — is identical whether we play the full
-    // mix or N stems). Unused gains simply have no source connected.
+    // per-stem gains (up to STEM_MAX) sum into a shared stem bus, which feeds
+    // trim. The bus carries an automatic makeup gain: as you pull stem faders
+    // down, it boosts to keep the overall level roughly constant (a muted stem
+    // shouldn't make the whole deck quieter). The rest of the chain — EQ, filter,
+    // FX, volume — is identical whether we play the full mix or N stems.
+    this.stemBus = C();
+    this.stemBus.connect(this.trim);
     for (let i = 0; i < Deck.STEM_MAX; i++) {
       const g = C();
-      g.connect(this.trim);
+      g.connect(this.stemBus);
       this.stemGains.push(g);
     }
 
@@ -367,6 +373,7 @@ export class Deck {
     this.stemCached = false;
     this.stemHash = "";
     for (const g of this.stemGains) g.gain.value = 1;
+    if (this.stemBus) this.stemBus.gain.value = 1;
   }
 
   // switch analysis model (standard / fine-tuned / 6-stem). Drops any loaded
@@ -436,6 +443,30 @@ export class Deck {
     if (i < 0 || i >= this.stemVol.length) return;
     this.stemVol[i] = v;
     if (this.stemGains[i]) this.stemGains[i].gain.value = v;
+    this.recomputeStemMakeup();
+  }
+
+  // Automatic makeup gain on the stem bus. Treating stems as roughly
+  // uncorrelated, total power ≈ Σ v_i². With every fader at 1 that's N (the full
+  // mix); as faders drop we scale the bus by √(N / Σv_i²) so the perceived level
+  // stays stable. Boost-only and capped at +12 dB so near-silence can't blow up.
+  private recomputeStemMakeup() {
+    if (!this.stemBus) return;
+    const n = this.stemVol.length;
+    if (!this.stemMakeup || n === 0) {
+      this.stemBus.gain.value = 1;
+      return;
+    }
+    let power = 0;
+    for (const v of this.stemVol) power += v * v;
+    const makeup = power > 1e-4 ? Math.sqrt(n / power) : 1;
+    this.stemBus.gain.value = Math.min(4, Math.max(1, makeup)); // ≤ +12 dB, never cut
+  }
+
+  // toggle the auto makeup gain (and reapply / reset the bus immediately)
+  setStemMakeup(on: boolean) {
+    this.stemMakeup = on;
+    this.recomputeStemMakeup();
   }
 
   // toggle stem playback on/off, seamlessly if currently playing
@@ -483,6 +514,7 @@ export class Deck {
       this.stemHash = hash;
       this.stemCached = true;
       for (let i = 0; i < stems.length; i++) this.stemGains[i].gain.value = this.stemVol[i];
+      this.recomputeStemMakeup();
       this.stemStatus = "ready";
     } catch (e) {
       this.stemStatus = "error";
