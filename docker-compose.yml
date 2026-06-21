@@ -9,7 +9,9 @@ services:
     image: djsynth
     container_name: djsynth
     ports:
-      - "127.0.0.1:3000:3000" # exposé seulement en local, derrière le proxy
+      # port hôte paramétrable : le VPS met HOST_PORT=3100 dans son .env (palama
+      # occupe déjà 3000). Défaut 3000 en local. Exposé seulement derrière nginx.
+      - "127.0.0.1:${HOST_PORT:-3000}:3000"
     env_file:
       - .env.local # fournis GROQ_API_KEY etc. (voir .env.example)
     environment:
