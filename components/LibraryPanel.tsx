@@ -26,8 +26,49 @@ export function LibraryPanel({ engine, onClose, onLoaded }: Props) {
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  // per-track stem-preparation state, keyed by track id
+  const [stemState, setStemState] = useState<Record<string, "queued" | "ready" | "error">>({});
   const fileRef = useRef<HTMLInputElement>(null);
   const pendingSide = useRef<"A" | "B">("A");
+
+  // Launch a background stem separation for a track straight from the library,
+  // without loading it on a deck. The server queues a low-priority (niced)
+  // Demucs job; we poll the cache until the stems land, so by the time the
+  // track is sent to a deck the STEMS button loads them instantly.
+  async function prepareStems(track: AudiusTrack, src: Source) {
+    if (stemState[track.id] === "queued" || stemState[track.id] === "ready") return;
+    setStemState((s) => ({ ...s, [track.id]: "queued" }));
+    setErr(null);
+    try {
+      const res = await fetch(`/api/${src}/stream?id=${track.id}`);
+      if (!res.ok) throw new Error("Flux indisponible");
+      const buf = await res.arrayBuffer();
+      const q = await fetch(`/api/stems/separate?prefetch=1`, { method: "POST", body: buf.slice(0) });
+      if (!q.ok) throw new Error(await q.text());
+      const { cached } = (await q.json()) as { cached: boolean };
+      if (cached) {
+        setStemState((s) => ({ ...s, [track.id]: "ready" }));
+        return;
+      }
+      // poll the cache until the background job finishes
+      const poll = setInterval(async () => {
+        try {
+          const p = await fetch(`/api/stems/separate?probe=1`, { method: "POST", body: buf.slice(0) });
+          if (!p.ok) return;
+          const { cached: done } = (await p.json()) as { cached: boolean };
+          if (done) {
+            clearInterval(poll);
+            setStemState((s) => ({ ...s, [track.id]: "ready" }));
+          }
+        } catch {
+          /* transient — keep polling */
+        }
+      }, 8000);
+    } catch (e) {
+      setStemState((s) => ({ ...s, [track.id]: "error" }));
+      setErr(`Stems : ${(e as Error).message}`);
+    }
+  }
 
   async function search() {
     if (!q.trim() || tab === "upload") return;
@@ -166,6 +207,24 @@ export function LibraryPanel({ engine, onClose, onLoaded }: Props) {
                         {t.bpm ? ` · ${t.bpm} BPM` : ""}
                       </div>
                     </div>
+                    <button
+                      onClick={() => prepareStems(t, tab as Source)}
+                      disabled={stemState[t.id] === "queued" || stemState[t.id] === "ready"}
+                      className="hw-btn px-2 py-1 text-xs disabled:opacity-60"
+                      style={{
+                        ["--led" as string]: "#facc15",
+                        color: stemState[t.id] === "ready" ? "#4dff84" : "#facc15",
+                      }}
+                      title="Prépare les stems en arrière-plan (chargement instantané ensuite)"
+                    >
+                      {stemState[t.id] === "queued"
+                        ? "⏳"
+                        : stemState[t.id] === "ready"
+                          ? "✓ STEM"
+                          : stemState[t.id] === "error"
+                            ? "⚠ STEM"
+                            : "✂ STEM"}
+                    </button>
                     <button
                       onClick={() => loadTrack("A", t, tab as Source)}
                       disabled={busy !== null}
