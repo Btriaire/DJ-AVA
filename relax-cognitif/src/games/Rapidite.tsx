@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import WinReward from "../components/WinReward";
 import { useGameSession } from "../lib/useGameSession";
+import { REFLEX_SHAPES, REFLEX_COLORS } from "../lib/reflexShapes";
 
 const ROUNDS = 10;
-const TARGET_R = 34; // rayon 68px → confortable sur mobile
+const TARGET_R = 36; // rayon 72px → confortable sur mobile
 
 type Mode = "entrainement" | "defi";
 type Phase = "idle" | "running" | "done";
-type Target = { x: number; y: number; born: number; id: number };
+type Target = { x: number; y: number; born: number; id: number; shape: number; color: number };
 
 export default function Rapidite() {
   const [mode, setMode] = useState<Mode>("entrainement");
@@ -18,10 +19,14 @@ export default function Rapidite() {
   const [misses, setMisses] = useState(0);
   const fieldRef = useRef<HTMLDivElement>(null);
   const consumedRef = useRef(false);
+  const shapeStartRef = useRef(0);
   const session = useGameSession("rapidite", mode);
 
+  // Le temps accordé se réduit au fil des cibles : on accélère progressivement.
   const timeLimit = (r: number) =>
-    mode === "entrainement" ? 2500 : Math.max(800, 2300 - r * 160);
+    mode === "entrainement"
+      ? Math.max(1100, 2400 - r * 95)
+      : Math.max(560, 2200 - r * 185);
 
   // Spawner : déclenché quand target === null et phase === "running"
   useEffect(() => {
@@ -34,7 +39,10 @@ export default function Rapidite() {
     const x = margin + Math.random() * (fw - margin * 2);
     const y = margin + Math.random() * (fh - margin * 2);
     const born = Date.now();
-    const t: Target = { x, y, born, id: born };
+    // Une nouvelle forme à chaque cible (parmi 50), couleur assortie.
+    const shape = (shapeStartRef.current + round) % REFLEX_SHAPES.length;
+    const color = (shapeStartRef.current + round) % REFLEX_COLORS.length;
+    const t: Target = { x, y, born, id: born, shape, color };
     consumedRef.current = false;
     setTarget(t);
 
@@ -65,6 +73,7 @@ export default function Rapidite() {
 
   function start() {
     session.reset();
+    shapeStartRef.current = Math.floor(Math.random() * REFLEX_SHAPES.length);
     setRound(0);
     setReactions([]);
     setMisses(0);
@@ -102,15 +111,18 @@ export default function Rapidite() {
 
       {phase === "idle" && (
         <div className="rapidite-idle">
-          <div className="rapidite-idle-icon">
-            <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
-            </svg>
+          <div className="rapidite-idle-shapes" aria-hidden>
+            {[12, 28, 44].map((s, i) => (
+              <svg key={s} viewBox="0 0 100 100" width="56" height="56" style={{ animationDelay: `${i * 0.25}s` }}>
+                <path d={REFLEX_SHAPES[s]} fill={REFLEX_COLORS[(s + 2) % REFLEX_COLORS.length]} />
+              </svg>
+            ))}
           </div>
           <p className="page-sub">
+            Une nouvelle forme à chaque cible (50 au total).{" "}
             {mode === "entrainement"
-              ? "2,5 secondes par cible — apprenez le rythme."
-              : "Le temps se réduit à chaque cible — restez concentré !"}
+              ? "Le rythme s'accélère doucement à chaque réussite."
+              : "Le temps se réduit vite — restez concentré !"}
           </p>
           <button className="btn" onClick={start}>Démarrer</button>
         </div>
@@ -118,7 +130,14 @@ export default function Rapidite() {
 
       {phase === "running" && (
         <>
-          <p className="rapidite-counter">Cible {round + 1} / {ROUNDS}</p>
+          <p className="rapidite-counter">
+            Cible {round + 1} / {ROUNDS}
+            <span className="rapidite-speed">
+              {Array.from({ length: Math.min(5, Math.floor(round / 2) + 1) }, (_, i) => (
+                <i key={i}>⚡</i>
+              ))}
+            </span>
+          </p>
           <div ref={fieldRef} className="rapidite-field">
             {target && (
               <button
@@ -126,8 +145,19 @@ export default function Rapidite() {
                 className="rapidite-target"
                 style={{ left: target.x - TARGET_R, top: target.y - TARGET_R, width: TARGET_R * 2, height: TARGET_R * 2 }}
                 onClick={hit}
-                aria-label="Toucher la cible"
-              />
+                aria-label="Toucher la forme"
+              >
+                <svg viewBox="0 0 100 100" width="100%" height="100%" aria-hidden>
+                  <defs>
+                    <radialGradient id={`rg-${target.id}`} cx="38%" cy="34%" r="75%">
+                      <stop offset="0%" stopColor="#ffffff" stopOpacity="0.85" />
+                      <stop offset="45%" stopColor={REFLEX_COLORS[target.color]} />
+                      <stop offset="100%" stopColor={REFLEX_COLORS[target.color]} stopOpacity="0.92" />
+                    </radialGradient>
+                  </defs>
+                  <path d={REFLEX_SHAPES[target.shape]} fill={`url(#rg-${target.id})`} stroke="rgba(0,0,0,0.18)" strokeWidth="2" strokeLinejoin="round" />
+                </svg>
+              </button>
             )}
           </div>
         </>
