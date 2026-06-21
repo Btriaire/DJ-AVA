@@ -1,0 +1,52 @@
+import { useState } from "react";
+import Icon from "./Icon";
+
+type RuleDef = { icon: string; lines: string[] };
+
+const RULES: Partial<Record<string, RuleDef>> = {
+  sudoku:     { icon: "sudoku",    lines: ["Remplissez la grille : chaque chiffre doit apparaître une seule fois par ligne, colonne et carré.", "Touchez une case vide, puis choisissez le chiffre.", "Utilisez les indices si vous bloquez."] },
+  memory:     { icon: "memory",    lines: ["Retournez deux cartes à la fois.", "Si elles montrent le même symbole, elles restent visibles.", "Retrouvez toutes les paires pour gagner !"] },
+  logique:    { icon: "logic",     lines: ["Une suite de nombres vous est présentée.", "Trouvez le motif et devinez le nombre manquant.", "Choisissez la bonne réponse parmi les 4 propositions."] },
+  motscroises:{ icon: "crossword", lines: ["Lisez la définition et trouvez le mot.", "Tapez les lettres dans les cases de la grille.", "Complétez toutes les cases pour gagner !"] },
+  citations:  { icon: "quote",     lines: ["Une citation célèbre avec un mot manquant vous est proposée.", "Choisissez le bon mot parmi les 4 options.", "Validez et passez à la suivante !"] },
+  tangram:    { icon: "tangram",   lines: ["Reconstituez la silhouette en plaçant les pièces.", "Faites glisser et tournez chaque pièce.", "Toutes les pièces doivent couvrir exactement la silhouette."] },
+  formes:     { icon: "shapes",    lines: ["Parmi les formes affichées, l'une est différente des autres.", "Observez la couleur, la forme ou la taille.", "Touchez l'intrus pour gagner !"] },
+  mahjong:    { icon: "mahjong",   lines: ["Retirez les tuiles par paires identiques.", "Une tuile est jouable si elle est libre sur au moins un côté.", "Videz tout le plateau pour gagner !"] },
+  puzzle:     { icon: "puzzle",    lines: ["Les pièces de l'image sont mélangées.", "Touchez une pièce puis sa destination pour l'échanger.", "Reconstituez l'image complète pour gagner !"] },
+  couleurs:   { icon: "palette",   lines: ["Une question sur les couleurs ou les expressions vous est posée.", "Choisissez la bonne réponse parmi les propositions.", "Une note explicative s'affiche après chaque réponse."] },
+  calcul:     { icon: "calc",      lines: ["Placez les opérateurs +, − ou × entre les nombres.", "Touchez un signe pour le changer dans l'ordre.", "Atteignez le résultat cible indiqué après le =."] },
+  rapidite:   { icon: "target",    lines: ["Des cibles apparaissent aléatoirement à l'écran.", "Touchez-les le plus vite possible avant qu'elles disparaissent !", "10 cibles par manche — mesurez votre temps de réaction."] },
+  dames:      { icon: "dames",     lines: ["Vous jouez les pions blancs (bas du plateau).", "Déplacez vos pions en diagonale pour capturer ceux de l'adversaire.", "Les prises sont obligatoires. Atteignez la rangée adverse pour devenir Dame !"] },
+  culture:    { icon: "globe",     lines: ["Une question de culture générale vous est posée.", "Choisissez la bonne réponse parmi les 4 options.", "Enchaînez 10 questions par manche et battez votre score !"] },
+  philo:      { icon: "scroll",    lines: ["Mode « Qui a dit ? » : une citation s'affiche, trouvez le philosophe.", "Mode « Laquelle ? » : un philosophe s'affiche, trouvez sa citation.", "10 questions par manche, 7 bonnes réponses pour gagner !"] },
+};
+
+const SEEN_KEY = "ec.rules.seen";
+function getSeen(): Set<string> {
+  try { return new Set(JSON.parse(sessionStorage.getItem(SEEN_KEY) ?? "[]")); } catch { return new Set(); }
+}
+function markSeen(game: string) {
+  const s = getSeen(); s.add(game);
+  try { sessionStorage.setItem(SEEN_KEY, JSON.stringify([...s])); } catch {}
+}
+
+export default function GameRules({ game }: { game: string }) {
+  const def = RULES[game];
+  const [dismissed, setDismissed] = useState(() => getSeen().has(game));
+  if (!def || dismissed) return null;
+
+  function close() { markSeen(game); setDismissed(true); }
+
+  return (
+    <div className="rules-overlay" role="dialog" aria-modal="true">
+      <div className="rules-card">
+        <div className="rules-icon"><Icon name={def.icon} size={32} /></div>
+        <h2 className="rules-title">Comment jouer ?</h2>
+        <ul className="rules-list">
+          {def.lines.map((l, i) => <li key={i}>{l}</li>)}
+        </ul>
+        <button className="btn rules-btn" onClick={close} autoFocus>Jouer !</button>
+      </div>
+    </div>
+  );
+}
