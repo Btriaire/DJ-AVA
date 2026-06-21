@@ -19,6 +19,9 @@ const RULES: Partial<Record<string, RuleDef>> = {
   dames:      { icon: "dames",     lines: ["Vous jouez les pions blancs (bas du plateau).", "Déplacez vos pions en diagonale pour capturer ceux de l'adversaire.", "Les prises sont obligatoires. Atteignez la rangée adverse pour devenir Dame !"] },
   culture:    { icon: "globe",     lines: ["Une question de culture générale vous est posée.", "Choisissez la bonne réponse parmi les 4 options.", "Enchaînez 10 questions par manche et battez votre score !"] },
   philo:      { icon: "scroll",    lines: ["Mode « Qui a dit ? » : une citation s'affiche, trouvez le philosophe.", "Mode « Laquelle ? » : un philosophe s'affiche, trouvez sa citation.", "10 questions par manche, 7 bonnes réponses pour gagner !"] },
+  motsmeles:  { icon: "grid",      lines: ["Des mots d'un même thème sont cachés dans la grille.", "Touchez les lettres une à une pour tracer un mot (toutes directions).", "Retrouvez tous les mots de la liste pour gagner !"] },
+  anagrammes: { icon: "letters",   lines: ["Les lettres d'un mot sont mélangées.", "Touchez les lettres pour les placer dans le bon ordre.", "Aidez-vous de la définition et des indices si besoin !"] },
+  puissance4: { icon: "connect4",  lines: ["Vous jouez les jetons rouges contre l'ordinateur.", "Touchez une colonne pour y laisser tomber un jeton.", "Alignez 4 jetons (ligne, colonne ou diagonale) pour gagner !"] },
 };
 
 const SEEN_KEY = "ec.rules.seen";

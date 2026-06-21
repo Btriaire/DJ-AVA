@@ -115,6 +115,28 @@ const PATHS: Record<string, React.ReactNode> = {
       <circle cx="12" cy="12" r="2" />
     </>
   ),
+  grid: (
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M3 9h18M3 15h18M9 3v18M15 3v18" strokeWidth="1.4" />
+    </>
+  ),
+  letters: (
+    <>
+      <path d="M3 17l3.5-9 3.5 9M4.3 14h4.4" />
+      <path d="M14 8.5a2.5 2.5 0 1 1 0 4H14v-4zM14 12.5h.6a2.5 2.5 0 1 1 0 5H14v-5z" />
+    </>
+  ),
+  connect4: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="8" cy="9" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="13" cy="9" r="1.6" />
+      <circle cx="8" cy="15" r="1.6" />
+      <circle cx="13" cy="15" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="18" cy="15" r="1.6" />
+    </>
+  ),
   dames: (
     <>
       <rect x="2" y="2" width="20" height="20" rx="2" />

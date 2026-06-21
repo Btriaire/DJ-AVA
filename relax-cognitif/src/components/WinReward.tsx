@@ -47,7 +47,7 @@ export default function WinReward({ game, show }: { game: GameId; show: boolean 
 
         <div className="reward-medal-wrap">
           {tier !== "none" ? (
-            <Medal tier={tier} size={64} />
+            <Medal tier={tier} size={48} />
           ) : (
             <div className="reward-seed" aria-hidden>
               ✦

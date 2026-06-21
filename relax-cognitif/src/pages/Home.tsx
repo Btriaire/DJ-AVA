@@ -34,6 +34,7 @@ const SECTIONS: Section[] = [
       { to: "/mots-croises", icon: "crossword", title: "Mots croisés", desc: "Vocabulaire et mémoire", game: "motscroises" },
       { to: "/mahjong", icon: "mahjong", title: "Mahjong", desc: "Retirez les paires libres", game: "mahjong" },
       { to: "/dames", icon: "dames", title: "Dames éclair", desc: "Affrontez l'IA sur mini-plateau", game: "dames" },
+      { to: "/puissance4", icon: "connect4", title: "Puissance 4", desc: "Alignez 4 jetons contre l'IA", game: "puissance4" },
     ],
   },
   {
@@ -45,6 +46,8 @@ const SECTIONS: Section[] = [
       { to: "/formes", icon: "shapes", title: "Intrus des formes", desc: "Trouvez la forme différente", game: "formes" },
       { to: "/citations", icon: "quote", title: "Citations", desc: "Complétez les mots célèbres", game: "citations" },
       { to: "/philo", icon: "scroll", title: "Citations philo", desc: "Qui a dit ça ? Quel philosophe ?", game: "philo" },
+      { to: "/mots-meles", icon: "grid", title: "Mots mêlés", desc: "Trouvez les mots cachés", game: "motsmeles" },
+      { to: "/anagrammes", icon: "letters", title: "Anagrammes", desc: "Remettez les lettres en ordre", game: "anagrammes" },
     ],
   },
   {

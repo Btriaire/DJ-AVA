@@ -3,6 +3,9 @@ export type GameId =
   | "memory"
   | "logique"
   | "motscroises"
+  | "motsmeles"
+  | "anagrammes"
+  | "puissance4"
   | "citations"
   | "tangram"
   | "formes"
@@ -22,6 +25,9 @@ export const GAME_LABELS: Record<GameId, string> = {
   memory: "Paires de mémoire",
   logique: "Suite logique",
   motscroises: "Mots croisés",
+  motsmeles: "Mots mêlés",
+  anagrammes: "Anagrammes",
+  puissance4: "Puissance 4",
   citations: "Citations",
   tangram: "Tangram",
   formes: "Intrus des formes",
@@ -41,6 +47,9 @@ const GAME_IDS: GameId[] = [
   "memory",
   "logique",
   "motscroises",
+  "motsmeles",
+  "anagrammes",
+  "puissance4",
   "citations",
   "tangram",
   "formes",

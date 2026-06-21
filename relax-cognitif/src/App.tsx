@@ -5,6 +5,9 @@ import Sudoku from "./games/Sudoku";
 import Memory from "./games/Memory";
 import Logique from "./games/Logique";
 import MotsCroises from "./games/MotsCroises";
+import MotsMeles from "./games/MotsMeles";
+import Anagrammes from "./games/Anagrammes";
+import Puissance4 from "./games/Puissance4";
 import Citations from "./games/Citations";
 import Tangram from "./games/Tangram";
 import Formes from "./games/Formes";
@@ -46,6 +49,9 @@ export default function App() {
       <Route path="/memory" element={<Shell title="Paires de mémoire" game="memory"><Memory /></Shell>} />
       <Route path="/logique" element={<Shell title="Suite logique" game="logique"><Logique /></Shell>} />
       <Route path="/mots-croises" element={<Shell title="Mots croisés" game="motscroises"><MotsCroises /></Shell>} />
+      <Route path="/mots-meles" element={<Shell title="Mots mêlés" game="motsmeles"><MotsMeles /></Shell>} />
+      <Route path="/anagrammes" element={<Shell title="Anagrammes" game="anagrammes"><Anagrammes /></Shell>} />
+      <Route path="/puissance4" element={<Shell title="Puissance 4" game="puissance4"><Puissance4 /></Shell>} />
       <Route path="/citations" element={<Shell title="Citations" game="citations"><Citations /></Shell>} />
       <Route path="/tangram" element={<Shell title="Tangram" game="tangram"><Tangram /></Shell>} />
       <Route path="/formes" element={<Shell title="Intrus des formes" game="formes"><Formes /></Shell>} />
