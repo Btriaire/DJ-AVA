@@ -240,7 +240,10 @@ export default function MotsCroises() {
 
       <div
         className="cw-grid"
-        style={{ gridTemplateColumns: `repeat(${size}, 1fr)` }}
+        style={{
+          gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))`,
+          ["--cw-size" as string]: size,
+        }}
         tabIndex={0}
         ref={gridRef}
         onKeyDown={onKey}

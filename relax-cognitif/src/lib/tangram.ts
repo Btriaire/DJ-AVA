@@ -100,6 +100,42 @@ export function centroid(points: Pt[]): Pt {
   return [x / n, y / n];
 }
 
+/** Tourne un polygone de `deg` degrés autour de son centre (ou d'un centre donné). */
+export function rotatePoints(points: Pt[], deg: number, center?: Pt): Pt[] {
+  const [cx, cy] = center ?? centroid(points);
+  const rad = (deg * Math.PI) / 180;
+  const cos = Math.cos(rad), sin = Math.sin(rad);
+  return points.map(([x, y]) => {
+    const dx = x - cx, dy = y - cy;
+    return [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos] as Pt;
+  });
+}
+
+function sameVertexSet(a: Pt[], b: Pt[], tol = 0.02): boolean {
+  if (a.length !== b.length) return false;
+  const used = new Array(b.length).fill(false);
+  for (const p of a) {
+    let found = -1;
+    for (let i = 0; i < b.length; i++) {
+      if (!used[i] && Math.abs(p[0] - b[i][0]) < tol && Math.abs(p[1] - b[i][1]) < tol) {
+        found = i;
+        break;
+      }
+    }
+    if (found < 0) return false;
+    used[found] = true;
+  }
+  return true;
+}
+
+/** Plus petit angle (multiple de 45°) qui laisse la pièce identique à elle-même ; 360 sinon. */
+export function rotationalSymmetry(points: Pt[]): number {
+  for (const ang of [45, 90, 135, 180]) {
+    if (sameVertexSet(points, rotatePoints(points, ang))) return ang;
+  }
+  return 360;
+}
+
 export function pointInPolygon(x: number, y: number, points: Pt[]): boolean {
   let inside = false;
   for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
