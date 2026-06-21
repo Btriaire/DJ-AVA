@@ -1177,6 +1177,9 @@ a {
 .tangram-board.flash {
   border-color: var(--danger);
 }
+.tangram-board.turn {
+  border-color: #e7b85c;
+}
 .tangram-board svg {
   width: 100%;
   height: auto;
@@ -1212,6 +1215,7 @@ a {
   margin: 0 auto;
 }
 .tray-piece {
+  position: relative;
   width: 76px;
   height: 76px;
   background: var(--surface);
@@ -1226,6 +1230,30 @@ a {
   opacity: 0.35;
   border-color: var(--accent);
 }
+.tray-piece.sel {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft), var(--shadow);
+}
+.tray-rotate {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.tray-rotate:active { transform: scale(0.9); }
 .tray-piece svg {
   width: 100%;
   height: 100%;
@@ -1253,6 +1281,70 @@ a {
 .seg-scroll button {
   white-space: nowrap;
   flex: 0 0 auto;
+}
+
+/* ---------- Tangram : sélecteurs figures + difficulté ---------- */
+.tg-figs {
+  gap: 8px;
+  padding-bottom: 4px;
+}
+.tg-figbtn {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 64px;
+  padding: 7px 4px;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.tg-figbtn svg { color: var(--ink-soft); }
+.tg-figbtn.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.tg-figbtn.active svg { color: var(--accent); }
+.tg-levels {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.tg-levelbtn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 6px;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.tg-levelbtn.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.tg-level-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.tg-levelbtn.active .tg-level-name { color: var(--accent); }
+.tg-level-hint {
+  font-size: 10.5px;
+  color: var(--ink-soft);
+  text-align: center;
+  line-height: 1.2;
 }
 
 /* ---------- Intrus des formes ---------- */

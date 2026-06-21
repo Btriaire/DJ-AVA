@@ -3,6 +3,8 @@ import {
   bbox,
   FIGURES,
   pointInPolygon,
+  rotatePoints,
+  rotationalSymmetry,
   toPath,
   type Piece,
 } from "../lib/tangram";
@@ -20,8 +22,9 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-function PieceSvg({ piece, size }: { piece: Piece; size: number }) {
-  const b = bbox(piece.points);
+function PieceSvg({ piece, size, rotation = 0 }: { piece: Piece; size: number; rotation?: number }) {
+  const pts = rotation ? rotatePoints(piece.points, rotation) : piece.points;
+  const b = bbox(pts);
   const pad = 0.6;
   return (
     <svg
@@ -30,7 +33,7 @@ function PieceSvg({ piece, size }: { piece: Piece; size: number }) {
       viewBox={`${b.minX - pad} ${b.minY - pad} ${b.w + pad * 2} ${b.h + pad * 2}`}
     >
       <polygon
-        points={toPath(piece.points)}
+        points={toPath(pts)}
         fill={piece.color}
         stroke="#0f380f"
         strokeWidth="0.2"
@@ -40,12 +43,39 @@ function PieceSvg({ piece, size }: { piece: Piece; size: number }) {
   );
 }
 
+/** Vignette de la figure entière (silhouette) pour le sélecteur. */
+function FigureThumb({ figIdx, size = 30 }: { figIdx: number; size?: number }) {
+  const fig = FIGURES[figIdx];
+  return (
+    <svg width={size} height={size} viewBox={`-0.4 -0.4 ${fig.w + 0.8} ${fig.h + 0.8}`}>
+      {fig.pieces.map((p) => (
+        <polygon key={p.id} points={toPath(p.points)} fill="currentColor" stroke="none" />
+      ))}
+    </svg>
+  );
+}
+
 type TangramLevel = "facile" | "moyen" | "difficile";
-const LEVELS: { id: TangramLevel; label: string }[] = [
-  { id: "facile", label: "Facile" },
-  { id: "moyen", label: "Moyen" },
-  { id: "difficile", label: "Difficile" },
+const LEVELS: { id: TangramLevel; label: string; hint: string }[] = [
+  { id: "facile", label: "Facile", hint: "repères + pièces droites" },
+  { id: "moyen", label: "Moyen", hint: "silhouette, pièces tournées" },
+  { id: "difficile", label: "Difficile", hint: "contour seul, plus de repères" },
 ];
+
+function makeRotations(pieces: Piece[], lvl: TangramLevel): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const p of pieces) {
+    if (lvl === "facile") {
+      out[p.id] = 0;
+      continue;
+    }
+    const sym = rotationalSymmetry(p.points);
+    const pool = (lvl === "moyen" ? [45, 90, 270, 315] : [45, 90, 135, 180, 225, 270, 315])
+      .filter((a) => a % sym !== 0);
+    out[p.id] = pool.length ? pool[Math.floor(Math.random() * pool.length)] : 0;
+  }
+  return out;
+}
 
 export default function Tangram() {
   const [idx, setIdx] = useState(0);
@@ -53,8 +83,11 @@ export default function Tangram() {
   const fig = FIGURES[idx];
 
   const [placed, setPlaced] = useState<string[]>([]);
+  const [rotations, setRotations] = useState<Record<string, number>>(() => makeRotations(fig.pieces, level));
+  const [selId, setSelId] = useState<string | null>(null);
   const [drag, setDrag] = useState<{ id: string; x: number; y: number } | null>(null);
   const [wrongFlash, setWrongFlash] = useState(false);
+  const [turnHint, setTurnHint] = useState(false);
   const [abandoned, setAbandoned] = useState(false);
   const session = useGameSession("tangram", `${fig.title}-${level}`);
 
@@ -63,14 +96,22 @@ export default function Tangram() {
   placedRef.current = placed;
   const dragRef = useRef(drag);
   dragRef.current = drag;
+  const rotRef = useRef(rotations);
+  rotRef.current = rotations;
 
   const tray = useMemo(() => shuffle(fig.pieces), [fig, idx]);
+  const symmetry = useMemo(
+    () => Object.fromEntries(fig.pieces.map((p) => [p.id, rotationalSymmetry(p.points)])),
+    [fig]
+  );
 
-  const key = `${idx}`;
+  const key = `${idx}-${level}`;
   const [rk, setRk] = useState(key);
   if (rk !== key) {
     setRk(key);
     setPlaced([]);
+    setRotations(makeRotations(fig.pieces, level));
+    setSelId(null);
     setDrag(null);
     setAbandoned(false);
     session.reset();
@@ -89,6 +130,23 @@ export default function Tangram() {
     setTimeout(() => setWrongFlash(false), 400);
   }
 
+  function flashTurn() {
+    setTurnHint(true);
+    setTimeout(() => setTurnHint(false), 1200);
+  }
+
+  function rotate(id: string) {
+    if (won || abandoned || placedRef.current.includes(id)) return;
+    setRotations((r) => ({ ...r, [id]: ((r[id] ?? 0) + 45) % 360 }));
+    setSelId(id);
+  }
+
+  function placePiece(id: string) {
+    setPlaced((p) => [...p, id]);
+    setRotations((r) => ({ ...r, [id]: 0 }));
+    if (selId === id) setSelId(null);
+  }
+
   function drop(clientX: number, clientY: number) {
     const id = dragRef.current?.id;
     setDrag(null);
@@ -103,8 +161,14 @@ export default function Tangram() {
     const hit = fig.pieces.find(
       (p) => !placedRef.current.includes(p.id) && pointInPolygon(loc.x, loc.y, p.points)
     );
-    if (hit && hit.id === id) setPlaced((p) => [...p, id]);
-    else flashWrong();
+    if (hit && hit.id === id) {
+      const sym = symmetry[id] ?? 360;
+      const rot = rotRef.current[id] ?? 0;
+      if (rot % sym === 0) placePiece(id);
+      else flashTurn(); // bonne zone, mauvaise orientation
+    } else {
+      flashWrong();
+    }
   }
 
   // suit le doigt / la souris pendant le glisser
@@ -125,13 +189,14 @@ export default function Tangram() {
   function startDrag(piece: Piece, e: React.PointerEvent) {
     if (won || abandoned) return;
     e.preventDefault();
+    setSelId(piece.id);
     setDrag({ id: piece.id, x: e.clientX, y: e.clientY });
   }
 
   function giveHint() {
     if (won || !session.useHint()) return;
     const next = fig.pieces.find((p) => !placed.includes(p.id));
-    if (next) setPlaced((p) => [...p, next.id]);
+    if (next) placePiece(next.id);
   }
 
   function abandon() {
@@ -141,25 +206,32 @@ export default function Tangram() {
   }
 
   const dragPiece = drag ? fig.pieces.find((p) => p.id === drag.id) : null;
+  const showGuides = level === "facile";
 
   return (
     <div>
       <div className="controls">
-        <div className="seg seg-scroll">
+        <div className="seg seg-scroll tg-figs">
           {FIGURES.map((f, i) => (
-            <button key={i} className={`seg-btn ${idx === i ? "active" : ""}`} onClick={() => setIdx(i)}>
-              {f.title}
+            <button
+              key={i}
+              className={`tg-figbtn ${idx === i ? "active" : ""}`}
+              onClick={() => setIdx(i)}
+            >
+              <FigureThumb figIdx={i} />
+              <span>{f.title}</span>
             </button>
           ))}
         </div>
-        <div className="seg" style={{ marginTop: 6 }}>
+        <div className="tg-levels">
           {LEVELS.map((l) => (
             <button
               key={l.id}
-              className={`seg-btn ${level === l.id ? "active" : ""}`}
-              onClick={() => { setLevel(l.id); setPlaced([]); setAbandoned(false); session.reset(); }}
+              className={`tg-levelbtn ${level === l.id ? "active" : ""}`}
+              onClick={() => setLevel(l.id)}
             >
-              {l.label}
+              <span className="tg-level-name">{l.label}</span>
+              <span className="tg-level-hint">{l.hint}</span>
             </button>
           ))}
         </div>
@@ -170,7 +242,11 @@ export default function Tangram() {
           ? "Voici la figure complète."
           : won
           ? "Bravo, figure reconstituée !"
-          : "Glissez chaque pièce vers son emplacement dans la figure."}
+          : turnHint
+          ? "Bonne place — tournez la pièce pour l'emboîter !"
+          : level === "facile"
+          ? "Glissez chaque pièce vers son emplacement."
+          : "Tournez (double-clic ou ⟳) puis glissez chaque pièce dans la silhouette."}
       </p>
 
       <div className="chrono-row">
@@ -188,53 +264,89 @@ export default function Tangram() {
         abandoned={abandoned}
       />
 
-      <div className={`tangram-board ${wrongFlash ? "flash" : ""}`}>
+      <div className={`tangram-board ${wrongFlash ? "flash" : ""} ${turnHint ? "turn" : ""}`}>
         <svg ref={svgRef} viewBox={`-0.4 -0.4 ${fig.w + 0.8} ${fig.h + 0.8}`}>
-          {/* Silhouette globale pour les niveaux moyen et difficile */}
-          {level !== "facile" && fig.pieces.map((p) => (
+          {/* Silhouette de la figure à reconstituer (sans repères internes) */}
+          {fig.pieces.map((p) => (
             <polygon
               key={`sil-${p.id}`}
               points={toPath(p.points)}
               fill="var(--surface-alt)"
+              fillOpacity={level === "difficile" ? 0.3 : 1}
               stroke="none"
             />
           ))}
-          {fig.pieces.map((p) => {
-            const isPlaced = placed.includes(p.id);
-            const showOutline = level === "facile" || isPlaced;
-            return (
-              <polygon
-                key={p.id}
-                points={toPath(p.points)}
-                className={`slot ${isPlaced ? "placed" : ""} ${
-                  drag && drag.id === p.id && !isPlaced ? "target" : ""
-                } ${!showOutline ? "no-outline" : ""}`}
-                fill={isPlaced ? p.color : "transparent"}
-              />
-            );
-          })}
+          {/* Contour global pour bien voir la forme */}
+          {fig.pieces.map((p) => (
+            <polygon
+              key={`out-${p.id}`}
+              points={toPath(p.points)}
+              fill="none"
+              stroke={showGuides ? "var(--accent)" : "var(--ink-soft)"}
+              strokeWidth={showGuides ? 0.07 : 0.05}
+              strokeDasharray={showGuides ? "0.35 0.3" : undefined}
+              strokeOpacity={showGuides ? 0.9 : 0.25}
+            />
+          ))}
+          {/* Pièces déjà placées (couleur réelle) */}
+          {fig.pieces.filter((p) => placed.includes(p.id)).map((p) => (
+            <polygon
+              key={`pl-${p.id}`}
+              points={toPath(p.points)}
+              fill={p.color}
+              stroke="#0f380f"
+              strokeWidth="0.06"
+              strokeLinejoin="round"
+              className="slot placed"
+            />
+          ))}
+          {/* Repère de la cible en cours de glisser (facile uniquement) */}
+          {showGuides && drag && !placed.includes(drag.id) && (
+            <polygon
+              points={toPath(fig.pieces.find((p) => p.id === drag.id)!.points)}
+              className="slot target"
+              fill="transparent"
+            />
+          )}
         </svg>
       </div>
 
       {!won && !abandoned && (
         <div className="tray">
-          {remaining.map((p) => (
-            <button
-              key={p.id}
-              data-id={p.id}
-              className={`tray-piece ${drag?.id === p.id ? "dragging" : ""}`}
-              onPointerDown={(e) => startDrag(p, e)}
-              aria-label="pièce à glisser"
-            >
-              <PieceSvg piece={p} size={56} />
-            </button>
-          ))}
+          {remaining.map((p) => {
+            const needTurn = level !== "facile";
+            return (
+              <div
+                key={p.id}
+                data-id={p.id}
+                className={`tray-piece ${drag?.id === p.id ? "dragging" : ""} ${selId === p.id ? "sel" : ""}`}
+                onPointerDown={(e) => startDrag(p, e)}
+                onDoubleClick={() => rotate(p.id)}
+                aria-label="pièce à glisser"
+              >
+                <PieceSvg piece={p} size={56} rotation={rotations[p.id] ?? 0} />
+                {needTurn && (
+                  <button
+                    className="tray-rotate"
+                    aria-label="Tourner la pièce"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      rotate(p.id);
+                    }}
+                  >
+                    ⟳
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
       {drag && dragPiece && (
         <div className="tangram-ghost" style={{ left: drag.x, top: drag.y }}>
-          <PieceSvg piece={dragPiece} size={64} />
+          <PieceSvg piece={dragPiece} size={64} rotation={rotations[dragPiece.id] ?? 0} />
         </div>
       )}
     </div>
