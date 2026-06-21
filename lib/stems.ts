@@ -81,10 +81,18 @@ export function listCachedHashes(): string[] {
   return out;
 }
 
-// run a child process to completion, rejecting on non-zero exit
-function run(cmd: string, args: string[]): Promise<void> {
+// run a child process to completion, rejecting on non-zero exit. When `niceness`
+// is set, the process is launched under `nice` so background (prefetch) jobs
+// yield CPU to the live app and any on-demand separation.
+function run(cmd: string, args: string[], niceness?: number): Promise<void> {
   return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { stdio: ["ignore", "ignore", "pipe"] });
+    let exe = cmd;
+    let exeArgs = args;
+    if (niceness && existsSync("/usr/bin/nice")) {
+      exe = "/usr/bin/nice";
+      exeArgs = ["-n", String(niceness), cmd, ...args];
+    }
+    const p = spawn(exe, exeArgs, { stdio: ["ignore", "ignore", "pipe"] });
     let err = "";
     p.stderr.on("data", (d) => (err += d));
     p.on("error", reject);
@@ -94,16 +102,43 @@ function run(cmd: string, args: string[]): Promise<void> {
   });
 }
 
+// This box is CPU-bound (often a single core), so run at most ONE Demucs at a
+// time. On-demand jobs (priority 1) are dequeued before background prefetch jobs
+// (priority 0); a job already running can't be interrupted but won't be jumped.
+const slotWaiters: { prio: number; resolve: () => void }[] = [];
+let slotBusy = false;
+function acquireSlot(prio: number): Promise<void> {
+  if (!slotBusy) {
+    slotBusy = true;
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => {
+    slotWaiters.push({ prio, resolve });
+    slotWaiters.sort((a, b) => b.prio - a.prio); // higher priority served first
+  });
+}
+function releaseSlot(): void {
+  const next = slotWaiters.shift();
+  if (next) next.resolve(); // stays busy, hand the slot straight to the next job
+  else slotBusy = false;
+}
+
 // in-flight separations keyed by hash+model so concurrent requests for the same
 // job share one Demucs run instead of launching it twice
 const inflight = new Map<string, Promise<void>>();
+
+export interface SeparateOpts {
+  priority?: number; // higher = scheduled first (on-demand 1, prefetch 0)
+  nice?: boolean; // run Demucs under `nice` (background prefetch jobs)
+}
 
 // separate `data` into cached stems and return the content hash. Idempotent:
 // returns immediately if already cached, and coalesces concurrent calls.
 export async function separate(
   data: ArrayBuffer,
   model: StemModel = "htdemucs",
-  shifts = 0
+  shifts = 0,
+  opts: SeparateOpts = {}
 ): Promise<string> {
   const hash = hashBytes(data);
   if (isCached(hash, model)) return hash;
@@ -113,27 +148,49 @@ export async function separate(
     await existing;
     return hash;
   }
-  const job = doSeparate(hash, model, shifts, data).finally(() => inflight.delete(key));
+  const job = doSeparate(hash, model, shifts, data, opts).finally(() => inflight.delete(key));
   inflight.set(key, job);
   await job;
   return hash;
+}
+
+// Non-blocking: make sure stems exist for this content, scheduling a
+// low-priority, niced background separation if they don't. Returns immediately
+// with the content hash so the caller (deck prefetch) can poll the cache.
+export function prefetch(
+  data: ArrayBuffer,
+  model: StemModel = "htdemucs",
+  shifts = 0
+): { hash: string; cached: boolean } {
+  const hash = hashBytes(data);
+  const cached = isCached(hash, model);
+  if (!cached) {
+    separate(data, model, shifts, { priority: 0, nice: true }).catch((e) =>
+      console.error("[stems prefetch]", (e as Error).message)
+    );
+  }
+  return { hash, cached };
 }
 
 async function doSeparate(
   hash: string,
   model: StemModel,
   shifts: number,
-  data: ArrayBuffer
+  data: ArrayBuffer,
+  opts: SeparateOpts = {}
 ): Promise<void> {
   if (!existsSync(CACHE)) mkdirSync(CACHE, { recursive: true });
   const work = await mkdtemp(join(tmpdir(), "stems-"));
+  const niceness = opts.nice ? 15 : undefined;
+  // serialise the heavy work: only one Demucs at a time on this CPU-bound box
+  await acquireSlot(opts.priority ?? 1);
   try {
     // 1. write the raw upload, then normalise to a clean stereo WAV with ffmpeg
     //    (guarantees Demucs can decode it regardless of the source container)
     const raw = join(work, "raw");
     await writeFile(raw, Buffer.from(data));
     const wav = join(work, "source.wav");
-    await run(FFMPEG, ["-hide_banner", "-loglevel", "error", "-y", "-i", raw, "-ac", "2", "-ar", "44100", wav]);
+    await run(FFMPEG, ["-hide_banner", "-loglevel", "error", "-y", "-i", raw, "-ac", "2", "-ar", "44100", wav], niceness);
 
     // 2. run Demucs (CPU) -> MP3 stems under <out>/<model>/source/<stem>.mp3
     //    --overlap 0.1 (vs Demucs' 0.25 default) computes fewer overlapping
@@ -146,7 +203,7 @@ async function doSeparate(
     if (process.env.STEMS_SEGMENT) args.push("--segment", process.env.STEMS_SEGMENT);
     if (shifts > 0) args.push("--shifts", String(Math.min(shifts, 10)));
     args.push("-o", out, wav);
-    await run(DEMUCS, args);
+    await run(DEMUCS, args, niceness);
 
     // 3. atomically publish into the cache dir
     const dir = modelDir(hash, model);
@@ -156,6 +213,7 @@ async function doSeparate(
       await rename(join(produced, `${s}.mp3`), join(dir, `${s}.mp3`));
     }
   } finally {
+    releaseSlot();
     await rm(work, { recursive: true, force: true });
   }
 }

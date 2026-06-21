@@ -183,20 +183,66 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
   // stems: remembered per-stem level so a mute toggle can restore it
   const stemPrev = useRef<number[]>([1, 1, 1, 1, 1, 1]);
   // when the loaded track changes, probe the server cache so the button can
-  // advertise an instant load if the stems were already computed before
+  // advertise an instant load if the stems were already computed before. If
+  // they aren't cached yet and the deck is idle (track loaded but not playing),
+  // kick off a low-priority background separation so the stems are ready by the
+  // time the user wants them — then poll until they land.
   useEffect(() => {
     if (!deck.name || deck.stemReady) return;
     let cancelled = false;
+    let poll: ReturnType<typeof setInterval> | undefined;
     deck.probeStems().then(() => {
       if (cancelled) return;
       rerender();
-      if (deck.stemCached) onStems?.(); // already on disk -> badge the library
+      if (deck.stemCached) {
+        onStems?.(); // already on disk -> badge the library
+        return;
+      }
+      // idle preparation: separate ahead of time while nothing is playing
+      if (!deck.playing) {
+        deck.prefetchStems().then(() => {
+          if (cancelled) return;
+          rerender();
+        });
+        poll = setInterval(() => {
+          if (cancelled || deck.stemReady) return;
+          deck.probeStems().then(() => {
+            if (cancelled) return;
+            rerender();
+            if (deck.stemCached) {
+              onStems?.();
+              if (poll) clearInterval(poll);
+            }
+          });
+        }, 5000);
+      }
     });
     return () => {
       cancelled = true;
+      if (poll) clearInterval(poll);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deck.name, deck.stemModel]);
+  // manual trigger for the "Préparer les Stems" button: force a background
+  // separation now, even if the deck is playing, and poll until it's ready.
+  async function prepareStems() {
+    if (deck.stemReady || deck.stemStatus === "working") return;
+    await deck.prefetchStems();
+    rerender();
+    const poll = setInterval(() => {
+      if (deck.stemReady) {
+        clearInterval(poll);
+        return;
+      }
+      deck.probeStems().then(() => {
+        rerender();
+        if (deck.stemCached) {
+          onStems?.();
+          clearInterval(poll);
+        }
+      });
+    }, 5000);
+  }
   async function handleStems() {
     if (deck.stemStatus === "working") return;
     if (!deck.stemReady) {
@@ -680,9 +726,27 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                   ? "⚡ STEMS"
                   : "✂ STEMS"}
           </button>
+          {/* manual: pre-compute the stems in the background (yields CPU to the
+              live app) so they're ready before you press STEMS */}
+          {deck.name && !deck.stemReady && !deck.stemCached && deck.stemStatus !== "working" && (
+            <button
+              className="hw-btn px-2 py-1 text-[9px] font-bold disabled:opacity-40"
+              style={{ ["--led" as string]: color, color }}
+              disabled={deck.stemStatus === "prefetching"}
+              onClick={prepareStems}
+              title="Calcule les stems en arrière-plan (priorité basse) pour qu'ils soient prêts à l'avance"
+            >
+              {deck.stemStatus === "prefetching" ? "⏳ préparation…" : "⚙ Préparer les Stems"}
+            </button>
+          )}
           {deck.stemStatus === "working" && (
             <span className="text-[8px] leading-tight text-neutral-500">
               {deck.stemModel === "htdemucs" ? "peut prendre 1–2 min…" : "qualité élevée — plus long…"}
+            </span>
+          )}
+          {deck.stemStatus === "prefetching" && (
+            <span className="text-[8px] leading-tight text-neutral-500">
+              préparation en fond… (priorité basse)
             </span>
           )}
           {deck.stemCached && !deck.stemReady && deck.stemStatus !== "working" && (

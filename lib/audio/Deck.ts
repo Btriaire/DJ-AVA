@@ -40,7 +40,7 @@ export class Deck {
   stemModel: "htdemucs" | "htdemucs_ft" | "htdemucs_6s" = "htdemucs";
   stemsActive = false; // play the stems (with per-stem gain) instead of the full mix
   stemVol: number[] = []; // one entry per active stem
-  stemStatus: "none" | "working" | "ready" | "error" = "none";
+  stemStatus: "none" | "prefetching" | "working" | "ready" | "error" = "none";
   stemCached = false; // server already has the stems on disk -> loading is instant
   stemHash = ""; // server content hash of the loaded track (for the library badge)
 
@@ -392,8 +392,42 @@ export class Deck {
       const { cached, hash } = (await res.json()) as { cached: boolean; hash: string };
       this.stemCached = !!cached;
       if (hash) this.stemHash = hash;
+      // a background prefetch just finished — drop the "préparation…" badge
+      if (cached && this.stemStatus === "prefetching") this.stemStatus = "none";
     } catch {
       /* offline / route missing — leave as-is */
+    }
+  }
+
+  // Ask the server to separate this track in the background (low priority, niced)
+  // so the stems are ready on disk before the user ever presses STEMS. Returns
+  // immediately; the actual Demucs run happens server-side while the deck idles.
+  // Caller should poll probeStems() to flip the "cached" badge once it lands.
+  async prefetchStems(): Promise<void> {
+    if (!this.rawData || this.stemReady || this.stemCached) return;
+    // don't stomp on a live, foreground separation
+    if (this.stemStatus === "working") return;
+    const model = this.stemModel;
+    this.stemStatus = "prefetching";
+    try {
+      const res = await fetch(`/api/stems/separate?prefetch=1&model=${model}`, {
+        method: "POST",
+        body: this.rawData.slice(0),
+      });
+      if (!res.ok) {
+        if (this.stemStatus === "prefetching") this.stemStatus = "none";
+        return;
+      }
+      const { hash, cached } = (await res.json()) as { hash: string; cached: boolean };
+      if (this.stemModel !== model) return; // model swapped meanwhile
+      if (hash) this.stemHash = hash;
+      if (cached) {
+        this.stemCached = true;
+        if (this.stemStatus === "prefetching") this.stemStatus = "none";
+      }
+      // else: leave status "prefetching"; the poller will clear it when ready
+    } catch {
+      if (this.stemStatus === "prefetching") this.stemStatus = "none";
     }
   }
 

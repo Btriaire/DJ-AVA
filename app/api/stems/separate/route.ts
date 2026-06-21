@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { hashBytes, isCached, isModel, MODEL_STEMS, separate, StemModel } from "@/lib/stems";
+import { hashBytes, isCached, isModel, MODEL_STEMS, prefetch, separate, StemModel } from "@/lib/stems";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,7 +8,9 @@ export const maxDuration = 600; // Demucs on CPU is slow (minutes per track)
 // POST the raw audio bytes of a track. Returns { hash, cached, model, stems }
 // once the stems are available under /api/stems/<hash>/<stem>?model=<model>.
 // Query: `model` (htdemucs | htdemucs_ft | htdemucs_6s), `shifts` (precision),
-// `probe=1` to only check the cache without launching a (long) separation.
+// `probe=1` to only check the cache without launching a (long) separation,
+// `prefetch=1` to schedule a low-priority background separation and return
+// immediately (the caller polls `probe=1` to learn when it's ready).
 export async function POST(req: NextRequest) {
   try {
     const modelParam = req.nextUrl.searchParams.get("model") || "htdemucs";
@@ -22,6 +24,13 @@ export async function POST(req: NextRequest) {
     if (req.nextUrl.searchParams.get("probe") === "1") {
       const hash = hashBytes(data);
       return NextResponse.json({ hash, model, stems, cached: isCached(hash, model) });
+    }
+
+    // Non-blocking: queue a niced background job and return at once. The deck
+    // polls `probe=1` to flip its badge once the cache is populated.
+    if (req.nextUrl.searchParams.get("prefetch") === "1") {
+      const { hash, cached } = prefetch(data, model, shifts);
+      return NextResponse.json({ hash, model, stems, cached, queued: !cached });
     }
 
     const hash = await separate(data, model, shifts);
