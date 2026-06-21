@@ -47,3 +47,6 @@ next-env.d.ts
 
 # YouTube cookies (secret — never commit)
 secrets/*.txt
+
+# docker compose override local (VPS: port 3100) — propre à chaque hôte
+docker-compose.override.yml
