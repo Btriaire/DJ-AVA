@@ -2,9 +2,20 @@ export type Pt = [number, number];
 export type Piece = { id: string; points: Pt[]; color: string };
 export type Figure = { title: string; w: number; h: number; pieces: Piece[] };
 
-const C = ["#0f380f", "#306230", "#6e8b2e", "#8bac0f", "#9bbc0f"];
+// Palette douce et variée (esprit « Petit Bambou ») — 8 teintes distinctes
+const C = [
+  "#4f9d83", // vert sauge
+  "#79b3c0", // bleu calme
+  "#e6a93f", // or
+  "#e8835f", // terre cuite
+  "#7c9a5a", // olive
+  "#b08bc4", // glycine
+  "#d98c6a", // abricot
+  "#6f9fb5", // ardoise
+];
 
 export const FIGURES: Figure[] = [
+  // ── Les 3 figures simples (initiation) ───────────────────────────
   {
     // Tangram classique : carré disséqué en 7 pièces
     title: "Le carré",
@@ -16,8 +27,8 @@ export const FIGURES: Figure[] = [
       { id: "sq-st1", points: [[8, 0], [8, 4], [6, 2]], color: C[4] },
       { id: "sq-sq", points: [[6, 2], [8, 4], [6, 6], [4, 4]], color: C[1] },
       { id: "sq-st2", points: [[8, 4], [8, 8], [6, 6]], color: C[3] },
-      { id: "sq-mt", points: [[0, 8], [4, 4], [6, 6]], color: C[4] },
-      { id: "sq-t", points: [[0, 8], [6, 6], [8, 8]], color: C[1] },
+      { id: "sq-mt", points: [[0, 8], [4, 4], [6, 6]], color: C[5] },
+      { id: "sq-t", points: [[0, 8], [6, 6], [8, 8]], color: C[6] },
     ],
   },
   {
@@ -43,8 +54,10 @@ export const FIGURES: Figure[] = [
       { id: "ho4", points: [[0, 12], [0, 5], [4, 8.5]], color: C[3] },
     ],
   },
+
+  // ── Figures plus complexes (6 à 8 pièces) ────────────────────────
   {
-    // Voilier : deux voiles + coque
+    // Voilier : deux voiles + coque en 5 pièces
     title: "Le bateau",
     w: 8,
     h: 10,
@@ -57,27 +70,77 @@ export const FIGURES: Figure[] = [
     ],
   },
   {
-    // Flèche vers la droite
-    title: "La flèche",
-    w: 10,
-    h: 8,
+    // Tête de chat : visage en 4 triangles + 2 oreilles
+    title: "Le chat",
+    w: 6,
+    h: 9,
     pieces: [
-      { id: "ar-s1", points: [[0, 2], [6, 2], [6, 6]], color: C[1] },
-      { id: "ar-s2", points: [[0, 2], [6, 6], [0, 6]], color: C[3] },
-      { id: "ar-h1", points: [[6, 0], [10, 4], [6, 4]], color: C[0] },
-      { id: "ar-h2", points: [[6, 4], [10, 4], [6, 8]], color: C[2] },
+      { id: "ca-earL", points: [[0, 3], [2, 3], [0, 0]], color: C[3] },
+      { id: "ca-earR", points: [[6, 3], [4, 3], [6, 0]], color: C[6] },
+      { id: "ca-f1", points: [[0, 3], [6, 3], [3, 6]], color: C[0] },
+      { id: "ca-f2", points: [[6, 3], [6, 9], [3, 6]], color: C[1] },
+      { id: "ca-f3", points: [[6, 9], [0, 9], [3, 6]], color: C[4] },
+      { id: "ca-f4", points: [[0, 9], [0, 3], [3, 6]], color: C[5] },
     ],
   },
   {
-    // Losange à 4 quartiers
-    title: "Le losange",
+    // Poisson : nageoire (2 pièces) + corps en losange (4 pièces)
+    title: "Le poisson",
+    w: 11,
+    h: 8,
+    pieces: [
+      { id: "fi-tail1", points: [[0, 1], [3, 4], [0, 4]], color: C[3] },
+      { id: "fi-tail2", points: [[0, 7], [3, 4], [0, 4]], color: C[6] },
+      { id: "fi-b1", points: [[3, 4], [7, 0], [7, 4]], color: C[0] },
+      { id: "fi-b2", points: [[7, 0], [11, 4], [7, 4]], color: C[1] },
+      { id: "fi-b3", points: [[11, 4], [7, 8], [7, 4]], color: C[4] },
+      { id: "fi-b4", points: [[7, 8], [3, 4], [7, 4]], color: C[5] },
+    ],
+  },
+  {
+    // Sapin : 3 étages de feuillage (5 triangles) + tronc
+    title: "Le sapin",
+    w: 8,
+    h: 12,
+    pieces: [
+      { id: "tr-top", points: [[2, 3], [6, 3], [4, 1]], color: C[0] },
+      { id: "tr-m1", points: [[1, 6], [4, 3], [4, 6]], color: C[1] },
+      { id: "tr-m2", points: [[7, 6], [4, 3], [4, 6]], color: C[4] },
+      { id: "tr-b1", points: [[0, 10], [4, 6], [4, 10]], color: C[5] },
+      { id: "tr-b2", points: [[8, 10], [4, 6], [4, 10]], color: C[6] },
+      { id: "tr-trunk", points: [[3, 10], [5, 10], [5, 12], [3, 12]], color: C[3] },
+    ],
+  },
+  {
+    // Fusée : ogive + corps (4 pièces) + 2 ailerons + flamme — 8 pièces
+    title: "La fusée",
+    w: 6,
+    h: 14,
+    pieces: [
+      { id: "ro-nose", points: [[3, 0], [1, 4], [5, 4]], color: C[3] },
+      { id: "ro-b1", points: [[1, 4], [5, 4], [3, 7.5]], color: C[0] },
+      { id: "ro-b2", points: [[5, 4], [5, 11], [3, 7.5]], color: C[1] },
+      { id: "ro-b3", points: [[5, 11], [1, 11], [3, 7.5]], color: C[5] },
+      { id: "ro-b4", points: [[1, 11], [1, 4], [3, 7.5]], color: C[4] },
+      { id: "ro-finL", points: [[0, 14], [1, 11], [1, 14]], color: C[7] },
+      { id: "ro-finR", points: [[6, 14], [5, 11], [5, 14]], color: C[7] },
+      { id: "ro-flame", points: [[2, 11], [4, 11], [3, 14]], color: C[6] },
+    ],
+  },
+  {
+    // Étoile / moulin : carré disséqué en 8 triangles autour du centre
+    title: "L'étoile",
     w: 8,
     h: 8,
     pieces: [
-      { id: "lo1", points: [[4, 0], [8, 4], [4, 4]], color: C[0] },
-      { id: "lo2", points: [[8, 4], [4, 8], [4, 4]], color: C[2] },
-      { id: "lo3", points: [[4, 8], [0, 4], [4, 4]], color: C[4] },
-      { id: "lo4", points: [[0, 4], [4, 0], [4, 4]], color: C[1] },
+      { id: "st1", points: [[0, 0], [4, 0], [4, 4]], color: C[0] },
+      { id: "st2", points: [[4, 0], [8, 0], [4, 4]], color: C[1] },
+      { id: "st3", points: [[8, 0], [8, 4], [4, 4]], color: C[2] },
+      { id: "st4", points: [[8, 4], [8, 8], [4, 4]], color: C[3] },
+      { id: "st5", points: [[8, 8], [4, 8], [4, 4]], color: C[4] },
+      { id: "st6", points: [[4, 8], [0, 8], [4, 4]], color: C[5] },
+      { id: "st7", points: [[0, 8], [0, 4], [4, 4]], color: C[6] },
+      { id: "st8", points: [[0, 4], [0, 0], [4, 4]], color: C[7] },
     ],
   },
 ];

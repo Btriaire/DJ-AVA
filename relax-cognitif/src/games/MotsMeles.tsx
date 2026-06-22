@@ -5,8 +5,12 @@ import Chrono from "../components/Chrono";
 import { useGameSession } from "../lib/useGameSession";
 import { CATEGORIES, buildGrid, pickWords, type Category } from "../lib/motsMeles";
 
-const SIZE = 9;
-const MAX_WORDS = 6;
+type MMLevel = "facile" | "moyen" | "difficile";
+const LEVELS: { id: MMLevel; label: string; size: number; words: number }[] = [
+  { id: "facile", label: "Facile", size: 8, words: 5 },
+  { id: "moyen", label: "Moyen", size: 10, words: 7 },
+  { id: "difficile", label: "Difficile", size: 12, words: 9 },
+];
 
 type Cell = { r: number; c: number };
 
@@ -16,26 +20,29 @@ function cellKey(r: number, c: number) {
 
 export default function MotsMeles() {
   const [catId, setCatId] = useState<string>(CATEGORIES[0].id);
+  const [level, setLevel] = useState<MMLevel>("facile");
   const [seed, setSeed] = useState(0);
   const category = useMemo<Category>(
     () => CATEGORIES.find((c) => c.id === catId) ?? CATEGORIES[0],
     [catId]
   );
-  const session = useGameSession("motsmeles", catId);
+  const lvl = LEVELS.find((l) => l.id === level) ?? LEVELS[0];
+  const SIZE = lvl.size;
+  const session = useGameSession("motsmeles", `${catId}-${level}`);
 
   // Construit la grille avec les mots effectivement placés
   const { grid, words } = useMemo(() => {
-    const picked = pickWords(category, MAX_WORDS);
-    const { grid, placed } = buildGrid(picked, SIZE);
+    const picked = pickWords(category, lvl.words, lvl.size);
+    const { grid, placed } = buildGrid(picked, lvl.size);
     return { grid, words: placed };
-  }, [category, seed]);
+  }, [category, seed, lvl]);
 
   const [found, setFound] = useState<string[]>([]);
   const [path, setPath] = useState<Cell[]>([]);
   const [abandoned, setAbandoned] = useState(false);
   const [hintCells, setHintCells] = useState<Set<string>>(new Set());
 
-  const key = `${catId}-${seed}`;
+  const key = `${catId}-${level}-${seed}`;
   const [rk, setRk] = useState(key);
   if (rk !== key) {
     setRk(key);
@@ -129,6 +136,17 @@ export default function MotsMeles() {
               onClick={() => { setCatId(c.id); setSeed((s) => s + 1); }}
             >
               {c.label}
+            </button>
+          ))}
+        </div>
+        <div className="seg" style={{ marginTop: 6 }}>
+          {LEVELS.map((l) => (
+            <button
+              key={l.id}
+              className={`seg-btn ${level === l.id ? "active" : ""}`}
+              onClick={() => { setLevel(l.id); setSeed((s) => s + 1); }}
+            >
+              {l.label}
             </button>
           ))}
         </div>

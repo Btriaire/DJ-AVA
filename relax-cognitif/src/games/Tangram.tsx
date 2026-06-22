@@ -58,8 +58,8 @@ function FigureThumb({ figIdx, size = 30 }: { figIdx: number; size?: number }) {
 type TangramLevel = "facile" | "moyen" | "difficile";
 const LEVELS: { id: TangramLevel; label: string; hint: string }[] = [
   { id: "facile", label: "Facile", hint: "repères + pièces droites" },
-  { id: "moyen", label: "Moyen", hint: "silhouette, pièces tournées" },
-  { id: "difficile", label: "Difficile", hint: "contour seul, plus de repères" },
+  { id: "moyen", label: "Moyen", hint: "silhouette pleine, sans repères" },
+  { id: "difficile", label: "Difficile", hint: "silhouette pâle, pièces tournées" },
 ];
 
 function makeRotations(pieces: Piece[], lvl: TangramLevel): Record<string, number> {
@@ -276,18 +276,19 @@ export default function Tangram() {
               stroke="none"
             />
           ))}
-          {/* Contour global pour bien voir la forme */}
-          {fig.pieces.map((p) => (
-            <polygon
-              key={`out-${p.id}`}
-              points={toPath(p.points)}
-              fill="none"
-              stroke={showGuides ? "var(--accent)" : "var(--ink-soft)"}
-              strokeWidth={showGuides ? 0.07 : 0.05}
-              strokeDasharray={showGuides ? "0.35 0.3" : undefined}
-              strokeOpacity={showGuides ? 0.9 : 0.25}
-            />
-          ))}
+          {/* Repères de découpe : uniquement en mode facile */}
+          {showGuides &&
+            fig.pieces.map((p) => (
+              <polygon
+                key={`out-${p.id}`}
+                points={toPath(p.points)}
+                fill="none"
+                stroke="var(--accent)"
+                strokeWidth={0.07}
+                strokeDasharray="0.35 0.3"
+                strokeOpacity={0.9}
+              />
+            ))}
           {/* Pièces déjà placées (couleur réelle) */}
           {fig.pieces.filter((p) => placed.includes(p.id)).map((p) => (
             <polygon

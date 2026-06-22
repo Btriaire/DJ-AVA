@@ -17,7 +17,19 @@ import {
   logSession,
   medalTier,
   successCount,
+  type Session,
 } from "../lib/store";
+
+// Ensemble des parcours déjà réussis au moins une fois (par identifiant de thème).
+function completedThemeIds(sessions: Session[]): Set<string> {
+  const set = new Set<string>();
+  for (const s of sessions) {
+    if (s.game === "parcours" && s.outcome === "success" && s.level) {
+      set.add(s.level.split(" ")[0]);
+    }
+  }
+  return set;
+}
 
 export default function Parcours() {
   const navigate = useNavigate();
@@ -43,8 +55,14 @@ function ParcoursSelect({
   onPick: (id: string) => void;
   onHome: () => void;
 }) {
+  const navigate = useNavigate();
   const sessions = getSessions();
   const tier = medalTier(successCount("parcours", sessions));
+  const done = completedThemeIds(sessions);
+  const total = PARCOURS.length;
+  const doneCount = PARCOURS.filter((p) => done.has(p.id)).length;
+  const allDone = doneCount >= total;
+
   return (
     <div className="app">
       <div className="topbar">
@@ -68,22 +86,54 @@ function ParcoursSelect({
         )}
       </div>
 
+      {allDone ? (
+        <button className="parc-unlock done" onClick={() => navigate("/meditation")}>
+          <span className="parc-unlock-icon" aria-hidden>
+            <Icon name="leaf" size={26} />
+          </span>
+          <span className="parc-unlock-text">
+            <span className="parc-unlock-title">Le Jardin Secret est ouvert !</span>
+            <span className="parc-unlock-sub">
+              Vous avez parcouru les {total} chemins. Entrez dans votre refuge de sérénité…
+            </span>
+          </span>
+          <span className="parc-card-go" aria-hidden>›</span>
+        </button>
+      ) : (
+        <div className="parc-unlock">
+          <span className="parc-unlock-icon" aria-hidden>🌸</span>
+          <span className="parc-unlock-text">
+            <span className="parc-unlock-title">Une surprise vous attend</span>
+            <span className="parc-unlock-sub">
+              Réussissez les {total} parcours pour découvrir un lieu caché.
+              <span className="parc-unlock-count"> {doneCount} / {total} accomplis</span>
+            </span>
+          </span>
+        </div>
+      )}
+
       <div className="parc-list">
-        {PARCOURS.map((p) => (
-          <button key={p.id} className="parc-card" onClick={() => onPick(p.id)}>
-            <span className="parc-card-icon" aria-hidden>
-              <Icon name={p.icon} size={28} />
-            </span>
-            <span className="parc-card-text">
-              <span className="parc-card-title">{p.title}</span>
-              <span className="parc-card-blurb">{p.blurb}</span>
-              <span className="parc-card-meta">
-                {p.length} étapes · {p.faculties}
+        {PARCOURS.map((p) => {
+          const isDone = done.has(p.id);
+          return (
+            <button key={p.id} className={`parc-card ${isDone ? "done" : ""}`} onClick={() => onPick(p.id)}>
+              <span className="parc-card-icon" aria-hidden>
+                <Icon name={p.icon} size={28} />
               </span>
-            </span>
-            <span className="parc-card-go" aria-hidden>›</span>
-          </button>
-        ))}
+              <span className="parc-card-text">
+                <span className="parc-card-title">
+                  {p.title}
+                  {isDone && <span className="parc-card-done" aria-label="parcours réussi"> ✓</span>}
+                </span>
+                <span className="parc-card-blurb">{p.blurb}</span>
+                <span className="parc-card-meta">
+                  {p.length} étapes · {p.faculties}
+                </span>
+              </span>
+              <span className="parc-card-go" aria-hidden>›</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -380,9 +430,12 @@ function Result({
   onHome: () => void;
   onOther: () => void;
 }) {
-  const count = successCount("parcours", getSessions());
+  const sessions = getSessions();
+  const count = successCount("parcours", sessions);
   const tier = medalTier(count);
   const perfect = score === length;
+  const done = completedThemeIds(sessions);
+  const remaining = PARCOURS.filter((p) => !done.has(p.id)).length;
   return (
     <div className="lcd" role="status">
       <div className="lcd-screen">
@@ -398,6 +451,11 @@ function Result({
             </p>
           </div>
         </div>
+        <p className="lcd-unlock">
+          {remaining === 0
+            ? "🌸 Tous les parcours réussis — le Jardin Secret est ouvert !"
+            : `🌸 Encore ${remaining} parcours à réussir pour découvrir le lieu caché.`}
+        </p>
         <p className="lcd-quote">« {quote.text} »</p>
         <p className="lcd-author">— {quote.author}</p>
         <div className="parc-actions">

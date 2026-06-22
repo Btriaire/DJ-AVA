@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { randomColorQ } from "../lib/couleurs";
+import { randomColorQ, NAME_HEX } from "../lib/couleurs";
 import GameActions from "../components/GameActions";
 import WinReward from "../components/WinReward";
 import Chrono from "../components/Chrono";
@@ -79,9 +79,22 @@ export default function Couleurs() {
         abandoned={abandoned}
       />
 
-      <blockquote className="cit-quote">{q.prompt}</blockquote>
+      {q.mix ? (
+        <div className="color-mix">
+          {q.mix.map((m, i) => (
+            <span key={i} className="color-mix-item">
+              {i > 0 && <span className="color-mix-op">+</span>}
+              <span className="color-dot" style={{ background: NAME_HEX[m] ?? "#ccc" }} />
+            </span>
+          ))}
+          <span className="color-mix-op">=</span>
+          <span className="color-dot color-dot-q">?</span>
+        </div>
+      ) : (
+        <blockquote className="cit-quote">{q.prompt}</blockquote>
+      )}
 
-      <div className="opt-grid">
+      <div className={q.mix ? "opt-grid swatch-grid" : "opt-grid"}>
         {choices.map((c) => {
           const reveal = picked != null || abandoned;
           const state = !reveal
@@ -93,6 +106,20 @@ export default function Couleurs() {
             : c === picked
             ? "bad"
             : "";
+          if (q.mix) {
+            return (
+              <button
+                key={c}
+                className={`opt opt-swatch ${state}`}
+                disabled={finished || eliminated.includes(c)}
+                onClick={() => pick(c)}
+                aria-label={c}
+              >
+                <span className="color-dot color-dot-lg" style={{ background: NAME_HEX[c] ?? "#ccc" }} />
+                {reveal && <span className="opt-swatch-name">{c}</span>}
+              </button>
+            );
+          }
           return (
             <button
               key={c}

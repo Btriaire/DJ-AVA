@@ -2,8 +2,7 @@ import { useEffect, useState } from "react";
 import WinReward from "../components/WinReward";
 import { useGameSession } from "../lib/useGameSession";
 import {
-  COLS,
-  ROWS,
+  LEVEL_DIMS,
   bestAIMove,
   dropRow,
   clone,
@@ -24,7 +23,9 @@ type Status = "playing" | "win" | "lose" | "draw";
 
 export default function Puissance4() {
   const [level, setLevel] = useState<P4Level>("facile");
-  const [board, setBoard] = useState<P4Board>(() => emptyBoard());
+  const dims = LEVEL_DIMS[level];
+  const { cols: COLS, rows: ROWS } = dims;
+  const [board, setBoard] = useState<P4Board>(() => emptyBoard(LEVEL_DIMS.facile));
   const [turn, setTurn] = useState<"R" | "J">("R"); // R = joueur
   const [status, setStatus] = useState<Status>("playing");
   const [aiThinking, setAiThinking] = useState(false);
@@ -73,7 +74,7 @@ export default function Puissance4() {
   }
 
   function newGame() {
-    setBoard(emptyBoard());
+    setBoard(emptyBoard(dims));
     setTurn("R");
     setStatus("playing");
     setAiThinking(false);
@@ -83,7 +84,7 @@ export default function Puissance4() {
 
   function changeLevel(l: P4Level) {
     setLevel(l);
-    setBoard(emptyBoard());
+    setBoard(emptyBoard(LEVEL_DIMS[l]));
     setTurn("R");
     setStatus("playing");
     setAiThinking(false);
@@ -115,7 +116,7 @@ export default function Puissance4() {
          status === "lose" ? "L'ordinateur gagne — réessayez !" :
          status === "draw" ? "Match nul !" :
          aiThinking ? "L'ordinateur réfléchit…" :
-         "À vous de jouer (jetons rouges)"}
+         "À vous de jouer (jetons verts)"}
       </p>
 
       <WinReward game="puissance4" show={session.won} />
@@ -164,6 +165,7 @@ export default function Puissance4() {
 
       <p className="page-sub" style={{ marginTop: 12, fontSize: 13 }}>
         Alignez 4 jetons — horizontale, verticale ou diagonale — avant l'ordinateur.
+        Grille {COLS}×{ROWS}.
       </p>
     </div>
   );

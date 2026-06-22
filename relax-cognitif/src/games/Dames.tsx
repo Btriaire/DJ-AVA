@@ -75,7 +75,7 @@ export default function Dames() {
         {status === "win" ? "Bravo, vous gagnez !" :
          status === "lose" ? "L'adversaire gagne — essayez encore !" :
          aiThinking ? "L'adversaire réfléchit…" :
-         turn === "w" ? "À vous de jouer (pions blancs)" : ""}
+         turn === "w" ? "À vous de jouer (pions verts)" : ""}
       </p>
 
       <WinReward game="dames" show={session.won} />

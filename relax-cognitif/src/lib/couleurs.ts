@@ -5,17 +5,41 @@ export type ColorQ = {
   answer: string;
   distractors: string[];
   note?: string; // précision affichée après la réponse
+  // Si présent, la question est visuelle : on affiche les pastilles à mélanger
+  // et les réponses sont des formes colorées (pas du texte).
+  mix?: string[];
 };
 
+// Correspondance nom de couleur → teinte affichable (pastilles)
+export const NAME_HEX: Record<string, string> = {
+  Rouge: "#c4544a",
+  Bleu: "#5984c4",
+  Jaune: "#e6c43f",
+  Vert: "#4f9d83",
+  Orange: "#e8835f",
+  Violet: "#8e5bc4",
+  Rose: "#e89bb0",
+  Marron: "#8a5a3b",
+  Gris: "#9aa0a6",
+  Noir: "#2f3338",
+  Blanc: "#f1f1ec",
+  Beige: "#d8c4a0",
+  "Bleu ciel": "#9ec8e0",
+  Turquoise: "#3fb6a8",
+};
+
+// Mélanges : questions VISUELLES (pastilles colorées, pas de texte).
 const MELANGES: ColorQ[] = [
-  { prompt: "En peinture : ROUGE + BLEU = ?", answer: "Violet", distractors: ["Vert", "Orange", "Marron"] },
-  { prompt: "En peinture : BLEU + JAUNE = ?", answer: "Vert", distractors: ["Violet", "Orange", "Gris"] },
-  { prompt: "En peinture : JAUNE + ROUGE = ?", answer: "Orange", distractors: ["Vert", "Violet", "Rose"] },
-  { prompt: "En peinture : ROUGE + BLEU + JAUNE = ?", answer: "Marron", distractors: ["Noir", "Gris", "Vert"] },
-  { prompt: "En peinture : ROUGE + BLANC = ?", answer: "Rose", distractors: ["Orange", "Violet", "Beige"] },
-  { prompt: "En peinture : NOIR + BLANC = ?", answer: "Gris", distractors: ["Beige", "Bleu", "Marron"] },
-  { prompt: "En peinture : VERT + ROUGE = ?", answer: "Marron", distractors: ["Orange", "Gris", "Noir"] },
-  { prompt: "En peinture : BLEU + BLANC = ?", answer: "Bleu ciel", distractors: ["Turquoise", "Gris", "Violet"] },
+  { prompt: "Quelle couleur obtient-on ?", answer: "Violet", distractors: ["Vert", "Orange", "Marron"], mix: ["Rouge", "Bleu"], note: "Rouge + Bleu" },
+  { prompt: "Quelle couleur obtient-on ?", answer: "Vert", distractors: ["Violet", "Orange", "Gris"], mix: ["Bleu", "Jaune"], note: "Bleu + Jaune" },
+  { prompt: "Quelle couleur obtient-on ?", answer: "Orange", distractors: ["Vert", "Violet", "Rose"], mix: ["Jaune", "Rouge"], note: "Jaune + Rouge" },
+  { prompt: "Quelle couleur obtient-on ?", answer: "Marron", distractors: ["Noir", "Gris", "Vert"], mix: ["Rouge", "Bleu", "Jaune"], note: "les trois primaires" },
+  { prompt: "Quelle couleur obtient-on ?", answer: "Rose", distractors: ["Orange", "Violet", "Beige"], mix: ["Rouge", "Blanc"], note: "Rouge + Blanc" },
+  { prompt: "Quelle couleur obtient-on ?", answer: "Gris", distractors: ["Beige", "Bleu", "Marron"], mix: ["Noir", "Blanc"], note: "Noir + Blanc" },
+  { prompt: "Quelle couleur obtient-on ?", answer: "Marron", distractors: ["Orange", "Gris", "Noir"], mix: ["Vert", "Rouge"], note: "Vert + Rouge" },
+  { prompt: "Quelle couleur obtient-on ?", answer: "Bleu ciel", distractors: ["Turquoise", "Gris", "Violet"], mix: ["Bleu", "Blanc"], note: "Bleu + Blanc" },
+  { prompt: "Quelle couleur obtient-on ?", answer: "Violet", distractors: ["Rose", "Marron", "Bleu"], mix: ["Rose", "Bleu"], note: "Rose + Bleu" },
+  { prompt: "Quelle couleur obtient-on ?", answer: "Orange", distractors: ["Rouge", "Jaune", "Marron"], mix: ["Rouge", "Jaune"], note: "Rouge + Jaune" },
 ];
 
 const NOIR_BLANC: ColorQ[] = [

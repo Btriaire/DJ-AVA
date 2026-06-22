@@ -224,8 +224,10 @@ export function buildGrid(
   return { grid, placed };
 }
 
-// Sélectionne aléatoirement n mots d'une catégorie et essaie d'en placer jusqu'à maxWords
-export function pickWords(category: Category, maxWords = 6): string[] {
-  const shuffled = [...category.words].sort(() => Math.random() - 0.5);
+// Sélectionne aléatoirement n mots d'une catégorie qui tiennent dans la grille.
+export function pickWords(category: Category, maxWords = 6, maxLen = 99): string[] {
+  const fitting = category.words.filter((w) => sanitize(w).length <= maxLen);
+  const pool = fitting.length >= maxWords ? fitting : category.words;
+  const shuffled = [...pool].sort(() => Math.random() - 0.5);
   return shuffled.slice(0, maxWords);
 }

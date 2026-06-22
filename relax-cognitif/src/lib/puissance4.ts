@@ -1,17 +1,26 @@
-export type P4Cell = "R" | "J" | null; // R = joueur (rouge), J = IA (jaune)
+export type P4Cell = "R" | "J" | null; // R = joueur, J = IA
 export type P4Board = P4Cell[][]; // [row][col], row 0 = haut
 export type P4Level = "facile" | "moyen" | "difficile";
 
-export const COLS = 7;
-export const ROWS = 6;
+// Taille de grille selon le niveau (plus c'est dur, plus c'est grand)
+export type P4Dims = { cols: number; rows: number };
+export const LEVEL_DIMS: Record<P4Level, P4Dims> = {
+  facile: { cols: 6, rows: 5 },
+  moyen: { cols: 7, rows: 6 },
+  difficile: { cols: 8, rows: 7 },
+};
 
-export function emptyBoard(): P4Board {
-  return Array.from({ length: ROWS }, () => Array<P4Cell>(COLS).fill(null));
+const rowsOf = (board: P4Board) => board.length;
+const colsOf = (board: P4Board) => board[0].length;
+const centerCol = (board: P4Board) => Math.floor(colsOf(board) / 2);
+
+export function emptyBoard(dims: P4Dims): P4Board {
+  return Array.from({ length: dims.rows }, () => Array<P4Cell>(dims.cols).fill(null));
 }
 
 /** Ligne la plus basse libre d'une colonne, ou -1 si pleine */
 export function dropRow(board: P4Board, col: number): number {
-  for (let r = ROWS - 1; r >= 0; r--) {
+  for (let r = rowsOf(board) - 1; r >= 0; r--) {
     if (board[r][col] === null) return r;
   }
   return -1;
@@ -23,7 +32,7 @@ export function clone(board: P4Board): P4Board {
 
 export function validCols(board: P4Board): number[] {
   const cols: number[] = [];
-  for (let c = 0; c < COLS; c++) if (board[0][c] === null) cols.push(c);
+  for (let c = 0; c < colsOf(board); c++) if (board[0][c] === null) cols.push(c);
   return cols;
 }
 
@@ -36,6 +45,7 @@ const DIRS = [
 
 /** Renvoie les 4 cellules gagnantes si `who` a aligné 4, sinon null */
 export function winningCells(board: P4Board, who: "R" | "J"): [number, number][] | null {
+  const ROWS = rowsOf(board), COLS = colsOf(board);
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       if (board[r][c] !== who) continue;
@@ -77,11 +87,12 @@ function scoreWindow(cells: P4Cell[]): number {
 }
 
 function evaluate(board: P4Board): number {
+  const ROWS = rowsOf(board), COLS = colsOf(board), mid = centerCol(board);
   let score = 0;
   // préférence colonne centrale
   for (let r = 0; r < ROWS; r++) {
-    if (board[r][3] === "J") score += 6;
-    else if (board[r][3] === "R") score -= 6;
+    if (board[r][mid] === "J") score += 6;
+    else if (board[r][mid] === "R") score -= 6;
   }
   // toutes les fenêtres de 4
   for (let r = 0; r < ROWS; r++) {
@@ -121,7 +132,8 @@ function minimax(
   if (depth === 0 || cols.length === 0) return evaluate(board);
 
   // ordre central d'abord
-  cols.sort((a, b) => Math.abs(3 - a) - Math.abs(3 - b));
+  const mid = centerCol(board);
+  cols.sort((a, b) => Math.abs(mid - a) - Math.abs(mid - b));
 
   if (maximizing) {
     let best = -Infinity;
@@ -169,7 +181,8 @@ export function bestAIMove(board: P4Board, level: P4Level): number {
   const depth = DEPTH[level];
   let bestScore = -Infinity;
   let bestCol = cols[0];
-  cols.sort((a, b) => Math.abs(3 - a) - Math.abs(3 - b));
+  const mid = centerCol(board);
+  cols.sort((a, b) => Math.abs(mid - a) - Math.abs(mid - b));
   for (const c of cols) {
     const next = place(board, c, "J")!;
     const score = minimax(next, depth - 1, -Infinity, Infinity, false);
