@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="badge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fbf3e6"/>
+      <stop offset="100%" stop-color="#dcebe0"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#f9e0a0"/>
+      <stop offset="65%" stop-color="#eeb84e"/>
+      <stop offset="100%" stop-color="#e6a93f"/>
+    </radialGradient>
+    <linearGradient id="leaf" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0%" stop-color="#3d7d68"/>
+      <stop offset="100%" stop-color="#6fb795"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="19" fill="url(#badge)" stroke="#cfe0d2" stroke-width="1.5"/>
+  <circle cx="32" cy="27" r="17" fill="#f7d98a" opacity="0.35"/>
+  <circle cx="32" cy="27" r="12" fill="url(#sun)"/>
+  <path d="M32 50 C32 44 32 38 32 32" stroke="#3d7d68" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+  <path d="M31.5 40 C25 39 20.5 33.5 21.5 28 C28 29 31.7 34 31.5 40 Z" fill="url(#leaf)"/>
+  <path d="M32.5 35 C39 33.5 43.5 28 42.5 22.5 C36 24 32.3 29 32.5 35 Z" fill="url(#leaf)"/>
+  <path d="M14 50 Q32 44 50 50 L50 53 Q32 47 14 53 Z" fill="#cfe0d2" opacity="0.8"/>
+</svg>

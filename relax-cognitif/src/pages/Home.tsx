@@ -1,8 +1,7 @@
 import { Link } from "react-router-dom";
 import Icon from "../components/Icon";
 import Medal from "../components/Medal";
-import PixelArt from "../components/PixelArt";
-import { FUJI } from "../lib/pixelScenes";
+import Logo from "../components/Logo";
 import { randomQuote } from "../lib/memoryQuotes";
 import {
   dayStreak,
@@ -81,7 +80,7 @@ export default function Home() {
   return (
     <div className="app home">
       <header className="home-hero">
-        <PixelArt rows={FUJI} size={132} className="home-hero-art" />
+        <Logo size={108} className="home-hero-art" />
         <div className="home-hero-text">
           <h1>Esprit Clair</h1>
           <p>Entretenez votre esprit, en douceur, chaque jour.</p>
