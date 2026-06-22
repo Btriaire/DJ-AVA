@@ -61,8 +61,23 @@ a {
   text-decoration: none;
 }
 
+/* Filigrane cerveau en arrière-plan (très transparent, décoratif) */
+.brain-bg {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: min(128vw, 760px);
+  height: auto;
+  color: var(--accent);
+  opacity: 0.05;
+  pointer-events: none;
+  z-index: 0;
+}
+
 /* Layout */
 .app {
+  position: relative;
+  z-index: 1;
   max-width: var(--maxw);
   margin: 0 auto;
   padding-left: max(18px, env(safe-area-inset-left));

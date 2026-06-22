@@ -30,6 +30,7 @@ import Stats from "./pages/Stats";
 import Admin from "./pages/Admin";
 import GameRules from "./components/GameRules";
 import Splash from "./components/Splash";
+import BrainBg from "./components/BrainBg";
 
 function Shell({ title, game, children }: { title: string; game?: string; children: ReactNode }) {
   const navigate = useNavigate();
@@ -50,6 +51,7 @@ function Shell({ title, game, children }: { title: string; game?: string; childr
 export default function App() {
   return (
     <>
+    <BrainBg />
     <Splash />
     <Routes>
       <Route path="/" element={<Home />} />
