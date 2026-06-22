@@ -8,7 +8,9 @@ import type { GameId, Session } from "./store";
 //  ici. On s'inspire seulement de leur DÉCOUPAGE par domaines cognitifs
 //  pour agréger les performances de jeu en une estimation heuristique.
 //  Méthodologie inspirée des batteries en navigateur jsPsych & m2c2kit
-//  (mesures répétées, écologiques) — mais sans valeur diagnostique.
+//  (mesures répétées, écologiques) et des paradigmes validés de
+//  freefocusgames (Dual N-Back, Stroop, table de Schulte) — mais sans
+//  valeur diagnostique.
 // ─────────────────────────────────────────────────────────────────────
 
 export type DomainId =

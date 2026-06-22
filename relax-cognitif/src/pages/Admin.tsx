@@ -93,7 +93,7 @@ function MedicalScore() {
         ⚠️ Estimation <strong>non médicale</strong>, à usage interne. Ne
         constitue pas un diagnostic et ne remplace pas un test clinique
         (MoCA, SAGE…). Heuristique inspirée du découpage par domaines
-        cognitifs et des batteries en navigateur (jsPsych, m2c2kit).
+        cognitifs et des batteries en navigateur (jsPsych, m2c2kit, freefocusgames).
       </p>
 
       <div className="med-global">
