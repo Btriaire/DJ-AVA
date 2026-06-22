@@ -28,6 +28,7 @@ import Parcours from "./pages/Parcours";
 import Stats from "./pages/Stats";
 import Admin from "./pages/Admin";
 import GameRules from "./components/GameRules";
+import Splash from "./components/Splash";
 
 function Shell({ title, game, children }: { title: string; game?: string; children: ReactNode }) {
   const navigate = useNavigate();
@@ -47,6 +48,8 @@ function Shell({ title, game, children }: { title: string; game?: string; childr
 
 export default function App() {
   return (
+    <>
+    <Splash />
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/sudoku" element={<Shell title="Sudoku" game="sudoku"><Sudoku /></Shell>} />
@@ -77,6 +80,7 @@ export default function App() {
       <Route path="/admin" element={<Admin />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
+    </>
   );
 }
 
