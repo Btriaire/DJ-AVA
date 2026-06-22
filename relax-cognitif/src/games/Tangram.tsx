@@ -147,6 +147,24 @@ export default function Tangram() {
     if (selId === id) setSelId(null);
   }
 
+  // Emplacement vide le plus proche du point de dépôt (pour caler la pièce
+  // même si la visée est approximative).
+  function nearestUnplaced(x: number, y: number): string | null {
+    let best: string | null = null;
+    let bestD = Infinity;
+    for (const p of fig.pieces) {
+      if (placedRef.current.includes(p.id)) continue;
+      if (pointInPolygon(x, y, p.points)) return p.id; // pile dedans
+      const b = bbox(p.points);
+      const d = Math.hypot(x - (b.minX + b.w / 2), y - (b.minY + b.h / 2));
+      if (d < bestD) {
+        bestD = d;
+        best = p.id;
+      }
+    }
+    return best;
+  }
+
   function drop(clientX: number, clientY: number) {
     const id = dragRef.current?.id;
     setDrag(null);
@@ -160,15 +178,21 @@ export default function Tangram() {
     const loc = pt.matrixTransform(ctm.inverse());
     const target = fig.pieces.find((p) => p.id === id);
     if (!target || placedRef.current.includes(id)) return;
-    // Zone de dépôt généreuse : à l'intérieur de la pièce OU assez proche de
-    // son emplacement d'origine. Chaque pièce n'a qu'une seule place, donc on
-    // n'a pas besoin d'exiger une visée au pixel près.
+    // Dépôt très tolérant : on accepte si le point est dans la pièce, OU
+    // proche de son emplacement (tolérance large, à l'échelle de la figure),
+    // OU si l'on a simplement lâché sur la figure et que cette pièce est
+    // l'emplacement vide le plus proche. Pas besoin de viser au pixel près.
     const b = bbox(target.points);
     const cx = b.minX + b.w / 2;
     const cy = b.minY + b.h / 2;
     const dist = Math.hypot(loc.x - cx, loc.y - cy);
-    const tol = Math.max(b.w, b.h) * 0.7 + 0.8;
-    const near = pointInPolygon(loc.x, loc.y, target.points) || dist <= tol;
+    const tol = Math.max(b.w, b.h) * 0.8 + Math.max(fig.w, fig.h) * 0.12 + 1.0;
+    const onFigure =
+      loc.x >= -1 && loc.y >= -1 && loc.x <= fig.w + 1 && loc.y <= fig.h + 1;
+    const near =
+      pointInPolygon(loc.x, loc.y, target.points) ||
+      dist <= tol ||
+      (onFigure && nearestUnplaced(loc.x, loc.y) === id);
     if (near) {
       const sym = symmetry[id] ?? 360;
       const rot = rotRef.current[id] ?? 0;

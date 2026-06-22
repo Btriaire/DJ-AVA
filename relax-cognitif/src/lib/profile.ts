@@ -127,7 +127,7 @@ const FAMILIES: { id: string; label: string; games: GameId[]; parcours: string; 
   {
     id: "memoire",
     label: "Mémoire & mots",
-    games: ["memory", "motsmeles", "motscroises", "anagrammes", "citations", "culture", "philo", "simon", "couleurs"],
+    games: ["memory", "motsmeles", "motscroises", "anagrammes", "citations", "culture", "philo", "simon", "couleurs", "motmystere"],
     parcours: "souvenirs",
     reason: "pour entretenir votre mémoire et le sens du détail",
   },

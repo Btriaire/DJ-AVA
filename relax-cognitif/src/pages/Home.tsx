@@ -47,6 +47,7 @@ const SECTIONS: Section[] = [
       { to: "/formes", icon: "shapes", title: "Intrus des formes", desc: "Trouvez la forme différente", game: "formes" },
       { to: "/citations", icon: "quote", title: "Citations", desc: "Complétez les mots célèbres", game: "citations" },
       { to: "/philo", icon: "scroll", title: "Avec le Chat de...", desc: "Qui a dit ça ? Quel philosophe ?", game: "philo" },
+      { to: "/mot-mystere", icon: "bulb", title: "Mot mystère", desc: "Devinez le mot caché, façon Motus", game: "motmystere" },
       { to: "/mots-meles", icon: "grid", title: "Mots mêlés", desc: "Trouvez les mots cachés", game: "motsmeles" },
       { to: "/anagrammes", icon: "letters", title: "Anagrammes", desc: "Remettez les lettres en ordre", game: "anagrammes" },
     ],

@@ -23,6 +23,7 @@ import Simon from "./games/Simon";
 import Dames from "./games/Dames";
 import Culture from "./games/Culture";
 import Philo from "./games/Philo";
+import MotMystere from "./games/MotMystere";
 import Meditation from "./pages/Meditation";
 import Parcours from "./pages/Parcours";
 import Profil from "./pages/Profil";
@@ -77,6 +78,7 @@ export default function App() {
       <Route path="/dames" element={<Shell title="Dames éclair" game="dames"><Dames /></Shell>} />
       <Route path="/culture" element={<Shell title="Culture générale" game="culture"><Culture /></Shell>} />
       <Route path="/philo" element={<Shell title="Avec le Chat de..." game="philo"><Philo /></Shell>} />
+      <Route path="/mot-mystere" element={<Shell title="Mot mystère" game="motmystere"><MotMystere /></Shell>} />
       <Route path="/stats" element={<Shell title="Mes statistiques"><Stats /></Shell>} />
       <Route path="/meditation" element={<Shell title="Méditation"><Meditation /></Shell>} />
       <Route path="/parcours" element={<Parcours />} />

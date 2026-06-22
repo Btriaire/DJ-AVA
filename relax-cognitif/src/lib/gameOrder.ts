@@ -21,6 +21,7 @@ export const GAME_ORDER: GameLink[] = [
   { game: "formes", to: "/formes", title: "Intrus des formes" },
   { game: "citations", to: "/citations", title: "Citations" },
   { game: "philo", to: "/philo", title: "Avec le Chat de..." },
+  { game: "motmystere", to: "/mot-mystere", title: "Mot mystère" },
   { game: "motsmeles", to: "/mots-meles", title: "Mots mêlés" },
   { game: "anagrammes", to: "/anagrammes", title: "Anagrammes" },
   // Vitesse & réflexes

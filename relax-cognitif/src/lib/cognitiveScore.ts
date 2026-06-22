@@ -58,7 +58,7 @@ export const DOMAINS: Domain[] = [
     id: "langage",
     label: "Langage",
     ref: "Vocabulaire & mots",
-    games: ["motscroises", "motsmeles", "anagrammes"],
+    games: ["motscroises", "motsmeles", "anagrammes", "motmystere"],
   },
 ];
 
