@@ -2185,10 +2185,64 @@ body {
   background: repeating-linear-gradient(135deg, var(--surface-alt), var(--surface-alt) 14px, var(--surface) 14px, var(--surface) 28px);
   color: var(--ink-soft);
 }
-.fv-field.fv-green { background: radial-gradient(circle at 50% 38%, #8ce29a, #2f9d4f); animation: fvpop 0.18s ease; }
-.fv-field.fv-red { background: radial-gradient(circle at 50% 38%, #f0a298, #c4452f); animation: fvpop 0.18s ease; }
-.fv-label { text-shadow: 0 1px 3px rgba(0,0,0,0.2); }
-@keyframes fvpop { from { transform: scale(0.94); } to { transform: scale(1); } }
+.fv-field {
+  position: relative;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--surface-alt);
+}
+.fv-field.fv-green { background: radial-gradient(circle at 50% 40%, #e6f7ea, #d4ecd9); animation: fvpop 0.18s ease; }
+.fv-field.fv-red { background: radial-gradient(circle at 50% 40%, #fbe7e3, #f3d8d2); animation: fvpop 0.18s ease; }
+.fv-field .fv-label { color: var(--ink); font-size: 22px; text-shadow: none; }
+.fv-field.fv-green .fv-label { color: #2f7d4f; }
+.fv-field.fv-red .fv-label { color: #b9442f; }
+@keyframes fvpop { from { transform: scale(0.96); } to { transform: scale(1); } }
+
+/* Lanterne centrale */
+.fv-orb {
+  width: clamp(110px, 30vw, 150px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  box-shadow: inset 0 -6px 14px rgba(0,0,0,0.15);
+  transition: background 0.12s ease, box-shadow 0.2s ease;
+}
+.fv-orb-wait {
+  background: radial-gradient(circle at 40% 34%, #f2efe6, #d9d3c4);
+  animation: fvbreath 2.6s ease-in-out infinite;
+}
+.fv-orb-green {
+  background: radial-gradient(circle at 40% 32%, #aef0b6, #2f9d4f);
+  box-shadow: inset 0 -6px 14px rgba(0,0,0,0.18), 0 0 28px rgba(47,157,79,0.55);
+}
+.fv-orb-red {
+  background: radial-gradient(circle at 40% 32%, #f6b3a8, #c4452f);
+  box-shadow: inset 0 -6px 14px rgba(0,0,0,0.18), 0 0 22px rgba(196,69,47,0.45);
+}
+@keyframes fvbreath {
+  0%, 100% { transform: scale(0.9); opacity: 0.75; }
+  50% { transform: scale(1.04); opacity: 1; }
+}
+
+/* Flash de retour */
+.fv-flash-good { box-shadow: 0 0 0 4px rgba(79,157,131,0.55) inset; }
+.fv-flash-bad { animation: fvpop 0.18s ease, fvshake 0.3s ease; box-shadow: 0 0 0 4px rgba(196,107,84,0.5) inset; }
+@keyframes fvshake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+/* HUD */
+.fv-hud { display: flex; justify-content: space-around; margin-bottom: 10px; }
+.fv-hud-item { display: flex; flex-direction: column; align-items: center; }
+.fv-hud-val { font-size: 22px; font-weight: 800; color: var(--accent); line-height: 1.1; }
+.fv-hud-lbl { font-size: 11px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* Pastilles de progression */
+.fv-dots { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 12px; }
+.fv-pip { width: 9px; height: 9px; border-radius: 50%; background: var(--line); transition: background 0.2s ease, transform 0.2s ease; }
+.fv-pip-on { background: var(--accent); }
+.fv-pip-cur { transform: scale(1.4); background: var(--gold); }
 
 /* ── Ordre éclair (table de Schulte) ───────────────────────────── */
 .ordre-prompt { text-align: center; font-size: 20px; margin: 4px 0 8px; color: var(--ink); }
