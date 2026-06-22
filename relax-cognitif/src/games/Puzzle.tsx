@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import PixelArt from "../components/PixelArt";
 import WinReward from "../components/WinReward";
 import Chrono from "../components/Chrono";
-import { SCENES } from "../lib/pixelScenes";
+import { JAPAN_SCENES, JapanArt, SCENE_SIZE } from "../lib/japanScenes";
 import { useGameSession } from "../lib/useGameSession";
 
-const BOARD = 300; // largeur en px
+const BOARD = 300; // largeur/hauteur en px (scènes carrées)
 const SIZES = [3, 4] as const;
+
+const LEVEL_LABELS: Record<1 | 2 | 3, string> = {
+  1: "Facile",
+  2: "Moyen",
+  3: "Détaillé",
+};
 
 function solved(n: number): number[] {
   return Array.from({ length: n * n }, (_, i) => i);
@@ -37,14 +42,10 @@ export default function Puzzle() {
   const [seed, setSeed] = useState(0);
   const [showModel, setShowModel] = useState(false);
   const [moves, setMoves] = useState(0);
-  const session = useGameSession("puzzle", `${SCENES[sceneIdx].key} ${n}×${n}`);
+  const scene = JAPAN_SCENES[sceneIdx];
+  const session = useGameSession("puzzle", `${scene.key} ${n}×${n}`);
 
-  const scene = SCENES[sceneIdx];
-  const rows = scene.rows;
-  const imgW = rows[0].length;
-  const imgH = rows.length;
-  const cellW = BOARD / n;
-  const cellH = (BOARD * (imgH / imgW)) / n;
+  const cell = BOARD / n;
 
   const [board, setBoard] = useState<number[]>(() => shuffle(3));
 
@@ -63,6 +64,19 @@ export default function Puzzle() {
     if (isSolved && moves > 0) session.record("success");
   }, [isSolved, moves, session]);
 
+  // Scènes regroupées par niveau pour le sélecteur de modèle.
+  const groups = useMemo(() => {
+    const g: { level: 1 | 2 | 3; items: { idx: number; key: string; title: string }[] }[] = [
+      { level: 1, items: [] },
+      { level: 2, items: [] },
+      { level: 3, items: [] },
+    ];
+    JAPAN_SCENES.forEach((s, idx) => {
+      g[s.level - 1].items.push({ idx, key: s.key, title: s.title });
+    });
+    return g;
+  }, []);
+
   function move(slot: number) {
     if (isSolved) return;
     const blank = board.indexOf(n * n - 1);
@@ -79,19 +93,28 @@ export default function Puzzle() {
 
   return (
     <div>
-      <div className="controls seg-scroll-wrap">
-        <div className="seg seg-scroll">
-          {SCENES.map((s, i) => (
-            <button
-              key={s.key}
-              className={sceneIdx === i ? "active" : ""}
-              onClick={() => setSceneIdx(i)}
-            >
-              {s.title}
-            </button>
-          ))}
-        </div>
+      <div className="puzzle-models">
+        {groups.map((g) => (
+          <div key={g.level} className="puzzle-model-group">
+            <span className="puzzle-model-level">{LEVEL_LABELS[g.level]}</span>
+            <div className="puzzle-thumbs">
+              {g.items.map((it) => (
+                <button
+                  key={it.key}
+                  className={`puzzle-thumb ${sceneIdx === it.idx ? "active" : ""}`}
+                  onClick={() => setSceneIdx(it.idx)}
+                  title={it.title}
+                  aria-label={it.title}
+                >
+                  <JapanArt scene={JAPAN_SCENES[it.idx]} size={44} />
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
+
+      <p className="puzzle-scene-name">{scene.title}</p>
 
       <div className="controls">
         <div className="seg">
@@ -123,10 +146,7 @@ export default function Puzzle() {
       <WinReward game="puzzle" show={session.won} />
 
       <div className="puzzle-wrap">
-        <div
-          className="puzzle-board"
-          style={{ width: BOARD, height: cellH * n }}
-        >
+        <div className="puzzle-board" style={{ width: BOARD, height: BOARD }}>
           {board.map((tile, slot) => {
             if (tile === n * n - 1 && !isSolved) return null;
             const r = Math.floor(slot / n), c = slot % n;
@@ -135,23 +155,18 @@ export default function Puzzle() {
               <button
                 key={slot}
                 className="puzzle-tile"
-                style={{
-                  left: c * cellW,
-                  top: r * cellH,
-                  width: cellW,
-                  height: cellH,
-                }}
+                style={{ left: c * cell, top: r * cell, width: cell, height: cell }}
                 onClick={() => move(slot)}
                 aria-label="pièce"
               >
-                <PixelArt
-                  rows={rows}
-                  size={cellW}
+                <JapanArt
+                  scene={scene}
+                  size={cell}
                   crop={{
-                    x: (oc * imgW) / n,
-                    y: (or * imgH) / n,
-                    w: imgW / n,
-                    h: imgH / n,
+                    x: (oc * SCENE_SIZE) / n,
+                    y: (or * SCENE_SIZE) / n,
+                    w: SCENE_SIZE / n,
+                    h: SCENE_SIZE / n,
                   }}
                 />
               </button>
@@ -162,7 +177,7 @@ export default function Puzzle() {
         {showModel && (
           <div className="puzzle-model">
             <span className="puzzle-model-tag">Modèle</span>
-            <PixelArt rows={rows} size={120} />
+            <JapanArt scene={scene} size={120} />
           </div>
         )}
       </div>
