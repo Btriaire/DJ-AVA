@@ -1,0 +1,20 @@
+{
+  "name": "Esprit Clair",
+  "short_name": "Esprit Clair",
+  "description": "Entretenez votre esprit, en douceur, chaque jour.",
+  "lang": "fr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eef2ea",
+  "theme_color": "#eef2ea",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
+    }
+  ]
+}
