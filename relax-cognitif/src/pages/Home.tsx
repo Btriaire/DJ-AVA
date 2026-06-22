@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import Icon from "../components/Icon";
 import Medal from "../components/Medal";
 import Logo from "../components/Logo";
+import { getProfile } from "../lib/profile";
 import { randomQuote } from "../lib/memoryQuotes";
 import {
   dayStreak,
@@ -76,6 +77,7 @@ export default function Home() {
   const streak = dayStreak(sessions);
   const pct = span ? Math.min(100, Math.round((into / span) * 100)) : 100;
   const quote = randomQuote();
+  const profile = getProfile();
 
   return (
     <div className="app home">
@@ -83,8 +85,15 @@ export default function Home() {
         <Logo size={108} className="home-hero-art" />
         <div className="home-hero-text">
           <h1>Esprit Clair</h1>
-          <p>Entretenez votre esprit, en douceur, chaque jour.</p>
+          <p>
+            {profile.name.trim()
+              ? `Bonjour ${profile.name.trim()}, ravi de vous revoir.`
+              : "Entretenez votre esprit, en douceur, chaque jour."}
+          </p>
         </div>
+        <Link className="home-hero-profile" to="/profil" aria-label="Mon profil">
+          {profile.avatar}
+        </Link>
       </header>
 
       <section className="prog-card">
@@ -155,6 +164,9 @@ export default function Home() {
       <p className="home-quote">« {quote.text} » — {quote.author}</p>
 
       <div className="home-footer-links">
+        <Link className="admin-link" to="/profil">
+          <Icon name="leaf" size={16} /> Mon profil
+        </Link>
         <Link className="admin-link" to="/stats">
           <Icon name="chart" size={16} /> Mes statistiques
         </Link>

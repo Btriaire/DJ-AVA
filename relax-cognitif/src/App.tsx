@@ -25,6 +25,7 @@ import Culture from "./games/Culture";
 import Philo from "./games/Philo";
 import Meditation from "./pages/Meditation";
 import Parcours from "./pages/Parcours";
+import Profil from "./pages/Profil";
 import Stats from "./pages/Stats";
 import Admin from "./pages/Admin";
 import GameRules from "./components/GameRules";
@@ -77,6 +78,7 @@ export default function App() {
       <Route path="/stats" element={<Shell title="Mes statistiques"><Stats /></Shell>} />
       <Route path="/meditation" element={<Shell title="Méditation"><Meditation /></Shell>} />
       <Route path="/parcours" element={<Parcours />} />
+      <Route path="/profil" element={<Profil />} />
       <Route path="/admin" element={<Admin />} />
       <Route path="*" element={<NotFound />} />
     </Routes>

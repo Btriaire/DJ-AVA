@@ -1737,11 +1737,224 @@ body {
   letter-spacing: 0.2px;
   color: var(--ink);
 }
+.home-hero-text {
+  flex: 1;
+  min-width: 0;
+}
 .home-hero-text p {
   margin: 4px 0 0;
   font-size: 17px;
   color: var(--ink-soft);
 }
+.home-hero-profile {
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  background: var(--surface);
+  border: 1.5px solid var(--line);
+  box-shadow: var(--shadow);
+  text-decoration: none;
+}
+
+/* =====================================================================
+   Profil utilisateur
+   ===================================================================== */
+.prof-card {
+  text-align: center;
+  background: linear-gradient(165deg, #fbf6ec 0%, var(--surface) 60%, var(--accent-soft) 140%);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 18px 16px 16px;
+  box-shadow: var(--shadow);
+  margin-bottom: 16px;
+}
+.prof-avatar {
+  width: 76px;
+  height: 76px;
+  margin: 0 auto 6px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 42px;
+  background: var(--surface);
+  border: 2px solid var(--accent-soft);
+  box-shadow: var(--shadow);
+}
+.prof-hello {
+  margin: 4px 0 10px;
+  font-family: var(--font-title);
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.prof-name-input {
+  width: min(260px, 100%);
+  text-align: center;
+  font-size: 18px;
+  padding: 10px 12px;
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  outline: none;
+}
+.prof-name-input:focus { border-color: var(--accent); }
+.prof-avatars {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.prof-avatar-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  background: var(--surface);
+  font-size: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.1s;
+}
+.prof-avatar-btn.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  transform: scale(1.08);
+}
+
+.prof-rank {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+  margin-bottom: 18px;
+}
+.prof-rank-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+.prof-rank-name {
+  font-family: var(--font-title);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.prof-rank-sub { font-size: 13px; color: var(--ink-soft); }
+.prof-rank-stats {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+.prof-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--surface-alt);
+  border-radius: 999px;
+  padding: 5px 12px;
+}
+
+.prof-section { margin-bottom: 18px; }
+.prof-obj-list { display: flex; flex-direction: column; gap: 10px; }
+.prof-obj {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow);
+}
+.prof-obj-icon {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-alt);
+  color: var(--accent);
+  font-size: 18px;
+  font-weight: 800;
+}
+.prof-obj.done .prof-obj-icon {
+  background: var(--accent);
+  color: #fff;
+}
+.prof-obj-main { flex: 1; min-width: 0; }
+.prof-obj-label { display: block; font-size: 15px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
+.prof-obj-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-alt);
+  overflow: hidden;
+}
+.prof-obj-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--calm));
+  transition: width 0.3s ease;
+}
+.prof-obj.done .prof-obj-fill { background: var(--accent); }
+.prof-obj-count {
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.prof-reco {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  text-align: left;
+  background: linear-gradient(120deg, #fbf6ec, var(--surface) 70%);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+.prof-reco-icon {
+  flex: 0 0 auto;
+  width: 50px;
+  height: 50px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.prof-reco-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.prof-reco-tag {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--warm);
+}
+.prof-reco-title { font-family: var(--font-title); font-size: 19px; font-weight: 600; color: var(--ink); }
+.prof-reco-desc { font-size: 13.5px; color: var(--ink-soft); }
+.prof-reco-go { flex: 0 0 auto; font-size: 26px; color: var(--ink-soft); }
 
 /* Carte de progression (Voie de l'Esprit) */
 .prog-card {
