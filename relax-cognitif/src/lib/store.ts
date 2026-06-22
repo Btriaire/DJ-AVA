@@ -46,7 +46,7 @@ export const GAME_LABELS: Record<GameId, string> = {
   simon: "Suite lumineuse",
   dames: "Dames éclair",
   culture: "Culture générale",
-  philo: "Citations philo",
+  philo: "Avec le Chat de...",
   parcours: "Parcours de l'Esprit",
 };
 

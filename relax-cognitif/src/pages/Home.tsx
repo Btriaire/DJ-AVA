@@ -46,7 +46,7 @@ const SECTIONS: Section[] = [
       { to: "/culture", icon: "globe", title: "Culture générale", desc: "Capitales, rois, guerres, présidents…", game: "culture" },
       { to: "/formes", icon: "shapes", title: "Intrus des formes", desc: "Trouvez la forme différente", game: "formes" },
       { to: "/citations", icon: "quote", title: "Citations", desc: "Complétez les mots célèbres", game: "citations" },
-      { to: "/philo", icon: "scroll", title: "Citations philo", desc: "Qui a dit ça ? Quel philosophe ?", game: "philo" },
+      { to: "/philo", icon: "scroll", title: "Avec le Chat de...", desc: "Qui a dit ça ? Quel philosophe ?", game: "philo" },
       { to: "/mots-meles", icon: "grid", title: "Mots mêlés", desc: "Trouvez les mots cachés", game: "motsmeles" },
       { to: "/anagrammes", icon: "letters", title: "Anagrammes", desc: "Remettez les lettres en ordre", game: "anagrammes" },
     ],

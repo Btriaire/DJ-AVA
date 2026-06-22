@@ -73,7 +73,7 @@ export default function App() {
       <Route path="/simon" element={<Shell title="Suite lumineuse" game="simon"><Simon /></Shell>} />
       <Route path="/dames" element={<Shell title="Dames éclair" game="dames"><Dames /></Shell>} />
       <Route path="/culture" element={<Shell title="Culture générale" game="culture"><Culture /></Shell>} />
-      <Route path="/philo" element={<Shell title="Citations philo" game="philo"><Philo /></Shell>} />
+      <Route path="/philo" element={<Shell title="Avec le Chat de..." game="philo"><Philo /></Shell>} />
       <Route path="/stats" element={<Shell title="Mes statistiques"><Stats /></Shell>} />
       <Route path="/meditation" element={<Shell title="Méditation"><Meditation /></Shell>} />
       <Route path="/parcours" element={<Parcours />} />
