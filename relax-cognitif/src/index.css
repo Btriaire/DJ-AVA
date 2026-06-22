@@ -1806,13 +1806,32 @@ body {
   font-weight: 600;
   color: var(--ink-soft);
 }
-.reward-btn {
+.reward-actions {
   margin-top: 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.reward-btn {
   width: 100%;
   background: linear-gradient(120deg, var(--warm), var(--gold));
   font-weight: 700;
   font-size: 15px;
   padding: 10px;
+}
+.reward-next-btn {
+  width: 100%;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 9px;
+}
+.btn-soft {
+  background: var(--surface-alt);
+  color: var(--ink);
+  border: 1.5px solid var(--accent);
+}
+.btn-soft:active {
+  background: var(--surface);
 }
 
 /* ── GameRules overlay ─────────────────────────────────────────── */

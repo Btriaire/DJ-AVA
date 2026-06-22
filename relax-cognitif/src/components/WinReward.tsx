@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   getSessions,
   medalTier,
@@ -8,6 +9,7 @@ import {
   totalSuccess,
   type GameId,
 } from "../lib/store";
+import { nextGame } from "../lib/gameOrder";
 import { randomQuote } from "../lib/memoryQuotes";
 import Medal from "./Medal";
 
@@ -19,8 +21,10 @@ const TIER_LABEL: Record<string, string> = {
 
 export default function WinReward({ game, show }: { game: GameId; show: boolean }) {
   const quote = useMemo(() => randomQuote(), [show]);
+  const navigate = useNavigate();
   const [wasShown, setWasShown] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const upcoming = nextGame(game);
 
   if (show && !wasShown) {
     setWasShown(true);
@@ -82,9 +86,22 @@ export default function WinReward({ game, show }: { game: GameId; show: boolean 
         <p className="reward-quote">« {quote.text} »</p>
         <p className="reward-author">— {quote.author}</p>
 
-        <button className="btn reward-btn" onClick={() => setDismissed(true)}>
-          Continuer
-        </button>
+        <div className="reward-actions">
+          <button className="btn reward-btn" onClick={() => setDismissed(true)}>
+            Continuer ici
+          </button>
+          {upcoming && (
+            <button
+              className="btn btn-soft reward-next-btn"
+              onClick={() => {
+                setDismissed(true);
+                navigate(upcoming.to);
+              }}
+            >
+              {upcoming.title} ›
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
