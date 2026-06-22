@@ -24,6 +24,8 @@ export const GAME_ORDER: GameLink[] = [
   { game: "anagrammes", to: "/anagrammes", title: "Anagrammes" },
   // Vitesse & réflexes
   { game: "rapidite", to: "/rapidite", title: "Rapidité au clic" },
+  { game: "feuvert", to: "/feu-vert", title: "Feu vert" },
+  { game: "ordre", to: "/ordre", title: "Ordre éclair" },
   // Formes & patience
   { game: "tangram", to: "/tangram", title: "Tangram" },
   { game: "puzzle", to: "/puzzle", title: "Puzzle" },

@@ -121,6 +121,14 @@ const PATHS: Record<string, React.ReactNode> = {
       <path d="M3 9h18M3 15h18M9 3v18M15 3v18" strokeWidth="1.4" />
     </>
   ),
+  flash: (
+    <path d="M13 2L5 13h6l-1 9 8-12h-6z" />
+  ),
+  order: (
+    <>
+      <path d="M4 7h2V3M4 14h2.5a1.2 1.2 0 1 0 0-2.4M4 16.6a1.2 1.2 0 1 0 2 1.4M10 5h10M10 12h10M10 19h10" strokeWidth="1.6" />
+    </>
+  ),
   letters: (
     <>
       <path d="M3 17l3.5-9 3.5 9M4.3 14h4.4" />

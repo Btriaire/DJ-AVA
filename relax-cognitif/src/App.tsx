@@ -16,6 +16,8 @@ import Puzzle from "./games/Puzzle";
 import Couleurs from "./games/Couleurs";
 import Calcul from "./games/Calcul";
 import Rapidite from "./games/Rapidite";
+import FeuVert from "./games/FeuVert";
+import Ordre from "./games/Ordre";
 import Dames from "./games/Dames";
 import Culture from "./games/Culture";
 import Philo from "./games/Philo";
@@ -60,6 +62,8 @@ export default function App() {
       <Route path="/couleurs" element={<Shell title="De toutes les couleurs" game="couleurs"><Couleurs /></Shell>} />
       <Route path="/calcul" element={<Shell title="Les bons signes" game="calcul"><Calcul /></Shell>} />
       <Route path="/rapidite" element={<Shell title="Rapidité au clic" game="rapidite"><Rapidite /></Shell>} />
+      <Route path="/feu-vert" element={<Shell title="Feu vert" game="feuvert"><FeuVert /></Shell>} />
+      <Route path="/ordre" element={<Shell title="Ordre éclair" game="ordre"><Ordre /></Shell>} />
       <Route path="/dames" element={<Shell title="Dames éclair" game="dames"><Dames /></Shell>} />
       <Route path="/culture" element={<Shell title="Culture générale" game="culture"><Culture /></Shell>} />
       <Route path="/philo" element={<Shell title="Citations philo" game="philo"><Philo /></Shell>} />

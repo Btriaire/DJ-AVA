@@ -54,6 +54,8 @@ const SECTIONS: Section[] = [
     title: "Vitesse & réflexes",
     items: [
       { to: "/rapidite", icon: "target", title: "Rapidité au clic", desc: "Touchez les cibles le plus vite !", game: "rapidite" },
+      { to: "/feu-vert", icon: "flash", title: "Feu vert", desc: "Touchez au vert, résistez au rouge", game: "feuvert" },
+      { to: "/ordre", icon: "order", title: "Ordre éclair", desc: "Touchez les nombres 1 à 25 dans l'ordre", game: "ordre" },
     ],
   },
   {
