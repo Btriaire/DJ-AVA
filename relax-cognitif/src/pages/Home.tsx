@@ -41,6 +41,7 @@ const SECTIONS: Section[] = [
     title: "Mémoire & observation",
     items: [
       { to: "/memory", icon: "memory", title: "Paires de mémoire", desc: "Retrouvez les paires", game: "memory" },
+      { to: "/simon", icon: "flower", title: "Suite lumineuse", desc: "Mémorisez et répétez la suite de pétales", game: "simon" },
       { to: "/couleurs", icon: "palette", title: "De toutes les couleurs", desc: "Quiz couleurs et expressions", game: "couleurs" },
       { to: "/culture", icon: "globe", title: "Culture générale", desc: "Capitales, rois, guerres, présidents…", game: "culture" },
       { to: "/formes", icon: "shapes", title: "Intrus des formes", desc: "Trouvez la forme différente", game: "formes" },
@@ -56,6 +57,7 @@ const SECTIONS: Section[] = [
       { to: "/rapidite", icon: "target", title: "Rapidité au clic", desc: "Touchez les cibles le plus vite !", game: "rapidite" },
       { to: "/feu-vert", icon: "flash", title: "Feu vert", desc: "Touchez au vert, résistez au rouge", game: "feuvert" },
       { to: "/ordre", icon: "order", title: "Ordre éclair", desc: "Touchez les nombres 1 à 25 dans l'ordre", game: "ordre" },
+      { to: "/stroop", icon: "palette", title: "Couleurs trompeuses", desc: "La couleur de l'encre, pas le mot !", game: "stroop" },
     ],
   },
   {

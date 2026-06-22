@@ -16,6 +16,8 @@ export type GameId =
   | "rapidite"
   | "feuvert"
   | "ordre"
+  | "stroop"
+  | "simon"
   | "dames"
   | "culture"
   | "philo"
@@ -40,6 +42,8 @@ export const GAME_LABELS: Record<GameId, string> = {
   rapidite: "Rapidité au clic",
   feuvert: "Feu vert",
   ordre: "Ordre éclair",
+  stroop: "Couleurs trompeuses",
+  simon: "Suite lumineuse",
   dames: "Dames éclair",
   culture: "Culture générale",
   philo: "Citations philo",
@@ -64,6 +68,8 @@ const GAME_IDS: GameId[] = [
   "rapidite",
   "feuvert",
   "ordre",
+  "stroop",
+  "simon",
   "dames",
   "culture",
   "philo",

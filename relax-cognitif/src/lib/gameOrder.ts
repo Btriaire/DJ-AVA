@@ -15,6 +15,7 @@ export const GAME_ORDER: GameLink[] = [
   { game: "puissance4", to: "/puissance4", title: "Puissance 4" },
   // Mémoire & observation
   { game: "memory", to: "/memory", title: "Paires de mémoire" },
+  { game: "simon", to: "/simon", title: "Suite lumineuse" },
   { game: "couleurs", to: "/couleurs", title: "De toutes les couleurs" },
   { game: "culture", to: "/culture", title: "Culture générale" },
   { game: "formes", to: "/formes", title: "Intrus des formes" },
@@ -26,6 +27,7 @@ export const GAME_ORDER: GameLink[] = [
   { game: "rapidite", to: "/rapidite", title: "Rapidité au clic" },
   { game: "feuvert", to: "/feu-vert", title: "Feu vert" },
   { game: "ordre", to: "/ordre", title: "Ordre éclair" },
+  { game: "stroop", to: "/stroop", title: "Couleurs trompeuses" },
   // Formes & patience
   { game: "tangram", to: "/tangram", title: "Tangram" },
   { game: "puzzle", to: "/puzzle", title: "Puzzle" },

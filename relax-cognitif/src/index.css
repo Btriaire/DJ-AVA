@@ -1997,6 +1997,66 @@ body {
   75% { transform: translateX(4px); }
 }
 
+/* ── Couleurs trompeuses (Stroop) ──────────────────────────────── */
+.stroop-demo { font-size: 40px; font-weight: 800; letter-spacing: 0.04em; }
+.stroop-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: clamp(130px, 26vh, 190px);
+  margin: 6px 0;
+  border-radius: 22px;
+  background: var(--surface);
+  border: 1.5px solid var(--surface-alt);
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.stroop-stage.flash-ok { border-color: var(--accent); background: var(--accent-soft); }
+.stroop-stage.flash-no { border-color: var(--danger); background: #f6e2dc; }
+.stroop-word {
+  font-size: clamp(40px, 13vw, 64px);
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+.stroop-hint { text-align: center; font-size: 14px; color: var(--ink-soft); margin: 4px 0 12px; }
+.stroop-choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.stroop-choice {
+  padding: 16px 10px;
+  border-radius: 14px;
+  border: 1.5px solid var(--surface-alt);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.06s ease, background 0.12s ease;
+}
+.stroop-choice:active { transform: scale(0.97); background: var(--surface-alt); }
+
+/* ── Suite lumineuse (Simon) ───────────────────────────────────── */
+.simon-state {
+  margin-left: auto;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+.simon-wrap {
+  width: min(82vw, 320px);
+  margin: 10px auto 4px;
+  border-radius: 50%;
+  transition: filter 0.15s ease;
+}
+.simon-wrap.wrong { animation: simonWrong 0.4s ease; }
+.simon-svg { width: 100%; display: block; filter: drop-shadow(0 6px 14px rgba(37,55,47,0.16)); }
+@keyframes simonWrong {
+  0%, 100% { transform: scale(1); }
+  30% { transform: scale(0.96) rotate(-2deg); }
+  60% { transform: scale(0.96) rotate(2deg); }
+}
+
 /* ── Dames éclair ──────────────────────────────────────────────── */
 .dames-wrap {
   display: flex;
