@@ -5,7 +5,7 @@ type RuleDef = { icon: string; lines: string[] };
 
 const RULES: Partial<Record<string, RuleDef>> = {
   sudoku:     { icon: "sudoku",    lines: ["Remplissez la grille : chaque chiffre doit apparaître une seule fois par ligne, colonne et carré.", "Touchez une case vide, puis choisissez le chiffre.", "Utilisez les indices si vous bloquez."] },
-  memory:     { icon: "memory",    lines: ["Retournez deux cartes à la fois.", "Si elles montrent le même symbole, elles restent visibles.", "Retrouvez toutes les paires pour gagner !"] },
+  memory:     { icon: "memory",    lines: ["Mode Paires : retournez 2 cartes ; identiques, elles restent visibles.", "Mode Trios : retrouvez 3 cartes identiques d'un coup.", "Retrouvez tous les groupes pour gagner !"] },
   logique:    { icon: "logic",     lines: ["Une suite de nombres vous est présentée.", "Trouvez le motif et devinez le nombre manquant.", "Choisissez la bonne réponse parmi les 4 propositions."] },
   motscroises:{ icon: "crossword", lines: ["Lisez la définition et trouvez le mot.", "Tapez les lettres dans les cases de la grille.", "Complétez toutes les cases pour gagner !"] },
   citations:  { icon: "quote",     lines: ["Une citation célèbre avec un mot manquant vous est proposée.", "Choisissez le bon mot parmi les 4 options.", "Validez et passez à la suivante !"] },
