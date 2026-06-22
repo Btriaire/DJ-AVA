@@ -44,7 +44,7 @@ function PieceSvg({ piece, size, rotation = 0 }: { piece: Piece; size: number; r
 }
 
 /** Vignette de la figure entière (silhouette) pour le sélecteur. */
-function FigureThumb({ figIdx, size = 30 }: { figIdx: number; size?: number }) {
+function FigureThumb({ figIdx, size = 40 }: { figIdx: number; size?: number }) {
   const fig = FIGURES[figIdx];
   return (
     <svg width={size} height={size} viewBox={`-0.4 -0.4 ${fig.w + 0.8} ${fig.h + 0.8}`}>
@@ -158,10 +158,18 @@ export default function Tangram() {
     pt.x = clientX;
     pt.y = clientY;
     const loc = pt.matrixTransform(ctm.inverse());
-    const hit = fig.pieces.find(
-      (p) => !placedRef.current.includes(p.id) && pointInPolygon(loc.x, loc.y, p.points)
-    );
-    if (hit && hit.id === id) {
+    const target = fig.pieces.find((p) => p.id === id);
+    if (!target || placedRef.current.includes(id)) return;
+    // Zone de dépôt généreuse : à l'intérieur de la pièce OU assez proche de
+    // son emplacement d'origine. Chaque pièce n'a qu'une seule place, donc on
+    // n'a pas besoin d'exiger une visée au pixel près.
+    const b = bbox(target.points);
+    const cx = b.minX + b.w / 2;
+    const cy = b.minY + b.h / 2;
+    const dist = Math.hypot(loc.x - cx, loc.y - cy);
+    const tol = Math.max(b.w, b.h) * 0.7 + 0.8;
+    const near = pointInPolygon(loc.x, loc.y, target.points) || dist <= tol;
+    if (near) {
       const sym = symmetry[id] ?? 360;
       const rot = rotRef.current[id] ?? 0;
       if (rot % sym === 0) placePiece(id);

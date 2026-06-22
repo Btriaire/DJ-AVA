@@ -13,6 +13,7 @@
   --ink: #25372f;
   --ink-soft: #5d7167;
   --line: #d2ddd0;
+  --border: #d2ddd0;
   --accent: #4f9d83;
   --accent-soft: #d4e8db;
   --danger: #c46b54;
@@ -1520,19 +1521,19 @@ a {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  width: 64px;
-  padding: 7px 4px;
+  gap: 4px;
+  width: 74px;
+  padding: 8px 4px;
   background: var(--surface);
-  border: 2px solid var(--border);
+  border: 2px solid var(--line);
   border-radius: 12px;
-  color: var(--ink-soft);
+  color: var(--ink);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
-.tg-figbtn svg { color: var(--ink-soft); }
+.tg-figbtn svg { color: var(--ink); }
 .tg-figbtn.active {
   border-color: var(--accent);
   background: var(--accent-soft);
@@ -1552,7 +1553,7 @@ a {
   gap: 2px;
   padding: 8px 6px;
   background: var(--surface);
-  border: 2px solid var(--border);
+  border: 2px solid var(--line);
   border-radius: 12px;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
@@ -1913,9 +1914,9 @@ body {
   inset: 0;
   z-index: 100;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
-  padding: env(safe-area-inset-top, 16px) 16px max(env(safe-area-inset-bottom, 12px), 12px);
+  padding: max(env(safe-area-inset-top, 12px), 12px) 16px max(env(safe-area-inset-bottom, 12px), 12px);
   background: rgba(37, 55, 47, 0.42);
   backdrop-filter: blur(3px);
   animation: reward-fade 0.3s ease;
@@ -1927,19 +1928,19 @@ body {
 .reward-card {
   position: relative;
   width: min(300px, 88%);
-  max-height: min(80vh, 460px);
+  max-height: min(88vh, 480px);
   overflow-x: hidden;
   overflow-y: auto;
   text-align: center;
-  padding: 10px 16px 12px;
-  border-radius: 18px 18px 14px 14px;
+  padding: 12px 16px 14px;
+  border-radius: 18px;
   background: linear-gradient(170deg, #fffdf8 0%, #fdf3e6 55%, #fbe9d6 100%);
-  box-shadow: 0 -4px 32px rgba(37, 55, 47, 0.2);
+  box-shadow: 0 12px 40px rgba(37, 55, 47, 0.28);
   animation: reward-pop 0.38s cubic-bezier(0.18, 0.9, 0.3, 1.2);
 }
 @keyframes reward-pop {
-  from { transform: translateY(40px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
 }
 .reward-rays {
   position: absolute;
@@ -2035,10 +2036,14 @@ body {
   color: var(--ink-soft);
 }
 .reward-actions {
+  position: sticky;
+  bottom: 0;
   margin-top: 9px;
+  padding-top: 8px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  background: linear-gradient(to top, #fbe9d6 70%, rgba(251, 233, 214, 0));
 }
 .reward-btn {
   width: 100%;
