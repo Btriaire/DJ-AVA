@@ -120,7 +120,7 @@ export default function Home() {
         <span className="featured-text">
           <span className="featured-tag">Défi du jour</span>
           <span className="featured-title">Parcours de l'Esprit</span>
-          <span className="featured-desc">6 étapes variées à enchaîner</span>
+          <span className="featured-desc">5 chemins à choisir, chacun son histoire</span>
         </span>
         <span className="featured-go" aria-hidden>›</span>
       </Link>

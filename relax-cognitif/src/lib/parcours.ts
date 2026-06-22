@@ -175,3 +175,103 @@ export const STEP_LABEL: Record<Step["kind"], string> = {
   formes: "Observation",
   citation: "Mémoire des mots",
 };
+
+// Générateur d'épreuve par type, pour composer des parcours sur mesure.
+const BY_KIND: Record<Step["kind"], () => Step> = {
+  logique: logiqueStep,
+  calcul: calculStep,
+  formes: formesStep,
+  citation: citationStep,
+};
+
+// ── Parcours thématiques ───────────────────────────────────────────
+// Chaque parcours raconte une petite histoire (esthétique nature / japonisante)
+// qui justifie les facultés sollicitées et donc les types d'épreuves choisis.
+export type ParcoursTheme = {
+  id: string;
+  title: string;
+  icon: string; // nom d'icône (composant Icon)
+  blurb: string; // résumé court pour le sélecteur
+  story: string; // petite histoire d'introduction
+  faculties: string; // facultés entraînées (affiché en clair)
+  length: number;
+  kinds: Step["kind"][]; // réservoir de types d'épreuves
+};
+
+export const PARCOURS: ParcoursTheme[] = [
+  {
+    id: "jardin",
+    title: "Le Jardin du Calme",
+    icon: "leaf",
+    blurb: "Promenade variée, en douceur",
+    story:
+      "Au petit matin, vous flânez dans un jardin zen. Le gravier crisse doucement sous vos pas : un peu de tout, sans se presser, pour réveiller l'esprit en douceur.",
+    faculties: "Logique · Calcul · Observation · Mémoire",
+    length: 6,
+    kinds: ["logique", "calcul", "formes", "citation"],
+  },
+  {
+    id: "souvenirs",
+    title: "Le Sentier des Souvenirs",
+    icon: "scroll",
+    blurb: "Mots célèbres & sens du détail",
+    story:
+      "Le long du sentier de mousse, chaque pierre murmure une parole d'autrefois. Tendez l'oreille, retrouvez les mots manquants et l'objet qui ne ressemble pas aux autres.",
+    faculties: "Mémoire des mots · Observation",
+    length: 6,
+    kinds: ["citation", "formes"],
+  },
+  {
+    id: "nombres",
+    title: "Le Pont des Nombres",
+    icon: "calc",
+    blurb: "Logique & calcul mental",
+    story:
+      "Une rivière vous barre la route. Pour la franchir, posez les pierres dans le bon ordre : la suite juste, le calcul exact, et le pont se dessine sous vos pieds.",
+    faculties: "Logique · Calcul",
+    length: 6,
+    kinds: ["logique", "calcul"],
+  },
+  {
+    id: "cascade",
+    title: "La Cascade Vive",
+    icon: "target",
+    blurb: "Rapidité de l'esprit",
+    story:
+      "L'eau dévale la pente sans attendre ! Repérez l'intrus d'un coup d'œil et calculez sans hésiter pour rester dans le courant.",
+    faculties: "Vitesse de traitement · Observation · Calcul",
+    length: 8,
+    kinds: ["formes", "calcul"],
+  },
+  {
+    id: "fuji",
+    title: "L'Ascension du Mont Fuji",
+    icon: "route",
+    blurb: "Le grand défi complet",
+    story:
+      "Le sommet se mérite. Dix épreuves variées jalonnent le chemin des nuages — logique, calcul, observation et mémoire. Atteindrez-vous la cime ?",
+    faculties: "Toutes les facultés réunies",
+    length: 10,
+    kinds: ["logique", "calcul", "formes", "citation"],
+  },
+];
+
+export function getParcours(id: string): ParcoursTheme | undefined {
+  return PARCOURS.find((p) => p.id === id);
+}
+
+// Compose un parcours thématique : tire `length` épreuves dans le réservoir
+// du thème, sans répéter deux fois le même type d'affilée.
+export function buildThemedParcours(theme: ParcoursTheme): Step[] {
+  const steps: Step[] = [];
+  let lastKind = "";
+  for (let i = 0; i < theme.length; i++) {
+    let kind: Step["kind"];
+    do {
+      kind = theme.kinds[rnd(0, theme.kinds.length - 1)];
+    } while (kind === lastKind && theme.kinds.length > 1);
+    lastKind = kind;
+    steps.push(BY_KIND[kind]());
+  }
+  return steps;
+}

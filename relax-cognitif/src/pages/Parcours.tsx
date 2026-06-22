@@ -3,7 +3,14 @@ import { useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import Medal from "../components/Medal";
 import Chrono from "../components/Chrono";
-import { buildParcours, STEP_LABEL, type Step } from "../lib/parcours";
+import {
+  buildThemedParcours,
+  getParcours,
+  PARCOURS,
+  STEP_LABEL,
+  type ParcoursTheme,
+  type Step,
+} from "../lib/parcours";
 import { randomQuote } from "../lib/memoryQuotes";
 import {
   getSessions,
@@ -12,19 +19,95 @@ import {
   successCount,
 } from "../lib/store";
 
-const LENGTH = 6;
-
 export default function Parcours() {
   const navigate = useNavigate();
+  const [themeId, setThemeId] = useState<string | null>(null);
+  const theme = themeId ? getParcours(themeId) ?? null : null;
+
+  if (!theme) {
+    return <ParcoursSelect onPick={setThemeId} onHome={() => navigate("/")} />;
+  }
+  return (
+    <ParcoursRun
+      theme={theme}
+      onHome={() => navigate("/")}
+      onOther={() => setThemeId(null)}
+    />
+  );
+}
+
+function ParcoursSelect({
+  onPick,
+  onHome,
+}: {
+  onPick: (id: string) => void;
+  onHome: () => void;
+}) {
+  const sessions = getSessions();
+  const tier = medalTier(successCount("parcours", sessions));
+  return (
+    <div className="app">
+      <div className="topbar">
+        <button className="back" onClick={onHome} aria-label="Retour à l'accueil">
+          ‹ Accueil
+        </button>
+        <h1>Parcours de l'Esprit</h1>
+      </div>
+
+      <div className="parc-intro">
+        <span className="parc-intro-icon" aria-hidden>
+          <Icon name="route" size={28} />
+        </span>
+        <p>
+          Un parcours enchaîne plusieurs petites épreuves variées, comme une promenade.
+          Chaque chemin a son histoire et entraîne des facultés différentes.
+          {tier !== "none" && " "}
+        </p>
+        {tier !== "none" && (
+          <span className="parc-intro-medal"><Medal tier={tier} size={26} /></span>
+        )}
+      </div>
+
+      <div className="parc-list">
+        {PARCOURS.map((p) => (
+          <button key={p.id} className="parc-card" onClick={() => onPick(p.id)}>
+            <span className="parc-card-icon" aria-hidden>
+              <Icon name={p.icon} size={28} />
+            </span>
+            <span className="parc-card-text">
+              <span className="parc-card-title">{p.title}</span>
+              <span className="parc-card-blurb">{p.blurb}</span>
+              <span className="parc-card-meta">
+                {p.length} étapes · {p.faculties}
+              </span>
+            </span>
+            <span className="parc-card-go" aria-hidden>›</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ParcoursRun({
+  theme,
+  onHome,
+  onOther,
+}: {
+  theme: ParcoursTheme;
+  onHome: () => void;
+  onOther: () => void;
+}) {
   const [seed, setSeed] = useState(0);
-  const steps = useMemo(() => buildParcours(LENGTH), [seed]);
+  const steps = useMemo(() => buildThemedParcours(theme), [theme, seed]);
 
   const [idx, setIdx] = useState(0);
   const [picked, setPicked] = useState<number | string | null>(null);
   const [results, setResults] = useState<boolean[]>([]);
   const [logged, setLogged] = useState(false);
+  const [showStory, setShowStory] = useState(true);
 
-  const key = String(seed);
+  const key = `${theme.id}-${seed}`;
   const [rk, setRk] = useState(key);
   if (rk !== key) {
     setRk(key);
@@ -32,6 +115,7 @@ export default function Parcours() {
     setPicked(null);
     setResults([]);
     setLogged(false);
+    setShowStory(true);
   }
 
   const finished = idx >= steps.length;
@@ -54,28 +138,51 @@ export default function Parcours() {
     setLogged(true);
     logSession({
       game: "parcours",
-      level: `${score}/${LENGTH}`,
-      outcome: score >= Math.ceil(LENGTH / 2) ? "success" : "failure",
+      level: `${theme.id} ${score}/${steps.length}`,
+      outcome: score >= Math.ceil(steps.length / 2) ? "success" : "failure",
       durationMs: 0,
       hintsUsed: 0,
       at: Date.now(),
     });
   }
 
+  if (showStory && !finished) {
+    return (
+      <div className="app">
+        <div className="topbar">
+          <button className="back" onClick={onOther} aria-label="Choisir un autre parcours">
+            ‹ Parcours
+          </button>
+          <h1>{theme.title}</h1>
+        </div>
+        <div className="parc-story">
+          <span className="parc-story-icon" aria-hidden>
+            <Icon name={theme.icon} size={40} />
+          </span>
+          <p className="parc-story-text">{theme.story}</p>
+          <p className="parc-story-meta">{theme.length} étapes · {theme.faculties}</p>
+          <button className="btn" onClick={() => setShowStory(false)}>
+            En route !
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       <div className="topbar">
-        <button className="back" onClick={() => navigate("/")} aria-label="Retour à l'accueil">
-          ‹ Accueil
+        <button className="back" onClick={onOther} aria-label="Choisir un autre parcours">
+          ‹ Parcours
         </button>
-        <h1>Parcours de l'Esprit</h1>
+        <h1>{theme.title}</h1>
       </div>
 
       <Trail steps={steps} idx={idx} results={results} />
 
       {!finished && (
         <div className="chrono-row">
-          <Chrono running={picked == null} resetKey={`${seed}-${idx}`} />
+          <Chrono running={picked == null} resetKey={`${key}-${idx}`} />
         </div>
       )}
 
@@ -103,7 +210,8 @@ export default function Parcours() {
           length={steps.length}
           quote={quote}
           onRestart={() => setSeed((s) => s + 1)}
-          onHome={() => navigate("/")}
+          onHome={onHome}
+          onOther={onOther}
         />
       )}
     </div>
@@ -263,12 +371,14 @@ function Result({
   quote,
   onRestart,
   onHome,
+  onOther,
 }: {
   score: number;
   length: number;
   quote: { text: string; author: string };
   onRestart: () => void;
   onHome: () => void;
+  onOther: () => void;
 }) {
   const count = successCount("parcours", getSessions());
   const tier = medalTier(count);
@@ -292,7 +402,10 @@ function Result({
         <p className="lcd-author">— {quote.author}</p>
         <div className="parc-actions">
           <button className="btn" onClick={onRestart}>
-            Nouveau parcours
+            Recommencer
+          </button>
+          <button className="btn btn-ghost" onClick={onOther}>
+            Autre parcours
           </button>
           <button className="btn btn-ghost" onClick={onHome}>
             Accueil
