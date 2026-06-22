@@ -1640,6 +1640,101 @@ a {
   margin: 0 0 14px;
   color: var(--ink);
 }
+
+/* ── Score cognitif indicatif (admin) ─────────────────────────── */
+.med-card {
+  border-color: var(--calm);
+}
+.med-disclaimer {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  background: var(--surface-alt);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin: 0 0 16px;
+}
+.med-global {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.med-global-main {
+  display: flex;
+  flex-direction: column;
+}
+.med-global-val {
+  font-family: var(--font-title);
+  font-size: 38px;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+}
+.med-global-max {
+  font-size: 18px;
+  color: var(--ink-soft);
+}
+.med-global-lbl {
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin-top: 4px;
+}
+.med-conf {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.med-conf-faible { background: #f6e1da; color: var(--danger); }
+.med-conf-moyenne { background: #f6ecd6; color: #a9772a; }
+.med-conf-bonne { background: var(--accent-soft); color: var(--accent); }
+.med-domains {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.med-domain-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.med-domain-name {
+  font-weight: 700;
+  color: var(--ink);
+}
+.med-domain-score {
+  font-family: var(--font-title);
+  font-weight: 700;
+  color: var(--accent);
+}
+.med-domain-bar {
+  height: 8px;
+  background: var(--surface-alt);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 5px 0;
+}
+.med-domain-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--calm), var(--accent));
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+.med-domain-foot {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.med-note {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin: 16px 0 0;
+  line-height: 1.5;
+}
 .cfg-label {
   display: block;
   font-size: 15px;

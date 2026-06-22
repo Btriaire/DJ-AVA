@@ -13,6 +13,7 @@ import {
 } from "../lib/store";
 import { CROSSWORDS } from "../lib/crosswords";
 import { SIZES } from "../lib/sudoku";
+import { cognitiveScore, type Trend } from "../lib/cognitiveScore";
 
 const AUTH_KEY = "ec.admin";
 const LEVELS: Difficulty[] = ["facile", "moyen", "difficile"];
@@ -65,6 +66,73 @@ function Curve({ rates }: { rates: number[] }) {
       <line x1={pad} y1={h - pad} x2={w - pad} y2={h - pad} className="curve-axis" />
       <polyline points={pts} className="curve-line" />
     </svg>
+  );
+}
+
+const TREND_LABEL: Record<Trend, string> = {
+  up: "▲ en progrès",
+  flat: "▬ stable",
+  down: "▼ en baisse",
+  na: "· peu de données",
+};
+
+const CONF_LABEL: Record<"faible" | "moyenne" | "bonne", string> = {
+  faible: "Fiabilité faible",
+  moyenne: "Fiabilité moyenne",
+  bonne: "Fiabilité bonne",
+};
+
+function MedicalScore() {
+  const sessions = useMemo(() => getSessions(), []);
+  const cs = useMemo(() => cognitiveScore(sessions), [sessions]);
+
+  return (
+    <section className="admin-card med-card">
+      <h3>Score cognitif indicatif</h3>
+      <p className="med-disclaimer">
+        ⚠️ Estimation <strong>non médicale</strong>, à usage interne. Ne
+        constitue pas un diagnostic et ne remplace pas un test clinique
+        (MoCA, SAGE…). Heuristique inspirée du découpage par domaines
+        cognitifs et des batteries en navigateur (jsPsych, m2c2kit).
+      </p>
+
+      <div className="med-global">
+        <div className="med-global-main">
+          <span className="med-global-val">{cs.moca}<span className="med-global-max">/30</span></span>
+          <span className="med-global-lbl">Indice global ({cs.composite}/100)</span>
+        </div>
+        <span className={`med-conf med-conf-${cs.confidence}`}>{CONF_LABEL[cs.confidence]}</span>
+      </div>
+
+      {cs.totalPlays < 5 ? (
+        <p className="page-sub">Trop peu de parties pour estimer un score fiable.</p>
+      ) : (
+        <div className="med-domains">
+          {cs.domains.map((d) => (
+            <div className="med-domain" key={d.domain.id}>
+              <div className="med-domain-head">
+                <span className="med-domain-name">{d.domain.label}</span>
+                <span className="med-domain-score">{d.plays ? d.score : "—"}</span>
+              </div>
+              <div className="med-domain-bar">
+                <div
+                  className="med-domain-fill"
+                  style={{ width: `${d.plays ? d.score : 0}%` }}
+                />
+              </div>
+              <div className="med-domain-foot">
+                <span>{d.domain.ref}</span>
+                <span>{d.plays} partie{d.plays > 1 ? "s" : ""} · {TREND_LABEL[d.trend]}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="med-note">
+        Couverture : {cs.coverage}/5 domaines · {cs.totalPlays} parties analysées.
+        Plus le joueur varie les jeux et joue régulièrement, plus l'estimation gagne en fiabilité.
+      </p>
+    </section>
   );
 }
 
@@ -209,6 +277,7 @@ export default function Admin() {
       </section>
 
       <div key={version}>
+        <MedicalScore />
         <Dashboard />
       </div>
 
