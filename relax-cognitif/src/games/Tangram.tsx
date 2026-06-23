@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   bbox,
   FIGURES,
-  pointInPolygon,
   rotatePoints,
   rotationalSymmetry,
   toPath,
@@ -85,19 +84,11 @@ export default function Tangram() {
   const [placed, setPlaced] = useState<string[]>([]);
   const [rotations, setRotations] = useState<Record<string, number>>(() => makeRotations(fig.pieces, level));
   const [selId, setSelId] = useState<string | null>(null);
-  const [drag, setDrag] = useState<{ id: string; x: number; y: number } | null>(null);
   const [wrongFlash, setWrongFlash] = useState(false);
   const [turnHint, setTurnHint] = useState(false);
+  const [pickHint, setPickHint] = useState(false);
   const [abandoned, setAbandoned] = useState(false);
   const session = useGameSession("tangram", `${fig.title}-${level}`);
-
-  const svgRef = useRef<SVGSVGElement>(null);
-  const placedRef = useRef(placed);
-  placedRef.current = placed;
-  const dragRef = useRef(drag);
-  dragRef.current = drag;
-  const rotRef = useRef(rotations);
-  rotRef.current = rotations;
 
   const tray = useMemo(() => shuffle(fig.pieces), [fig, idx]);
   const symmetry = useMemo(
@@ -112,7 +103,6 @@ export default function Tangram() {
     setPlaced([]);
     setRotations(makeRotations(fig.pieces, level));
     setSelId(null);
-    setDrag(null);
     setAbandoned(false);
     session.reset();
   }
@@ -132,97 +122,46 @@ export default function Tangram() {
 
   function flashTurn() {
     setTurnHint(true);
-    setTimeout(() => setTurnHint(false), 1200);
+    setTimeout(() => setTurnHint(false), 1400);
+  }
+
+  function flashPick() {
+    setPickHint(true);
+    setTimeout(() => setPickHint(false), 1200);
   }
 
   function rotate(id: string) {
-    if (won || abandoned || placedRef.current.includes(id)) return;
+    if (won || abandoned || placed.includes(id)) return;
     setRotations((r) => ({ ...r, [id]: ((r[id] ?? 0) + 45) % 360 }));
     setSelId(id);
+  }
+
+  function selectPiece(id: string) {
+    if (won || abandoned || placed.includes(id)) return;
+    setSelId((cur) => (cur === id ? null : id));
   }
 
   function placePiece(id: string) {
     setPlaced((p) => [...p, id]);
     setRotations((r) => ({ ...r, [id]: 0 }));
-    if (selId === id) setSelId(null);
+    setSelId(null);
   }
 
-  // Emplacement vide le plus proche du point de dépôt (pour caler la pièce
-  // même si la visée est approximative).
-  function nearestUnplaced(x: number, y: number): string | null {
-    let best: string | null = null;
-    let bestD = Infinity;
-    for (const p of fig.pieces) {
-      if (placedRef.current.includes(p.id)) continue;
-      if (pointInPolygon(x, y, p.points)) return p.id; // pile dedans
-      const b = bbox(p.points);
-      const d = Math.hypot(x - (b.minX + b.w / 2), y - (b.minY + b.h / 2));
-      if (d < bestD) {
-        bestD = d;
-        best = p.id;
-      }
+  // Toucher un emplacement de la silhouette.
+  function tapSlot(slotId: string) {
+    if (won || abandoned || placed.includes(slotId)) return;
+    if (!selId) {
+      flashPick(); // aucune pièce choisie : on rappelle le geste
+      return;
     }
-    return best;
-  }
-
-  function drop(clientX: number, clientY: number) {
-    const id = dragRef.current?.id;
-    setDrag(null);
-    if (!id || won || abandoned) return;
-    const svg = svgRef.current;
-    const ctm = svg?.getScreenCTM();
-    if (!svg || !ctm) return;
-    const pt = svg.createSVGPoint();
-    pt.x = clientX;
-    pt.y = clientY;
-    const loc = pt.matrixTransform(ctm.inverse());
-    const target = fig.pieces.find((p) => p.id === id);
-    if (!target || placedRef.current.includes(id)) return;
-    // Dépôt très tolérant : on accepte si le point est dans la pièce, OU
-    // proche de son emplacement (tolérance large, à l'échelle de la figure),
-    // OU si l'on a simplement lâché sur la figure et que cette pièce est
-    // l'emplacement vide le plus proche. Pas besoin de viser au pixel près.
-    const b = bbox(target.points);
-    const cx = b.minX + b.w / 2;
-    const cy = b.minY + b.h / 2;
-    const dist = Math.hypot(loc.x - cx, loc.y - cy);
-    const tol = Math.max(b.w, b.h) * 0.8 + Math.max(fig.w, fig.h) * 0.12 + 1.0;
-    const onFigure =
-      loc.x >= -1 && loc.y >= -1 && loc.x <= fig.w + 1 && loc.y <= fig.h + 1;
-    const near =
-      pointInPolygon(loc.x, loc.y, target.points) ||
-      dist <= tol ||
-      (onFigure && nearestUnplaced(loc.x, loc.y) === id);
-    if (near) {
-      const sym = symmetry[id] ?? 360;
-      const rot = rotRef.current[id] ?? 0;
-      if (rot % sym === 0) placePiece(id);
-      else flashTurn(); // bonne zone, mauvaise orientation
-    } else {
-      flashWrong();
+    if (selId !== slotId) {
+      flashWrong(); // ce n'est pas la place de la pièce choisie
+      return;
     }
-  }
-
-  // suit le doigt / la souris pendant le glisser
-  useEffect(() => {
-    if (!drag) return;
-    const move = (e: PointerEvent) =>
-      setDrag((d) => (d ? { ...d, x: e.clientX, y: e.clientY } : d));
-    const up = (e: PointerEvent) => drop(e.clientX, e.clientY);
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    return () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drag?.id]);
-
-  function startDrag(piece: Piece, e: React.PointerEvent) {
-    if (won || abandoned) return;
-    e.preventDefault();
-    setSelId(piece.id);
-    setDrag({ id: piece.id, x: e.clientX, y: e.clientY });
+    const sym = symmetry[slotId] ?? 360;
+    const rot = rotations[slotId] ?? 0;
+    if (rot % sym === 0) placePiece(slotId);
+    else flashTurn(); // bonne place, mauvaise orientation
   }
 
   function giveHint() {
@@ -237,7 +176,6 @@ export default function Tangram() {
     setAbandoned(true);
   }
 
-  const dragPiece = drag ? fig.pieces.find((p) => p.id === drag.id) : null;
   const showGuides = level === "facile";
 
   return (
@@ -275,10 +213,14 @@ export default function Tangram() {
           : won
           ? "Bravo, figure reconstituée !"
           : turnHint
-          ? "Bonne place — tournez la pièce pour l'emboîter !"
-          : level === "facile"
-          ? "Glissez chaque pièce vers son emplacement."
-          : "Tournez (double-clic ou ⟳) puis glissez chaque pièce dans la silhouette."}
+          ? "Bonne place — tournez la pièce (⟳) pour l'emboîter !"
+          : pickHint
+          ? "Touchez d'abord une pièce en bas, puis sa place."
+          : selId
+          ? showGuides
+            ? "Touchez l'emplacement en pointillés qui lui correspond."
+            : "Touchez la zone où va la pièce (tournez-la si besoin)."
+          : "Touchez une pièce, puis l'endroit où elle va."}
       </p>
 
       <div className="chrono-row">
@@ -296,9 +238,9 @@ export default function Tangram() {
         abandoned={abandoned}
       />
 
-      <div className={`tangram-board ${wrongFlash ? "flash" : ""} ${turnHint ? "turn" : ""}`}>
-        <svg ref={svgRef} viewBox={`-0.4 -0.4 ${fig.w + 0.8} ${fig.h + 0.8}`}>
-          {/* Silhouette de la figure à reconstituer (sans repères internes) */}
+      <div className={`tangram-board tap-mode ${wrongFlash ? "flash" : ""} ${turnHint ? "turn" : ""}`}>
+        <svg viewBox={`-0.4 -0.4 ${fig.w + 0.8} ${fig.h + 0.8}`}>
+          {/* Silhouette de la figure à reconstituer */}
           {fig.pieces.map((p) => (
             <polygon
               key={`sil-${p.id}`}
@@ -308,19 +250,6 @@ export default function Tangram() {
               stroke="none"
             />
           ))}
-          {/* Repères de découpe : uniquement en mode facile */}
-          {showGuides &&
-            fig.pieces.map((p) => (
-              <polygon
-                key={`out-${p.id}`}
-                points={toPath(p.points)}
-                fill="none"
-                stroke="var(--accent)"
-                strokeWidth={0.07}
-                strokeDasharray="0.35 0.3"
-                strokeOpacity={0.9}
-              />
-            ))}
           {/* Pièces déjà placées (couleur réelle) */}
           {fig.pieces.filter((p) => placed.includes(p.id)).map((p) => (
             <polygon
@@ -333,14 +262,21 @@ export default function Tangram() {
               className="slot placed"
             />
           ))}
-          {/* Repère de la cible en cours de glisser (facile uniquement) */}
-          {showGuides && drag && !placed.includes(drag.id) && (
-            <polygon
-              points={toPath(fig.pieces.find((p) => p.id === drag.id)!.points)}
-              className="slot target"
-              fill="transparent"
-            />
-          )}
+          {/* Emplacements vides : zones tactiles. En facile, contour en pointillés.
+              Quand une pièce est choisie, son emplacement correct est mis en avant. */}
+          {fig.pieces
+            .filter((p) => !placed.includes(p.id))
+            .map((p) => {
+              const isTarget = selId === p.id;
+              return (
+                <polygon
+                  key={`slot-${p.id}`}
+                  points={toPath(p.points)}
+                  className={`tg-slot ${showGuides ? "guide" : ""} ${isTarget ? "target" : ""}`}
+                  onClick={() => tapSlot(p.id)}
+                />
+              );
+            })}
         </svg>
       </div>
 
@@ -352,17 +288,16 @@ export default function Tangram() {
               <div
                 key={p.id}
                 data-id={p.id}
-                className={`tray-piece ${drag?.id === p.id ? "dragging" : ""} ${selId === p.id ? "sel" : ""}`}
-                onPointerDown={(e) => startDrag(p, e)}
+                className={`tray-piece ${selId === p.id ? "sel" : ""}`}
+                onClick={() => selectPiece(p.id)}
                 onDoubleClick={() => rotate(p.id)}
-                aria-label="pièce à glisser"
+                aria-label="pièce à placer"
               >
                 <PieceSvg piece={p} size={56} rotation={rotations[p.id] ?? 0} />
                 {needTurn && (
                   <button
                     className="tray-rotate"
                     aria-label="Tourner la pièce"
-                    onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
                       e.stopPropagation();
                       rotate(p.id);
@@ -374,12 +309,6 @@ export default function Tangram() {
               </div>
             );
           })}
-        </div>
-      )}
-
-      {drag && dragPiece && (
-        <div className="tangram-ghost" style={{ left: drag.x, top: drag.y }}>
-          <PieceSvg piece={dragPiece} size={64} rotation={rotations[dragPiece.id] ?? 0} />
         </div>
       )}
     </div>

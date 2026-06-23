@@ -1449,6 +1449,27 @@ a {
   stroke: none;
   stroke-dasharray: none;
 }
+/* Emplacements tactiles (mode « toucher pour placer ») */
+.tg-slot {
+  fill: transparent; /* transparent capte le toucher, contrairement à none */
+  stroke: none;
+  cursor: pointer;
+}
+.tg-slot.guide {
+  stroke: var(--accent);
+  stroke-width: 0.07;
+  stroke-dasharray: 0.35 0.3;
+  stroke-opacity: 0.9;
+  stroke-linejoin: round;
+}
+.tg-slot.target {
+  fill: var(--accent-soft);
+  fill-opacity: 0.55;
+  stroke: var(--accent);
+  stroke-width: 0.12;
+  stroke-dasharray: none;
+  stroke-linejoin: round;
+}
 .tray {
   display: flex;
   flex-wrap: wrap;

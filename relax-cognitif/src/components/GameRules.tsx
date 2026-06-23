@@ -9,7 +9,7 @@ const RULES: Partial<Record<string, RuleDef>> = {
   logique:    { icon: "logic",     lines: ["Une suite de nombres vous est présentée.", "Trouvez le motif et devinez le nombre manquant.", "Choisissez la bonne réponse parmi les 4 propositions."] },
   motscroises:{ icon: "crossword", lines: ["Lisez la définition et trouvez le mot.", "Tapez les lettres dans les cases de la grille.", "Complétez toutes les cases pour gagner !"] },
   citations:  { icon: "quote",     lines: ["Une citation célèbre avec un mot manquant vous est proposée.", "Choisissez le bon mot parmi les 4 options.", "Validez et passez à la suivante !"] },
-  tangram:    { icon: "tangram",   lines: ["Reconstituez la silhouette en plaçant les pièces.", "Faites glisser et tournez chaque pièce.", "Toutes les pièces doivent couvrir exactement la silhouette."] },
+  tangram:    { icon: "tangram",   lines: ["Touchez une pièce en bas pour la choisir.", "Puis touchez l'emplacement de la silhouette où elle va.", "Aux niveaux supérieurs, tournez la pièce avec ⟳ avant de la poser."] },
   formes:     { icon: "shapes",    lines: ["Parmi les formes affichées, l'une est différente des autres.", "Observez la couleur, la forme ou la taille.", "Touchez l'intrus pour gagner !"] },
   mahjong:    { icon: "mahjong",   lines: ["Retirez les tuiles par paires identiques.", "Une tuile est jouable si elle est libre sur au moins un côté.", "Videz tout le plateau pour gagner !"] },
   puzzle:     { icon: "puzzle",    lines: ["Les pièces de l'image sont mélangées.", "Touchez une pièce puis sa destination pour l'échanger.", "Reconstituez l'image complète pour gagner !"] },
