@@ -13,6 +13,8 @@ export const GAME_ORDER: GameLink[] = [
   { game: "mahjong", to: "/mahjong", title: "Mahjong" },
   { game: "dames", to: "/dames", title: "Dames éclair" },
   { game: "puissance4", to: "/puissance4", title: "Puissance 4" },
+  { game: "pyramide", to: "/pyramide", title: "La Pyramide" },
+  { game: "plusmoins", to: "/plus-moins", title: "Plus ou moins" },
   // Mémoire & observation
   { game: "memory", to: "/memory", title: "Paires de mémoire" },
   { game: "simon", to: "/simon", title: "Suite lumineuse" },

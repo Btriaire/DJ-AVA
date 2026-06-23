@@ -120,7 +120,7 @@ const FAMILIES: { id: string; label: string; games: GameId[]; parcours: string; 
   {
     id: "raisonnement",
     label: "Logique & calcul",
-    games: ["sudoku", "logique", "calcul", "dames", "puissance4", "mahjong"],
+    games: ["sudoku", "logique", "calcul", "dames", "puissance4", "mahjong", "pyramide", "plusmoins"],
     parcours: "nombres",
     reason: "pour muscler votre logique et votre calcul mental",
   },

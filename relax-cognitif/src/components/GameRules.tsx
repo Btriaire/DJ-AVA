@@ -26,6 +26,8 @@ const RULES: Partial<Record<string, RuleDef>> = {
   motsmeles:  { icon: "grid",      lines: ["Des mots d'un même thème sont cachés dans la grille.", "Touchez les lettres une à une pour tracer un mot (toutes directions).", "Retrouvez tous les mots de la liste pour gagner !"] },
   anagrammes: { icon: "letters",   lines: ["Les lettres d'un mot sont mélangées.", "Touchez les lettres pour les placer dans le bon ordre.", "Aidez-vous de la définition et des indices si besoin !"] },
   motmystere: { icon: "bulb",      lines: ["Devinez le mot caché ; la 1re lettre est donnée.", "Tapez un mot puis « Entrée » : vert = bien placé, orangé = mal placé, gris = absent.", "6 essais. L'indice révèle la définition du mot !"] },
+  pyramide:   { icon: "cards",     lines: ["Touchez deux cartes libres dont la somme fait 13 pour les retirer.", "As = 1, Valet = 11, Dame = 12, Roi = 13 (le Roi se retire seul).", "Piochez si besoin, puis dégagez toute la pyramide !"] },
+  plusmoins:  { icon: "hilo",      lines: ["Une carte est face visible. Devinez la suivante.", "Annoncez si elle sera plus haute ou plus basse (As = 1, Roi = 13).", "Enchaînez les bonnes réponses sans vous tromper !"] },
   puissance4: { icon: "connect4",  lines: ["Vous jouez les jetons rouges contre l'ordinateur.", "Touchez une colonne pour y laisser tomber un jeton.", "Alignez 4 jetons (ligne, colonne ou diagonale) pour gagner !"] },
 };
 

@@ -35,6 +35,8 @@ const SECTIONS: Section[] = [
       { to: "/mahjong", icon: "mahjong", title: "Mahjong", desc: "Retirez les paires libres", game: "mahjong" },
       { to: "/dames", icon: "dames", title: "Dames éclair", desc: "Affrontez l'IA sur mini-plateau", game: "dames" },
       { to: "/puissance4", icon: "connect4", title: "Puissance 4", desc: "Alignez 4 jetons contre l'IA", game: "puissance4" },
+      { to: "/pyramide", icon: "cards", title: "La Pyramide", desc: "Associez les cartes qui font 13", game: "pyramide" },
+      { to: "/plus-moins", icon: "hilo", title: "Plus ou moins", desc: "Plus haute ou plus basse ?", game: "plusmoins" },
     ],
   },
   {

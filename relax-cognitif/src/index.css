@@ -1611,6 +1611,204 @@ a {
   line-height: 1.2;
 }
 
+/* ---------- Cartes à jouer (Pyramide, Plus ou moins) ---------- */
+.pcard {
+  position: relative;
+  background: var(--surface);
+  border: 1.5px solid var(--border, var(--line));
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  box-sizing: border-box;
+  display: block;
+  user-select: none;
+  font-family: var(--font-title, Georgia, serif);
+  overflow: hidden;
+}
+.pcard.tappable { cursor: pointer; }
+.pcard.red { color: var(--warm, #c0563f); }
+.pcard.black { color: var(--ink, #25372f); }
+.pcard.dim {
+  filter: grayscale(0.25) brightness(0.97);
+  opacity: 0.82;
+}
+.pcard.sel {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow);
+  transform: translateY(-3px);
+}
+.pcard-corner {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+  font-weight: 700;
+}
+.pcard-corner.tl { top: 0.2em; left: 0.28em; }
+.pcard-corner.br { bottom: 0.2em; right: 0.28em; transform: rotate(180deg); }
+.pcard-corner { font-size: 0.8em; }
+.pcard-rank { font-size: 1em; }
+.pcard-suit { font-size: 0.86em; }
+/* La taille de police de base est fixée en ligne, proportionnelle à la largeur. */
+.pcard-pip {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.7em;
+}
+.pcard.back {
+  background:
+    repeating-linear-gradient(45deg, var(--accent-soft) 0 6px, transparent 6px 12px),
+    var(--accent);
+  border-color: var(--accent);
+}
+.pcard.back.empty {
+  background: var(--surface-alt);
+  border-style: dashed;
+  border-color: var(--line);
+  box-shadow: none;
+}
+.pcard-back-art {
+  position: absolute;
+  inset: 5px;
+  border-radius: 5px;
+  border: 1.5px solid rgba(255, 255, 255, 0.55);
+}
+
+/* ---------- La Pyramide ---------- */
+.pyr-board {
+  position: relative;
+  margin: 4px auto 14px;
+}
+.pyr-slot { position: absolute; }
+.pyr-stockrow {
+  display: flex;
+  justify-content: center;
+  gap: 28px;
+  margin: 8px auto 4px;
+}
+.pyr-pile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.pyr-pile-label {
+  font-size: 12px;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+.pyr-pile-count {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.pyr-redeal {
+  width: 52px;
+  height: calc(52px * 1.4);
+  border-radius: 8px;
+  border: 1.5px dashed var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+}
+.pyr-redeal-icon { font-size: 22px; line-height: 1; }
+.pyr-redeal-n { font-size: 13px; font-weight: 700; }
+
+/* ---------- Plus ou moins ---------- */
+.hilo-scorerow {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 10px;
+}
+.hilo-chip {
+  background: var(--surface-alt);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+.hilo-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 8px auto 16px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--surface-alt);
+  transition: background 0.2s;
+}
+.hilo-stage.fb-good { background: var(--accent-soft); }
+.hilo-stage.fb-equal { background: var(--accent-soft); }
+.hilo-stage.fb-bad { background: #f2d9d2; }
+.hilo-card-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.hilo-card-tag {
+  font-size: 11px;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+.hilo-arrow {
+  font-size: 26px;
+  color: var(--ink-soft);
+  min-width: 24px;
+  text-align: center;
+}
+.hilo-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  margin: 4px 0 10px;
+}
+.hilo-btn {
+  flex: 1;
+  max-width: 180px;
+  padding: 14px 10px;
+  border-radius: 14px;
+  border: 2px solid var(--line);
+  background: var(--surface);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+}
+.hilo-btn:active { transform: scale(0.97); }
+.hilo-btn.up { border-color: var(--accent); }
+.hilo-btn.up .hilo-btn-ico { color: var(--accent); }
+.hilo-btn.down { border-color: var(--calm); }
+.hilo-btn.down .hilo-btn-ico { color: var(--calm); }
+.hilo-btn.hint {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #fff;
+  animation: hilo-pulse 0.7s ease-in-out 2;
+}
+.hilo-btn.hint .hilo-btn-ico { color: #fff; }
+@keyframes hilo-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
 /* ---------- Intrus des formes ---------- */
 .formes-grid {
   display: grid;

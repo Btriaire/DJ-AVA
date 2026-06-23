@@ -177,6 +177,19 @@ const PATHS: Record<string, React.ReactNode> = {
       <path d="M9 16h6M8 20h8M12 12v4" />
     </>
   ),
+  cards: (
+    <>
+      <rect x="3.5" y="7" width="11" height="14" rx="2" transform="rotate(-9 9 14)" />
+      <rect x="10" y="3" width="11" height="15" rx="2" />
+      <path d="M15.5 8.8c.6-1.1 2-.6 2 .4 0 .7-1 1.5-2 2.3-1-.8-2-1.6-2-2.3 0-1 1.4-1.5 2-.4z" fill="currentColor" stroke="none" />
+    </>
+  ),
+  hilo: (
+    <>
+      <rect x="5" y="3" width="14" height="18" rx="2" />
+      <path d="M9 10.5l3-3 3 3M15 13.5l-3 3-3-3" />
+    </>
+  ),
   // Symboles du jeu de paires
   circle: <circle cx="12" cy="12" r="8" />,
   square: <rect x="5" y="5" width="14" height="14" rx="2" />,

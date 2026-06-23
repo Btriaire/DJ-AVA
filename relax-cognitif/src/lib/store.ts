@@ -22,6 +22,8 @@ export type GameId =
   | "culture"
   | "philo"
   | "motmystere"
+  | "pyramide"
+  | "plusmoins"
   | "parcours";
 export type Outcome = "success" | "failure" | "abandon";
 
@@ -49,6 +51,8 @@ export const GAME_LABELS: Record<GameId, string> = {
   culture: "Culture générale",
   philo: "Avec le Chat de...",
   motmystere: "Mot mystère",
+  pyramide: "La Pyramide",
+  plusmoins: "Plus ou moins",
   parcours: "Parcours de l'Esprit",
 };
 
@@ -76,6 +80,8 @@ const GAME_IDS: GameId[] = [
   "culture",
   "philo",
   "motmystere",
+  "pyramide",
+  "plusmoins",
   "parcours",
 ];
 

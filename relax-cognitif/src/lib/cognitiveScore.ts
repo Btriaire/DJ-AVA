@@ -46,7 +46,7 @@ export const DOMAINS: Domain[] = [
     id: "executif",
     label: "Fonctions exécutives",
     ref: "Logique & calcul",
-    games: ["logique", "calcul", "sudoku", "dames", "puissance4", "mahjong"],
+    games: ["logique", "calcul", "sudoku", "dames", "puissance4", "mahjong", "pyramide", "plusmoins"],
   },
   {
     id: "visuospatial",
