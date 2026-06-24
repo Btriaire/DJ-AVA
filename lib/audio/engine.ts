@@ -5,7 +5,9 @@ import { Sampler } from "./Sampler";
 import { Recorder } from "./Recorder";
 import { FXRack, FxName } from "./FXRack";
 import { SoundFX } from "./SoundFX";
+import { MidiManager } from "./midi";
 import { idbPutBlob, idbGetBlob, idbDelBlob } from "../library";
+import * as Tone from "tone";
 
 // Build the AudioContext tuned for the lowest practical action latency. The
 // "interactive" hint tells the browser to pick the smallest hardware buffer it
@@ -29,6 +31,7 @@ export class DJEngine {
   readonly synth: Synth;
   readonly synthSeq: StepSequencer;
   readonly sampler: Sampler;
+  readonly midi: MidiManager; // Web MIDI input → synth + sampler (Arturia MiniLab)
   readonly soundFx: SoundFX; // synthesised one-shot DJ effects (airhorn, riser…)
   readonly recorder: Recorder;
   readonly dlRecorder: Recorder; // dedicated capture for WAV download
@@ -42,6 +45,10 @@ export class DJEngine {
 
   constructor() {
     this.ctx = lowLatencyContext();
+    // Hand the shared context to Tone.js so the rack's creative effects (built on
+    // Tone nodes) live in the same graph as the native engine — one clock, one
+    // sample rate, no second context. Must run before any Tone node is created.
+    Tone.setContext(this.ctx);
     this.master = this.ctx.createGain();
     this.master.gain.value = 0.9;
 
@@ -72,6 +79,7 @@ export class DJEngine {
       (n) => this.synth.noteOff(n)
     );
     this.sampler = new Sampler(this.ctx);
+    this.midi = new MidiManager(this.synth, this.sampler);
     this.soundFx = new SoundFX(this.ctx);
     this.synth.out.connect(this.master);
     this.sampler.output.connect(this.master); // post-limiter sampler output

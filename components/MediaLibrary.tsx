@@ -88,6 +88,9 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
   const [liveA, setLiveA] = useState(false);
   const [liveB, setLiveB] = useState(false);
   const [relay, setRelay] = useState(false); // A→B→A automix relay
+  // optional per-side playlist that drives the consecutive-play queue. null =
+  // fall back to "singles filed for this deck" (the original behaviour).
+  const [queueSrc, setQueueSrc] = useState<{ A: string | null; B: string | null }>({ A: null, B: null });
   // the "affiche" — cover of the most recently loaded single, per deck
   const [active, setActive] = useState<{
     A: { name: string; art?: string } | null;
@@ -98,6 +101,8 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
   // live-mode bookkeeping (kept in refs so the interval reads fresh values)
   const dataRef = useRef(data);
   dataRef.current = data;
+  const queueSrcRef = useRef(queueSrc);
+  queueSrcRef.current = queueSrc;
   const liveIdx = useRef<{ A: number; B: number }>({ A: -1, B: -1 });
   const wasPlaying = useRef<{ A: boolean; B: boolean }>({ A: false, B: false });
   // A→B→A relay bookkeeping (refs so the watcher reads fresh values)
@@ -463,8 +468,19 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
     flash(`Playlist « ${name} » créée (${newTracks.length} titres)`);
   }
 
-  // --- LIVE: keep a deck playing through the singles filed for it ---
+  // --- LIVE: the consecutive-play queue for a deck ---
+  // If a playlist is assigned to this side, play through it IN ORDER (many
+  // titles back-to-back). Otherwise fall back to the singles filed for the deck.
   function liveQueue(side: "A" | "B"): LibTrack[] {
+    const plId = queueSrcRef.current[side];
+    if (plId) {
+      const pl = dataRef.current.playlists.find((p) => p.id === plId);
+      if (pl) {
+        const byId = new Map(dataRef.current.tracks.map((t) => [t.id, t]));
+        const q = pl.trackIds.map((id) => byId.get(id)).filter((t): t is LibTrack => !!t);
+        if (q.length) return q;
+      }
+    }
     return dataRef.current.tracks.filter((t) => t.deck === side);
   }
   async function liveAdvance(side: "A" | "B") {
@@ -500,6 +516,40 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
     } else {
       liveIdx.current[side] = -1;
       setLiveCur((c) => ({ ...c, [side]: -1 })); // stop highlighting this deck's queue
+      setQueueSrc((s) => ({ ...s, [side]: null })); // release this deck's playlist source
+    }
+  }
+
+  // --- play a chosen playlist consecutively, in order -----------------------
+  // Assigns the playlist as the deck's queue source, then (re)starts the LIVE
+  // loop so the deck rolls through every title back-to-back, looping forever.
+  function playPlaylistLive(side: "A" | "B", plId: string) {
+    const next = { ...queueSrcRef.current, [side]: plId };
+    setQueueSrc(next);
+    queueSrcRef.current = next; // make liveQueue() see it synchronously
+    if (relay) {
+      setRelay(false);
+      relayRef.current = false;
+      setRelayCur({ A: -1, B: -1 });
+    }
+    (side === "A" ? setLiveA : setLiveB)(true);
+    liveIdx.current[side] = -1;
+    liveAdvance(side); // loads + plays the playlist's first title
+    const n = liveQueue(side).length;
+    flash(`File Deck ${side} : playlist (${n} titre${n > 1 ? "s" : ""})`);
+  }
+  // Run the A→B→A relay through one playlist on both decks (long automix set).
+  function playPlaylistRelay(plId: string) {
+    const next = { A: plId, B: plId };
+    setQueueSrc(next);
+    queueSrcRef.current = next;
+    if (relay) {
+      // already running — restart so both decks reload from the playlist start
+      relayRef.current = false;
+      setRelay(false);
+      window.setTimeout(() => toggleRelay(), 80);
+    } else {
+      toggleRelay();
     }
   }
 
@@ -1095,6 +1145,39 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
                       className="hw-btn px-2 py-0.5 text-[11px] text-neutral-500"
                     >
                       Supprimer la playlist
+                    </button>
+                  </div>
+                  {/* play this whole playlist consecutively — on a deck, or as A→B→A automix */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-neutral-600">
+                      Lecture en boucle :
+                    </span>
+                    <button
+                      onClick={() => playPlaylistLive("A", activePlaylist.id)}
+                      disabled={activePlaylist.trackIds.length === 0}
+                      className={`hw-btn px-2 py-1 text-[11px] font-bold disabled:opacity-40 ${queueSrc.A === activePlaylist.id && liveA ? "hw-btn-on" : ""}`}
+                      style={{ ["--led" as string]: COLOR_A, color: queueSrc.A === activePlaylist.id && liveA ? undefined : COLOR_A }}
+                      title="Enchaîne tous les titres de la playlist sur le Deck A, en boucle"
+                    >
+                      ▶ Deck A
+                    </button>
+                    <button
+                      onClick={() => playPlaylistLive("B", activePlaylist.id)}
+                      disabled={activePlaylist.trackIds.length === 0}
+                      className={`hw-btn px-2 py-1 text-[11px] font-bold disabled:opacity-40 ${queueSrc.B === activePlaylist.id && liveB ? "hw-btn-on" : ""}`}
+                      style={{ ["--led" as string]: COLOR_B, color: queueSrc.B === activePlaylist.id && liveB ? undefined : COLOR_B }}
+                      title="Enchaîne tous les titres de la playlist sur le Deck B, en boucle"
+                    >
+                      ▶ Deck B
+                    </button>
+                    <button
+                      onClick={() => playPlaylistRelay(activePlaylist.id)}
+                      disabled={activePlaylist.trackIds.length === 0}
+                      className={`hw-btn px-2 py-1 text-[11px] font-bold disabled:opacity-40 ${relay && queueSrc.A === activePlaylist.id ? "hw-btn-on" : ""}`}
+                      style={{ ["--led" as string]: "#a78bfa", color: relay && queueSrc.A === activePlaylist.id ? undefined : "#a78bfa" }}
+                      title="Automix A→B→A : enchaîne la playlist en fondu entre les deux decks"
+                    >
+                      ⇄ Relais A→B→A
                     </button>
                   </div>
                   <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto">

@@ -10,6 +10,7 @@ interface Voice {
   sources: AudioScheduledSourceNode[];
   filter: BiquadFilterNode;
   amp: GainNode;
+  panners?: StereoPannerNode[]; // unison panners (osc voices) — opposed L/R spread
   note: number; // the keyboard note (without octave) — to re-pitch live
   shifter?: PitchShifter; // present for sample voices (keeps tempo on transpose)
   sampleT0?: number; // ctx time the sample voice started — drives the live playhead
@@ -53,6 +54,7 @@ export class Synth {
   cutoff = 2400;
   reso = 6;
   detune = 10;
+  width = 0.4; // unison stereo width: 0 = mono centred, 1 = hard L/R
   attack = 0.01;
   decay = 0.25;
   sustain = 0.6;
@@ -81,6 +83,10 @@ export class Synth {
     this.ctx = ctx;
     this.out = ctx.createGain();
     this.out.gain.value = this.glideVol;
+    // force a true stereo bus so the unison-panned voices keep their image
+    this.out.channelCount = 2;
+    this.out.channelCountMode = "explicit";
+    this.out.channelInterpretation = "speakers";
     // oscilloscope tap (parallel sink — does not alter the audio path)
     this.analyser = ctx.createAnalyser();
     this.analyser.fftSize = 2048;
@@ -104,10 +110,11 @@ export class Synth {
     this.filtLFO.start();
   }
 
-  noteOn(note: number) {
+  noteOn(note: number, velocity = 1) {
     if (this.voices.has(note)) return;
     const t = this.ctx.currentTime;
     const midi = note + this.octave * 12;
+    const peak = 0.8 * Math.max(0.05, Math.min(1, velocity)); // velocity-scaled amp
 
     const filter = this.ctx.createBiquadFilter();
     filter.type = "lowpass";
@@ -123,6 +130,7 @@ export class Synth {
     amp.connect(this.out);
 
     const sources: AudioScheduledSourceNode[] = [];
+    let panners: StereoPannerNode[] | undefined;
     let shifter: PitchShifter | undefined;
     let sampleT0: number | undefined;
     let loopS: number | undefined;
@@ -187,16 +195,25 @@ export class Synth {
       // vibrato LFO modulates both oscillators' detune
       this.vibGain.connect(o1.detune);
       this.vibGain.connect(o2.detune);
-      o1.connect(filter);
-      o2.connect(filter);
+      // unison stereo: pan the two detuned oscillators in opposite directions so
+      // the natural detune spreads across the image (width 0 = both centred)
+      const p1 = this.ctx.createStereoPanner();
+      const p2 = this.ctx.createStereoPanner();
+      p1.pan.value = -this.width;
+      p2.pan.value = this.width;
+      o1.connect(p1);
+      o2.connect(p2);
+      p1.connect(filter);
+      p2.connect(filter);
+      panners = [p1, p2];
       o1.start();
       o2.start();
       sources.push(o1, o2);
     }
 
     amp.gain.setValueAtTime(0, t);
-    amp.gain.linearRampToValueAtTime(0.8, t + this.attack);
-    amp.gain.linearRampToValueAtTime(0.8 * this.sustain, t + this.attack + this.decay);
+    amp.gain.linearRampToValueAtTime(peak, t + this.attack);
+    amp.gain.linearRampToValueAtTime(peak * this.sustain, t + this.attack + this.decay);
 
     // filter envelope: sweep the cutoff with the same ADSR shape (amount in Hz)
     if (Math.abs(this.envAmt) > 0.5) {
@@ -213,6 +230,7 @@ export class Synth {
       sources,
       filter,
       amp,
+      panners,
       note,
       shifter,
       sampleT0,
@@ -441,6 +459,7 @@ export class Synth {
     this.cutoff = 2400;
     this.reso = 6;
     this.detune = 10;
+    this.width = 0.4;
     this.attack = 0.01;
     this.decay = 0.25;
     this.sustain = 0.6;
@@ -511,6 +530,16 @@ export class Synth {
         if (s instanceof OscillatorNode) s.detune.value = (i === 1 ? v : 0) + bendCents;
       })
     );
+  }
+  // unison stereo width (0..1) — re-pans every held oscillator voice live
+  setWidth(v: number) {
+    this.width = Math.max(0, Math.min(1, v));
+    const now = this.ctx.currentTime;
+    this.voices.forEach((vo) => {
+      if (!vo.panners) return;
+      vo.panners[0]?.pan.setValueAtTime(-this.width, now);
+      vo.panners[1]?.pan.setValueAtTime(this.width, now);
+    });
   }
   // master tune (the big FREQ wheel), in semitones — re-pitches every held voice live
   setTune(semi: number) {

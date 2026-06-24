@@ -5,6 +5,7 @@ import { DJEngine, encodeWav } from "@/lib/audio/engine";
 import { idbPutBlob, idbGetBlob, idbDelBlob } from "@/lib/library";
 import { Knob } from "./Knob";
 import { WaveTrimmer } from "./WaveTrimmer";
+import { MidiButton } from "./MidiButton";
 
 // --- persistent synth-sample bank (WAV blob in IndexedDB, metadata in localStorage) ---
 const SAMPLE_BANK_KEY = "djsynth.synthsamples.v1";
@@ -125,6 +126,7 @@ export function SynthPanel({ engine }: Props) {
   const [sustain, setSustain] = useState(synth.sustain);
   const [release, setRelease] = useState(synth.release);
   const [detune, setDetune] = useState(synth.detune);
+  const [width, setWidth] = useState(synth.width);
   const [vol, setVol] = useState(synth.glideVol);
   const [tune, setTune] = useState(synth.tune);
   // --- performance modulation ---
@@ -409,6 +411,7 @@ export function SynthPanel({ engine }: Props) {
     synth.setCutoff(2400); setCutoff(2400);
     synth.setReso(6); setReso(6);
     synth.setDetune(10); setDetune(10);
+    synth.setWidth(0.4); setWidth(0.4);
     synth.attack = 0.01; setAttack(0.01);
     synth.decay = 0.25; setDecay(0.25);
     synth.sustain = 0.6; setSustain(0.6);
@@ -496,6 +499,7 @@ export function SynthPanel({ engine }: Props) {
           >
             ≣
           </button>
+          <MidiButton engine={engine} />
 
           {bankOpen && (
             <div className="absolute left-full top-0 z-30 ml-1 w-52 rounded-md border border-white/10 bg-neutral-900/95 p-1 shadow-xl backdrop-blur">
@@ -589,6 +593,9 @@ export function SynthPanel({ engine }: Props) {
           <Knob variant="op1" capColor={CAP[0]} size={40} label="Detune" value={detune} min={0} max={50} defaultValue={10}
             format={(v) => `${v.toFixed(0)}c`}
             onChange={(v) => { setDetune(v); synth.setDetune(v); }} />
+          <Knob variant="op1" capColor={CAP[0]} size={40} label="Largeur" value={width} min={0} max={1} defaultValue={0.4}
+            format={(v) => `${Math.round(v * 100)}`}
+            onChange={(v) => { setWidth(v); synth.setWidth(v); }} />
           <Knob variant="op1" capColor={CAP[1]} size={40} label="Decay" value={decay} min={0.02} max={2} defaultValue={0.25}
             format={(v) => `${v.toFixed(2)}s`}
             onChange={(v) => { setDecay(v); synth.decay = v; }} />

@@ -1,5 +1,6 @@
 import { detectBPM, buildWaveformPeaks } from "./bpm";
 import { FXRack, FxName } from "./FXRack";
+import { Rack, RackPreset } from "./Rack";
 
 export interface DeckState {
   loaded: boolean;
@@ -19,6 +20,7 @@ export interface DeckSettings {
   filter: number; // bipolar -1..1
   pitch: number; // percent
   fx: Partial<Record<FxName, number>>;
+  rack?: RackPreset; // serial DSP rack state (optional: old saves won't have it)
 }
 
 // One DJ deck: load -> trim -> 3-band EQ -> filter -> (dry + delay FX) -> volume -> output.
@@ -36,6 +38,9 @@ export class Deck {
   static readonly STEM_MAX = 6;
   private stemBuffers: (AudioBuffer | null)[] = []; // length === stemNames.length when loaded
   private stemGains: GainNode[] = []; // STEM_MAX gains, all summed into stemBus
+  private stemAnalysers: AnalyserNode[] = []; // per-stem level taps for the LED meters
+  private stemMeterBuf = new Float32Array(256); // reusable scratch for RMS reads
+  private stemEnv: number[] = []; // smoothed per-stem meter level (VU-style ballistics)
   private stemBus!: GainNode; // sum of the stem gains, carries the makeup gain
   stemMakeup = true; // auto-compensate level when stem faders are pulled down
   stemNames: string[] = []; // active stem labels (drives the fader count)
@@ -52,8 +57,36 @@ export class Deck {
   private high: BiquadFilterNode;
   private filter: BiquadFilterNode;
   private fx: FXRack;
+  readonly rack: Rack; // serial studio DSP rack (compressor, drive, delay, …)
   private volume: GainNode;
   private analyser: AnalyserNode;
+
+  // crowd / ambience reducer (mid-side). Diffuse crowd noise, applause and room
+  // tone are decorrelated between L/R (they live in the "side" signal); the lead
+  // vocal, kick and bass sit centre ("mid"). Attenuating the side strips crowd
+  // from a live single while keeping the performance. 0 = stereo untouched,
+  // 1 = full mono (sides removed).
+  crowd = 0;
+  private crowdIn!: GainNode;
+  private crowdOut!: GainNode;
+  private crowdStraight: GainNode[] = []; // L->L, R->R  (gain a = 1 - k/2)
+  private crowdCross: GainNode[] = []; // R->L, L->R    (gain b = k/2)
+
+  // Auto-Tune (pitch correction). A monophonic AudioWorklet snaps the lead pitch
+  // to the chosen scale; best on a solo vocal. Loaded lazily on first enable so
+  // it costs nothing when off. Bypassed by crossfading bypass/wet gains.
+  autotuneOn = false;
+  autotuneAmount = 1; // 0 = none, 1 = full snap
+  autotuneRetune = 0.2; // 0 = instant/robotic, 1 = smooth glide
+  autotuneKey = 0; // 0..11 (C..B)
+  autotuneScale: "chromatic" | "major" | "minor" = "chromatic";
+  private autotuneNode: AudioWorkletNode | null = null;
+  private autotuneIn!: GainNode;
+  private autotuneOut!: GainNode;
+  private autotuneBypass!: GainNode;
+  private autotuneWet!: GainNode;
+  private autotuneLoading = false;
+  private static moduleAdded = new WeakMap<BaseAudioContext, Promise<void>>();
 
   // playback bookkeeping
   private startCtxTime = 0;
@@ -122,6 +155,7 @@ export class Deck {
     this.filter.frequency.value = 20000;
 
     this.fx = new FXRack(ctx);
+    this.rack = new Rack(ctx);
 
     // per-stem gains (up to STEM_MAX) sum into a shared stem bus, which feeds
     // trim. The bus carries an automatic makeup gain: as you pull stem faders
@@ -133,18 +167,177 @@ export class Deck {
     for (let i = 0; i < Deck.STEM_MAX; i++) {
       const g = C();
       g.connect(this.stemBus);
+      // post-fader tap for the per-stem LED meter (analyser doesn't forward audio)
+      const an = ctx.createAnalyser();
+      an.fftSize = 256;
+      an.smoothingTimeConstant = 0.6;
+      g.connect(an);
       this.stemGains.push(g);
+      this.stemAnalysers.push(an);
+      this.stemEnv.push(0);
     }
 
-    // signal chain: trim -> EQ -> filter -> FX rack -> volume -> analyser -> out
-    this.trim.connect(this.low);
+    // crowd / ambience reducer: a per-channel mix matrix that scales the side
+    // signal. outL = a·L + b·R, outR = a·R + b·L, with a = 1-k/2, b = k/2.
+    // Force the input to stereo so mono tracks up-mix cleanly (speakers, not
+    // discrete) before the split — otherwise the right channel would go silent.
+    this.crowdIn = C();
+    this.crowdIn.channelCount = 2;
+    this.crowdIn.channelCountMode = "explicit";
+    this.crowdIn.channelInterpretation = "speakers";
+    this.crowdOut = C();
+    const split = ctx.createChannelSplitter(2);
+    const merge = ctx.createChannelMerger(2);
+    const ll = C(), rr = C(), rl = C(), lr = C();
+    ll.gain.value = 1; rr.gain.value = 1; // a = 1 at k=0
+    rl.gain.value = 0; lr.gain.value = 0; // b = 0 at k=0
+    this.crowdStraight = [ll, rr];
+    this.crowdCross = [rl, lr];
+    this.crowdIn.connect(split);
+    split.connect(ll, 0); ll.connect(merge, 0, 0); // L -> outL
+    split.connect(rl, 1); rl.connect(merge, 0, 0); // R -> outL
+    split.connect(rr, 1); rr.connect(merge, 0, 1); // R -> outR
+    split.connect(lr, 0); lr.connect(merge, 0, 1); // L -> outR
+    merge.connect(this.crowdOut);
+
+    // Auto-Tune insert sits right after trim, before the EQ, so it corrects a
+    // clean signal. Until the worklet loads (or when off) audio passes through
+    // the bypass gain; the wet path is wired in once the node exists.
+    this.autotuneIn = C();
+    this.autotuneOut = C();
+    this.autotuneBypass = C();
+    this.autotuneWet = C();
+    this.autotuneBypass.gain.value = 1;
+    this.autotuneWet.gain.value = 0;
+    this.autotuneIn.connect(this.autotuneBypass);
+    this.autotuneBypass.connect(this.autotuneOut);
+
+    // signal chain: trim -> autotune -> EQ -> filter -> FX -> volume -> crowd -> analyser -> out
+    this.trim.connect(this.autotuneIn);
+    this.autotuneOut.connect(this.low);
     this.low.connect(this.mid);
     this.mid.connect(this.high);
     this.high.connect(this.filter);
     this.filter.connect(this.fx.input);
-    this.fx.output.connect(this.volume);
-    this.volume.connect(this.analyser);
+    this.fx.output.connect(this.rack.input);
+    this.rack.output.connect(this.volume);
+    this.volume.connect(this.crowdIn);
+    this.crowdOut.connect(this.analyser);
     this.analyser.connect(this.output);
+  }
+
+  // 0 = off (stereo untouched), 1 = max crowd/ambience removal (full mono).
+  setCrowd(k: number) {
+    this.crowd = Math.min(1, Math.max(0, k));
+    const a = 1 - this.crowd / 2;
+    const b = this.crowd / 2;
+    for (const g of this.crowdStraight) g.gain.value = a;
+    for (const g of this.crowdCross) g.gain.value = b;
+  }
+
+  // ---- Auto-Tune ----
+  // the absolute pitch classes the corrector is allowed to snap to
+  private static SCALE_DEGREES: Record<Deck["autotuneScale"], number[]> = {
+    chromatic: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    major: [0, 2, 4, 5, 7, 9, 11],
+    minor: [0, 2, 3, 5, 7, 8, 10],
+  };
+
+  // build + wire the worklet node the first time Auto-Tune is switched on
+  private async ensureAutotuneNode(): Promise<void> {
+    if (this.autotuneNode || this.autotuneLoading) return;
+    if (!this.ctx.audioWorklet) return; // unsupported browser
+    this.autotuneLoading = true;
+    try {
+      let p = Deck.moduleAdded.get(this.ctx);
+      if (!p) {
+        p = this.ctx.audioWorklet.addModule("/autotune-worklet.js");
+        Deck.moduleAdded.set(this.ctx, p);
+      }
+      await p;
+      if (this.autotuneNode) return;
+      const node = new AudioWorkletNode(this.ctx, "autotune", {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        channelCount: 2,
+        channelCountMode: "explicit",
+        channelInterpretation: "speakers",
+        outputChannelCount: [2],
+      });
+      this.autotuneNode = node;
+      this.autotuneIn.connect(node);
+      node.connect(this.autotuneWet);
+      this.autotuneWet.connect(this.autotuneOut);
+      this.pushAutotuneParams();
+    } catch (e) {
+      console.error("[autotune]", e);
+    } finally {
+      this.autotuneLoading = false;
+      this.applyAutotuneMix();
+    }
+  }
+
+  private pushAutotuneParams() {
+    const node = this.autotuneNode;
+    if (!node) return;
+    const amp = node.parameters.get("amount");
+    const ret = node.parameters.get("retune");
+    if (amp) amp.value = this.autotuneAmount;
+    if (ret) ret.value = this.autotuneRetune;
+    const key = ((this.autotuneKey % 12) + 12) % 12;
+    const classes = Deck.SCALE_DEGREES[this.autotuneScale].map((d) => (d + key) % 12);
+    node.port.postMessage({ type: "scale", classes });
+  }
+
+  // crossfade dry/wet based on the on flag + whether the node has loaded
+  private applyAutotuneMix() {
+    if (!this.autotuneBypass) return;
+    const wet = this.autotuneOn && this.autotuneNode ? 1 : 0;
+    const t = this.ctx.currentTime;
+    this.autotuneWet.gain.setTargetAtTime(wet, t, 0.01);
+    this.autotuneBypass.gain.setTargetAtTime(1 - wet, t, 0.01);
+  }
+
+  setAutotune(on: boolean) {
+    this.autotuneOn = on;
+    if (on) void this.ensureAutotuneNode();
+    this.applyAutotuneMix();
+  }
+
+  setAutotuneAmount(v: number) {
+    this.autotuneAmount = Math.min(1, Math.max(0, v));
+    const amp = this.autotuneNode?.parameters.get("amount");
+    if (amp) amp.value = this.autotuneAmount;
+  }
+
+  setAutotuneRetune(v: number) {
+    this.autotuneRetune = Math.min(1, Math.max(0, v));
+    const ret = this.autotuneNode?.parameters.get("retune");
+    if (ret) ret.value = this.autotuneRetune;
+  }
+
+  setAutotuneScale(key: number, scale: Deck["autotuneScale"]) {
+    this.autotuneKey = ((Math.round(key) % 12) + 12) % 12;
+    this.autotuneScale = scale;
+    this.pushAutotuneParams();
+  }
+
+  // Smoothed 0..1 output level of stem i, for the per-stem LED meter. Reads the
+  // post-fader tap so a pulled-down stem reads 0. Fast attack, slow release.
+  stemLevel(i: number): number {
+    const an = this.stemAnalysers[i];
+    if (!an || !this.stemsActive || !this._playing || i >= this.stemNames.length) {
+      this.stemEnv[i] = (this.stemEnv[i] || 0) * 0.8;
+      return this.stemEnv[i];
+    }
+    an.getFloatTimeDomainData(this.stemMeterBuf);
+    let sum = 0;
+    for (let k = 0; k < this.stemMeterBuf.length; k++) sum += this.stemMeterBuf[k] * this.stemMeterBuf[k];
+    const rms = Math.sqrt(sum / this.stemMeterBuf.length);
+    const level = Math.min(1, rms * 3.2); // map typical RMS into a usable 0..1
+    const prev = this.stemEnv[i] || 0;
+    this.stemEnv[i] = level > prev ? level : prev * 0.82 + level * 0.18;
+    return this.stemEnv[i];
   }
 
   get playing() {
@@ -651,6 +844,7 @@ export class Deck {
       filter: this.filterX,
       pitch: this.pitchPct,
       fx,
+      rack: this.rack.export(),
     };
   }
 
@@ -666,6 +860,7 @@ export class Deck {
     for (const name of ["echo", "reverb", "flanger", "phaser", "gate", "crush"] as const) {
       if (typeof s.fx[name] === "number") this.setFxWet(name, s.fx[name] as number);
     }
+    if (s.rack) this.rack.import(s.rack);
   }
 
   getLevel(): number {

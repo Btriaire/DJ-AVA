@@ -21,6 +21,7 @@ import { Mp3Converter } from "@/components/Mp3Converter";
 import { LcdClock } from "@/components/LcdClock";
 import { DeckTimers } from "@/components/DeckTimers";
 import { MixScope } from "@/components/MixScope";
+import { CpuMeter } from "@/components/CpuMeter";
 import { StudioView } from "@/components/StudioView";
 import { PlatineView } from "@/components/PlatineView";
 import { Splash } from "@/components/Splash";
@@ -491,19 +492,22 @@ export default function Home() {
         ) : (
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_auto_1fr]">
             {/* Edjay-style master screen: both tracks' spectra blended live */}
-            <div className="zoom-zone hw-screwed hw-panel lg:col-span-3 p-3">
-              <MixScope
-                deckA={engine.deckA}
-                deckB={engine.deckB}
-                colorA="#ff8a1e"
-                colorB="#4dff84"
-                crossfade={crossfade}
-                onCrossfade={(v) => {
-                  stopAuto();
-                  setCrossfade(v);
-                  engine.setCrossfade(v);
-                }}
-              />
+            <div className="zoom-zone hw-screwed hw-panel lg:col-span-3 flex items-stretch gap-3 p-3">
+              <div className="min-w-0 flex-1">
+                <MixScope
+                  deckA={engine.deckA}
+                  deckB={engine.deckB}
+                  colorA="#ff8a1e"
+                  colorB="#4dff84"
+                  crossfade={crossfade}
+                  onCrossfade={(v) => {
+                    stopAuto();
+                    setCrossfade(v);
+                    engine.setCrossfade(v);
+                  }}
+                />
+              </div>
+              <CpuMeter engine={engine} />
             </div>
 
             <DeckPanel

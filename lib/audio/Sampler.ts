@@ -281,7 +281,7 @@ export class Sampler {
     const buf = pad.reverse ? this.reversed(pad.buffer) : pad.buffer;
     const dur = buf.duration;
 
-    let s = Math.max(0, Math.min(1, startFrac));
+    const s = Math.max(0, Math.min(1, startFrac));
     let e = Math.max(0, Math.min(1, endFrac));
     if (e <= s) e = Math.min(1, s + 0.002);
     const windowSec = (e - s) * dur;
@@ -323,15 +323,11 @@ export class Sampler {
     g.gain.linearRampToValueAtTime(peak, when + atk);
     if (dec > 0) g.gain.linearRampToValueAtTime(Math.max(0.0001, peak * sus), when + atk + dec);
     head.connect(g);
-    // pan
-    let tail: AudioNode = g;
-    if (Math.abs(pad.pan) > 0.001) {
-      const p = this.ctx.createStereoPanner();
-      p.pan.value = Math.max(-1, Math.min(1, pad.pan));
-      g.connect(p);
-      tail = p;
-    }
-    tail.connect(this.out);
+    // pan — always through a panner (pan 0 = centred) for a consistent stereo path
+    const p = this.ctx.createStereoPanner();
+    p.pan.value = Math.max(-1, Math.min(1, pad.pan));
+    g.connect(p);
+    p.connect(this.out);
     if (pad.reverb > 0.001) {
       const send = this.ctx.createGain();
       send.gain.value = pad.reverb;
@@ -685,9 +681,14 @@ export class Sampler {
   private make(dur: number, fn: (t: number, i: number, n: number) => number) {
     const rate = this.ctx.sampleRate;
     const n = Math.floor(dur * rate);
-    const buf = this.ctx.createBuffer(1, n, rate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < n; i++) data[i] = fn(i / rate, i, n);
+    // 2-channel buffer: tonal fns (kick) render identically (centred); noise-based
+    // fns (snare/hat/clap) draw fresh randoms per channel → a decorrelated stereo
+    // image instead of a dead-centre mono hit.
+    const buf = this.ctx.createBuffer(2, n, rate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = buf.getChannelData(ch);
+      for (let i = 0; i < n; i++) data[i] = fn(i / rate, i, n);
+    }
     return buf;
   }
 

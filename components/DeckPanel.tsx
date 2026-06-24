@@ -1,11 +1,12 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Deck } from "@/lib/audio/Deck";
 import { Knob } from "./Knob";
 import { Fader } from "./Fader";
 import { Waveform } from "./Waveform";
 import { FXPad } from "./FXPad";
 import { Spectrum } from "./Spectrum";
+import { RackPanel } from "./RackPanel";
 import { loadLibrary, saveLibrary, idbPutBlob, idbGetBlob, uid, LibTrack } from "@/lib/library";
 
 interface Props {
@@ -49,6 +50,59 @@ const STEM_PREVIEW: Record<string, string[]> = {
   htdemucs_ft: ["drums", "bass", "other", "vocals"],
   htdemucs_6s: ["drums", "bass", "other", "vocals", "guitar", "piano"],
 };
+
+// ---- global STEM templates (numbered 1-5): per-stem volumes + FOULE + makeup,
+// reusable across any track. Applied by index up to the current model's stem
+// count, so a 4-stem template still works on a 6-stem split (extra stems left).
+const STEM_LS_KEY = "djsynth.stemtemplates.v1";
+type StemTpl = { name?: string; vol: number[]; crowd: number; makeup: boolean };
+const STEM_SLOTS = 5;
+function loadStemTpls(): (StemTpl | null)[] {
+  const empty: (StemTpl | null)[] = Array(STEM_SLOTS).fill(null);
+  if (typeof window === "undefined") return empty;
+  try {
+    const arr = JSON.parse(localStorage.getItem(STEM_LS_KEY) || "[]");
+    if (Array.isArray(arr)) for (let i = 0; i < STEM_SLOTS; i++) empty[i] = arr[i] ?? null;
+  } catch {
+    /* corrupt — keep empties */
+  }
+  return empty;
+}
+function saveStemTpls(arr: (StemTpl | null)[]) {
+  try {
+    localStorage.setItem(STEM_LS_KEY, JSON.stringify(arr));
+  } catch {
+    /* quota / private mode — ignore */
+  }
+}
+
+// Mini LED "equalizer" voyant for a stem: a vertical stack of segments lighting
+// from the bottom up with the stem's live level. Top segment red, next two
+// amber, the rest the deck colour — a classic VU look. Purely presentational;
+// the parent re-renders each animation frame (via `tick`) so it animates.
+function StemMeter({ level, color }: { level: number; color: string }) {
+  const SEG = 6;
+  const lit = Math.round(Math.min(1, Math.max(0, level)) * SEG);
+  return (
+    <div className="flex flex-col-reverse items-center gap-[1.5px]" aria-hidden>
+      {Array.from({ length: SEG }).map((_, s) => {
+        const on = s < lit;
+        const segColor = s >= SEG - 1 ? "#ff4d4d" : s >= SEG - 3 ? "#ffd23d" : color;
+        return (
+          <span
+            key={s}
+            className="h-[3px] w-3 rounded-[1px]"
+            style={{
+              background: on ? segColor : "#241f18",
+              boxShadow: on ? `0 0 4px ${segColor}` : "none",
+              opacity: on ? 1 : 0.55,
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
 
 export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToConverter, otherBpm, onStems, onLibraryChange }: Props) {
   void tick;
@@ -240,6 +294,32 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
     rerender();
   }
 
+  // --- global STEM templates (1-5 shortcut slots) --------------------------
+  const [stemTpls, setStemTpls] = useState<(StemTpl | null)[]>(() => Array(STEM_SLOTS).fill(null));
+  const [stemSaveMode, setStemSaveMode] = useState(false);
+  const [stemActiveTpl, setStemActiveTpl] = useState<number | null>(null);
+  useEffect(() => setStemTpls(loadStemTpls()), []);
+  function saveStemSlot(n: number) {
+    const tpl: StemTpl = { vol: deck.stemVol.slice(), crowd: deck.crowd, makeup: deck.stemMakeup };
+    const next = stemTpls.slice();
+    next[n] = tpl;
+    setStemTpls(next);
+    saveStemTpls(next);
+    setStemSaveMode(false);
+    setStemActiveTpl(n);
+  }
+  function recallStemSlot(n: number) {
+    const tpl = stemTpls[n];
+    if (!tpl) return;
+    for (let i = 0; i < deck.stemVol.length && i < tpl.vol.length; i++) {
+      deck.setStemVol(i, tpl.vol[i]);
+    }
+    deck.setStemMakeup(tpl.makeup);
+    deck.setCrowd(tpl.crowd);
+    setStemActiveTpl(n);
+    rerender();
+  }
+
   // --- save the track loaded on this deck into a playlist ------------------
   const [plMenu, setPlMenu] = useState(false);
   const [plFlash, setPlFlash] = useState("");
@@ -309,7 +389,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
   const spinning = deck.playing;
 
   return (
-    <div className="zoom-zone hw-screwed hw-panel flex flex-col gap-3 p-4">
+    <div className="zoom-zone hw-screwed hw-panel flex flex-col gap-3 self-start p-4">
       {/* header */}
       <div className="hw-brushed flex items-center justify-between px-3 py-2">
         <div className="flex items-center gap-2">
@@ -712,6 +792,42 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
               ▲ ALL
             </button>
           </div>
+          {/* STEM templates 1-5 : réglages mémorisés, réutilisables sur tout morceau */}
+          <div className={`flex flex-col gap-1 ${deck.stemReady ? "" : "pointer-events-none opacity-40"}`}>
+            <span className="text-[8px] uppercase leading-none text-neutral-500">Templates</span>
+            <div className="flex gap-0.5">
+              {stemTpls.map((t, n) => {
+                const filled = !!t;
+                const active = stemActiveTpl === n;
+                return (
+                  <button
+                    key={n}
+                    onClick={() => (stemSaveMode ? saveStemSlot(n) : recallStemSlot(n))}
+                    disabled={!stemSaveMode && !filled}
+                    title={stemSaveMode ? `Enregistrer dans ${n + 1}` : filled ? `Rappeler ${n + 1}` : "Vide"}
+                    className="hw-btn flex h-5 flex-1 items-center justify-center text-[9px] font-black"
+                    style={{
+                      ["--led" as string]: color,
+                      color: filled ? color : "#5b5b5b",
+                      outline: active ? `1px solid ${color}` : undefined,
+                      boxShadow: filled ? `0 0 4px ${color}55` : undefined,
+                      opacity: !stemSaveMode && !filled ? 0.45 : 1,
+                    }}
+                  >
+                    {n + 1}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              onClick={() => setStemSaveMode((s) => !s)}
+              title="Mode sauvegarde : choisis ensuite un emplacement 1-5"
+              className="hw-btn px-1 py-0.5 text-[8px] font-black"
+              style={stemSaveMode ? { ["--led" as string]: "#ff5252", color: "#ff5252", boxShadow: "0 0 6px #ff525288" } : { ["--led" as string]: color, color }}
+            >
+              {stemSaveMode ? "CHOISIR…" : "SAVE"}
+            </button>
+          </div>
         </div>
         <div
           className={`flex flex-1 items-stretch justify-around gap-1 ${
@@ -722,49 +838,69 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
             const info = STEM_INFO[name] ?? { label: name.toUpperCase(), title: name };
             const lvl = deck.stemReady ? deck.stemVol[i] : 1;
             const muted = deck.stemReady && lvl <= 0.001;
-            // brightness of the LED tracks the fader level (off when muted)
-            const glow = Math.min(1, Math.max(0, lvl));
+            // live audio level of this stem (post-fader) -> mini LED equalizer
+            const meter = deck.stemReady && deck.stemsActive ? deck.stemLevel(i) : 0;
             return (
-              <div key={name} className="flex flex-col items-center gap-1" title={info.title}>
-                {/* voyant lumineux: glows with the deck colour, brightness = level */}
-                <span
-                  aria-hidden
-                  className="block h-2 w-2 rounded-full"
-                  style={{
-                    background: muted ? "#2a2a2a" : color,
-                    opacity: muted ? 1 : 0.35 + 0.65 * glow,
-                    boxShadow: muted ? "none" : `0 0 ${3 + 6 * glow}px ${color}`,
-                    border: muted ? "1px solid #444" : "none",
-                  }}
-                />
-                {/* discreet graduation strips either side of the cap, like the other faders */}
-                <div className="flex items-stretch justify-center gap-0.5">
-                  <span className="fader-ticks" aria-hidden />
-                  <Fader
-                    value={deck.stemReady ? deck.stemVol[i] : 1}
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    vertical
-                    onChange={(v) => {
-                      deck.setStemVol(i, v);
-                      rerender();
-                    }}
-                  />
-                  <span className="fader-ticks" aria-hidden />
+              <Fragment key={name}>
+                <div className="flex flex-col items-center gap-1" title={info.title}>
+                  {/* voyant équaliseur: barre de LED qui suit le niveau de la piste */}
+                  <StemMeter level={meter} color={muted ? "#555" : color} />
+                  {/* discreet graduation strips either side of the cap, like the other faders */}
+                  <div className="flex items-stretch justify-center gap-0.5">
+                    <span className="fader-ticks" aria-hidden />
+                    <Fader
+                      value={deck.stemReady ? deck.stemVol[i] : 1}
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      vertical
+                      onChange={(v) => {
+                        deck.setStemVol(i, v);
+                        rerender();
+                      }}
+                    />
+                    <span className="fader-ticks" aria-hidden />
+                  </div>
+                  <button
+                    className="text-[9px] font-bold uppercase leading-none"
+                    style={{ color: muted ? "#777" : color }}
+                    onClick={() => toggleStemMute(i)}
+                  >
+                    {info.label}
+                  </button>
                 </div>
-                <button
-                  className="text-[9px] font-bold uppercase leading-none"
-                  style={{ color: muted ? "#777" : color }}
-                  onClick={() => toggleStemMute(i)}
-                >
-                  {info.label}
-                </button>
-              </div>
+                {/* FOULE — placée juste à côté de VOIX. Reste active même stems coupés
+                    (agit aussi sur le mix complet, extraction du centre mid-side). */}
+                {name === "vocals" && (
+                  <div
+                    className="flex flex-col items-center justify-center gap-1 pointer-events-auto opacity-100"
+                    title="FOULE — réduit le bruit de foule / l'ambiance d'un live (extraction du centre, mid-side). Marche sur n'importe quel morceau, avec ou sans stems."
+                  >
+                    <Knob
+                      label="FOULE"
+                      value={deck.crowd}
+                      min={0}
+                      max={1}
+                      defaultValue={0}
+                      size={40}
+                      color={color}
+                      led
+                      format={(v) => (v < 0.005 ? "—" : `−${Math.round(v * 100)}%`)}
+                      onChange={(v) => {
+                        deck.setCrowd(v);
+                        rerender();
+                      }}
+                    />
+                  </div>
+                )}
+              </Fragment>
             );
           })}
         </div>
       </div>
+
+      {/* full serial DSP rack — Auto-Tune now lives inside it as a module */}
+      <RackPanel deck={deck} color={color} />
 
       {/* beat loop + actions */}
       <div className="flex items-end justify-between gap-4">
