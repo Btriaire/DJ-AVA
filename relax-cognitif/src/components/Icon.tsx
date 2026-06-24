@@ -190,6 +190,12 @@ const PATHS: Record<string, React.ReactNode> = {
       <path d="M9 10.5l3-3 3 3M15 13.5l-3 3-3-3" />
     </>
   ),
+  "arrow-next": (
+    <>
+      <path d="M5 12h14" />
+      <path d="M13 6l6 6-6 6" />
+    </>
+  ),
   // Symboles du jeu de paires
   circle: <circle cx="12" cy="12" r="8" />,
   square: <rect x="5" y="5" width="14" height="14" rx="2" />,

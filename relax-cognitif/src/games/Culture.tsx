@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
-import WinReward from "../components/WinReward";
+import { useMemo, useState } from "react";
 import Chrono from "../components/Chrono";
+import NextButton from "../components/NextButton";
+import QuizResult from "../components/QuizResult";
 import { useGameSession } from "../lib/useGameSession";
 import { CAT_LABELS, CULTURE, shuffleOptions, type CultureCat } from "../lib/culture";
 
-const ROUND_SIZE = 10;
+const ROUND_SIZE = 20;
+const PASS = 14;
 const CATS: (CultureCat | "toutes")[] = ["toutes", "capitales", "villes", "depts", "rois", "presidents", "guerres"];
 const CAT_UI: Record<string, string> = { toutes: "Toutes", ...CAT_LABELS };
 
@@ -32,39 +34,34 @@ export default function Culture() {
     session.reset();
   }
 
+  const total = Math.min(ROUND_SIZE, questions.length);
   const q = questions[qi];
   const opts = useMemo(() => q ? shuffleOptions(q) : [], [q]);
 
-  useEffect(() => {
-    if (done) session.record(score >= 7 ? "success" : "failure");
-  }, [done]); // eslint-disable-line
-
-  function pick(opt: string) {
-    if (picked) return;
-    setPicked(opt);
-    if (opt === q.a) setScore(s => s + 1);
-  }
-
   function next() {
-    if (qi + 1 >= ROUND_SIZE) { setDone(true); return; }
-    setQi(i => i + 1);
-    setPicked(null);
+    if (picked == null) return;
+    const newScore = picked === q.a ? score + 1 : score;
+    setScore(newScore);
+    if (qi + 1 >= total) {
+      session.record(newScore >= PASS ? "success" : "failure");
+      setDone(true);
+    } else {
+      setQi(i => i + 1);
+      setPicked(null);
+    }
   }
 
   function restart() { setSeed(s => s + 1); }
 
   if (done) {
-    const grade = score >= 9 ? "Excellent !" : score >= 7 ? "Très bien !" : score >= 5 ? "Pas mal !" : "Continuez à pratiquer !";
     return (
-      <div>
-        <WinReward game="culture" show={session.won} />
-        <div className="cult-end">
-          <p className="cult-score-big">{score} / {ROUND_SIZE}</p>
-          <p className="cult-grade">{grade}</p>
-          <button className="btn" onClick={restart}>Rejouer</button>
-          <button className="btn btn-ghost" style={{ marginTop: 8 }} onClick={() => { setCat("toutes"); restart(); }}>Changer de thème</button>
-        </div>
-      </div>
+      <QuizResult
+        game="culture"
+        won={session.won}
+        score={score}
+        total={total}
+        onReplay={restart}
+      />
     );
   }
 
@@ -84,44 +81,34 @@ export default function Culture() {
       </div>
 
       <div className="cult-progress">
-        <span>{qi + 1} / {ROUND_SIZE}</span>
-        <span>Score : {score}</span>
+        <span>Question {qi + 1} / {total}</span>
       </div>
 
       <div className="chrono-row">
         <Chrono running={!done} resetKey={key} />
       </div>
 
-      <WinReward game="culture" show={session.won} />
-
       <div className="cult-q">{q.q}</div>
 
       <div className="opt-grid">
-        {opts.map(opt => {
-          const state = picked
-            ? opt === q.a ? "good" : opt === picked ? "bad" : ""
-            : "";
-          return (
-            <button
-              key={opt}
-              className={`opt ${state}`}
-              disabled={!!picked}
-              onClick={() => pick(opt)}
-            >
-              {opt}
-            </button>
-          );
-        })}
+        {opts.map(opt => (
+          <button
+            key={opt}
+            className={`opt ${picked === opt ? "chosen" : ""}`}
+            onClick={() => setPicked(opt)}
+          >
+            {opt}
+          </button>
+        ))}
       </div>
 
-      {picked && (
-        <div className={`cult-feedback ${picked === q.a ? "ok" : "ko"}`}>
-          {picked === q.a ? "✓ Correct !" : `✗ La bonne réponse était : ${q.a}`}
-          <button className="link-btn" style={{ marginLeft: 12 }} onClick={next}>
-            {qi + 1 < ROUND_SIZE ? "Suivant →" : "Résultat →"}
-          </button>
+      {picked != null && (
+        <div style={{ textAlign: "center" }}>
+          <span className="quiz-answered">Répondu</span>
         </div>
       )}
+
+      <NextButton last={qi + 1 >= total} disabled={picked == null} onClick={next} />
     </div>
   );
 }

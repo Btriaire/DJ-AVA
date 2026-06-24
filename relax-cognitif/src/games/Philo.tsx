@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
-import GameActions from "../components/GameActions";
-import WinReward from "../components/WinReward";
 import Chrono from "../components/Chrono";
+import NextButton from "../components/NextButton";
+import QuizResult from "../components/QuizResult";
 import { pickPhiloRound, type PhiloMode } from "../lib/philo";
 import { useGameSession } from "../lib/useGameSession";
 
-const ROUND_SIZE = 10;
+const ROUND_SIZE = 20;
+const PASS = 14;
 
 const MODES: { id: PhiloMode; label: string }[] = [
   { id: "citation", label: "Qui a dit ?" },
@@ -19,13 +20,11 @@ export default function Philo() {
   const [score, setScore] = useState(0);
   const [picked, setPicked] = useState<string | null>(null);
   const [done, setDone] = useState(false);
-  const [abandoned, setAbandoned] = useState(false);
   const session = useGameSession("philo", mode);
 
   const questions = useMemo(() => pickPhiloRound(mode, ROUND_SIZE), [mode, seed]);
+  const total = Math.min(ROUND_SIZE, questions.length);
   const question = questions[qIdx];
-  const correct = picked === question.answer;
-  const finished = picked !== null;
 
   const roundKey = `${mode}-${seed}`;
   const [rk, setRk] = useState(roundKey);
@@ -35,19 +34,15 @@ export default function Philo() {
     setScore(0);
     setPicked(null);
     setDone(false);
-    setAbandoned(false);
     session.reset();
   }
 
-  function pick(opt: string) {
-    if (finished || abandoned) return;
-    setPicked(opt);
-    if (opt === question.answer) setScore(s => s + 1);
-  }
-
   function next() {
-    if (qIdx + 1 >= ROUND_SIZE) {
-      session.record(score >= 7 ? "success" : "failure");
+    if (picked == null) return;
+    const newScore = picked === question.answer ? score + 1 : score;
+    setScore(newScore);
+    if (qIdx + 1 >= total) {
+      session.record(newScore >= PASS ? "success" : "failure");
       setDone(true);
     } else {
       setQIdx(q => q + 1);
@@ -55,38 +50,20 @@ export default function Philo() {
     }
   }
 
-  function abandon() {
-    session.record("abandon");
-    setAbandoned(true);
-  }
-
   function restart(newMode?: PhiloMode) {
-    if (newMode && newMode !== mode) {
-      setMode(newMode);
-    }
+    if (newMode && newMode !== mode) setMode(newMode);
     setSeed(s => s + 1);
   }
 
   if (done) {
-    const grade =
-      score >= 9 ? "Excellent !" :
-      score >= 7 ? "Très bien !" :
-      score >= 5 ? "Bien essayé." :
-      "Continuez à philosopher !";
     return (
-      <div>
-        <WinReward game="philo" show={session.won} />
-        <div className="cult-end">
-          <p className="cult-score-big">{score} / {ROUND_SIZE}</p>
-          <p className="cult-grade">{grade}</p>
-          <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap", marginTop: 16 }}>
-            <button className="btn" onClick={() => restart()}>Rejouer</button>
-            <button className="btn btn-ghost" onClick={() => restart(mode === "citation" ? "auteur" : "citation")}>
-              {mode === "citation" ? "Essayer « Laquelle ? »" : "Essayer « Qui a dit ? »"}
-            </button>
-          </div>
-        </div>
-      </div>
+      <QuizResult
+        game="philo"
+        won={session.won}
+        score={score}
+        total={total}
+        onReplay={() => restart()}
+      />
     );
   }
 
@@ -109,43 +86,24 @@ export default function Philo() {
       </div>
 
       <div className="chrono-row">
-        <Chrono running={!finished && !abandoned} resetKey={`${roundKey}-${qIdx}`} />
-        <span className="philo-progress">{qIdx + 1} / {ROUND_SIZE}</span>
+        <Chrono running={!done} resetKey={roundKey} />
+        <span className="philo-progress">{qIdx + 1} / {total}</span>
       </div>
-
-      <WinReward game="philo" show={session.won} />
-
-      <GameActions
-        hintsLeft={session.hintsLeft}
-        hintLimit={session.hintLimit}
-        onHint={() => {}}
-        onAbandon={abandon}
-        finished={finished}
-        abandoned={abandoned}
-      />
 
       {isAuteur ? (
         <>
           <p className="page-sub">Quelle citation est de…</p>
           <div className="philo-author-display">{question.display}</div>
           <div className="philo-quote-opts">
-            {question.options.map(opt => {
-              const reveal = picked !== null || abandoned;
-              const state = !reveal ? ""
-                : opt === question.answer ? "good"
-                : opt === picked ? "bad"
-                : "dim";
-              return (
-                <button
-                  key={opt}
-                  className={`philo-quote-btn ${state}`}
-                  disabled={finished || abandoned}
-                  onClick={() => pick(opt)}
-                >
-                  « {opt} »
-                </button>
-              );
-            })}
+            {question.options.map(opt => (
+              <button
+                key={opt}
+                className={`philo-quote-btn ${picked === opt ? "chosen" : ""}`}
+                onClick={() => setPicked(opt)}
+              >
+                « {opt} »
+              </button>
+            ))}
           </div>
         </>
       ) : (
@@ -153,41 +111,26 @@ export default function Philo() {
           <p className="page-sub">Qui a dit…</p>
           <div className="philo-quote-display">« {question.display} »</div>
           <div className="opt-grid">
-            {question.options.map(opt => {
-              const reveal = picked !== null || abandoned;
-              const state = !reveal ? ""
-                : opt === question.answer ? "good"
-                : opt === picked ? "bad"
-                : "";
-              return (
-                <button
-                  key={opt}
-                  className={`opt ${state}`}
-                  disabled={finished || abandoned}
-                  onClick={() => pick(opt)}
-                >
-                  {opt}
-                </button>
-              );
-            })}
+            {question.options.map(opt => (
+              <button
+                key={opt}
+                className={`opt ${picked === opt ? "chosen" : ""}`}
+                onClick={() => setPicked(opt)}
+              >
+                {opt}
+              </button>
+            ))}
           </div>
         </>
       )}
 
-      {(picked !== null || abandoned) && (
-        <p className={correct && !abandoned ? "status win" : "status"}>
-          {abandoned
-            ? `La réponse : ${question.answer}`
-            : correct
-            ? "Exact !"
-            : `C'était ${question.answer}.`}{" "}
-          {!abandoned && (
-            <button className="link-btn" onClick={next}>
-              {qIdx + 1 >= ROUND_SIZE ? "Voir le score →" : "Suivant →"}
-            </button>
-          )}
-        </p>
+      {picked != null && (
+        <div style={{ textAlign: "center" }}>
+          <span className="quiz-answered">Répondu</span>
+        </div>
       )}
+
+      <NextButton last={qIdx + 1 >= total} disabled={picked == null} onClick={next} />
     </div>
   );
 }

@@ -463,6 +463,69 @@ a {
   border-color: var(--gb-darkest);
 }
 
+/* Coche discrète : réponse choisie, sans révéler juste/faux (manches de 20) */
+.opt.chosen {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow);
+  transform: translateY(-2px);
+}
+
+/* ---------- Manches de questions : Suivant + coche « Répondu » ---------- */
+.quiz-answered {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 14px auto 0;
+  color: var(--ink-soft);
+  font-size: 16px;
+  font-weight: 600;
+}
+.quiz-answered::before {
+  content: "✓";
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.next-row {
+  display: flex;
+  justify-content: center;
+  margin: 16px 0 4px;
+}
+.btn-next {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 320px;
+  padding: 16px 24px;
+  font-size: 20px;
+  font-weight: 700;
+}
+.btn-next:disabled {
+  opacity: 0.4;
+  box-shadow: none;
+  cursor: default;
+}
+
+.quiz-end-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  margin-top: 16px;
+}
+.quiz-end-actions .btn {
+  width: 100%;
+  max-width: 280px;
+}
+
 /* ---------- De toutes les couleurs : mélanges visuels ---------- */
 .color-mix {
   display: flex;

@@ -1,9 +1,13 @@
 import { useMemo, useState } from "react";
-import { randomColorQ, NAME_HEX } from "../lib/couleurs";
+import { pickColorRound, NAME_HEX } from "../lib/couleurs";
 import GameActions from "../components/GameActions";
-import WinReward from "../components/WinReward";
 import Chrono from "../components/Chrono";
+import NextButton from "../components/NextButton";
+import QuizResult from "../components/QuizResult";
 import { useGameSession } from "../lib/useGameSession";
+
+const ROUND_SIZE = 20;
+const PASS = 14;
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -16,67 +20,89 @@ function shuffle<T>(arr: T[]): T[] {
 
 export default function Couleurs() {
   const [seed, setSeed] = useState(0);
-  const q = useMemo(() => randomColorQ(), [seed]);
-  const choices = useMemo(() => shuffle([q.answer, ...q.distractors]), [q]);
+  const round = useMemo(() => pickColorRound(ROUND_SIZE), [seed]);
+  const total = round.length;
 
+  const [qi, setQi] = useState(0);
   const [picked, setPicked] = useState<string | null>(null);
+  const [score, setScore] = useState(0);
+  const [done, setDone] = useState(false);
   const [eliminated, setEliminated] = useState<string[]>([]);
-  const [abandoned, setAbandoned] = useState(false);
   const session = useGameSession("couleurs", "");
 
   const key = String(seed);
   const [rk, setRk] = useState(key);
   if (rk !== key) {
     setRk(key);
+    setQi(0);
     setPicked(null);
+    setScore(0);
+    setDone(false);
     setEliminated([]);
-    setAbandoned(false);
     session.reset();
   }
 
-  const finished = picked != null || abandoned;
-  const correct = picked === q.answer;
+  const q = round[qi];
+  const choices = useMemo(() => shuffle([q.answer, ...q.distractors]), [q]);
 
-  function pick(c: string) {
-    if (finished) return;
-    setPicked(c);
-    session.record(c === q.answer ? "success" : "failure");
+  function next() {
+    if (picked == null) return;
+    const newScore = picked === q.answer ? score + 1 : score;
+    setScore(newScore);
+    if (qi + 1 >= total) {
+      session.record(newScore >= PASS ? "success" : "failure");
+      setDone(true);
+    } else {
+      setQi(i => i + 1);
+      setPicked(null);
+      setEliminated([]);
+    }
   }
 
   function giveHint() {
-    if (finished || !session.useHint()) return;
+    if (!session.useHint()) return;
     const wrong = choices.find((c) => c !== q.answer && !eliminated.includes(c));
     if (wrong) setEliminated((e) => [...e, wrong]);
   }
 
   function abandon() {
     session.record("abandon");
-    setAbandoned(true);
+    setDone(true);
+  }
+
+  function restart() { setSeed(s => s + 1); }
+
+  if (done) {
+    return (
+      <QuizResult
+        game="couleurs"
+        won={session.won}
+        score={score}
+        total={total}
+        onReplay={restart}
+      />
+    );
   }
 
   return (
     <div>
-      <div className="controls">
-        <button className="btn btn-ghost" onClick={() => setSeed((s) => s + 1)}>
-          Nouvelle question
-        </button>
+      <div className="cult-progress">
+        <span>Question {qi + 1} / {total}</span>
       </div>
 
       <p className="page-sub">De toutes les couleurs</p>
 
       <div className="chrono-row">
-        <Chrono running={!finished} resetKey={key} />
+        <Chrono running={!done} resetKey={key} />
       </div>
-
-      <WinReward game="couleurs" show={session.won} />
 
       <GameActions
         hintsLeft={session.hintsLeft}
         hintLimit={session.hintLimit}
         onHint={giveHint}
         onAbandon={abandon}
-        finished={picked != null}
-        abandoned={abandoned}
+        finished={false}
+        abandoned={false}
       />
 
       {q.mix ? (
@@ -96,36 +122,27 @@ export default function Couleurs() {
 
       <div className={q.mix ? "opt-grid swatch-grid" : "opt-grid"}>
         {choices.map((c) => {
-          const reveal = picked != null || abandoned;
-          const state = !reveal
-            ? eliminated.includes(c)
-              ? "out"
-              : ""
-            : c === q.answer
-            ? "good"
-            : c === picked
-            ? "bad"
-            : "";
+          const out = eliminated.includes(c);
+          const chosen = picked === c;
           if (q.mix) {
             return (
               <button
                 key={c}
-                className={`opt opt-swatch ${state}`}
-                disabled={finished || eliminated.includes(c)}
-                onClick={() => pick(c)}
+                className={`opt opt-swatch ${chosen ? "chosen" : ""} ${out ? "out" : ""}`}
+                disabled={out}
+                onClick={() => setPicked(c)}
                 aria-label={c}
               >
                 <span className="color-dot color-dot-lg" style={{ background: NAME_HEX[c] ?? "#ccc" }} />
-                {reveal && <span className="opt-swatch-name">{c}</span>}
               </button>
             );
           }
           return (
             <button
               key={c}
-              className={`opt ${state}`}
-              disabled={finished || eliminated.includes(c)}
-              onClick={() => pick(c)}
+              className={`opt ${chosen ? "chosen" : ""} ${out ? "out" : ""}`}
+              disabled={out}
+              onClick={() => setPicked(c)}
             >
               {c}
             </button>
@@ -133,19 +150,13 @@ export default function Couleurs() {
         })}
       </div>
 
-      {finished && (
-        <p className={correct ? "status win" : "status"}>
-          {abandoned
-            ? `La réponse était « ${q.answer} ».`
-            : correct
-            ? "Exact, bravo !"
-            : `La bonne réponse était « ${q.answer} ».`}
-          {q.note ? ` (${q.note})` : ""}{" "}
-          <button className="link-btn" onClick={() => setSeed((s) => s + 1)}>
-            Suivant →
-          </button>
-        </p>
+      {picked != null && (
+        <div style={{ textAlign: "center" }}>
+          <span className="quiz-answered">Répondu</span>
+        </div>
       )}
+
+      <NextButton last={qi + 1 >= total} disabled={picked == null} onClick={next} />
     </div>
   );
 }

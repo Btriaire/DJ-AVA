@@ -81,3 +81,13 @@ export const COULEURS: ColorQ[] = [...MELANGES, ...NOIR_BLANC, ...TITRES];
 export function randomColorQ(): ColorQ {
   return COULEURS[Math.floor(Math.random() * COULEURS.length)];
 }
+
+// Tire n questions distinctes pour une manche (sans répétition).
+export function pickColorRound(n: number): ColorQ[] {
+  const pool = [...COULEURS];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, Math.min(n, pool.length));
+}
