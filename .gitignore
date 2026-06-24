@@ -50,3 +50,6 @@ secrets/*.txt
 
 # docker compose override local (VPS: port 3100) — propre à chaque hôte
 docker-compose.override.yml
+
+# Claude Code — état local de l'agent (plans, etc.), jamais sur le dépôt
+.claude/
