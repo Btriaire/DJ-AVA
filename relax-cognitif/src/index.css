@@ -2223,6 +2223,52 @@ body {
   transform: scale(1.08);
 }
 
+/* Changer de profil */
+.prof-switch-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.prof-switch {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+.prof-switch-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s;
+}
+.prof-switch.active .prof-switch-main {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.prof-switch-avatar { font-size: 26px; line-height: 1; }
+.prof-switch-name { font-size: 17px; font-weight: 600; color: var(--ink); flex: 1; }
+.prof-switch-tag {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--surface);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.prof-switch-del {
+  width: 44px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 16px;
+  cursor: pointer;
+}
+.prof-add-btn { width: 100%; }
+
 .prof-rank {
   background: var(--surface);
   border: 1px solid var(--line);

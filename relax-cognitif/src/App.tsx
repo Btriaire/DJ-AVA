@@ -34,6 +34,11 @@ import Admin from "./pages/Admin";
 import GameRules from "./components/GameRules";
 import Splash from "./components/Splash";
 import BrainBg from "./components/BrainBg";
+import { ensureProfiles } from "./lib/profile";
+
+// Garantit qu'un profil actif existe (et migre l'ancien) dès le chargement,
+// avant tout rendu qui lit des sessions par profil.
+ensureProfiles();
 
 function Shell({ title, game, children }: { title: string; game?: string; children: ReactNode }) {
   const navigate = useNavigate();

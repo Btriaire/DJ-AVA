@@ -3,10 +3,14 @@ import { useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import {
   AVATARS,
+  addProfile,
+  deleteProfile,
   getProfile,
+  listProfiles,
   objectives,
   recommendedParcours,
-  saveProfile,
+  switchProfile,
+  updateProfile,
 } from "../lib/profile";
 import {
   dayStreak,
@@ -19,6 +23,7 @@ export default function Profil() {
   const navigate = useNavigate();
   const sessions = useMemo(() => getSessions(), []);
   const stored = useMemo(() => getProfile(), []);
+  const profiles = useMemo(() => listProfiles(), []);
 
   const [name, setName] = useState(stored.name);
   const [avatar, setAvatar] = useState(stored.avatar);
@@ -27,7 +32,25 @@ export default function Profil() {
     const merged = { name, avatar, ...next };
     setName(merged.name);
     setAvatar(merged.avatar);
-    saveProfile(merged);
+    updateProfile(stored.id, merged);
+  }
+
+  function onSwitch(id: string) {
+    if (id === stored.id) return;
+    switchProfile(id);
+    window.location.assign("/");
+  }
+
+  function onAdd() {
+    addProfile("", "🌿");
+    window.location.assign("/");
+  }
+
+  function onDelete(id: string, who: string) {
+    const label = who.trim() || "ce profil";
+    if (!window.confirm(`Supprimer ${label} et toute sa progression ?`)) return;
+    deleteProfile(id);
+    window.location.assign("/");
   }
 
   const objs = useMemo(() => objectives(sessions), [sessions]);
@@ -74,6 +97,41 @@ export default function Profil() {
             </button>
           ))}
         </div>
+      </section>
+
+      {/* Changer de profil */}
+      <section className="prof-section">
+        <h2 className="section-title">Qui joue ?</h2>
+        <div className="prof-switch-list">
+          {profiles.map((p) => {
+            const isActive = p.id === stored.id;
+            return (
+              <div key={p.id} className={`prof-switch ${isActive ? "active" : ""}`}>
+                <button
+                  className="prof-switch-main"
+                  onClick={() => onSwitch(p.id)}
+                  aria-label={`Choisir le profil ${p.name.trim() || "sans nom"}`}
+                >
+                  <span className="prof-switch-avatar" aria-hidden>{p.avatar}</span>
+                  <span className="prof-switch-name">{p.name.trim() || "Sans nom"}</span>
+                  {isActive && <span className="prof-switch-tag">Actif</span>}
+                </button>
+                {profiles.length > 1 && !isActive && (
+                  <button
+                    className="prof-switch-del"
+                    onClick={() => onDelete(p.id, p.name)}
+                    aria-label={`Supprimer le profil ${p.name.trim() || "sans nom"}`}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <button className="btn btn-ghost prof-add-btn" onClick={onAdd}>
+          ＋ Nouveau profil
+        </button>
       </section>
 
       {/* Voie de l'Esprit */}

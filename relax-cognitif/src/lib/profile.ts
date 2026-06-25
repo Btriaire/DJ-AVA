@@ -1,42 +1,126 @@
 import {
   dayStreak,
+  getActiveProfileId,
+  setActiveProfileId,
   type GameId,
   type Session,
 } from "./store";
 import { PARCOURS, type ParcoursTheme } from "./parcours";
 
-// ── Profil simple (prénom + avatar), stocké en local ───────────────
-const PROFILE_KEY = "ec.profile";
+// ── Profils multiples (plusieurs personnes sur le même appareil) ────
+// Chaque profil a sa propre progression : les sessions sont stockées
+// sous `ec.sessions.<id>` (cf. store.ts). Ici on gère la liste, le profil
+// actif, et la migration depuis l'ancien profil unique `ec.profile`.
+const PROFILE_KEY = "ec.profile";       // ancien profil unique (migration)
+const PROFILES_KEY = "ec.profiles";     // liste des profils
+const LEGACY_SESSIONS_KEY = "ec.sessions"; // anciennes sessions globales
 
-export type Profile = { name: string; avatar: string };
+export type Profile = { id: string; name: string; avatar: string; createdAt: number };
 
 export const AVATARS = [
   "🌸", "🍃", "🌿", "🌞", "🦊", "🦋",
   "🐢", "🦉", "🐱", "🌳", "⛩️", "🍵",
 ];
 
-const DEFAULT_PROFILE: Profile = { name: "", avatar: "🌸" };
+const DEFAULT_AVATAR = "🌸";
 
-export function getProfile(): Profile {
+function genId(): string {
+  return `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function readProfiles(): Profile[] {
   try {
-    const raw = localStorage.getItem(PROFILE_KEY);
-    if (!raw) return DEFAULT_PROFILE;
-    const p = JSON.parse(raw) as Partial<Profile>;
-    return {
-      name: typeof p.name === "string" ? p.name : "",
-      avatar: typeof p.avatar === "string" && p.avatar ? p.avatar : DEFAULT_PROFILE.avatar,
-    };
+    const raw = localStorage.getItem(PROFILES_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw) as Profile[];
+    return Array.isArray(arr) ? arr.filter((p) => p && p.id) : [];
   } catch {
-    return DEFAULT_PROFILE;
+    return [];
   }
 }
 
-export function saveProfile(p: Profile) {
-  try {
-    localStorage.setItem(PROFILE_KEY, JSON.stringify(p));
-  } catch {
-    /* ignore */
+function writeProfiles(list: Profile[]) {
+  try { localStorage.setItem(PROFILES_KEY, JSON.stringify(list)); } catch { /* ignore */ }
+}
+
+// Crée le premier profil (ou migre l'ancien) et le rend actif.
+// Appelée une fois au démarrage de l'app, avant tout rendu lisant des sessions.
+export function ensureProfiles(): Profile {
+  let list = readProfiles();
+
+  if (list.length === 0) {
+    // Migration : reprendre l'ancien profil unique s'il existe.
+    let name = "";
+    let avatar = DEFAULT_AVATAR;
+    try {
+      const raw = localStorage.getItem(PROFILE_KEY);
+      if (raw) {
+        const old = JSON.parse(raw) as Partial<Profile>;
+        if (typeof old.name === "string") name = old.name;
+        if (typeof old.avatar === "string" && old.avatar) avatar = old.avatar;
+      }
+    } catch { /* ignore */ }
+
+    const first: Profile = { id: genId(), name, avatar, createdAt: Date.now() };
+    list = [first];
+    writeProfiles(list);
+    setActiveProfileId(first.id);
+
+    // Reprendre les anciennes sessions globales pour ce premier profil.
+    try {
+      const legacy = localStorage.getItem(LEGACY_SESSIONS_KEY);
+      if (legacy && !localStorage.getItem(`${LEGACY_SESSIONS_KEY}.${first.id}`)) {
+        localStorage.setItem(`${LEGACY_SESSIONS_KEY}.${first.id}`, legacy);
+      }
+    } catch { /* ignore */ }
   }
+
+  // S'assurer qu'un profil actif valide est sélectionné.
+  const activeId = getActiveProfileId();
+  const active = list.find((p) => p.id === activeId);
+  if (!active) setActiveProfileId(list[0].id);
+  return list.find((p) => p.id === getActiveProfileId()) ?? list[0];
+}
+
+export function listProfiles(): Profile[] {
+  const list = readProfiles();
+  return list.length ? list : [ensureProfiles()];
+}
+
+export function getProfile(): Profile {
+  const list = listProfiles();
+  return list.find((p) => p.id === getActiveProfileId()) ?? list[0];
+}
+
+export function addProfile(name: string, avatar: string): Profile {
+  const list = readProfiles();
+  const p: Profile = { id: genId(), name: name.trim(), avatar: avatar || DEFAULT_AVATAR, createdAt: Date.now() };
+  writeProfiles([...list, p]);
+  setActiveProfileId(p.id); // bascule sur le nouveau profil
+  return p;
+}
+
+export function updateProfile(id: string, patch: Partial<Pick<Profile, "name" | "avatar">>) {
+  const list = readProfiles().map((p) =>
+    p.id === id ? { ...p, ...patch } : p
+  );
+  writeProfiles(list);
+}
+
+export function deleteProfile(id: string) {
+  const list = readProfiles();
+  if (list.length <= 1) return; // on garde toujours au moins un profil
+  const next = list.filter((p) => p.id !== id);
+  writeProfiles(next);
+  // Effacer les données de progression du profil supprimé.
+  try {
+    localStorage.removeItem(`${LEGACY_SESSIONS_KEY}.${id}`);
+  } catch { /* ignore */ }
+  if (getActiveProfileId() === id) setActiveProfileId(next[0].id);
+}
+
+export function switchProfile(id: string) {
+  if (readProfiles().some((p) => p.id === id)) setActiveProfileId(id);
 }
 
 // ── Outils de dates ────────────────────────────────────────────────

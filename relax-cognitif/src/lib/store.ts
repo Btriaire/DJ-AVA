@@ -109,6 +109,22 @@ const DEFAULT_CONFIG: Config = {
 
 const CONFIG_KEY = "ec.config";
 const SESSIONS_KEY = "ec.sessions";
+const ACTIVE_PROFILE_KEY = "ec.activeProfile";
+
+// ── Profil actif (bas niveau, sans dépendance à profile.ts) ─────────
+// La gestion de la liste des profils vit dans profile.ts, qui s'appuie
+// sur ces deux accesseurs. On garde ici la notion de « profil courant »
+// pour pouvoir namespacer sessions et séries par profil.
+export function getActiveProfileId(): string {
+  try { return localStorage.getItem(ACTIVE_PROFILE_KEY) ?? ""; } catch { return ""; }
+}
+export function setActiveProfileId(id: string) {
+  try { localStorage.setItem(ACTIVE_PROFILE_KEY, id); } catch { /* ignore */ }
+}
+function sessionsKey(): string {
+  const id = getActiveProfileId();
+  return id ? `${SESSIONS_KEY}.${id}` : SESSIONS_KEY;
+}
 
 export function getConfig(): Config {
   try {
@@ -139,7 +155,7 @@ export type Session = {
 
 export function getSessions(): Session[] {
   try {
-    const raw = localStorage.getItem(SESSIONS_KEY);
+    const raw = localStorage.getItem(sessionsKey());
     return raw ? (JSON.parse(raw) as Session[]) : [];
   } catch {
     return [];
@@ -149,11 +165,11 @@ export function getSessions(): Session[] {
 export function logSession(s: Session) {
   const all = getSessions();
   all.push(s);
-  localStorage.setItem(SESSIONS_KEY, JSON.stringify(all.slice(-500)));
+  localStorage.setItem(sessionsKey(), JSON.stringify(all.slice(-500)));
 }
 
 export function clearSessions() {
-  localStorage.removeItem(SESSIONS_KEY);
+  localStorage.removeItem(sessionsKey());
 }
 
 export type GameStats = {
@@ -267,17 +283,21 @@ export function dayStreak(sessions: Session[]): number {
   return streak;
 }
 
-// Suivi de série consécutive de victoires par jeu/niveau
+// Suivi de série consécutive de victoires par jeu/niveau (par profil actif)
+function streakKey(game: string, level: string): string {
+  const id = getActiveProfileId();
+  return id ? `ec.streak.${id}.${game}.${level}` : `ec.streak.${game}.${level}`;
+}
 export function getStreak(game: string, level: string): number {
-  try { return parseInt(localStorage.getItem(`ec.streak.${game}.${level}`) ?? "0", 10); } catch { return 0; }
+  try { return parseInt(localStorage.getItem(streakKey(game, level)) ?? "0", 10); } catch { return 0; }
 }
 export function bumpStreak(game: string, level: string): number {
   const n = getStreak(game, level) + 1;
-  try { localStorage.setItem(`ec.streak.${game}.${level}`, String(n)); } catch {}
+  try { localStorage.setItem(streakKey(game, level), String(n)); } catch {}
   return n;
 }
 export function resetStreak(game: string, level: string) {
-  try { localStorage.setItem(`ec.streak.${game}.${level}`, "0"); } catch {}
+  try { localStorage.setItem(streakKey(game, level), "0"); } catch {}
 }
 
 export function fmtDuration(ms: number): string {
