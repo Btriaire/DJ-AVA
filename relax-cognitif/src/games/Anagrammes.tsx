@@ -1,9 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import GameActions from "../components/GameActions";
 import WinReward from "../components/WinReward";
 import Chrono from "../components/Chrono";
+import LevelUpHint from "../components/LevelUpHint";
 import { randomAnaWord, scramble, type AnaLevel } from "../lib/anagrammes";
 import { useGameSession } from "../lib/useGameSession";
+import { bumpStreak, resetStreak } from "../lib/store";
 
 const LEVELS: { id: AnaLevel; label: string }[] = [
   { id: "facile", label: "Facile" },
@@ -30,6 +32,7 @@ export default function Anagrammes() {
   const [answer, setAnswer] = useState<Tile[]>([]);
   const [abandoned, setAbandoned] = useState(false);
   const [showHint, setShowHint] = useState(false);
+  const [, setBumps] = useState(0);
 
   const key = `${level}-${seed}`;
   const [rk, setRk] = useState(key);
@@ -46,7 +49,13 @@ export default function Anagrammes() {
   const solved = built === target.word;
   const finished = solved || abandoned;
 
-  if (solved && !session.won) session.record("success");
+  useEffect(() => {
+    if (solved && !session.won) {
+      session.record("success");
+      bumpStreak("anagrammes", level);
+      setBumps((b) => b + 1);
+    }
+  }, [solved, session, level]);
 
   function pickFromBank(tile: Tile) {
     if (finished) return;
@@ -94,6 +103,8 @@ export default function Anagrammes() {
     session.record("abandon");
     setAbandoned(true);
     setShowHint(true);
+    resetStreak("anagrammes", level);
+    setBumps((b) => b + 1);
   }
 
   return (
@@ -114,6 +125,8 @@ export default function Anagrammes() {
           Autre mot
         </button>
       </div>
+
+      <LevelUpHint game="anagrammes" streakLevel={level} difficulty={level} />
 
       <p className="page-sub">Remettez les lettres dans le bon ordre.</p>
       <p className="ana-hint-def">💡 {target.hint}</p>

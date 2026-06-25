@@ -5,6 +5,7 @@ import Chrono from "../components/Chrono";
 import { evaluate, newPuzzle, type CalcLevel, type Op } from "../lib/calcul";
 import { useGameSession } from "../lib/useGameSession";
 import { bumpStreak, resetStreak } from "../lib/store";
+import LevelUpHint from "../components/LevelUpHint";
 
 const LEVELS: { id: CalcLevel; label: string }[] = [
   { id: "facile", label: "Facile" },
@@ -19,16 +20,8 @@ export default function Calcul() {
 
   const [ops, setOps] = useState<Op[]>(() => puzzle.allowed.length ? puzzle.nums.slice(1).map(() => puzzle.allowed[0]) : []);
   const [abandoned, setAbandoned] = useState(false);
-  const [, setWinStreak] = useState(0);
-  const [streakMsg, setStreakMsg] = useState("");
-  const [streakLevel, setStreakLevel] = useState<CalcLevel>(level);
+  const [, setBumps] = useState(0);
   const session = useGameSession("calcul", level);
-
-  if (streakLevel !== level) {
-    setStreakLevel(level);
-    setWinStreak(0);
-    setStreakMsg("");
-  }
 
   const key = `${level}-${seed}`;
   const [rk, setRk] = useState(key);
@@ -46,10 +39,8 @@ export default function Calcul() {
   useEffect(() => {
     if (solved && !session.won) {
       session.record("success");
-      const next = bumpStreak("calcul", level);
-      setWinStreak(next);
-      const NEXT_LEVEL: Record<CalcLevel, CalcLevel | null> = { facile: "moyen", moyen: "difficile", difficile: null };
-      if (next >= 3 && NEXT_LEVEL[level]) setStreakMsg(`${next} victoires d'affilée ! Essayez le niveau suivant ↑`);
+      bumpStreak("calcul", level);
+      setBumps((b) => b + 1);
     }
   }, [solved, session, level]);
 
@@ -83,8 +74,7 @@ export default function Calcul() {
     setOps(puzzle.solution);
     setAbandoned(true);
     resetStreak("calcul", level);
-    setWinStreak(0);
-    setStreakMsg("");
+    setBumps((b) => b + 1);
   }
 
   return (
@@ -110,7 +100,7 @@ export default function Calcul() {
         ))}
       </div>
 
-      {streakMsg && <p className="streak-banner">{streakMsg}</p>}
+      <LevelUpHint game="calcul" streakLevel={level} difficulty={level} />
 
       <p className="page-sub">Touchez les signes pour atteindre le résultat.</p>
 

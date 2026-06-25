@@ -4,7 +4,8 @@ import Icon from "../components/Icon";
 import GameActions from "../components/GameActions";
 import WinReward from "../components/WinReward";
 import Chrono from "../components/Chrono";
-import { getConfig } from "../lib/store";
+import LevelUpHint from "../components/LevelUpHint";
+import { getConfig, bumpStreak, resetStreak } from "../lib/store";
 import { useGameSession } from "../lib/useGameSession";
 
 export default function Sudoku() {
@@ -22,7 +23,9 @@ export default function Sudoku() {
   const [cells, setCells] = useState<number[]>(puzzle);
   const [selected, setSelected] = useState<number | null>(null);
   const [abandoned, setAbandoned] = useState(false);
+  const [, setBumps] = useState(0);
   const session = useGameSession("sudoku", `${sizeKey} • ${level}`);
+  const streakLevel = `${sizeKey} • ${level}`;
 
   const key = `${sizeKey}-${level}-${seed}`;
   const [renderedKey, setRenderedKey] = useState(key);
@@ -38,8 +41,12 @@ export default function Sudoku() {
   const solved = cells.every((v, i) => v === solution[i]);
 
   useEffect(() => {
-    if (solved) session.record("success");
-  }, [solved, session]);
+    if (solved && !session.won) {
+      session.record("success");
+      bumpStreak("sudoku", streakLevel);
+      setBumps((b) => b + 1);
+    }
+  }, [solved, session, streakLevel]);
 
   function setValue(v: number) {
     if (abandoned || selected == null || fixed[selected] !== 0) return;
@@ -75,6 +82,8 @@ export default function Sudoku() {
     session.record("abandon");
     setCells([...solution]);
     setAbandoned(true);
+    resetStreak("sudoku", streakLevel);
+    setBumps((b) => b + 1);
   }
 
   const padCols = n <= 6 ? n + 1 : 5;
@@ -107,6 +116,8 @@ export default function Sudoku() {
           Nouvelle grille
         </button>
       </div>
+
+      <LevelUpHint game="sudoku" streakLevel={streakLevel} difficulty={level} />
 
       <p className={solved ? "status win" : "status"}>
         {solved

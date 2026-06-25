@@ -318,6 +318,28 @@ export function resetStreak(game: string, level: string) {
   try { localStorage.setItem(streakKey(game, level), "0"); } catch {}
 }
 
+// Suggestion de montée en niveau : après LEVEL_UP_STREAK victoires d'affilée
+// sur une difficulté, on propose (sans l'imposer) la difficulté supérieure.
+export const LEVEL_UP_STREAK = 3;
+const DIFFICULTY_LADDER: { id: string; label: string }[] = [
+  { id: "facile", label: "Facile" },
+  { id: "moyen", label: "Moyen" },
+  { id: "difficile", label: "Difficile" },
+];
+export function levelUpSuggestion(
+  game: string,
+  streakLevel: string,
+  difficulty: string
+): { currentLabel: string; nextLabel: string } | null {
+  const idx = DIFFICULTY_LADDER.findIndex((d) => d.id === difficulty);
+  if (idx < 0 || idx >= DIFFICULTY_LADDER.length - 1) return null;
+  if (getStreak(game, streakLevel) < LEVEL_UP_STREAK) return null;
+  return {
+    currentLabel: DIFFICULTY_LADDER[idx].label,
+    nextLabel: DIFFICULTY_LADDER[idx + 1].label,
+  };
+}
+
 export function fmtDuration(ms: number): string {
   const s = Math.round(ms / 1000);
   const m = Math.floor(s / 60);

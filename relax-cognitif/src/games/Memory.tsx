@@ -3,7 +3,8 @@ import Icon, { MEMORY_SYMBOLS } from "../components/Icon";
 import GameActions from "../components/GameActions";
 import WinReward from "../components/WinReward";
 import Chrono from "../components/Chrono";
-import { getConfig } from "../lib/store";
+import LevelUpHint from "../components/LevelUpHint";
+import { getConfig, bumpStreak, resetStreak } from "../lib/store";
 import { useGameSession } from "../lib/useGameSession";
 
 const SYMBOLS = MEMORY_SYMBOLS;
@@ -60,6 +61,8 @@ export default function Memory() {
   const [flipped, setFlipped] = useState<number[]>([]);
   const [matched, setMatched] = useState<number[]>([]);
   const [moves, setMoves] = useState(0);
+  const [, setBumps] = useState(0);
+  const streakLevel = `${mode}-${level}`;
 
   const key = `${mode}-${level}-${seed}`;
   const [renderedKey, setRenderedKey] = useState(key);
@@ -89,8 +92,12 @@ export default function Memory() {
   const won = matched.length === deck.length && deck.length > 0;
 
   useEffect(() => {
-    if (won && !abandoned) session.record("success");
-  }, [won, abandoned, session]);
+    if (won && !abandoned && !session.won) {
+      session.record("success");
+      bumpStreak("memory", streakLevel);
+      setBumps((b) => b + 1);
+    }
+  }, [won, abandoned, session, streakLevel]);
 
   function flip(i: number) {
     if (abandoned || flipped.length >= groupSize || flipped.includes(i) || matched.includes(i)) return;
@@ -117,6 +124,8 @@ export default function Memory() {
     setFlipped([]);
     setMatched(deck.map((_, i) => i));
     setAbandoned(true);
+    resetStreak("memory", streakLevel);
+    setBumps((b) => b + 1);
   }
 
   return (
@@ -138,6 +147,8 @@ export default function Memory() {
         </div>
         <button className="btn btn-ghost" onClick={() => setSeed((s) => s + 1)}>Recommencer</button>
       </div>
+
+      <LevelUpHint game="memory" streakLevel={streakLevel} difficulty={level} />
 
       <p className={won && !abandoned ? "status win" : "status"}>
         {abandoned
