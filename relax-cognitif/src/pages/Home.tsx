@@ -53,6 +53,7 @@ const SECTIONS: Section[] = [
       { to: "/mot-mystere", icon: "bulb", title: "Mot mystère", desc: "Devinez le mot caché, façon Motus", game: "motmystere" },
       { to: "/mots-meles", icon: "grid", title: "Mots mêlés", desc: "Trouvez les mots cachés", game: "motsmeles" },
       { to: "/anagrammes", icon: "letters", title: "Anagrammes", desc: "Remettez les lettres en ordre", game: "anagrammes" },
+      { to: "/illusions", icon: "eye", title: "Illusions d'optique", desc: "Votre œil vous trompe-t-il ?", game: "illusions" },
     ],
   },
   {

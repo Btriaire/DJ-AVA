@@ -135,6 +135,12 @@ const PATHS: Record<string, React.ReactNode> = {
       <path d="M14 8.5a2.5 2.5 0 1 1 0 4H14v-4zM14 12.5h.6a2.5 2.5 0 1 1 0 5H14v-5z" />
     </>
   ),
+  eye: (
+    <>
+      <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
   connect4: (
     <>
       <rect x="3" y="4" width="18" height="16" rx="2" />

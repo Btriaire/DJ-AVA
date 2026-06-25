@@ -3101,6 +3101,41 @@ body {
   padding: 6px 16px; border-radius: 999px; margin: 4px 0 8px;
 }
 
+/* ── Illusions d'optique ──────────────────────────────────────── */
+.ill-question {
+  text-align: center;
+  font-size: 18px; font-weight: 700; color: var(--ink);
+  line-height: 1.4; margin: 10px 4px 12px;
+}
+.ill-stage {
+  display: flex; justify-content: center;
+  background: #fff;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px;
+  margin-bottom: 16px;
+}
+.illusion-art {
+  width: 100%; max-width: 360px; height: auto;
+  display: block;
+}
+.opt.opt-good {
+  background: #d4e8db; border-color: #2a6b47; color: #2a6b47; font-weight: 700;
+}
+.opt.opt-bad {
+  background: #f5dbd6; border-color: #b5482f; color: #8b3320;
+}
+.ill-explain {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  font-size: 15px; line-height: 1.5; color: var(--ink);
+}
+.ill-explain.ok { background: #d8ebdf; }
+.ill-explain.ko { background: #fbeae0; }
+.ill-explain p { margin: 0; }
+.ill-verdict { font-weight: 800; margin-bottom: 6px !important; }
+
 /* ── Citations philo ──────────────────────────────────────────── */
 .philo-progress {
   font-size: 13px;

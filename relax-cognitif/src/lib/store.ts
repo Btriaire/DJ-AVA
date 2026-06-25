@@ -24,6 +24,7 @@ export type GameId =
   | "motmystere"
   | "pyramide"
   | "plusmoins"
+  | "illusions"
   | "parcours";
 export type Outcome = "success" | "failure" | "abandon";
 
@@ -53,6 +54,7 @@ export const GAME_LABELS: Record<GameId, string> = {
   motmystere: "Mot mystère",
   pyramide: "La Pyramide",
   plusmoins: "Plus ou moins",
+  illusions: "Illusions d'optique",
   parcours: "Parcours de l'Esprit",
 };
 
@@ -82,6 +84,7 @@ const GAME_IDS: GameId[] = [
   "motmystere",
   "pyramide",
   "plusmoins",
+  "illusions",
   "parcours",
 ];
 
