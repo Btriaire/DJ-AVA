@@ -141,6 +141,14 @@ const PATHS: Record<string, React.ReactNode> = {
       <circle cx="12" cy="12" r="3" />
     </>
   ),
+  car: (
+    <>
+      <path d="M3 13l1.8-5a2 2 0 0 1 1.9-1.3h10.6a2 2 0 0 1 1.9 1.3L21 13v5a1 1 0 0 1-1 1h-1.5a1 1 0 0 1-1-1v-1H6.5v1a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z" />
+      <path d="M3.5 13h17" />
+      <circle cx="7.5" cy="16" r="1" fill="currentColor" stroke="none" />
+      <circle cx="16.5" cy="16" r="1" fill="currentColor" stroke="none" />
+    </>
+  ),
   connect4: (
     <>
       <rect x="3" y="4" width="18" height="16" rx="2" />

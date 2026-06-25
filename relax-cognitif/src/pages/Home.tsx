@@ -54,6 +54,7 @@ const SECTIONS: Section[] = [
       { to: "/mots-meles", icon: "grid", title: "Mots mêlés", desc: "Trouvez les mots cachés", game: "motsmeles" },
       { to: "/anagrammes", icon: "letters", title: "Anagrammes", desc: "Remettez les lettres en ordre", game: "anagrammes" },
       { to: "/illusions", icon: "eye", title: "Illusions d'optique", desc: "Votre œil vous trompe-t-il ?", game: "illusions" },
+      { to: "/route", icon: "car", title: "Jeu de la Route", desc: "Départements, régions, routes de France", game: "route" },
     ],
   },
   {

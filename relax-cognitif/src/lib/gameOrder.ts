@@ -27,6 +27,7 @@ export const GAME_ORDER: GameLink[] = [
   { game: "motsmeles", to: "/mots-meles", title: "Mots mêlés" },
   { game: "anagrammes", to: "/anagrammes", title: "Anagrammes" },
   { game: "illusions", to: "/illusions", title: "Illusions d'optique" },
+  { game: "route", to: "/route", title: "Jeu de la Route" },
   // Vitesse & réflexes
   { game: "rapidite", to: "/rapidite", title: "Rapidité au clic" },
   { game: "feuvert", to: "/feu-vert", title: "Feu vert" },

@@ -27,6 +27,7 @@ import MotMystere from "./games/MotMystere";
 import Pyramide from "./games/Pyramide";
 import PlusMoins from "./games/PlusMoins";
 import Illusions from "./games/Illusions";
+import JeuRoute from "./games/Route";
 import Meditation from "./pages/Meditation";
 import Parcours from "./pages/Parcours";
 import Profil from "./pages/Profil";
@@ -71,6 +72,7 @@ export default function App() {
       <Route path="/mots-meles" element={<Shell title="Mots mêlés" game="motsmeles"><MotsMeles /></Shell>} />
       <Route path="/anagrammes" element={<Shell title="Anagrammes" game="anagrammes"><Anagrammes /></Shell>} />
       <Route path="/illusions" element={<Shell title="Illusions d'optique" game="illusions"><Illusions /></Shell>} />
+      <Route path="/route" element={<Shell title="Jeu de la Route" game="route"><JeuRoute /></Shell>} />
       <Route path="/puissance4" element={<Shell title="Puissance 4" game="puissance4"><Puissance4 /></Shell>} />
       <Route path="/citations" element={<Shell title="Citations" game="citations"><Citations /></Shell>} />
       <Route path="/tangram" element={<Shell title="Tangram" game="tangram"><Tangram /></Shell>} />
