@@ -6,7 +6,7 @@ import {
   nextMedal,
   rankFor,
   successCount,
-  totalSuccess,
+  totalPoints,
   type GameId,
 } from "../lib/store";
 import { nextGame } from "../lib/gameOrder";
@@ -39,8 +39,8 @@ export default function WinReward({ game, show }: { game: GameId; show: boolean 
   const tier = medalTier(count);
   const next = nextMedal(count);
 
-  const xp = totalSuccess(sessions);
-  const { rank, next: nextRank, into, span } = rankFor(xp);
+  const points = totalPoints(sessions);
+  const { rank, next: nextRank, into, span } = rankFor(points);
   const pct = span ? Math.min(100, Math.round((into / span) * 100)) : 100;
 
   return (

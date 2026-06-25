@@ -3,15 +3,17 @@ import Medal from "../components/Medal";
 import Icon from "../components/Icon";
 import {
   fmtDuration, getSessions, GAME_LABELS, medalTier, rankFor,
-  statsByGame, totalSuccess, dayStreak, type GameId,
+  statsByGame, totalSuccess, totalPoints, dayStreak, type GameId,
 } from "../lib/store";
+import { bestScore } from "../lib/score";
 
 export default function Stats() {
   const sessions = getSessions();
   const stats = statsByGame(sessions).filter(s => s.total > 0);
   const xp = totalSuccess(sessions);
+  const points = totalPoints(sessions);
   const streak = dayStreak(sessions);
-  const { rank, next, into, span } = rankFor(xp);
+  const { rank, next, into, span } = rankFor(points);
   const pct = span ? Math.min(100, Math.round((into / span) * 100)) : 100;
   const totalTime = sessions.reduce((a, s) => a + s.durationMs, 0);
 
@@ -19,6 +21,10 @@ export default function Stats() {
     <div>
       {/* Hero chiffres clés */}
       <div className="stats-hero">
+        <div className="stats-hero-item">
+          <span className="stats-hero-val">{points}</span>
+          <span className="stats-hero-lbl">points</span>
+        </div>
         <div className="stats-hero-item">
           <span className="stats-hero-val">{xp}</span>
           <span className="stats-hero-lbl">victoires</span>
@@ -56,10 +62,12 @@ export default function Stats() {
         <div className="stats-list">
           {stats.map(s => {
             const tier = medalTier(s.success);
+            const best = bestScore(s.game as GameId, sessions);
             return (
               <div key={s.game} className="stats-row">
                 <div className="stats-row-head">
                   <span className="stats-row-name">{GAME_LABELS[s.game as GameId]}</span>
+                  {best && <span className="stats-record">record {best.score}/{best.maxScore}</span>}
                   {tier !== "none" && <Medal tier={tier} size={18} />}
                 </div>
                 <div className="stats-row-nums">

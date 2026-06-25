@@ -16,6 +16,7 @@ import {
   dayStreak,
   getSessions,
   rankFor,
+  totalPoints,
   totalSuccess,
 } from "../lib/store";
 
@@ -56,7 +57,8 @@ export default function Profil() {
   const objs = useMemo(() => objectives(sessions), [sessions]);
   const reco = useMemo(() => recommendedParcours(sessions), [sessions]);
   const xp = totalSuccess(sessions);
-  const { rank, next, into, span } = rankFor(xp);
+  const points = totalPoints(sessions);
+  const { rank, next, into, span } = rankFor(points);
   const pct = span ? Math.min(100, Math.round((into / span) * 100)) : 100;
   const streak = dayStreak(sessions);
 
@@ -147,6 +149,7 @@ export default function Profil() {
         </div>
         <div className="prof-rank-stats">
           <span className="prof-chip"><Icon name="flame" size={15} /> {streak} jour{streak > 1 ? "s" : ""} de suite</span>
+          <span className="prof-chip"><Icon name="star-fill" size={15} /> {points} points</span>
           <span className="prof-chip"><Icon name="trophy" size={15} /> {xp} victoires</span>
         </div>
       </section>

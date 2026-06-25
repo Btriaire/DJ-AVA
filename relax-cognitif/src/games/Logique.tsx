@@ -5,6 +5,8 @@ import Chrono from "../components/Chrono";
 import NextButton from "../components/NextButton";
 import QuizResult from "../components/QuizResult";
 import { useGameSession } from "../lib/useGameSession";
+import { getSessions } from "../lib/store";
+import { bestRatio } from "../lib/score";
 
 const ROUND_SIZE = 20;
 const PASS = 14;
@@ -80,6 +82,7 @@ export default function Logique() {
   const [picked, setPicked] = useState<number | null>(null);
   const [score, setScore] = useState(0);
   const [done, setDone] = useState(false);
+  const [isRecord, setIsRecord] = useState(false);
   const [showHint, setShowHint] = useState(false);
   const [eliminated, setEliminated] = useState<number[]>([]);
   const session = useGameSession("logique", "");
@@ -92,6 +95,7 @@ export default function Logique() {
     setPicked(null);
     setScore(0);
     setDone(false);
+    setIsRecord(false);
     setShowHint(false);
     setEliminated([]);
     session.reset();
@@ -105,7 +109,9 @@ export default function Logique() {
     const newScore = picked === puzzle.answer ? score + 1 : score;
     setScore(newScore);
     if (qi + 1 >= ROUND_SIZE) {
-      session.record(newScore >= PASS ? "success" : "failure");
+      const prevBest = bestRatio("logique", getSessions());
+      session.record(newScore >= PASS ? "success" : "failure", newScore, ROUND_SIZE);
+      setIsRecord(newScore / ROUND_SIZE > prevBest);
       setDone(true);
     } else {
       setQi(i => i + 1);
@@ -138,6 +144,7 @@ export default function Logique() {
         won={session.won}
         score={score}
         total={ROUND_SIZE}
+        isRecord={isRecord}
         onReplay={restart}
       />
     );

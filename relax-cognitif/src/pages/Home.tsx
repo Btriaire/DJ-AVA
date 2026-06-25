@@ -10,6 +10,7 @@ import {
   medalTier,
   rankFor,
   successCount,
+  totalPoints,
   totalSuccess,
   type GameId,
 } from "../lib/store";
@@ -76,7 +77,8 @@ const SECTIONS: Section[] = [
 export default function Home() {
   const sessions = getSessions();
   const xp = totalSuccess(sessions);
-  const { rank, next, into, span } = rankFor(xp);
+  const points = totalPoints(sessions);
+  const { rank, next, into, span } = rankFor(points);
   const streak = dayStreak(sessions);
   const pct = span ? Math.min(100, Math.round((into / span) * 100)) : 100;
   const quote = randomQuote();
@@ -113,6 +115,9 @@ export default function Home() {
           <div className="prog-stats">
             <span className="prog-stat">
               <Icon name="flame" size={16} /> {streak} j
+            </span>
+            <span className="prog-stat">
+              <Icon name="star-fill" size={16} /> {points}
             </span>
             <span className="prog-stat">
               <Icon name="trophy" size={16} /> {xp}

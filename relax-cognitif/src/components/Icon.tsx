@@ -202,6 +202,7 @@ const PATHS: Record<string, React.ReactNode> = {
   triangle: <path d="M12 4l8 15H4z" />,
   diamond: <path d="M12 3l9 9-9 9-9-9z" />,
   star: <path d="M12 3l2.6 6 6.4.5-4.9 4.2 1.6 6.3L12 16.8 6.3 20l1.6-6.3L3 9.5 9.4 9z" />,
+  "star-fill": <path d="M12 3l2.6 6 6.4.5-4.9 4.2 1.6 6.3L12 16.8 6.3 20l1.6-6.3L3 9.5 9.4 9z" fill="currentColor" stroke="none" />,
   heart: <path d="M12 20S4 14.5 4 9a4 4 0 0 1 8-1 4 4 0 0 1 8 1c0 5.5-8 11-8 11z" />,
   hexagon: <path d="M7 4h10l5 8-5 8H7l-5-8z" />,
   plus: <path d="M10 3h4v7h7v4h-7v7h-4v-7H3v-4h7z" />,

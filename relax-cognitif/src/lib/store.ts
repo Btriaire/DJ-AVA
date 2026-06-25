@@ -151,6 +151,8 @@ export type Session = {
   durationMs: number;
   hintsUsed: number;
   at: number; // timestamp
+  score?: number;    // pour les jeux à score (ex. 17 bonnes réponses)
+  maxScore?: number; // total possible (ex. 20)
 };
 
 export function getSessions(): Session[] {
@@ -231,15 +233,31 @@ export function totalSuccess(sessions: Session[]): number {
   return sessions.filter((s) => s.outcome === "success").length;
 }
 
-// La « Voie de l'Esprit » : progression globale du joueur (1 victoire = 1 pas).
+// ── Points : chaque partie rapporte, même partielle (fin du « tout ou rien ») ──
+// Jeux à score (quiz) : 2 points de base + jusqu'à 10 selon le ratio (2..12).
+// Jeux binaires : victoire 10, partie tentée 3, abandon 1. Toujours > 0.
+export function sessionPoints(s: Session): number {
+  if (s.score != null && s.maxScore && s.maxScore > 0) {
+    return 2 + Math.round((s.score / s.maxScore) * 10);
+  }
+  if (s.outcome === "success") return 10;
+  if (s.outcome === "abandon") return 1;
+  return 3;
+}
+
+export function totalPoints(sessions: Session[]): number {
+  return sessions.reduce((a, s) => a + sessionPoints(s), 0);
+}
+
+// La « Voie de l'Esprit » : progression globale du joueur, en points cumulés.
 export type Rank = { name: string; min: number };
 export const RANKS: Rank[] = [
   { name: "Apprenti", min: 0 },
-  { name: "Disciple", min: 5 },
-  { name: "Initié", min: 15 },
-  { name: "Sage", min: 30 },
-  { name: "Maître", min: 60 },
-  { name: "Grand Maître", min: 120 },
+  { name: "Disciple", min: 60 },
+  { name: "Initié", min: 200 },
+  { name: "Sage", min: 450 },
+  { name: "Maître", min: 900 },
+  { name: "Grand Maître", min: 1800 },
 ];
 
 export function rankFor(xp: number): {

@@ -4,6 +4,8 @@ import NextButton from "../components/NextButton";
 import QuizResult from "../components/QuizResult";
 import { pickPhiloRound, type PhiloMode } from "../lib/philo";
 import { useGameSession } from "../lib/useGameSession";
+import { getSessions } from "../lib/store";
+import { bestRatio } from "../lib/score";
 
 const ROUND_SIZE = 20;
 const PASS = 14;
@@ -20,6 +22,7 @@ export default function Philo() {
   const [score, setScore] = useState(0);
   const [picked, setPicked] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [isRecord, setIsRecord] = useState(false);
   const session = useGameSession("philo", mode);
 
   const questions = useMemo(() => pickPhiloRound(mode, ROUND_SIZE), [mode, seed]);
@@ -34,6 +37,7 @@ export default function Philo() {
     setScore(0);
     setPicked(null);
     setDone(false);
+    setIsRecord(false);
     session.reset();
   }
 
@@ -42,7 +46,9 @@ export default function Philo() {
     const newScore = picked === question.answer ? score + 1 : score;
     setScore(newScore);
     if (qIdx + 1 >= total) {
-      session.record(newScore >= PASS ? "success" : "failure");
+      const prevBest = bestRatio("philo", getSessions());
+      session.record(newScore >= PASS ? "success" : "failure", newScore, total);
+      setIsRecord(total > 0 && newScore / total > prevBest);
       setDone(true);
     } else {
       setQIdx(q => q + 1);
@@ -62,6 +68,7 @@ export default function Philo() {
         won={session.won}
         score={score}
         total={total}
+        isRecord={isRecord}
         onReplay={() => restart()}
       />
     );

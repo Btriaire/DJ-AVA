@@ -5,6 +5,8 @@ import Chrono from "../components/Chrono";
 import NextButton from "../components/NextButton";
 import QuizResult from "../components/QuizResult";
 import { useGameSession } from "../lib/useGameSession";
+import { getSessions } from "../lib/store";
+import { bestRatio } from "../lib/score";
 
 const ROUND_SIZE = 20;
 const PASS = 14;
@@ -27,6 +29,7 @@ export default function Couleurs() {
   const [picked, setPicked] = useState<string | null>(null);
   const [score, setScore] = useState(0);
   const [done, setDone] = useState(false);
+  const [isRecord, setIsRecord] = useState(false);
   const [eliminated, setEliminated] = useState<string[]>([]);
   const session = useGameSession("couleurs", "");
 
@@ -38,6 +41,7 @@ export default function Couleurs() {
     setPicked(null);
     setScore(0);
     setDone(false);
+    setIsRecord(false);
     setEliminated([]);
     session.reset();
   }
@@ -50,7 +54,9 @@ export default function Couleurs() {
     const newScore = picked === q.answer ? score + 1 : score;
     setScore(newScore);
     if (qi + 1 >= total) {
-      session.record(newScore >= PASS ? "success" : "failure");
+      const prevBest = bestRatio("couleurs", getSessions());
+      session.record(newScore >= PASS ? "success" : "failure", newScore, total);
+      setIsRecord(total > 0 && newScore / total > prevBest);
       setDone(true);
     } else {
       setQi(i => i + 1);
@@ -79,6 +85,7 @@ export default function Couleurs() {
         won={session.won}
         score={score}
         total={total}
+        isRecord={isRecord}
         onReplay={restart}
       />
     );

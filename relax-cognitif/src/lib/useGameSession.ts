@@ -24,7 +24,7 @@ export function useGameSession(game: GameId, level?: string) {
     return true;
   }
 
-  function record(outcome: Outcome) {
+  function record(outcome: Outcome, score?: number, maxScore?: number) {
     if (loggedRef.current) return;
     loggedRef.current = true;
     if (outcome === "success") setWon(true);
@@ -35,6 +35,7 @@ export function useGameSession(game: GameId, level?: string) {
       durationMs: Date.now() - startRef.current,
       hintsUsed: hintsRef.current,
       at: Date.now(),
+      ...(score != null ? { score, maxScore } : {}),
     });
   }
 

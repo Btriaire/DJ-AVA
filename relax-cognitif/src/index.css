@@ -3084,6 +3084,23 @@ body {
 }
 .cult-grade { font-size: 22px; font-weight: 700; color: var(--ink); margin: 0 0 16px; }
 
+/* ── Étoiles + record + points (bilan de manche) ──────────────── */
+.quiz-stars {
+  display: flex; gap: 8px; justify-content: center; margin-bottom: 6px;
+}
+.quiz-star { color: #d8cfc0; line-height: 0; }
+.quiz-star.on { color: #f0b429; }
+.quiz-record {
+  font-size: 15px; font-weight: 800; color: var(--accent);
+  margin: 0; letter-spacing: 0.2px;
+}
+.quiz-points {
+  display: inline-block;
+  background: var(--surface-alt);
+  color: var(--ink); font-weight: 700; font-size: 15px;
+  padding: 6px 16px; border-radius: 999px; margin: 4px 0 8px;
+}
+
 /* ── Citations philo ──────────────────────────────────────────── */
 .philo-progress {
   font-size: 13px;
@@ -3502,6 +3519,11 @@ body {
   margin-bottom: 6px;
 }
 .stats-row-name { font-size: 15px; font-weight: 700; color: var(--ink); }
+.stats-record {
+  margin-left: auto; margin-right: 8px;
+  font-size: 12px; font-weight: 700; color: var(--accent);
+  background: var(--surface-alt); padding: 2px 8px; border-radius: 999px;
+}
 .stats-row-nums {
   display: flex; gap: 10px; flex-wrap: wrap;
   font-size: 13px; color: var(--ink-soft); margin-bottom: 8px;
