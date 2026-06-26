@@ -17,8 +17,18 @@ function rnd(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-function makePuzzle(): Puzzle {
-  const kind = rnd(0, 6);
+// Les motifs sont regroupés par difficulté : on commence simple (additions /
+// soustractions) puis on monte (incréments variables, carrés) jusqu'aux plus
+// abstraits (suites géométriques, Fibonacci).
+const KIND_TIERS: number[][] = [
+  [0, 4], // facile
+  [2, 3, 6], // moyen
+  [1, 5], // difficile
+];
+
+function makePuzzle(tier = 0): Puzzle {
+  const pool = KIND_TIERS[Math.min(tier, KIND_TIERS.length - 1)];
+  const kind = pool[Math.floor(Math.random() * pool.length)];
   if (kind === 0) {
     const start = rnd(1, 9);
     const d = rnd(2, 9);
@@ -75,7 +85,12 @@ function options(answer: number): number[] {
 export default function Logique() {
   const [seed, setSeed] = useState(0);
   const puzzles = useMemo(
-    () => Array.from({ length: ROUND_SIZE }, makePuzzle),
+    () =>
+      Array.from({ length: ROUND_SIZE }, (_, i) => {
+        // Difficulté croissante : 1er tiers facile, 2e moyen, dernier difficile.
+        const tier = Math.floor((i / ROUND_SIZE) * 3);
+        return makePuzzle(tier);
+      }),
     [seed]
   );
   const [qi, setQi] = useState(0);

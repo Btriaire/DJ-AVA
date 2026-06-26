@@ -9,15 +9,23 @@ export type IllusionKind =
   | "vertical-horizontal"
   | "count-circles"
   | "ebbinghaus"
+  | "necker"
+  | "gradient-bar"
   | "ponzo"
   | "delboeuf"
   | "jastrow"
   | "cafe-wall"
   | "hermann"
+  | "zollner"
+  | "hering"
+  | "scintillating"
   | "adelson"
   | "kanizsa"
   | "fraser"
-  | "contrast";
+  | "contrast"
+  | "poggendorff"
+  | "white"
+  | "shepard";
 
 export type Illusion = {
   id: string;
@@ -76,6 +84,26 @@ export const ILLUSIONS: Illusion[] = [
     explain:
       "Les deux disques oranges sont de taille identique. Entourés de petits cercles, ils paraissent plus grands (illusion d'Ebbinghaus).",
   },
+  {
+    id: "necker",
+    level: 1,
+    kind: "necker",
+    question: "Quelle face de ce cube est devant ?",
+    options: ["La face en bas à gauche", "La face en haut à droite", "Les deux : le cube bascule"],
+    answer: "Les deux : le cube bascule",
+    explain:
+      "Le cube de Necker est ambigu : aucune face n'est vraiment « devant ». Le cerveau bascule sans cesse entre deux interprétations.",
+  },
+  {
+    id: "gradient-bar",
+    level: 1,
+    kind: "gradient-bar",
+    question: "La barre grise centrale change-t-elle de teinte de gauche à droite ?",
+    options: ["Non, elle est uniforme", "Oui, elle s'assombrit à droite"],
+    answer: "Non, elle est uniforme",
+    explain:
+      "La barre est d'un gris parfaitement uniforme. Le fond en dégradé inversé donne l'impression qu'elle change de teinte (contraste simultané).",
+  },
 
   // ── Niveau 2 · Curieux ──────────────────────────────────────────
   {
@@ -128,6 +156,36 @@ export const ILLUSIONS: Illusion[] = [
     explain:
       "Tous les croisements sont blancs. Les points gris « fantômes » sont fabriqués par votre rétine (grille de Hermann) et disparaissent si vous les fixez.",
   },
+  {
+    id: "zollner",
+    level: 2,
+    kind: "zollner",
+    question: "Les longues lignes obliques sont-elles parallèles ?",
+    options: ["Oui, parfaitement parallèles", "Non, elles se rapprochent"],
+    answer: "Oui, parfaitement parallèles",
+    explain:
+      "Les longues lignes sont rigoureusement parallèles. Les petites barres inclinées en sens contraire créent une fausse impression de pente (illusion de Zöllner).",
+  },
+  {
+    id: "hering",
+    level: 2,
+    kind: "hering",
+    question: "Les deux lignes rouges sont-elles bien droites ?",
+    options: ["Oui, parfaitement droites", "Non, elles sont bombées"],
+    answer: "Oui, parfaitement droites",
+    explain:
+      "Les deux lignes rouges sont parfaitement droites et parallèles. Le faisceau qui rayonne derrière elles les fait paraître courbées (illusion de Hering).",
+  },
+  {
+    id: "scintillating",
+    level: 2,
+    kind: "scintillating",
+    question: "Des points sombres clignotent-ils aux intersections grises ?",
+    options: ["Oui, des points noirs apparaissent", "Non, les pastilles restent claires"],
+    answer: "Oui, des points noirs apparaissent",
+    explain:
+      "Des points noirs semblent surgir et disparaître aux croisements : c'est la grille scintillante. Ils n'existent pas — fixez un croisement et il reste clair.",
+  },
 
   // ── Niveau 3 · Expert ───────────────────────────────────────────
   {
@@ -170,6 +228,36 @@ export const ILLUSIONS: Illusion[] = [
     explain:
       "Les deux carrés gris sont identiques. Sur fond sombre, un gris paraît plus clair ; sur fond clair, plus foncé (contraste simultané).",
   },
+  {
+    id: "poggendorff",
+    level: 3,
+    kind: "poggendorff",
+    question: "Quelle ligne de droite (A ou B) prolonge exactement la ligne de gauche ?",
+    options: ["La ligne A", "La ligne B"],
+    answer: "La ligne B",
+    explain:
+      "C'est la ligne B qui est dans le prolongement exact. La barre masque l'alignement et nous fait choisir la mauvaise (illusion de Poggendorff).",
+  },
+  {
+    id: "white",
+    level: 3,
+    kind: "white",
+    question: "Les deux groupes de barres grises ont-ils la même teinte ?",
+    options: ["Oui, exactement le même gris", "Non, l'un est plus clair"],
+    answer: "Oui, exactement le même gris",
+    explain:
+      "Les deux gris sont identiques. Posés sur du noir ou sur du blanc, ils paraissent pourtant différents (illusion de White).",
+  },
+  {
+    id: "shepard",
+    level: 3,
+    kind: "shepard",
+    question: "Les deux plateaux de table ont-ils la même forme ?",
+    options: ["Oui, des parallélogrammes identiques", "Non, l'un est plus allongé"],
+    answer: "Oui, des parallélogrammes identiques",
+    explain:
+      "Les deux plateaux sont strictement identiques : même parallélogramme, simplement tourné. Le contexte de « table » trompe totalement notre perception (tables de Shepard).",
+  },
 ];
 
 function shuffle<T>(arr: T[]): T[] {
@@ -191,6 +279,7 @@ export function pickIllusionRound(
   n: number
 ): Illusion[] {
   if (level === "varie") {
+    // On commence par les plus simples puis on monte en difficulté.
     const ordered = [
       ...shuffle(ILLUSIONS.filter((i) => i.level === 1)),
       ...shuffle(ILLUSIONS.filter((i) => i.level === 2)),
@@ -198,5 +287,6 @@ export function pickIllusionRound(
     ];
     return ordered.slice(0, n);
   }
+  // Au sein d'un même niveau, on garde un ordre aléatoire.
   return shuffle(ILLUSIONS.filter((i) => i.level === level)).slice(0, n);
 }

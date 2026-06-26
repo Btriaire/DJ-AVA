@@ -604,25 +604,55 @@ export const ROUTE_LEVEL_LABEL: Record<RouteLevel, string> = {
   varie: "Varié",
 };
 
+// Questions « route » les plus grand public : servent d'amorce facile.
+const EASY_ROAD = new Set([
+  "r-a7-soleil", "r-periph", "r-vmax-ville", "r-vmax-auto", "r-couleur-auto",
+  "r-bisonfute", "r-gilet", "r-peage", "r-aire", "r-rondpoint", "r-bau",
+  "r-millau", "r-manche", "r-radar", "r-rocade",
+]);
+
+// Manche de routes ordonnée du plus simple (connu de tous) au plus pointu.
+function rampRoads(n: number): RouteQuestion[] {
+  const easy = shuffle(ROAD_QUESTIONS.filter((q) => EASY_ROAD.has(q.id)));
+  const hard = shuffle(ROAD_QUESTIONS.filter((q) => !EASY_ROAD.has(q.id)));
+  return [...easy, ...hard].slice(0, n);
+}
+
+// Manche de plaques ordonnée par difficulté croissante :
+// 1) nom d'un département connu → 2) préfecture/région connus + nom d'un
+// département moins courant → 3) préfecture/région d'un département pointu.
+function rampPlates(pool: Department[], n: number): RouteQuestion[] {
+  const famous = pool.filter((d) => FAMOUS.has(d.num));
+  const others = pool.filter((d) => !FAMOUS.has(d.num));
+  const easy = shuffle(buildPlateBank(famous, ["name"]));
+  const med = shuffle([
+    ...buildPlateBank(famous, ["prefecture", "region"]),
+    ...buildPlateBank(others, ["name"]),
+  ]);
+  const hard = shuffle(buildPlateBank(others, ["prefecture", "region"]));
+  return [...easy, ...med, ...hard].slice(0, n);
+}
+
 /**
- * Compose une manche de `n` questions.
- * - « plaques » : numéros / préfectures / régions de tous les départements.
- * - « routes » : routes et autoroutes célèbres.
- * - « varie » : mélange des deux, en commençant par les départements connus.
+ * Compose une manche de `n` questions, toujours du plus simple au plus difficile.
+ * - « plaques » : départements connus d'abord, notions pointues ensuite.
+ * - « routes » : grandes évidences d'abord, cols et autoroutes rares ensuite.
+ * - « varie » : entrelace plaques et routes en conservant la montée en difficulté.
  */
 export function pickRouteRound(level: RouteLevel, n: number): RouteQuestion[] {
-  if (level === "routes") {
-    return shuffle(ROAD_QUESTIONS).slice(0, n);
-  }
-  if (level === "plaques") {
-    const bank = buildPlateBank(DEPARTMENTS, ["name", "prefecture", "region"]);
-    return shuffle(bank).slice(0, n);
-  }
-  // varié : moitié plaques (départements connus en priorité) + moitié routes
+  if (level === "routes") return rampRoads(n);
+  if (level === "plaques") return rampPlates(DEPARTMENTS, n);
+  // varié : on entrelace deux manches déjà ordonnées pour garder le crescendo.
   const famousPool = DEPARTMENTS.filter((d) => FAMOUS.has(d.num));
-  const plate = shuffle(buildPlateBank(famousPool, ["name", "prefecture", "region"]));
-  const roads = shuffle(ROAD_QUESTIONS);
   const half = Math.ceil(n / 2);
-  const mix = shuffle([...plate.slice(0, n - half), ...roads.slice(0, half)]);
-  return mix.slice(0, n);
+  const plates = rampPlates(famousPool, n - half);
+  const roads = rampRoads(half);
+  const out: RouteQuestion[] = [];
+  let i = 0;
+  let j = 0;
+  while (out.length < n && (i < plates.length || j < roads.length)) {
+    if (i < plates.length) out.push(plates[i++]);
+    if (j < roads.length && out.length < n) out.push(roads[j++]);
+  }
+  return out.slice(0, n);
 }
