@@ -5,21 +5,27 @@ import { DJEngine } from "@/lib/audio/engine";
 // Web Audio exposes no real CPU figure, so we estimate the DSP load from what's
 // actually running: active rack modules (the Tone/convolver effects are the
 // heavy ones), live stem playback (one decode + gain per stem), auto-tune
-// (a worklet), and whether each deck is playing. A touch of the context's
-// output latency is blended in since latency creeps up under load. The result
-// is squashed through 1-e^-x so the needle reads a believable 0→100 %.
-function estimateLoad(engine: DJEngine): number {
-  let raw = 0;
+// (a worklet), and whether each deck is playing. Two real, MEASURED signals are
+// blended in so the needle actually breathes instead of sitting flat: the
+// context's output latency (creeps up under load) and main-thread frame jank
+// (`jankExtra`, how far the rAF cadence slips past 16.7 ms). The sum is squashed
+// through 1-e^-x — but with a gentler divisor than before so realistic loads
+// reach the amber/red zones instead of hugging the bottom.
+function estimateLoad(engine: DJEngine, jankExtra: number): number {
+  let raw = 0.15; // honest idle floor: the audio thread + UI are never truly 0
   for (const deck of [engine.deckA, engine.deckB]) {
     if (!deck.playing) continue;
-    raw += 0.4; // a playing deck: decode + EQ + filter + analyser
+    raw += 0.55; // a playing deck: decode + EQ + filter + analyser
     const onMods = deck.rack.order.filter((id) => deck.rack.isOn(id)).length;
-    raw += onMods * 0.5; // creative effects are the costly part
-    if (deck.stemsActive) raw += 0.6 + deck.stemNames.length * 0.35;
-    if (deck.autotuneOn) raw += 0.7; // pitch worklet
+    raw += onMods * 0.7; // creative effects are the costly part
+    if (deck.stemsActive) raw += 0.8 + deck.stemNames.length * 0.45;
+    if (deck.autotuneOn) raw += 0.9; // pitch worklet
   }
-  raw += Math.min(2, engine.latencyMs() / 30); // latency creep as a load proxy
-  return 1 - Math.exp(-raw / 4); // soft saturation toward 1
+  raw += Math.min(1.2, engine.latencyMs() / 25); // latency creep as a load proxy
+  // measured main-thread strain — capped so it adds life at idle without pinning
+  // the needle; real audio activity (the terms above) stays the dominant signal.
+  raw += Math.min(1.4, jankExtra);
+  return 1 - Math.exp(-raw / 2.4); // soft saturation toward 1
 }
 
 const W = 132;
@@ -28,6 +34,8 @@ const H = 92;
 export function CpuMeter({ engine }: { engine: DJEngine }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const shownRef = useRef(0); // smoothed needle value
+  const jankRef = useRef(0); // EMA of frame-time overshoot past 16.7 ms (live load)
+  const lastTsRef = useRef(0); // previous rAF timestamp
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -48,9 +56,23 @@ export function CpuMeter({ engine }: { engine: DJEngine }) {
     const span = a1 - a0;
 
     let raf = 0;
-    const draw = () => {
-      const target = estimateLoad(engine);
-      shownRef.current += (target - shownRef.current) * 0.12; // ballistic smoothing
+    const draw = (ts: number) => {
+      // Measure how much the frame cadence slips past the 60 fps budget. When the
+      // audio thread + UI are under real strain the main loop stalls, so this is a
+      // genuine, live CPU proxy that makes the needle move with actual load — not
+      // just with how many toggles are on. Normalised to "extra 16.7 ms frames".
+      const last = lastTsRef.current;
+      lastTsRef.current = ts;
+      if (last) {
+        const dt = ts - last;
+        const extra = Math.max(0, dt - 16.7) / 16.7; // 0 at 60fps, ~1 at 30fps
+        // fast attack so spikes show, slow release so it doesn't flicker to 0
+        const k = extra > jankRef.current ? 0.4 : 0.06;
+        jankRef.current += (extra - jankRef.current) * k;
+      }
+
+      const target = estimateLoad(engine, jankRef.current);
+      shownRef.current += (target - shownRef.current) * 0.2; // ballistic smoothing
       const v = shownRef.current;
 
       ctx.clearRect(0, 0, W, H);

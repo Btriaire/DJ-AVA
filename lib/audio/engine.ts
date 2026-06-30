@@ -130,6 +130,11 @@ export class DJEngine {
   // the current default output — the tell-tale of a "running but silent" context
   // that only a fresh AudioContext can cure. A throwaway probe context always
   // reports the CURRENT hardware rate, so a mismatch means our context is dead.
+  // NOTE: this is only a SECONDARY confirmation now. On its own it false-positives
+  // (a fresh probe can negotiate a different default rate for benign reasons), and
+  // acting on it alone was firing needless suspend→resume kicks — heard as the
+  // periodic "sound blocks" the user reported. We now require measured silence
+  // (outputSilent) AND expected audio before ever escalating.
   private async deadOutput(): Promise<boolean> {
     try {
       const probe = new AudioContext();
@@ -139,6 +144,25 @@ export class DJEngine {
     } catch {
       return false;
     }
+  }
+
+  // Audio is *expected* right now: a deck is actually playing and the master is
+  // up. A loaded-but-paused deck, or master at 0, must never count as "should be
+  // making sound" — otherwise the watchdog would kick during normal silence.
+  private audioExpected(): boolean {
+    return (this.deckA.playing || this.deckB.playing) && this.getMaster() > 0;
+  }
+
+  // Real, MEASURED silence at the master output, read from the post-FX analyser.
+  // Returns true only when there is literally no energy in any band. This is the
+  // ground truth that gates every disruptive recovery action: a benign probe
+  // mismatch can no longer trigger a kick unless the output is genuinely dead.
+  private outputSilent(): boolean {
+    this.meterAnalyser.getByteFrequencyData(this.meterBuf);
+    for (let i = 0; i < this.meterBuf.length; i++) {
+      if (this.meterBuf[i] !== 0) return false;
+    }
+    return true;
   }
 
   private installAutoRecovery() {
@@ -164,9 +188,10 @@ export class DJEngine {
       if (document.visibilityState === "visible") wake();
     });
 
-    // 4. output device changed → re-bind to it with the suspend→resume kick, then
-    //    verify: if the context is still bound to a stale sample rate (kick can't
-    //    fix that), escalate to a full rebuild so sound returns automatically.
+    // 4. output device changed → re-bind to it with the suspend→resume kick. A
+    //    real device switch genuinely needs the re-bind, so recover() runs here.
+    //    But only escalate to a heavy rebuild when sound is EXPECTED yet MEASURED
+    //    silent afterwards — never on the probe mismatch alone.
     const md = navigator.mediaDevices as MediaDevices | undefined;
     if (md && "addEventListener" in md) {
       let t: ReturnType<typeof setTimeout> | null = null;
@@ -174,26 +199,35 @@ export class DJEngine {
         if (t) clearTimeout(t);
         t = setTimeout(async () => {
           await this.recover();
-          if (await this.deadOutput()) this.maybeRebuild();
+          if (this.audioExpected() && this.outputSilent() && (await this.deadOutput())) {
+            this.maybeRebuild();
+          }
         }, 300); // debounce the burst of events
       });
     }
 
-    // 5. last-resort watchdog: if the context ever sits outside "running", nudge
-    //    it (cheap, every 2 s). When it IS running but a track is loaded, probe
-    //    every ~6 s for a wedged/dead output and self-heal — recover() first, then
-    //    a full rebuild if it's still bound to the wrong device. This is what makes
-    //    "no sound" cure itself without any user action.
-    let ticks = 0;
+    // 5. last-resort watchdog (every 2 s). Outside "running" → cheap nudge. The
+    //    self-heal path now triggers ONLY on confirmed, sustained, measured
+    //    silence while a deck is actually playing — so a fine-sounding mix is
+    //    never interrupted by a speculative kick. We require silence across two
+    //    consecutive ticks (~4 s) to rule out a momentary buffer gap or an
+    //    intentional drop, then recover(), and rebuild only if it's still dead.
+    let silentTicks = 0;
     setInterval(async () => {
       if (this.ctx.state !== "running") {
         this.ctx.resume().catch(() => {});
         return;
       }
-      const hasAudio = !!(this.deckA.name || this.deckB.name);
-      if (hasAudio && ++ticks % 3 === 0 && (await this.deadOutput())) {
-        await this.recover();
-        if (await this.deadOutput()) this.maybeRebuild();
+      if (this.audioExpected() && this.outputSilent()) {
+        if (++silentTicks >= 2) {
+          silentTicks = 0;
+          await this.recover();
+          if (this.audioExpected() && this.outputSilent() && (await this.deadOutput())) {
+            this.maybeRebuild();
+          }
+        }
+      } else {
+        silentTicks = 0;
       }
     }, 2000);
   }

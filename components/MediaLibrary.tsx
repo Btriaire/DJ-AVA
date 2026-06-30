@@ -348,6 +348,35 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
       }),
     }));
   }
+  // reorder a single inside a playlist (dir -1 = up, +1 = down). The play queue
+  // reads trackIds in order, so this directly arranges the chain / setlist.
+  function moveInPlaylist(plId: string, trackId: string, dir: -1 | 1) {
+    persist((d) => ({
+      ...d,
+      playlists: d.playlists.map((p) => {
+        if (p.id !== plId) return p;
+        const ids = [...p.trackIds];
+        const i = ids.indexOf(trackId);
+        const j = i + dir;
+        if (i < 0 || j < 0 || j >= ids.length) return p;
+        [ids[i], ids[j]] = [ids[j], ids[i]];
+        return { ...p, trackIds: ids };
+      }),
+    }));
+  }
+  // add EVERY library track not already in the playlist, in one click — fast way
+  // to seed a long chain, then prune/reorder. Respects the deck filter if set.
+  function addAllToPlaylist(plId: string) {
+    persist((d) => ({
+      ...d,
+      playlists: d.playlists.map((p) => {
+        if (p.id !== plId) return p;
+        const have = new Set(p.trackIds);
+        const extra = d.tracks.filter((t) => !have.has(t.id)).map((t) => t.id);
+        return { ...p, trackIds: [...p.trackIds, ...extra] };
+      }),
+    }));
+  }
 
   // --- Audius / YouTube search ---
   async function search(durOverride?: string) {
@@ -722,9 +751,20 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
   const markB = liveMark("B");
 
   // one stored-track row
-  const TrackRow = ({ t, plId }: { t: LibTrack; plId?: string }) => {
+  const TrackRow = ({
+    t,
+    plId,
+    idx,
+    count,
+  }: {
+    t: LibTrack;
+    plId?: string;
+    idx?: number; // 0-based position when shown inside a playlist
+    count?: number; // playlist length, to disable the last "↓"
+  }) => {
     const badge = SRC_BADGE[t.source];
     const hasStems = !!t.stemHash && stemSet.has(t.stemHash);
+    const inPl = plId != null && idx != null && count != null;
     // playing-now / next-up status for the deck-colour cues
     const curSide = markA.cur === t.id ? "A" : markB.cur === t.id ? "B" : null;
     const nextSide = markA.next === t.id ? "A" : markB.next === t.id ? "B" : null;
@@ -741,6 +781,37 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
             : {}),
         }}
       >
+        {/* position number + reorder arrows — only inside a playlist, so the
+            chain order can be arranged like a real setlist */}
+        {inPl && (
+          <div className="flex shrink-0 items-center gap-1">
+            <span
+              className="w-5 text-right text-[11px] font-black tabular-nums text-violet-300"
+              title="Position dans la file"
+            >
+              {idx! + 1}
+            </span>
+            <div className="flex flex-col">
+              <button
+                onClick={() => moveInPlaylist(plId!, t.id, -1)}
+                disabled={idx === 0}
+                className="px-1 text-[9px] leading-none text-neutral-400 disabled:opacity-20"
+                title="Monter dans la file"
+              >
+                ▲
+              </button>
+              <button
+                onClick={() => moveInPlaylist(plId!, t.id, 1)}
+                disabled={idx === count! - 1}
+                className="px-1 text-[9px] leading-none text-neutral-400 disabled:opacity-20"
+                title="Descendre dans la file"
+              >
+                ▼
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* cover thumbnail */}
         <div className="h-8 w-8 shrink-0 overflow-hidden rounded bg-neutral-900">
           {t.art ? (
@@ -1186,14 +1257,33 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
                         Playlist vide — ajoute des morceaux ci-dessous.
                       </p>
                     )}
-                    {activePlaylist.trackIds.map((id) => {
+                    {activePlaylist.trackIds.map((id, i) => {
                       const t = trackById(id);
-                      return t ? <TrackRow key={id} t={t} plId={activePlaylist.id} /> : null;
+                      return t ? (
+                        <TrackRow
+                          key={id}
+                          t={t}
+                          plId={activePlaylist.id}
+                          idx={i}
+                          count={activePlaylist.trackIds.length}
+                        />
+                      ) : null;
                     })}
                   </ul>
-                  <span className="text-[10px] font-bold uppercase tracking-wide text-neutral-600">
-                    Ajouter depuis la bibliothèque
-                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-neutral-600">
+                      Ajouter depuis la bibliothèque
+                    </span>
+                    {data.tracks.some((t) => !activePlaylist.trackIds.includes(t.id)) && (
+                      <button
+                        onClick={() => addAllToPlaylist(activePlaylist.id)}
+                        className="hw-btn px-2 py-0.5 text-[11px] text-violet-300"
+                        title="Ajouter tous les morceaux de la bibliothèque à cette playlist"
+                      >
+                        + Tout ajouter
+                      </button>
+                    )}
+                  </div>
                   <ul className="flex max-h-40 flex-col gap-1 overflow-y-auto">
                     {data.tracks
                       .filter((t) => !activePlaylist.trackIds.includes(t.id))

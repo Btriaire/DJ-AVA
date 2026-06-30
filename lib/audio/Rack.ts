@@ -270,6 +270,14 @@ class RackSlot {
   mix = 1;
   params: Record<string, number> = {};
   flags: Record<string, boolean> = {};
+  // Web Audio is a *pull* graph: while the wet branch reaches the output, the
+  // effect (often a heavy convolver reverb / pitch-shifter / Tone.js node) is
+  // rendered every quantum even when fully bypassed. We keep the wet branch
+  // disconnected whenever the slot is off, so an idle module costs zero CPU,
+  // and reconnect it just before fading back in. With ~15 modules × 2 decks
+  // this is the single biggest CPU saving in the app.
+  private wetLive = false;
+  private idleTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(ctx: AudioContext, id: RackModuleId) {
     this.id = id;
@@ -283,7 +291,8 @@ class RackSlot {
     this.dry.connect(this.output);
     this.input.connect(this.built.fxIn);
     this.built.fxOut.connect(this.wet);
-    this.wet.connect(this.output);
+    // NB: wet -> output is wired lazily (setWetLive) — the slot starts off, so
+    // the effect stays idle and unpulled until it is first enabled.
 
     const def = RACK_DEF.get(id)!;
     for (const p of def.params) this.params[p.key] = p.def;
@@ -292,6 +301,20 @@ class RackSlot {
     for (const p of def.params) this.built.onParam(p.key, p.def);
     for (const f of def.flags ?? []) this.built.onFlag?.(f.key, false);
     this.refresh();
+  }
+
+  // connect / disconnect the wet branch from the output. Disconnecting it lets
+  // the browser skip the effect's DSP entirely (nothing pulls it), so a
+  // bypassed module is free.
+  private setWetLive(live: boolean) {
+    if (live === this.wetLive) return;
+    try {
+      if (live) this.wet.connect(this.output);
+      else this.wet.disconnect(this.output);
+    } catch {
+      /* already in the desired state */
+    }
+    this.wetLive = live;
   }
 
   // Equal-power dry/wet crossfade (constant perceived level at mix 50%), applied
@@ -307,7 +330,20 @@ class RackSlot {
   }
   setOn(on: boolean) {
     this.on = on;
-    this.refresh();
+    if (on) {
+      // reconnect the wet branch *before* the fade so the ramp is heard
+      if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null; }
+      this.setWetLive(true);
+      this.refresh();
+    } else {
+      // fade out first, then idle the effect once the wet gain has reached ~0
+      this.refresh();
+      if (this.idleTimer) clearTimeout(this.idleTimer);
+      this.idleTimer = setTimeout(() => {
+        this.idleTimer = null;
+        if (!this.on) this.setWetLive(false);
+      }, 120);
+    }
   }
   setMix(v: number) {
     this.mix = Math.min(1, Math.max(0, v));

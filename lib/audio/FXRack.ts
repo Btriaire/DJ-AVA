@@ -19,6 +19,11 @@ export class FXRack {
   private dry: GainNode;
   private ctx: AudioContext;
   private wets = new Map<FxName, GainNode>();
+  // which effects are currently routed to the output. Web Audio is a pull
+  // graph, so an effect whose wet branch reaches the output is rendered every
+  // quantum even at wet 0. We only connect a branch while its level is > 0, so
+  // unused effects (incl. convolver reverbs) cost no CPU. 6 effects × 3 racks.
+  private wetLive = new Set<FxName>();
 
   constructor(ctx: AudioContext) {
     this.ctx = ctx;
@@ -36,7 +41,23 @@ export class FXRack {
   // wet level 0..1 for one effect; we let it push past unity so it bites
   setWet(name: FxName, v: number) {
     const wet = this.wets.get(name);
-    if (wet) wet.gain.value = Math.max(0, Math.min(1, v)) * 1.6;
+    if (!wet) return;
+    const g = Math.max(0, Math.min(1, v)) * 1.6;
+    if (g > 0) {
+      // route the branch in before raising the level (no missed signal)
+      if (!this.wetLive.has(name)) {
+        wet.connect(this.output);
+        this.wetLive.add(name);
+      }
+      wet.gain.value = g;
+    } else {
+      // mute first, then idle the effect by unrouting it (silent at gain 0)
+      wet.gain.value = 0;
+      if (this.wetLive.has(name)) {
+        try { wet.disconnect(this.output); } catch { /* already detached */ }
+        this.wetLive.delete(name);
+      }
+    }
   }
 
   getWet(name: FxName): number {
@@ -128,7 +149,7 @@ export class FXRack {
 
     this.input.connect(inNode);
     outNode.connect(wet);
-    wet.connect(this.output);
+    // wet -> output is wired lazily by setWet(); the effect starts idle at 0.
     this.wets.set(name, wet);
   }
 

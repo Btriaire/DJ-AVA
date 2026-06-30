@@ -1,16 +1,32 @@
 // Rough BPM detection via energy-onset autocorrelation.
 // Good enough to display + drive beat-loops. Not sample-accurate.
+//
+// Memory/CPU note: we never allocate a full-length mono copy (a 15-min stereo
+// track is ~170 MB) — we read the channels in place. We also analyse at most
+// ANALYSIS_SECONDS from the middle of the track: a steady-tempo song doesn't
+// need 20 minutes of audio to find its beat, and scanning the whole thing on
+// the main thread is what froze/crashed long files.
+const ANALYSIS_SECONDS = 120;
 export function detectBPM(buffer: AudioBuffer): number {
   const sr = buffer.sampleRate;
-  const ch = buffer.numberOfChannels > 1 ? mixToMono(buffer) : buffer.getChannelData(0);
+  const ch0 = buffer.getChannelData(0);
+  const ch1 = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : null;
+  const total = ch0.length;
+  // centered window, capped — skips intros/outros and bounds the work
+  const maxLen = sr * ANALYSIS_SECONDS;
+  const from = total > maxLen ? Math.floor((total - maxLen) / 2) : 0;
+  const to = Math.min(total, from + maxLen);
 
   // Envelope: downsample to ~200 Hz by taking windowed RMS.
   const win = Math.floor(sr / 200);
   const env: number[] = [];
-  for (let i = 0; i < ch.length; i += win) {
+  for (let i = from; i < to; i += win) {
     let sum = 0;
-    const end = Math.min(i + win, ch.length);
-    for (let j = i; j < end; j++) sum += ch[j] * ch[j];
+    const end = Math.min(i + win, to);
+    for (let j = i; j < end; j++) {
+      const x = ch1 ? (ch0[j] + ch1[j]) * 0.5 : ch0[j];
+      sum += x * x;
+    }
     env.push(Math.sqrt(sum / (end - i)));
   }
 
@@ -34,17 +50,6 @@ export function detectBPM(buffer: AudioBuffer): number {
   return Math.round(best * 10) / 10;
 }
 
-function mixToMono(buffer: AudioBuffer): Float32Array {
-  const len = buffer.length;
-  const out = new Float32Array(len);
-  const chs = buffer.numberOfChannels;
-  for (let c = 0; c < chs; c++) {
-    const data = buffer.getChannelData(c);
-    for (let i = 0; i < len; i++) out[i] += data[i] / chs;
-  }
-  return out;
-}
-
 // Serato-style colored waveform: per bucket we keep the overall peak plus the
 // energy split into low / mid / high bands (→ R / G / B), so bass hits render
 // red, mids green and hats/treble blue. One cheap pass with three one-pole
@@ -57,9 +62,11 @@ export interface ColoredPeaks {
 }
 
 export function buildColoredPeaks(buffer: AudioBuffer, buckets = 1600): ColoredPeaks {
-  const data = buffer.numberOfChannels > 1 ? mixToMono(buffer) : buffer.getChannelData(0);
+  // read channels in place — no full-length mono copy (see detectBPM note)
+  const ch0 = buffer.getChannelData(0);
+  const ch1 = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : null;
   const sr = buffer.sampleRate;
-  const n = data.length;
+  const n = ch0.length;
   // one-pole lowpass coefficients
   const coeff = (fc: number) => {
     const rc = 1 / (2 * Math.PI * fc);
@@ -102,7 +109,7 @@ export function buildColoredPeaks(buffer: AudioBuffer, buckets = 1600): ColoredP
   };
 
   for (let i = 0; i < n; i++) {
-    const x = data[i];
+    const x = ch1 ? (ch0[i] + ch1[i]) * 0.5 : ch0[i];
     lpLow += aLow * (x - lpLow);
     lpMid += aMid * (x - lpMid);
     const low = lpLow;
@@ -131,15 +138,19 @@ export function buildBeatGrid(durationSec: number, bpm: number, offset = 0): num
 
 // Downsampled peak data for waveform rendering.
 export function buildWaveformPeaks(buffer: AudioBuffer, buckets = 1600): Float32Array {
-  const data = buffer.numberOfChannels > 1 ? mixToMono(buffer) : buffer.getChannelData(0);
+  // read channels in place — no full-length mono copy (see detectBPM note)
+  const ch0 = buffer.getChannelData(0);
+  const ch1 = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : null;
+  const n = ch0.length;
   const peaks = new Float32Array(buckets);
-  const step = Math.floor(data.length / buckets) || 1;
+  const step = Math.floor(n / buckets) || 1;
   for (let b = 0; b < buckets; b++) {
     let max = 0;
     const start = b * step;
-    const end = Math.min(start + step, data.length);
+    const end = Math.min(start + step, n);
     for (let i = start; i < end; i++) {
-      const v = Math.abs(data[i]);
+      const x = ch1 ? (ch0[i] + ch1[i]) * 0.5 : ch0[i];
+      const v = x < 0 ? -x : x;
       if (v > max) max = v;
     }
     peaks[b] = max;
