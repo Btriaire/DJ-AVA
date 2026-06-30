@@ -25,7 +25,12 @@ export type IllusionKind =
   | "contrast"
   | "poggendorff"
   | "white"
-  | "shepard";
+  | "shepard"
+  | "rubin"
+  | "duck-rabbit"
+  | "afterimage"
+  | "motion-blind"
+  | "penrose";
 
 export type Illusion = {
   id: string;
@@ -257,6 +262,58 @@ export const ILLUSIONS: Illusion[] = [
     answer: "Oui, des parallélogrammes identiques",
     explain:
       "Les deux plateaux sont strictement identiques : même parallélogramme, simplement tourné. Le contexte de « table » trompe totalement notre perception (tables de Shepard).",
+  },
+
+  // ── Familles variées (principes différents) ─────────────────────
+  {
+    id: "rubin",
+    level: 1,
+    kind: "rubin",
+    question: "Que voyez-vous dans cette forme noire ?",
+    options: ["Un vase", "Deux visages face à face", "Les deux à la fois"],
+    answer: "Les deux à la fois",
+    explain:
+      "C'est le vase de Rubin. Selon ce que l'œil prend pour le « fond », on voit un vase noir ou deux profils qui se regardent. Le cerveau bascule sans cesse entre figure et fond.",
+  },
+  {
+    id: "duck-rabbit",
+    level: 2,
+    kind: "duck-rabbit",
+    question: "Quel animal se cache dans ce dessin ?",
+    options: ["Un canard", "Un lapin", "Les deux, selon le sens"],
+    answer: "Les deux, selon le sens",
+    explain:
+      "Vers la gauche, les deux pointes forment un bec de canard ; vers la droite, ce sont les oreilles d'un lapin. Une même image, deux animaux (canard-lapin de Jastrow).",
+  },
+  {
+    id: "afterimage",
+    level: 2,
+    kind: "afterimage",
+    question: "Fixez le point 15 secondes, puis imaginez un mur blanc : quelles couleurs apparaissent ?",
+    options: ["Le drapeau bleu-blanc-rouge", "Les mêmes couleurs", "Aucune image"],
+    answer: "Le drapeau bleu-blanc-rouge",
+    explain:
+      "À force de fixer l'orange et le cyan, vos capteurs de couleur se fatiguent. En regardant le blanc, vous percevez les couleurs complémentaires : le drapeau bleu-blanc-rouge surgit (image rémanente).",
+  },
+  {
+    id: "motion-blind",
+    level: 3,
+    kind: "motion-blind",
+    question: "Fixez la croix rouge au centre : que deviennent les points jaunes ?",
+    options: ["Ils disparaissent par moments", "Ils restent toujours visibles", "Ils changent de couleur"],
+    answer: "Ils disparaissent par moments",
+    explain:
+      "Sur un fond qui tourne, des points pourtant bien présents s'effacent quelques instants de votre conscience : c'est la cécité au mouvement (motion-induced blindness). Les points n'ont jamais disparu.",
+  },
+  {
+    id: "penrose",
+    level: 3,
+    kind: "penrose",
+    question: "Ce triangle pourrait-il être construit en vrai, en trois dimensions ?",
+    options: ["Oui, sans problème", "Non, c'est une figure impossible"],
+    answer: "Non, c'est une figure impossible",
+    explain:
+      "Chaque coin paraît correct, mais l'ensemble ne peut pas exister en relief : c'est le triangle de Penrose, un objet impossible que seul le dessin autorise.",
   },
 ];
 

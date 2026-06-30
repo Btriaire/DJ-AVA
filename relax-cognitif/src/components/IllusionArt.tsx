@@ -590,6 +590,156 @@ function Shepard({ reveal }: { reveal: boolean }) {
   );
 }
 
+// Vase de Rubin : figure / fond. Le profil noir du vase EST aussi deux visages.
+const RUBIN_LEFT: [number, number][] = [
+  [100, 34], [96, 44], [99, 56], [90, 66], [82, 78], [95, 86],
+  [89, 94], [92, 100], [86, 108], [99, 120], [94, 134], [108, 152],
+];
+function Rubin({ reveal }: { reveal: boolean }) {
+  const right = [...RUBIN_LEFT].reverse().map(([x, y]) => [240 - x, y] as [number, number]);
+  const poly = [...RUBIN_LEFT, ...right].map((p) => p.join(",")).join(" ");
+  return (
+    <>
+      <polygon points={poly} fill="#262626" />
+      {reveal && (
+        <g {...proof}>
+          <polyline points={RUBIN_LEFT.map((p) => p.join(",")).join(" ")} />
+          <polyline points={right.map((p) => p.join(",")).join(" ")} />
+        </g>
+      )}
+    </>
+  );
+}
+
+// Canard-lapin : deux pointes à gauche (bec OU oreilles), tête ronde à droite.
+const DUCK_RABBIT =
+  "M34,66 L120,72 C150,58 185,66 196,92 C200,112 180,126 150,128 " +
+  "C130,130 120,120 116,110 L34,106 L70,86 Z";
+function DuckRabbit({ reveal }: { reveal: boolean }) {
+  return (
+    <>
+      <path d={DUCK_RABBIT} fill="#c9b48a" stroke="#7a6a42" strokeWidth={2.5} strokeLinejoin="round" />
+      <circle cx={138} cy={82} r={6} fill="#2b2b2b" />
+      {reveal && (
+        <g {...proof}>
+          {/* les deux pointes : bec de canard / oreilles de lapin */}
+          <line x1={34} y1={66} x2={116} y2={74} />
+          <line x1={34} y1={106} x2={116} y2={100} />
+        </g>
+      )}
+    </>
+  );
+}
+
+// Image rémanente : drapeau en couleurs complémentaires + point de fixation.
+function Afterimage({ reveal }: { reveal: boolean }) {
+  return (
+    <>
+      <rect x={30} y={40} width={60} height={100} fill="#ff7a00" />
+      <rect x={90} y={40} width={60} height={100} fill="#111" />
+      <rect x={150} y={40} width={60} height={100} fill="#00e0e0" />
+      <circle cx={120} cy={90} r={4} fill="#fff" />
+      {reveal && (
+        <g>
+          <rect x={84} y={150} width={24} height={22} fill="#0a3d91" />
+          <rect x={108} y={150} width={24} height={22} fill="#f4f4f4" stroke="#bbb" strokeWidth={0.5} />
+          <rect x={132} y={150} width={24} height={22} fill="#d52b1e" />
+        </g>
+      )}
+    </>
+  );
+}
+
+// Cécité au mouvement : grille bleue qui tourne + points jaunes fixes.
+function MotionBlind({ reveal }: { reveal: boolean }) {
+  const crosses: React.ReactNode[] = [];
+  for (let r = 0; r < 5; r++)
+    for (let c = 0; c < 5; c++) {
+      const x = 36 + c * 42;
+      const y = 18 + r * 36;
+      crosses.push(
+        <g key={`${r}-${c}`} stroke="#4a78e8" strokeWidth={3} strokeLinecap="round">
+          <line x1={x - 6} y1={y} x2={x + 6} y2={y} />
+          <line x1={x} y1={y - 6} x2={x} y2={y + 6} />
+        </g>
+      );
+    }
+  const dots: [number, number][] = [[78, 54], [162, 54], [120, 126]];
+  return (
+    <>
+      <rect x={0} y={0} width={240} height={180} fill="#101018" />
+      <g>
+        {crosses}
+        <animateTransform
+          attributeName="transform"
+          type="rotate"
+          from="0 120 90"
+          to="360 120 90"
+          dur="9s"
+          repeatCount="indefinite"
+        />
+      </g>
+      {dots.map(([x, y], i) => (
+        <circle key={i} cx={x} cy={y} r={7} fill="#ffd21e" />
+      ))}
+      {/* croix de fixation rouge */}
+      <g stroke="#ff3b30" strokeWidth={3} strokeLinecap="round">
+        <line x1={114} y1={90} x2={126} y2={90} />
+        <line x1={120} y1={84} x2={120} y2={96} />
+      </g>
+      {reveal &&
+        dots.map(([x, y], i) => (
+          <circle key={`r${i}`} cx={x} cy={y} r={11} fill="none" stroke={GREEN} strokeWidth={2.5} />
+        ))}
+    </>
+  );
+}
+
+// Triangle de Penrose : objet impossible. Trois poutres qui se chevauchent
+// en boucle (chaque poutre dépasse le coin et passe « devant » la suivante).
+function Penrose({ reveal }: { reveal: boolean }) {
+  const O: [number, number][] = [
+    [120, 32],  // sommet
+    [58, 150],  // bas-gauche
+    [182, 150], // bas-droite
+  ];
+  const G: [number, number] = [
+    (O[0][0] + O[1][0] + O[2][0]) / 3,
+    (O[0][1] + O[1][1] + O[2][1]) / 3,
+  ];
+  const w = 22; // épaisseur des poutres
+  const faces: string[] = [];
+  for (let i = 0; i < 3; i++) {
+    const P = O[i];
+    const Q = O[(i + 1) % 3];
+    const ex = Q[0] - P[0], ey = Q[1] - P[1];
+    const el = Math.hypot(ex, ey);
+    const ux = ex / el, uy = ey / el;
+    let nx = -uy, ny = ux; // normale, orientée vers le centre
+    const mx = (P[0] + Q[0]) / 2, my = (P[1] + Q[1]) / 2;
+    if ((G[0] - mx) * nx + (G[1] - my) * ny < 0) { nx = -nx; ny = -ny; }
+    // la poutre dépasse le coin Q d'une largeur w → chevauchement
+    const A: [number, number] = [P[0], P[1]];
+    const B: [number, number] = [Q[0] + ux * w, Q[1] + uy * w];
+    const C: [number, number] = [Q[0] + ux * w + nx * w, Q[1] + uy * w + ny * w];
+    const D: [number, number] = [P[0] + nx * w, P[1] + ny * w];
+    faces.push(`M${A[0]} ${A[1]} L${B[0]} ${B[1]} L${C[0]} ${C[1]} L${D[0]} ${D[1]} Z`);
+  }
+  const shades = ["#dadada", "#b0b0b0", "#828282"];
+  return (
+    <>
+      {faces.map((d, i) => (
+        <path key={i} d={d} fill={shades[i]} stroke="#2b2b2b" strokeWidth={2} strokeLinejoin="round" />
+      ))}
+      {reveal && (
+        <text x={120} y={174} textAnchor="middle" fontSize={13} fontWeight={700} fill={GREEN}>
+          objet impossible
+        </text>
+      )}
+    </>
+  );
+}
+
 const RENDERERS: Record<IllusionKind, (p: { reveal: boolean }) => React.ReactNode> = {
   "muller-lyer": MullerLyer,
   "vertical-horizontal": VerticalHorizontal,
@@ -612,6 +762,11 @@ const RENDERERS: Record<IllusionKind, (p: { reveal: boolean }) => React.ReactNod
   poggendorff: Poggendorff,
   white: White,
   shepard: Shepard,
+  rubin: Rubin,
+  "duck-rabbit": DuckRabbit,
+  afterimage: Afterimage,
+  "motion-blind": MotionBlind,
+  penrose: Penrose,
 };
 
 export default function IllusionArt({ kind, reveal }: Props) {
