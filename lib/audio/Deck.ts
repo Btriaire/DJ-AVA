@@ -443,17 +443,26 @@ export class Deck {
     };
     this._streamSetup(el, name, onEnded);
 
-    // Phase 2 in background: decode + analysis → hot-swap
+    // Phase 2 in background: decode + analysis → hot-swap.
+    // We need rawData (for stems) AND an ArrayBuffer for decodeAudioData.
+    // decodeAudioData *transfers* (detaches) the buffer it receives, so we keep
+    // a slice for rawData and give a second slice to the decoder — but for very
+    // large files two full copies fit easily since the blob was already in RAM.
+    // The capture guard (el === this.mediaEl) drops the result if a new track was
+    // loaded before decoding finished, preventing a stale swap.
+    const capturedEl = el;
     blob.arrayBuffer().then((raw) => {
-      this.rawData = raw.slice(0);
-      return this.ctx.decodeAudioData(raw.slice(0));
+      if (capturedEl !== this.mediaEl) return null; // superseded load, drop it
+      this.rawData = raw.slice(0); // keep a copy; decodeAudioData detaches its arg
+      return this.ctx.decodeAudioData(raw);
     }).then((buf) => {
+      if (!buf || capturedEl !== this.mediaEl) return; // superseded
       const pos = this.mediaEl?.currentTime ?? 0;
       const wasPlaying = this._playing;
       this._streamSwap(buf, pos, wasPlaying);
     }).catch((e) => {
       console.error("[deck] background decode failed", (e as Error).message);
-      this._bufferLoading = false;
+      if (capturedEl === this.mediaEl) this._bufferLoading = false;
     });
   }
 
@@ -470,17 +479,20 @@ export class Deck {
     };
     this._streamSetup(el, name, onEnded);
 
-    // Phase 2: fetch the same URL again for decode (browser may serve from cache)
+    // Phase 2: fetch the same URL again for decode (browser may cache it)
+    const capturedEl = el;
     fetch(url).then((r) => r.arrayBuffer()).then((raw) => {
+      if (capturedEl !== this.mediaEl) return null;
       this.rawData = raw.slice(0);
-      return this.ctx.decodeAudioData(raw.slice(0));
+      return this.ctx.decodeAudioData(raw);
     }).then((buf) => {
+      if (!buf || capturedEl !== this.mediaEl) return;
       const pos = this.mediaEl?.currentTime ?? 0;
       const wasPlaying = this._playing;
       this._streamSwap(buf, pos, wasPlaying);
     }).catch((e) => {
       console.error("[deck] background decode failed", (e as Error).message);
-      this._bufferLoading = false;
+      if (capturedEl === this.mediaEl) this._bufferLoading = false;
     });
   }
 

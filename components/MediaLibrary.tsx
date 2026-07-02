@@ -594,7 +594,11 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
           wasPlaying.current[side] = true;
           return;
         }
-        if (wasPlaying.current[side] && deck.duration > 0 && deck.position() < 0.5) {
+        // bufferLoading = streaming phase 1 (full decode still in progress).
+        // During the hot-swap _playing briefly dips to false while staying in
+        // phase 1 — ignore the watchdog until the buffer is fully ready so we
+        // don't misread that flicker as "track ended, advance the queue".
+        if (wasPlaying.current[side] && deck.duration > 0 && deck.position() < 0.5 && !deck.bufferLoading) {
           wasPlaying.current[side] = false;
           liveAdvance(side);
         }
