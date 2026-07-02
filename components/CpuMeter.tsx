@@ -12,20 +12,23 @@ import { DJEngine } from "@/lib/audio/engine";
 // through 1-e^-x — but with a gentler divisor than before so realistic loads
 // reach the amber/red zones instead of hugging the bottom.
 function estimateLoad(engine: DJEngine, jankExtra: number): number {
-  let raw = 0.15; // honest idle floor: the audio thread + UI are never truly 0
+  let raw = 0.12; // idle floor (audio thread + rAF loop never truly zero)
   for (const deck of [engine.deckA, engine.deckB]) {
     if (!deck.playing) continue;
-    raw += 0.55; // a playing deck: decode + EQ + filter + analyser
+    raw += 0.7;  // playing deck: source node + EQ + filter + analyser
     const onMods = deck.rack.order.filter((id) => deck.rack.isOn(id)).length;
-    raw += onMods * 0.7; // creative effects are the costly part
-    if (deck.stemsActive) raw += 0.8 + deck.stemNames.length * 0.45;
-    if (deck.autotuneOn) raw += 0.9; // pitch worklet
+    raw += onMods * 0.95; // each active Rack module (convolver/delay are heavy)
+    if (deck.stemsActive) raw += 1.1 + deck.stemNames.length * 0.55;
+    if (deck.autotuneOn) raw += 1.1; // pitch worklet is expensive
+    if (deck.bufferLoading) raw += 0.8; // background decodeAudioData in flight
   }
-  raw += Math.min(1.2, engine.latencyMs() / 25); // latency creep as a load proxy
-  // measured main-thread strain — capped so it adds life at idle without pinning
-  // the needle; real audio activity (the terms above) stays the dominant signal.
-  raw += Math.min(1.4, jankExtra);
-  return 1 - Math.exp(-raw / 2.4); // soft saturation toward 1
+  raw += Math.min(1.5, engine.latencyMs() / 18); // latency climbs with DSP load
+  // rAF jank: how many extra 16.7 ms frames the main thread took — the most
+  // direct real-time CPU signal we have. Cap raised so it reads clearly.
+  raw += Math.min(2.8, jankExtra * 1.4);
+  // divisor 1.8 keeps the scale sensitive: idle ≈15-25%, 1 deck ≈35-45%,
+  // stems+FX ≈65-80%, all-out ≈90%+. Still soft-clips toward 100%.
+  return 1 - Math.exp(-raw / 1.8);
 }
 
 const W = 132;
