@@ -634,6 +634,7 @@ export class Deck {
   }
 
   // --- controls ---
+  get trimValue(): number { return this.trim.gain.value; }
   setTrim(v: number) {
     this.trim.gain.value = v;
   }

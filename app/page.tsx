@@ -60,6 +60,9 @@ export default function Home() {
   const autoRaf = useRef<number | null>(null);
   const [convLink, setConvLink] = useState(""); // shared MP3-converter input
   const [convFlash, setConvFlash] = useState(0); // bumps to flash the converter
+  const [normTrimA, setNormTrimA] = useState<number | undefined>(undefined);
+  const [normTrimB, setNormTrimB] = useState<number | undefined>(undefined);
+  const [normFlash, setNormFlash] = useState(false);
 
   // Stable callback so the memoized MediaLibrary isn't re-rendered (and its rows
   // remounted) by the 60fps `tick` loop — remounting mid-click was cancelling
@@ -218,6 +221,36 @@ export default function Home() {
     } finally {
       setStateBusy("");
     }
+  }
+
+  function normalizeLevels() {
+    const eng = engineRef.current;
+    if (!eng) return;
+    // Loudness proxy: average of top-10% waveform peaks (stable across the whole track).
+    // Falls back to live level if the buffer isn't decoded yet.
+    function loudness(peaks: Float32Array, liveLevel: number): number {
+      if (peaks.length === 0) return liveLevel;
+      const sorted = Float32Array.from(peaks).sort();
+      const topStart = Math.floor(sorted.length * 0.9);
+      let sum = 0;
+      for (let i = topStart; i < sorted.length; i++) sum += sorted[i];
+      return sum / (sorted.length - topStart);
+    }
+    const lA = loudness(eng.deckA.peaks, eng.deckA.getLevel());
+    const lB = loudness(eng.deckB.peaks, eng.deckB.getLevel());
+    if (lA < 0.001 || lB < 0.001) return; // at least one deck silent/empty
+    const tA = eng.deckA.trimValue;
+    const tB = eng.deckB.trimValue;
+    // Meet in the middle: both decks get trim so their effective level equals the average
+    const target = (lA * tA + lB * tB) / 2;
+    const newA = Math.min(4, Math.max(0.05, target / lA));
+    const newB = Math.min(4, Math.max(0.05, target / lB));
+    eng.deckA.setTrim(newA);
+    eng.deckB.setTrim(newB);
+    setNormTrimA(newA);
+    setNormTrimB(newB);
+    setNormFlash(true);
+    setTimeout(() => setNormFlash(false), 600);
   }
 
   function init() {
@@ -522,6 +555,7 @@ export default function Home() {
               otherBpm={() => engine.deckB.effectiveBPM}
               onStems={bumpStems}
               onLibraryChange={bumpLib}
+              forceTrim={normTrimA}
             />
 
             <div className="hw-screwed hw-panel flex flex-col items-center justify-between gap-4 p-4 lg:w-52">
@@ -541,6 +575,16 @@ export default function Home() {
                   className="w-32"
                 />
               </div>
+
+              {/* Normalize: match the gain of both decks */}
+              <button
+                onClick={normalizeLevels}
+                className={`hw-btn w-full px-3 py-2 text-[11px] font-bold tracking-widest ${normFlash ? "hw-btn-on" : ""}`}
+                style={{ ["--led" as string]: "#4dff84" }}
+                title="Égalise automatiquement le volume des deux decks (ajuste le GAIN)"
+              >
+                ⊜ NORMALIZE
+              </button>
 
               <div className="flex w-full flex-col items-center gap-2">
                 <span className="text-[10px] uppercase tracking-wide text-neutral-500">
@@ -612,6 +656,7 @@ export default function Home() {
               otherBpm={() => engine.deckA.effectiveBPM}
               onStems={bumpStems}
               onLibraryChange={bumpLib}
+              forceTrim={normTrimB}
             />
 
             <div className="lg:col-span-3 grid grid-cols-1 gap-4 lg:grid-cols-2">

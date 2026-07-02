@@ -20,6 +20,7 @@ interface Props {
   otherBpm: () => number; // live effective BPM of the opposite deck (for auto-sync)
   onStems?: () => void; // fired when stems become available (refreshes the library badge)
   onLibraryChange?: () => void; // fired after the deck writes to the library (save to playlist)
+  forceTrim?: number; // externally imposed trim (normalize button); updates knob display
 }
 
 function fmtTime(s: number) {
@@ -104,7 +105,7 @@ function StemMeter({ level, color }: { level: number; color: string }) {
   );
 }
 
-export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToConverter, otherBpm, onStems, onLibraryChange }: Props) {
+export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToConverter, otherBpm, onStems, onLibraryChange, forceTrim }: Props) {
   void tick;
   const fileRef = useRef<HTMLInputElement>(null);
   const [, force] = useState(0);
@@ -146,6 +147,13 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
 
   const [eq, setEq] = useState({ low: 0, mid: 0, high: 0 });
   const [trim, setTrim] = useState(1);
+  const prevForceTrimRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (forceTrim !== undefined && forceTrim !== prevForceTrimRef.current) {
+      prevForceTrimRef.current = forceTrim;
+      setTrim(Math.min(1.5, Math.max(0, forceTrim)));
+    }
+  }, [forceTrim]);
   const [filter, setFilter] = useState(0);
   const [pitch, setPitch] = useState(0);
   const [scratch, setScratch] = useState(0);
