@@ -32,6 +32,29 @@ export class Deck {
   private rawData: ArrayBuffer | null = null; // kept so we can ship the track to the stem separator
   private activeSources: AudioBufferSourceNode[] = []; // 1 in normal mode, N in stem mode
 
+  // ---------- streaming fast-path (phase 1 of two-phase loading) ----------
+  // While a long file is being decoded in the background, a MediaElementSource
+  // lets the browser stream/play it immediately through the same effects chain.
+  // Once decodeAudioData + peak/BPM analysis finishes the source hot-swaps to
+  // the full AudioBuffer so scratch/loop/every feature works normally (phase 2).
+  private mediaEl: HTMLAudioElement | null = null;
+  private mediaElSrc: MediaElementAudioSourceNode | null = null;
+  // true while we're in phase 1 (streaming preview, full decode still in flight)
+  private _bufferLoading = false;
+  get bufferLoading(): boolean { return this._bufferLoading; }
+
+  private cleanupMediaEl() {
+    if (this.mediaElSrc) { try { this.mediaElSrc.disconnect(); } catch {} this.mediaElSrc = null; }
+    if (this.mediaEl) {
+      this.mediaEl.pause();
+      if (this.mediaEl.src.startsWith("blob:")) URL.revokeObjectURL(this.mediaEl.src);
+      this.mediaEl.src = "";
+      this.mediaEl = null;
+    }
+    this._bufferLoading = false;
+  }
+  // -------------------------------------------------------------------------
+
   // stem separation (Demucs). The model decides the channel count:
   //   htdemucs / htdemucs_ft -> 4 (drums/bass/other/vocals)
   //   htdemucs_6s            -> 6 (+ guitar/piano)
@@ -348,6 +371,7 @@ export class Deck {
     const data = file instanceof File ? await file.arrayBuffer() : file;
     this.rawData = data.slice(0); // keep a pristine copy for stem separation
     const buf = await this.ctx.decodeAudioData(data.slice(0));
+    this.cleanupMediaEl(); // cancel any in-progress streaming phase
     this.stopSources(); // kill any lingering playback (incl. orphaned stems) first
     this._playing = false;
     this.buffer = buf;
@@ -363,6 +387,101 @@ export class Deck {
     this.sourceLink = ""; // default: no external source; caller may set it after
     this.coverArt = ""; // default: no art; caller (library) may set it after
     this.origin = null; // default: unknown origin; library sets it after load
+  }
+
+  // Two-phase loading: start audio immediately through a MediaElementSource while
+  // decodeAudioData + waveform/BPM analysis run in the background (phase 1), then
+  // hot-swap to the full AudioBuffer once it's ready (phase 2). All effects work
+  // in both phases since both paths connect to this.trim and the rest of the chain.
+  //
+  // loadStreaming()    — for blobs already in memory (local files from IndexedDB)
+  // loadStreamingUrl() — for online streams (streams from /api/<src>/stream)
+  private _streamSetup(el: HTMLAudioElement, name: string, onEnded: () => void) {
+    this.cleanupMediaEl();
+    this.stopSources();
+    this._playing = false;
+    this.buffer = null;
+    this.name = name;
+    this.peaks = new Float32Array(0);
+    this.bpm = 0;
+    this.duration = 0;
+    this.pausedAt = 0;
+    this.cuePoint = 0;
+    this.clearStems();
+
+    el.preload = "auto";
+    el.addEventListener("loadedmetadata", () => { this.duration = el.duration; }, { once: true });
+    el.addEventListener("ended", onEnded, { once: true });
+
+    const elSrc = this.ctx.createMediaElementSource(el);
+    elSrc.connect(this.trim);
+    this.mediaEl = el;
+    this.mediaElSrc = elSrc;
+    this._bufferLoading = true;
+  }
+
+  private _streamSwap(buf: AudioBuffer, pos: number, wasPlaying: boolean) {
+    this.cleanupMediaEl();
+    this.buffer = buf;
+    this.duration = buf.duration;
+    this.peaks = buildWaveformPeaks(buf);
+    this.bpm = detectBPM(buf);
+    this.pausedAt = Math.min(Math.max(0, pos), buf.duration - 0.05);
+    this._playing = false;
+    if (wasPlaying) this.play();
+  }
+
+  loadStreaming(blob: Blob, name: string) {
+    const el = new Audio();
+    el.src = URL.createObjectURL(blob);
+    const onEnded = () => {
+      if (this.mediaEl === el) {
+        this._playing = false;
+        this.pausedAt = 0;
+        if (this.repeat && this.buffer) this.play();
+      }
+    };
+    this._streamSetup(el, name, onEnded);
+
+    // Phase 2 in background: decode + analysis → hot-swap
+    blob.arrayBuffer().then((raw) => {
+      this.rawData = raw.slice(0);
+      return this.ctx.decodeAudioData(raw.slice(0));
+    }).then((buf) => {
+      const pos = this.mediaEl?.currentTime ?? 0;
+      const wasPlaying = this._playing;
+      this._streamSwap(buf, pos, wasPlaying);
+    }).catch((e) => {
+      console.error("[deck] background decode failed", (e as Error).message);
+      this._bufferLoading = false;
+    });
+  }
+
+  loadStreamingUrl(url: string, name: string) {
+    const el = new Audio();
+    el.crossOrigin = "anonymous";
+    el.src = url;
+    const onEnded = () => {
+      if (this.mediaEl === el) {
+        this._playing = false;
+        this.pausedAt = 0;
+        if (this.repeat && this.buffer) this.play();
+      }
+    };
+    this._streamSetup(el, name, onEnded);
+
+    // Phase 2: fetch the same URL again for decode (browser may serve from cache)
+    fetch(url).then((r) => r.arrayBuffer()).then((raw) => {
+      this.rawData = raw.slice(0);
+      return this.ctx.decodeAudioData(raw.slice(0));
+    }).then((buf) => {
+      const pos = this.mediaEl?.currentTime ?? 0;
+      const wasPlaying = this._playing;
+      this._streamSwap(buf, pos, wasPlaying);
+    }).catch((e) => {
+      console.error("[deck] background decode failed", (e as Error).message);
+      this._bufferLoading = false;
+    });
   }
 
   // pristine bytes of the loaded track (for re-storing the audio when saving a
@@ -410,6 +529,13 @@ export class Deck {
   }
 
   play() {
+    // phase 1: streaming via MediaElement (buffer not yet decoded)
+    if (this._bufferLoading && this.mediaEl) {
+      if (this._playing) return;
+      this.mediaEl.play().catch(() => {});
+      this._playing = true;
+      return;
+    }
     if (!this.buffer || this._playing) return;
     this.stopSources(); // clear any orphans left by a previous natural end
     const srcs = this.makeSources();
@@ -425,6 +551,13 @@ export class Deck {
 
   pause() {
     if (!this._playing) return;
+    // phase 1: pause the MediaElement
+    if (this._bufferLoading && this.mediaEl) {
+      this.pausedAt = this.mediaEl.currentTime;
+      this.mediaEl.pause();
+      this._playing = false;
+      return;
+    }
     this.pausedAt = this.position();
     this.stopSources();
     this._playing = false;
@@ -443,9 +576,14 @@ export class Deck {
       s.disconnect();
     }
     this.activeSources = [];
+    // streaming mode: just pause the element (don't clean it up — seeked replay
+    // needs it alive; cleanupMediaEl() is called explicitly by load/unload/swap)
+    if (this.mediaEl) this.mediaEl.pause();
   }
 
   position(): number {
+    // phase 1: read position from the MediaElement
+    if (this._bufferLoading && this.mediaEl) return this.mediaEl.currentTime;
     if (!this.buffer) return 0;
     if (!this._playing) return this.pausedAt;
     let pos = this.startOffset + (this.ctx.currentTime - this.startCtxTime) * this.effRate;
@@ -458,6 +596,12 @@ export class Deck {
 
   seek(t: number) {
     const target = Math.max(0, Math.min(t, this.duration));
+    // phase 1: seek the MediaElement directly
+    if (this._bufferLoading && this.mediaEl) {
+      this.mediaEl.currentTime = target;
+      this.pausedAt = target;
+      return;
+    }
     if (this._playing) {
       this.stopSources();
       this.pausedAt = target;
@@ -793,6 +937,7 @@ export class Deck {
   // hard clear: stop playback, drop the loaded track entirely (so the deck is
   // "— vide —" again) and return every control to neutral. Per-deck PANIC.
   unload() {
+    this.cleanupMediaEl();
     this.stopSources();
     this._playing = false;
     this.buffer = null;

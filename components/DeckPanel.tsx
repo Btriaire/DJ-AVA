@@ -179,7 +179,8 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
     if (!file) return;
     setLoading(true);
     try {
-      await deck.load(file, file.name.replace(/\.[^.]+$/, ""));
+      deck.loadStreaming(file, file.name.replace(/\.[^.]+$/, ""));
+      deck.play();
       onLoaded();
       rerender();
     } catch (err) {
@@ -200,7 +201,6 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
     const cur = q.findIndex((t) => t.id === deck.origin?.id);
     const base = cur < 0 ? (dir > 0 ? -1 : 0) : cur;
     const t = q[(base + dir + q.length) % q.length];
-    const wasPlay = deck.playing;
     setStepping(true);
     deck.loading = true;
     deck.loadStartedAt = performance.now();
@@ -208,12 +208,12 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
       if (t.source === "local") {
         const blob = await idbGetBlob(t.id);
         if (!blob) throw new Error("Fichier introuvable");
-        await deck.load(await blob.arrayBuffer(), t.name);
+        // streaming: audio starts immediately; waveform/BPM arrive in the background
+        deck.loadStreaming(blob, t.name);
         deck.sourceLink = "";
       } else {
-        const res = await fetch(`/api/${t.source}/stream?id=${encodeURIComponent(t.url ?? "")}`);
-        if (!res.ok) throw new Error("Flux indisponible");
-        await deck.load(await res.arrayBuffer(), t.name);
+        const streamUrl = `/api/${t.source}/stream?id=${encodeURIComponent(t.url ?? "")}`;
+        deck.loadStreamingUrl(streamUrl, t.name);
         deck.sourceLink =
           t.source === "youtube"
             ? `https://www.youtube.com/watch?v=${t.url}`
@@ -223,7 +223,8 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
       }
       deck.coverArt = t.art ?? "";
       deck.origin = { id: t.id, source: t.source, url: t.url, art: t.art };
-      if (wasPlay) deck.play();
+      // start playing right away (streaming phase is already set up)
+      deck.play();
       onLoaded();
     } catch {
       /* leave the previous track in place on failure */
@@ -404,22 +405,36 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
           </span>
         </div>
         <div className="flex items-center gap-3">
-          {/* loading bar — fills (asymptotic trickle) between the click and "ready" */}
-          {deck.loading && (
+          {/* loading indicator — two phases:
+              1. "Chargement" (deck.loading) = fetch in flight, no audio yet
+              2. "Décodage…" (deck.bufferLoading) = audio playing, waveform/BPM pending
+              The bar fills during phase 1 (asymptotic trickle), then pulses during phase 2. */}
+          {(deck.loading || deck.bufferLoading) && (
             <div className="flex flex-col items-center gap-0.5">
-              <span className="text-[9px] uppercase leading-none text-neutral-500">Chargement</span>
+              <span className="text-[9px] uppercase leading-none text-neutral-500">
+                {deck.loading ? "Chargement" : "Décodage…"}
+              </span>
               <div className="h-2 w-48 overflow-hidden rounded-full bg-black/60 ring-1 ring-black/40">
-                <div
-                  className="h-full rounded-full transition-[width] duration-150"
-                  style={{
-                    width: `${Math.round(
-                      (1 - Math.exp(-(performance.now() - deck.loadStartedAt) / 900)) * 92
-                    )}%`,
-                    // dégradé : sombre au départ → couleur du deck plein à la pointe
-                    background: `linear-gradient(90deg, ${color}22 0%, ${color}88 55%, ${color} 100%)`,
-                    boxShadow: `0 0 8px ${color}, inset 0 0 4px ${color}55`,
-                  }}
-                />
+                {deck.loading ? (
+                  <div
+                    className="h-full rounded-full transition-[width] duration-150"
+                    style={{
+                      width: `${Math.round(
+                        (1 - Math.exp(-(performance.now() - deck.loadStartedAt) / 900)) * 92
+                      )}%`,
+                      background: `linear-gradient(90deg, ${color}22 0%, ${color}88 55%, ${color} 100%)`,
+                      boxShadow: `0 0 8px ${color}, inset 0 0 4px ${color}55`,
+                    }}
+                  />
+                ) : (
+                  // phase 2: stripe pulsing left-to-right while waveform/BPM decode
+                  <div
+                    className="h-full w-full animate-pulse rounded-full opacity-60"
+                    style={{
+                      background: `linear-gradient(90deg, transparent 0%, ${color} 50%, transparent 100%)`,
+                    }}
+                  />
+                )}
               </div>
             </div>
           )}
