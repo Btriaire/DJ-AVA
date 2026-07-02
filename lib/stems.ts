@@ -11,7 +11,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
-import { mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -79,6 +79,21 @@ export function listCachedHashes(): string[] {
     if (ok) out.push(hash);
   }
   return out;
+}
+
+// Move a file, falling back to copy+unlink when source and destination are on
+// different filesystems. Demucs writes stems into the OS temp dir, but the cache
+// lives on a mounted volume (/data/stems-cache on the VPS) — a plain rename()
+// across that boundary throws EXDEV ("cross-device link not permitted"), which
+// silently left every cache dir created-but-empty and made stems 404.
+async function moveFile(src: string, dst: string): Promise<void> {
+  try {
+    await rename(src, dst);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "EXDEV") throw e;
+    await copyFile(src, dst);
+    await unlink(src);
+  }
 }
 
 // run a child process to completion, rejecting on non-zero exit. When `niceness`
@@ -210,7 +225,7 @@ async function doSeparate(
     mkdirSync(dir, { recursive: true });
     const produced = join(out, model, "source");
     for (const s of MODEL_STEMS[model]) {
-      await rename(join(produced, `${s}.mp3`), join(dir, `${s}.mp3`));
+      await moveFile(join(produced, `${s}.mp3`), join(dir, `${s}.mp3`));
     }
   } finally {
     releaseSlot();
