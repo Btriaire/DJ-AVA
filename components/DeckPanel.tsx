@@ -21,6 +21,7 @@ interface Props {
   onStems?: () => void; // fired when stems become available (refreshes the library badge)
   onLibraryChange?: () => void; // fired after the deck writes to the library (save to playlist)
   forceTrim?: number; // externally imposed trim (normalize button); updates knob display
+  activeModules?: { rack?: boolean; eq?: boolean; fxpad?: boolean };
 }
 
 function fmtTime(s: number) {
@@ -105,7 +106,7 @@ function StemMeter({ level, color }: { level: number; color: string }) {
   );
 }
 
-export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToConverter, otherBpm, onStems, onLibraryChange, forceTrim }: Props) {
+export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToConverter, otherBpm, onStems, onLibraryChange, forceTrim, activeModules }: Props) {
   void tick;
   const fileRef = useRef<HTMLInputElement>(null);
   const [, force] = useState(0);
@@ -160,6 +161,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
   const [loop, setLoop] = useState(0);
   const [loading, setLoading] = useState(false);
   const [fxKey, setFxKey] = useState(0); // bump to remount the FX section on PANIC
+  const [stemTooLong, setStemTooLong] = useState(false);
 
   // per-deck PANIC: eject the loaded song and return every control of THIS deck
   // to zero (EQ, gain, filter, pitch, scratch, loop, FX) — the other deck is
@@ -264,6 +266,11 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
   }, [deck.name, deck.stemModel]);
   async function handleStems() {
     if (deck.stemStatus === "working") return;
+    if (!deck.stemReady && deck.duration > 8 * 60) {
+      setStemTooLong(true);
+      setTimeout(() => setStemTooLong(false), 4000);
+      return;
+    }
     if (!deck.stemReady) {
       await deck.ensureStems();
       if (deck.stemReady) {
@@ -695,7 +702,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
       </div>
 
       {/* EQ + filter */}
-      <div className="hw-recess flex items-center justify-around py-3">
+      {activeModules?.eq !== false && <div className="hw-recess flex items-center justify-around py-3">
         <Knob
           label="Gain"
           value={trim}
@@ -735,12 +742,12 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
             deck.setFilter(v);
           }}
         />
-      </div>
+      </div>}
 
       {/* FX pad */}
-      <div className="hw-recess p-3">
+      {activeModules?.fxpad !== false && <div className="hw-recess p-3">
         <FXPad key={fxKey} deck={deck} color={color} />
-      </div>
+      </div>}
 
       {/* stem separation (Demucs) — split the track into live faders */}
       <div className="hw-recess flex items-stretch gap-3 p-3">
@@ -795,6 +802,11 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
           )}
           {deck.stemStatus === "error" && (
             <span className="text-[9px] text-red-400">échec — réessaie</span>
+          )}
+          {stemTooLong && (
+            <span className="text-[9px] leading-tight text-amber-400">
+              Morceau &gt; 8 min — trop long pour Demucs
+            </span>
           )}
           {/* bulk: drop or raise every stem fader at once */}
           <div className={`flex gap-1 ${deck.stemReady && deck.stemsActive ? "" : "pointer-events-none opacity-40"}`}>
@@ -923,7 +935,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
       </div>
 
       {/* full serial DSP rack — Auto-Tune now lives inside it as a module */}
-      <RackPanel deck={deck} color={color} />
+      {activeModules?.rack !== false && <RackPanel deck={deck} color={color} />}
 
       {/* beat loop + actions */}
       <div className="flex items-end justify-between gap-4">

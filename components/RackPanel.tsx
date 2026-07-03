@@ -93,7 +93,7 @@ function saveStore(s: Record<string, RackPreset>) {
 
 // ---- graphic-EQ shortcut presets (numbered 1-5, like a hardware EQ) ----
 const EQ_LS_KEY = "djsynth.eqpresets.v1";
-type EqPreset = { name?: string; g: number[] }; // g = 10 band gains g0..g9
+type EqPreset = { name?: string; g: number[] }; // g = 15 band gains g0..g14
 const EQ_SLOTS = 5;
 function loadEqPresets(): (EqPreset | null)[] {
   const empty: (EqPreset | null)[] = Array(EQ_SLOTS).fill(null);
@@ -521,7 +521,7 @@ export function RackPanel({ deck, color }: { deck: Deck; color: string }) {
         <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: eqOn ? color : "#6b6b6b" }}>
           Égaliseur
         </span>
-        <span className="text-[8px] text-neutral-500">10 bandes</span>
+        <span className="text-[8px] text-neutral-500">15 bandes</span>
         {/* preset shortcuts 1-5 + SAVE toggle */}
         <div className="ml-auto flex items-center gap-1">
           {eqPresets.map((p, n) => {

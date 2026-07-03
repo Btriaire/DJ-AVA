@@ -64,9 +64,9 @@ const AUTOTUNE_SCALES: number[][] = [
   [0, 2, 3, 5, 7, 8, 10],
 ];
 
-// 10-band ISO-octave graphic EQ — fixed centre frequencies, one gain fader each.
+// 15-band 2/3-octave graphic EQ — ISO standard centre frequencies, one gain fader each.
 // Shared by the engine and the panel (fader labels + response curve).
-export const EQ_FREQS = [31, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+export const EQ_FREQS = [25, 40, 63, 100, 160, 250, 400, 630, 1000, 1600, 2500, 4000, 6300, 10000, 16000];
 const eqLabel = (f: number) => (f >= 1000 ? `${f / 1000}k` : `${f}`);
 
 // UI-facing definitions: drive the rack panel. Engine reads `def` for defaults.
@@ -541,13 +541,13 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
 
   switch (id) {
     case "eq": {
-      // 10-band graphic EQ: a chain of peaking biquads, one per ISO-standard
-      // frequency (31 Hz … 16 kHz). One vertical fader per band. Flat = transparent.
+      // 15-band 2/3-octave graphic EQ: a chain of peaking biquads, one per ISO centre
+      // frequency (25 Hz … 16 kHz). Q=2.14 matches 2/3-octave bandwidth. Flat = transparent.
       const bands = EQ_FREQS.map((f) => {
         const b = c.createBiquadFilter();
         b.type = "peaking";
         b.frequency.value = f;
-        b.Q.value = 1.4;
+        b.Q.value = 2.14;
         b.gain.value = 0;
         return b;
       });

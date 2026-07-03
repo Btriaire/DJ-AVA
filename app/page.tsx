@@ -64,6 +64,33 @@ export default function Home() {
   const [normTrimB, setNormTrimB] = useState<number | undefined>(undefined);
   const [normFlash, setNormFlash] = useState(false);
 
+  // --- Optional modules: all hidden by default, added on-the-fly ---------------
+  type Modules = { synth: boolean; sampler: boolean; soundfx: boolean; boss: boolean; rack: boolean; eq: boolean; fxpad: boolean };
+  const DEFAULT_MODULES: Modules = { synth: false, sampler: false, soundfx: false, boss: false, rack: false, eq: false, fxpad: false };
+  const [modules, setModules] = useState<Modules>(() => {
+    try {
+      const raw = localStorage.getItem("djsynth.modules.v1");
+      return raw ? { ...DEFAULT_MODULES, ...JSON.parse(raw) } : DEFAULT_MODULES;
+    } catch { return DEFAULT_MODULES; }
+  });
+  const [showModulePicker, setShowModulePicker] = useState(false);
+  function toggleModule(k: keyof Modules) {
+    setModules((m) => {
+      const next = { ...m, [k]: !m[k] };
+      try { localStorage.setItem("djsynth.modules.v1", JSON.stringify(next)); } catch { /**/ }
+      return next;
+    });
+  }
+  const MODULE_DEFS: { key: keyof Modules; label: string; scope: string }[] = [
+    { key: "synth",   label: "Synthé",           scope: "global" },
+    { key: "sampler", label: "Sculpteur de son",  scope: "global" },
+    { key: "soundfx", label: "FX Sonores",        scope: "global" },
+    { key: "boss",    label: "Boss FX",           scope: "mixer"  },
+    { key: "rack",    label: "Rack DSP",          scope: "deck"   },
+    { key: "eq",      label: "Égaliseur (canal)", scope: "deck"   },
+    { key: "fxpad",   label: "FX · Intensité",   scope: "deck"   },
+  ];
+
   // Stable callback so the memoized MediaLibrary isn't re-rendered (and its rows
   // remounted) by the 60fps `tick` loop — remounting mid-click was cancelling
   // real mouse clicks on the delete / send-to-deck buttons.
@@ -454,6 +481,36 @@ export default function Home() {
           {ready && (
             <div className="relative">
               <button
+                onClick={() => setShowModulePicker((v) => !v)}
+                className={`hw-btn px-3 py-2 text-sm ${showModulePicker ? "hw-btn-on" : "text-neutral-300"}`}
+                style={{ ["--led" as string]: "#fb923c" }}
+                title="Ajouter / retirer des modules"
+              >
+                ⊕ Modules
+              </button>
+              {showModulePicker && (
+                <div className="hw-panel absolute right-0 top-full z-50 mt-2 w-56 p-3 text-sm">
+                  <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500">Modules optionnels</div>
+                  {MODULE_DEFS.map(({ key, label, scope }) => (
+                    <label key={key} className="flex cursor-pointer items-center justify-between gap-2 py-1">
+                      <span className="text-[11px] text-neutral-300">{label}</span>
+                      <span className="text-[8px] text-neutral-600 capitalize">{scope}</span>
+                      <button
+                        onClick={() => toggleModule(key)}
+                        className={`hw-btn px-2 py-0.5 text-[10px] ${modules[key] ? "hw-btn-on" : "text-neutral-500"}`}
+                        style={{ ["--led" as string]: "#fb923c" }}
+                      >
+                        {modules[key] ? "ON" : "OFF"}
+                      </button>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {ready && (
+            <div className="relative">
+              <button
                 onClick={() => setShowConfig((c) => !c)}
                 className={`hw-btn px-3 py-2 text-sm ${showConfig ? "hw-btn-on" : "text-neutral-300"}`}
                 style={{ ["--led" as string]: "#a78bfa" }}
@@ -556,6 +613,7 @@ export default function Home() {
               onStems={bumpStems}
               onLibraryChange={bumpLib}
               forceTrim={normTrimA}
+              activeModules={{ rack: modules.rack, eq: modules.eq, fxpad: modules.fxpad }}
             />
 
             <div className="hw-screwed hw-panel flex flex-col items-center justify-between gap-4 p-4 lg:w-52">
@@ -638,7 +696,7 @@ export default function Home() {
               </div>
 
               {/* vertical BOSS master-FX / metering unit tucked under the mixer */}
-              <BossFxPanel engine={engine} tick={tick} />
+              {modules.boss && <BossFxPanel engine={engine} tick={tick} />}
 
               {/* YouTube → MP3 converter, placed right under the effects unit */}
               <Mp3Converter link={convLink} onLinkChange={setConvLink} flash={convFlash} />
@@ -657,12 +715,13 @@ export default function Home() {
               onStems={bumpStems}
               onLibraryChange={bumpLib}
               forceTrim={normTrimB}
+              activeModules={{ rack: modules.rack, eq: modules.eq, fxpad: modules.fxpad }}
             />
 
             <div className="lg:col-span-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
               {/* left column: Synth on top, media database docked beneath it */}
               <div className="flex flex-col gap-4">
-                <SynthPanel key={`synth-${resetKey}`} engine={engine} />
+                {modules.synth && <SynthPanel key={`synth-${resetKey}`} engine={engine} />}
                 <MediaLibrary
                   engine={engine}
                   onLoaded={bumpTick}
@@ -670,11 +729,13 @@ export default function Home() {
                   libRefresh={libRefresh}
                 />
               </div>
-              {/* right column: the Pads + the synthesised DJ sound-effects bank */}
-              <div className="flex flex-col gap-4">
-                <SamplerPanel engine={engine} />
-                <SoundFxPanel engine={engine} />
-              </div>
+              {/* right column: optional Pads + sound-effects bank */}
+              {(modules.sampler || modules.soundfx) && (
+                <div className="flex flex-col gap-4">
+                  {modules.sampler && <SamplerPanel engine={engine} />}
+                  {modules.soundfx && <SoundFxPanel engine={engine} />}
+                </div>
+              )}
             </div>
 
             {/* optional video tool — toggled in Config (⚙) */}
