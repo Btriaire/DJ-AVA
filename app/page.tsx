@@ -87,7 +87,7 @@ export default function Home() {
     { key: "soundfx", label: "FX Sonores",        scope: "global" },
     { key: "boss",    label: "Boss FX",           scope: "mixer"  },
     { key: "rack",    label: "Rack DSP",          scope: "deck"   },
-    { key: "eq",      label: "Égaliseur (canal)", scope: "deck"   },
+    { key: "eq",      label: "EQ 15 bandes",      scope: "deck"   },
     { key: "fxpad",   label: "FX · Intensité",   scope: "deck"   },
   ];
 

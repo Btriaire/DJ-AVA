@@ -7,6 +7,7 @@ import { Waveform } from "./Waveform";
 import { FXPad } from "./FXPad";
 import { Spectrum } from "./Spectrum";
 import { RackPanel } from "./RackPanel";
+import { EqRackStrip } from "./EqRackStrip";
 import { loadLibrary, saveLibrary, idbPutBlob, idbGetBlob, uid, LibTrack } from "@/lib/library";
 
 interface Props {
@@ -701,8 +702,8 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
         </div>
       </div>
 
-      {/* EQ + filter */}
-      {activeModules?.eq !== false && <div className="hw-recess flex items-center justify-around py-3">
+      {/* channel strip — always visible: Gain + 3-band EQ + Filter */}
+      <div className="hw-recess flex items-center justify-around py-3">
         <Knob
           label="Gain"
           value={trim}
@@ -710,39 +711,20 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
           max={1.5}
           defaultValue={1}
           color={color}
-          onChange={(v) => {
-            setTrim(v);
-            deck.setTrim(v);
-          }}
+          onChange={(v) => { setTrim(v); deck.setTrim(v); }}
         />
         {(["high", "mid", "low"] as const).map((b) => (
-          <Knob
-            key={b}
-            label={b}
-            value={eq[b]}
-            min={-26}
-            max={12}
-            defaultValue={0}
-            color={color}
-            onChange={(v) => {
-              setEq((e) => ({ ...e, [b]: v }));
-              deck.setEQ(b, v);
-            }}
+          <Knob key={b} label={b} value={eq[b]} min={-26} max={12} defaultValue={0} color={color}
+            onChange={(v) => { setEq((e) => ({ ...e, [b]: v })); deck.setEQ(b, v); }}
           />
         ))}
-        <Knob
-          label="Filter"
-          value={filter}
-          min={-1}
-          max={1}
-          defaultValue={0}
-          color={color}
-          onChange={(v) => {
-            setFilter(v);
-            deck.setFilter(v);
-          }}
+        <Knob label="Filter" value={filter} min={-1} max={1} defaultValue={0} color={color}
+          onChange={(v) => { setFilter(v); deck.setFilter(v); }}
         />
-      </div>}
+      </div>
+
+      {/* 15-band rack EQ — independent from Rack DSP, own toggle */}
+      {activeModules?.eq !== false && <EqRackStrip deck={deck} color={color} />}
 
       {/* FX pad */}
       {activeModules?.fxpad !== false && <div className="hw-recess p-3">
