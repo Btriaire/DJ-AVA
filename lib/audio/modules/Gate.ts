@@ -4,7 +4,7 @@ import * as Tone from "tone";
 export class GateModule extends BaseModule {
   input: Tone.Gain;
   output: Tone.Gain;
-  private gate: Tone.Gate;
+  private gate: any;
 
   constructor(ctx: AudioContext) {
     super(
