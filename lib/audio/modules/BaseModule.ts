@@ -1,4 +1,3 @@
-import type { AudioContext } from "web-audio-api";
 
 export interface ParamDef {
   key: string;
