@@ -6,12 +6,12 @@ export class MultibandModule extends BaseModule {
   input: GainNode;
   output: GainNode;
   private loLP: BiquadFilterNode;
-  private loComp: DynamicsCompressor;
+  private loComp: DynamicsCompressorNode;
   private midLP: BiquadFilterNode;
   private midHP: BiquadFilterNode;
-  private midComp: DynamicsCompressor;
+  private midComp: DynamicsCompressorNode;
   private hiHP: BiquadFilterNode;
-  private hiComp: DynamicsCompressor;
+  private hiComp: DynamicsCompressorNode;
 
   constructor(ctx: AudioContext) {
     super(

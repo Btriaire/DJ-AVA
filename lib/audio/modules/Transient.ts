@@ -5,8 +5,8 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
 export class TransientModule extends BaseModule {
   input: GainNode;
   output: GainNode;
-  private fastComp: DynamicsCompressor;
-  private slowComp: DynamicsCompressor;
+  private fastComp: DynamicsCompressorNode;
+  private slowComp: DynamicsCompressorNode;
   private fastGain: GainNode;
   private slowGain: GainNode;
 

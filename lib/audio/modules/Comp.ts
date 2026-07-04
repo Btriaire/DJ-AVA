@@ -5,7 +5,7 @@ const dbr = (v: number) => `${v > 0 ? "+" : ""}${Math.round(v)} dB`;
 export class CompModule extends BaseModule {
   input: GainNode;
   output: GainNode;
-  private comp: DynamicsCompressor;
+  private comp: DynamicsCompressorNode;
 
   constructor(ctx: AudioContext) {
     super(

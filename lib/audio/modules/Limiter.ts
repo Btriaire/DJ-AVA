@@ -5,7 +5,7 @@ const dbr = (v: number) => `${v > 0 ? "+" : ""}${Math.round(v)} dB`;
 export class LimiterModule extends BaseModule {
   input: GainNode;
   output: GainNode;
-  private limiter: DynamicsCompressor;
+  private limiter: DynamicsCompressorNode;
 
   constructor(ctx: AudioContext) {
     super(

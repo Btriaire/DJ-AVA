@@ -5,9 +5,9 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
 export class LoudnessModule extends BaseModule {
   input: GainNode;
   output: GainNode;
-  private stage1: DynamicsCompressor;
+  private stage1: DynamicsCompressorNode;
   private makeupGain: GainNode;
-  private limiter: DynamicsCompressor;
+  private limiter: DynamicsCompressorNode;
 
   constructor(ctx: AudioContext) {
     super(
