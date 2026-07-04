@@ -65,30 +65,115 @@ export default function Home() {
   const [normFlash, setNormFlash] = useState(false);
 
   // --- Optional modules: all hidden by default, added on-the-fly ---------------
-  type Modules = { synth: boolean; sampler: boolean; soundfx: boolean; boss: boolean; rack: boolean; eq: boolean; fxpad: boolean };
-  const DEFAULT_MODULES: Modules = { synth: false, sampler: false, soundfx: false, boss: false, rack: false, eq: false, fxpad: false };
+  type Modules = {
+    synth: boolean;
+    sampler: boolean;
+    soundfx: boolean;
+    boss: boolean;
+    eq: boolean;
+    fxpad: boolean;
+    // DSP modules (individual)
+    loudness: boolean;
+    surround: boolean;
+    exciter: boolean;
+    transient: boolean;
+    multiband: boolean;
+    comp: boolean;
+    drive: boolean;
+    wavefold: boolean;
+    crush: boolean;
+    robot: boolean;
+    ringmod: boolean;
+    voyelle: boolean;
+    isolator: boolean;
+    autowah: boolean;
+    resonator: boolean;
+    gate: boolean;
+    glitch: boolean;
+    shimmer: boolean;
+    delay: boolean;
+    reverb: boolean;
+    limiter: boolean;
+    autotune: boolean;
+  };
+  const DEFAULT_MODULES: Modules = {
+    synth: false,
+    sampler: false,
+    soundfx: false,
+    boss: false,
+    eq: false,
+    fxpad: false,
+    loudness: false,
+    surround: false,
+    exciter: false,
+    transient: false,
+    multiband: false,
+    comp: false,
+    drive: false,
+    wavefold: false,
+    crush: false,
+    robot: false,
+    ringmod: false,
+    voyelle: false,
+    isolator: false,
+    autowah: false,
+    resonator: false,
+    gate: false,
+    glitch: false,
+    shimmer: false,
+    delay: false,
+    reverb: false,
+    limiter: false,
+    autotune: false,
+  };
   const [modules, setModules] = useState<Modules>(() => {
     try {
       const raw = localStorage.getItem("djsynth.modules.v1");
       return raw ? { ...DEFAULT_MODULES, ...JSON.parse(raw) } : DEFAULT_MODULES;
-    } catch { return DEFAULT_MODULES; }
+    } catch {
+      return DEFAULT_MODULES;
+    }
   });
   const [showModulePicker, setShowModulePicker] = useState(false);
   function toggleModule(k: keyof Modules) {
     setModules((m) => {
       const next = { ...m, [k]: !m[k] };
-      try { localStorage.setItem("djsynth.modules.v1", JSON.stringify(next)); } catch { /**/ }
+      try {
+        localStorage.setItem("djsynth.modules.v1", JSON.stringify(next));
+      } catch { /**/ }
       return next;
     });
   }
-  const MODULE_DEFS: { key: keyof Modules; label: string; scope: string }[] = [
-    { key: "synth",   label: "Synthé",           scope: "global" },
-    { key: "sampler", label: "Sculpteur de son",  scope: "global" },
-    { key: "soundfx", label: "FX Sonores",        scope: "global" },
-    { key: "boss",    label: "Boss FX",           scope: "mixer"  },
-    { key: "rack",    label: "Rack DSP",          scope: "deck"   },
-    { key: "eq",      label: "EQ 15 bandes",      scope: "deck"   },
-    { key: "fxpad",   label: "FX · Intensité",   scope: "deck"   },
+  const MODULE_DEFS: { key: keyof Modules; label: string; scope: string; group?: string }[] = [
+    { key: "synth", label: "Synthé", scope: "global" },
+    { key: "sampler", label: "Sculpteur de son", scope: "global" },
+    { key: "soundfx", label: "FX Sonores", scope: "global" },
+    { key: "boss", label: "Boss FX", scope: "mixer" },
+    { key: "eq", label: "EQ 15 bandes", scope: "deck" },
+    { key: "fxpad", label: "FX · Intensité", scope: "deck" },
+    // DSP Modules
+    { key: "isolator", label: "ISO VOIX", scope: "deck", group: "DSP" },
+    { key: "autotune", label: "AUTO-TUNE", scope: "deck", group: "DSP" },
+    { key: "comp", label: "COMP", scope: "deck", group: "DSP" },
+    { key: "drive", label: "DRIVE", scope: "deck", group: "DSP" },
+    { key: "wavefold", label: "WAVEFOLD", scope: "deck", group: "DSP" },
+    { key: "crush", label: "CRUSH", scope: "deck", group: "DSP" },
+    { key: "robot", label: "ROBOT", scope: "deck", group: "DSP" },
+    { key: "ringmod", label: "RINGMOD", scope: "deck", group: "DSP" },
+    { key: "voyelle", label: "VOYELLE", scope: "deck", group: "DSP" },
+    { key: "autowah", label: "AUTO-WAH", scope: "deck", group: "DSP" },
+    { key: "resonator", label: "RESONATOR", scope: "deck", group: "DSP" },
+    { key: "gate", label: "GATE", scope: "deck", group: "DSP" },
+    { key: "glitch", label: "GLITCH", scope: "deck", group: "DSP" },
+    { key: "shimmer", label: "SHIMMER", scope: "deck", group: "DSP" },
+    { key: "delay", label: "DELAY", scope: "deck", group: "DSP" },
+    { key: "reverb", label: "REVERB", scope: "deck", group: "DSP" },
+    { key: "limiter", label: "LIMITER", scope: "deck", group: "DSP" },
+    { key: "loudness", label: "LOUDNESS", scope: "deck", group: "DSP" },
+    { key: "surround", label: "SURROUND", scope: "deck", group: "DSP" },
+    { key: "exciter", label: "EXCITER", scope: "deck", group: "DSP" },
+    { key: "transient", label: "TRANSIENT", scope: "deck", group: "DSP" },
+    { key: "multiband", label: "MULTI-BAND", scope: "deck", group: "DSP" },
   ];
 
   // Stable callback so the memoized MediaLibrary isn't re-rendered (and its rows
@@ -613,7 +698,32 @@ export default function Home() {
               onStems={bumpStems}
               onLibraryChange={bumpLib}
               forceTrim={normTrimA}
-              activeModules={{ rack: modules.rack, eq: modules.eq, fxpad: modules.fxpad }}
+              activeModules={{
+                eq: modules.eq,
+                fxpad: modules.fxpad,
+                loudness: modules.loudness,
+                surround: modules.surround,
+                exciter: modules.exciter,
+                transient: modules.transient,
+                multiband: modules.multiband,
+                comp: modules.comp,
+                drive: modules.drive,
+                wavefold: modules.wavefold,
+                crush: modules.crush,
+                robot: modules.robot,
+                ringmod: modules.ringmod,
+                voyelle: modules.voyelle,
+                isolator: modules.isolator,
+                autowah: modules.autowah,
+                resonator: modules.resonator,
+                gate: modules.gate,
+                glitch: modules.glitch,
+                shimmer: modules.shimmer,
+                delay: modules.delay,
+                reverb: modules.reverb,
+                limiter: modules.limiter,
+                autotune: modules.autotune,
+              }}
             />
 
             <div className="hw-screwed hw-panel flex flex-col items-center justify-between gap-4 p-4 lg:w-52">
@@ -715,7 +825,32 @@ export default function Home() {
               onStems={bumpStems}
               onLibraryChange={bumpLib}
               forceTrim={normTrimB}
-              activeModules={{ rack: modules.rack, eq: modules.eq, fxpad: modules.fxpad }}
+              activeModules={{
+                eq: modules.eq,
+                fxpad: modules.fxpad,
+                loudness: modules.loudness,
+                surround: modules.surround,
+                exciter: modules.exciter,
+                transient: modules.transient,
+                multiband: modules.multiband,
+                comp: modules.comp,
+                drive: modules.drive,
+                wavefold: modules.wavefold,
+                crush: modules.crush,
+                robot: modules.robot,
+                ringmod: modules.ringmod,
+                voyelle: modules.voyelle,
+                isolator: modules.isolator,
+                autowah: modules.autowah,
+                resonator: modules.resonator,
+                gate: modules.gate,
+                glitch: modules.glitch,
+                shimmer: modules.shimmer,
+                delay: modules.delay,
+                reverb: modules.reverb,
+                limiter: modules.limiter,
+                autotune: modules.autotune,
+              }}
             />
 
             <div className="lg:col-span-3 grid grid-cols-1 gap-4 lg:grid-cols-2">

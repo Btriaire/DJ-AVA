@@ -22,7 +22,32 @@ interface Props {
   onStems?: () => void; // fired when stems become available (refreshes the library badge)
   onLibraryChange?: () => void; // fired after the deck writes to the library (save to playlist)
   forceTrim?: number; // externally imposed trim (normalize button); updates knob display
-  activeModules?: { rack?: boolean; eq?: boolean; fxpad?: boolean };
+  activeModules?: {
+    eq?: boolean;
+    fxpad?: boolean;
+    loudness?: boolean;
+    surround?: boolean;
+    exciter?: boolean;
+    transient?: boolean;
+    multiband?: boolean;
+    comp?: boolean;
+    drive?: boolean;
+    wavefold?: boolean;
+    crush?: boolean;
+    robot?: boolean;
+    ringmod?: boolean;
+    voyelle?: boolean;
+    isolator?: boolean;
+    autowah?: boolean;
+    resonator?: boolean;
+    gate?: boolean;
+    glitch?: boolean;
+    shimmer?: boolean;
+    delay?: boolean;
+    reverb?: boolean;
+    limiter?: boolean;
+    autotune?: boolean;
+  };
 }
 
 function fmtTime(s: number) {
