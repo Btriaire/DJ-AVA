@@ -941,8 +941,8 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
         </div>
       </div>
 
-      {/* full serial DSP rack — Auto-Tune now lives inside it as a module */}
-      {activeModules?.rack !== false && <RackPanel deck={deck} color={color} />}
+      {/* full serial DSP rack — modules now individually selectable */}
+      <RackPanel deck={deck} color={color} activeModules={activeModules} />
 
       {/* beat loop + actions */}
       <div className="flex items-end justify-between gap-4">

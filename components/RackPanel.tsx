@@ -312,7 +312,15 @@ function syncButtons(id: RackModuleId): boolean {
   return id === "delay" || id === "glitch" || id === "gate";
 }
 
-export function RackPanel({ deck, color }: { deck: Deck; color: string }) {
+export function RackPanel({
+  deck,
+  color,
+  activeModules,
+}: {
+  deck: Deck;
+  color: string;
+  activeModules?: Record<string, boolean>;
+}) {
   const rack = deck.rack;
   const [, force] = useState(0);
   const rerender = () => force((n) => n + 1);
@@ -481,11 +489,18 @@ export function RackPanel({ deck, color }: { deck: Deck; color: string }) {
           collapsed card keeps its small height (no stretching to taller neighbours) →
           replier un module fait bien remonter ce qui est en dessous. */}
       <div className="flex w-full min-w-0 flex-wrap items-start content-start gap-1.5">
-        {rack.order.map((id, pos) => {
-          if (id === "eq") return null; // EQ is pinned above as an always-visible panel
-          const def = RACK_MODULES.find((m) => m.id === id)!;
-          const on = rack.isOn(id);
-          const isCollapsed = collapsed.has(id);
+        {rack.order
+          .filter((id) => {
+            // EQ is pinned above, never shown here
+            if (id === "eq") return false;
+            // If module is in activeModules, only show if true; otherwise show all
+            if (activeModules && id in activeModules) return activeModules[id];
+            return true; // Show modules not in activeModules (backward compat)
+          })
+          .map((id, pos) => {
+            const def = RACK_MODULES.find((m) => m.id === id)!;
+            const on = rack.isOn(id);
+            const isCollapsed = collapsed.has(id);
 
           // header is shared by both states: toggle + label + VU meter (click label = fold)
           const header = (
