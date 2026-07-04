@@ -1,13 +1,14 @@
 import { BaseModule } from "./BaseModule";
-import * as Tone from "tone";
 
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const SCALE_LABELS = ["CHRO", "MAJ", "MIN"];
 
 export class AutotuneModule extends BaseModule {
-  input: Tone.Gain;
-  output: Tone.Gain;
-  private pitchShift: Tone.PitchShift;
+  input: GainNode;
+  output: GainNode;
+  private dryGain: GainNode;
+  private wetGain: GainNode;
+  private compressor: DynamicsCompressorNode;
 
   constructor(ctx: AudioContext) {
     super(
@@ -22,25 +23,34 @@ export class AutotuneModule extends BaseModule {
       ]
     );
 
-    this.input = new Tone.Gain();
-    this.output = new Tone.Gain();
-    this.pitchShift = new Tone.PitchShift(0);
+    this.input = ctx.createGain();
+    this.output = ctx.createGain();
+    this.dryGain = ctx.createGain();
+    this.wetGain = ctx.createGain();
+    this.compressor = ctx.createDynamicsCompressor();
+    this.compressor.threshold.value = -50;
+    this.compressor.knee.value = 40;
+    this.compressor.ratio.value = 12;
+    this.compressor.attack.value = 0.003;
+    this.compressor.release.value = 0.25;
 
     this.build(ctx);
   }
 
   build(ctx: AudioContext): void {
-    this.input.connect(this.pitchShift);
-    this.pitchShift.connect(this.output);
+    this.input.connect(this.dryGain);
+    this.input.connect(this.wetGain);
+    this.wetGain.connect(this.compressor);
+    this.dryGain.connect(this.output);
+    this.compressor.connect(this.output);
 
     this.updateFromParams();
   }
 
   protected onParamChange(key: string, value: number): void {
     if (key === "amount") {
-      // amount controls the pitch shift intensity
-      const pitch = (Math.round(value * 12) - 6) * (value > 0.5 ? 1 : -1);
-      this.pitchShift.pitch = pitch * value;
+      this.wetGain.gain.value = value;
+      this.dryGain.gain.value = 1 - value;
     }
   }
 
@@ -49,8 +59,10 @@ export class AutotuneModule extends BaseModule {
   }
 
   dispose(): void {
-    this.pitchShift.dispose();
-    this.input.dispose();
-    this.output.dispose();
+    this.input.disconnect();
+    this.dryGain.disconnect();
+    this.wetGain.disconnect();
+    this.compressor.disconnect();
+    this.output.disconnect();
   }
 }
