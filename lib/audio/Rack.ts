@@ -30,7 +30,12 @@ export type RackModuleId =
   | "shimmer"
   | "delay"
   | "reverb"
-  | "limiter";
+  | "limiter"
+  | "loudness"
+  | "surround"
+  | "exciter"
+  | "transient"
+  | "multiband";
 
 export interface RackParamDef {
   key: string;
@@ -235,6 +240,52 @@ export const RACK_MODULES: RackModuleDef[] = [
     title: "Limiteur de sécurité — empêche l'écrêtage",
     params: [{ key: "ceil", label: "Plafond", min: -24, max: 0, def: -1, fmt: (v) => `${v.toFixed(1)} dB` }],
   },
+  {
+    id: "loudness",
+    label: "LOUDNESS",
+    title: "Maximiseur de loudness — compression + gain + limiteur brick-wall",
+    params: [
+      { key: "target", label: "Cible", min: 0, max: 1, def: 0.5, fmt: (v) => `${Math.round(-14 + v * 8)} LUFS` },
+      { key: "punch", label: "Punch", min: 0, max: 1, def: 0.5, fmt: pct },
+    ],
+  },
+  {
+    id: "surround",
+    label: "SURROUND",
+    title: "Élargisseur stéréo M/S — de mono à super-large",
+    params: [
+      { key: "width", label: "Largeur", min: 0, max: 2, def: 1.5, fmt: (v) => `${Math.round(v * 100)}%` },
+      { key: "depth", label: "Centre", min: 0, max: 1, def: 0, fmt: pct },
+    ],
+  },
+  {
+    id: "exciter",
+    label: "EXCITER",
+    title: "Excitatrice harmonique — enrichit les hautes fréquences par saturation douce",
+    params: [
+      { key: "harm", label: "Harm.", min: 0, max: 1, def: 0.5, fmt: pct },
+      { key: "freq", label: "Fréq", min: 2000, max: 12000, def: 4000, fmt: hzr },
+    ],
+  },
+  {
+    id: "transient",
+    label: "TRANSIENT",
+    title: "Modeleur de transitoires — renforce l'attaque et façonne le sustain",
+    params: [
+      { key: "attack", label: "Attaque", min: 0, max: 1, def: 0.5, fmt: pct },
+      { key: "sustain", label: "Sustain", min: 0, max: 1, def: 0.3, fmt: pct },
+    ],
+  },
+  {
+    id: "multiband",
+    label: "MULTI-BAND",
+    title: "Compresseur 3 bandes — grave · médium · aigu indépendants",
+    params: [
+      { key: "lo", label: "Grave", min: 0, max: 1, def: 0.4, fmt: pct },
+      { key: "mid", label: "Médium", min: 0, max: 1, def: 0.3, fmt: pct },
+      { key: "hi", label: "Aigu", min: 0, max: 1, def: 0.5, fmt: pct },
+    ],
+  },
 ];
 
 export const RACK_DEF = new Map(RACK_MODULES.map((m) => [m.id, m]));
@@ -365,6 +416,7 @@ export class Rack {
   private ctx: AudioContext;
   private dcBlock: BiquadFilterNode; // kill DC offset before the rack output
   private scope: AnalyserNode; // taps the rack output for the panel spectrum
+  private levelBuf: Uint8Array<ArrayBuffer>;
   private slots = new Map<RackModuleId, RackSlot>();
   order: RackModuleId[] = [...DEFAULT_ORDER];
   macros: { value: number; targets: MacroTarget[] }[] = [
@@ -386,6 +438,7 @@ export class Rack {
     this.scope.fftSize = 1024;
     this.scope.smoothingTimeConstant = 0.8;
     this.output.connect(this.scope);
+    this.levelBuf = new Uint8Array(new ArrayBuffer(this.scope.fftSize));
     for (const id of DEFAULT_ORDER) this.slots.set(id, new RackSlot(ctx, id));
     this.rewire();
   }
@@ -410,6 +463,16 @@ export class Rack {
   }
   getFlag(id: RackModuleId, key: string): boolean {
     return !!this.slots.get(id)?.flags[key];
+  }
+  // peak level 0..1 from the rack output (time-domain), for VU meters
+  getLevel(): number {
+    this.scope.getByteTimeDomainData(this.levelBuf);
+    let peak = 0;
+    for (const v of this.levelBuf) {
+      const a = Math.abs(v - 128) / 128;
+      if (a > peak) peak = a;
+    }
+    return peak;
   }
   isMacroTarget(i: number, target: MacroTarget): boolean {
     return !!this.macros[i]?.targets.some((t) => t.id === target.id && t.key === target.key);
@@ -1067,6 +1130,185 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
       lim.attack.value = 0.002;
       lim.release.value = 0.1;
       return { fxIn: lim, fxOut: lim, onParam: (k, v) => k === "ceil" && at(lim.threshold, v) };
+    }
+    case "loudness": {
+      // 2-stage loudness maximizer: fast compressor + makeup gain + brick-wall limiter
+      const fxIn = c.createGain();
+      const fxOut = c.createGain();
+      const comp = c.createDynamicsCompressor();
+      comp.threshold.value = -30;
+      comp.knee.value = 8;
+      comp.ratio.value = 8;
+      comp.attack.value = 0.003;
+      comp.release.value = 0.15;
+      const makeup = c.createGain();
+      makeup.gain.value = 3;
+      const lim = c.createDynamicsCompressor();
+      lim.threshold.value = -2;
+      lim.knee.value = 0;
+      lim.ratio.value = 20;
+      lim.attack.value = 0.001;
+      lim.release.value = 0.06;
+      fxIn.connect(comp);
+      comp.connect(makeup);
+      makeup.connect(lim);
+      lim.connect(fxOut);
+      return {
+        fxIn, fxOut,
+        onParam: (k, v) => {
+          if (k === "target") {
+            at(comp.threshold, -40 + v * 18);
+            at(comp.ratio, 4 + v * 12);
+            at(makeup.gain, 1 + v * 6);
+            at(lim.threshold, -1 - v * 3);
+          } else if (k === "punch") {
+            at(comp.attack, 0.001 + (1 - v) * 0.05);
+            at(comp.release, 0.05 + v * 0.35);
+          }
+        },
+      };
+    }
+    case "surround": {
+      // M-S stereo widener: scale side signal to widen or narrow the stereo image
+      const fxIn = c.createGain();
+      fxIn.channelCount = 2;
+      fxIn.channelCountMode = "explicit";
+      fxIn.channelInterpretation = "speakers";
+      const fxOut = c.createGain();
+      const split = c.createChannelSplitter(2);
+      const merge = c.createChannelMerger(2);
+      const lG = c.createGain();
+      const rG = c.createGain();
+      // M = (L + R) * 0.5
+      const mL = c.createGain(); mL.gain.value = 0.5;
+      const mR = c.createGain(); mR.gain.value = 0.5;
+      const mid = c.createGain();
+      // S = (L - R) * 0.5, scaled by width
+      const sL = c.createGain(); sL.gain.value = 0.5;
+      const sR = c.createGain(); sR.gain.value = -0.5;
+      const side = c.createGain(); side.gain.value = 1.5; // default: slightly wider
+      const sideNeg = c.createGain(); sideNeg.gain.value = -1;
+      // decode: L' = M + S*w, R' = M - S*w
+      fxIn.connect(split);
+      split.connect(lG, 0); split.connect(rG, 1);
+      lG.connect(mL); rG.connect(mR);
+      mL.connect(mid); mR.connect(mid);
+      lG.connect(sL); rG.connect(sR);
+      sL.connect(side); sR.connect(side);
+      side.connect(sideNeg);
+      mid.connect(merge, 0, 0); mid.connect(merge, 0, 1);
+      side.connect(merge, 0, 0);
+      sideNeg.connect(merge, 0, 1);
+      merge.connect(fxOut);
+      return {
+        fxIn, fxOut,
+        onParam: (k, v) => {
+          if (k === "width") at(side.gain, v * 2);
+          else if (k === "depth") at(mid.gain, Math.max(0.01, 1 - v * 0.5));
+        },
+      };
+    }
+    case "exciter": {
+      // harmonic exciter: high-pass signal -> soft saturation -> mix back (adds sparkle)
+      const fxIn = c.createGain();
+      const fxOut = c.createGain();
+      const hp = c.createBiquadFilter();
+      hp.type = "highpass";
+      hp.frequency.value = 4000;
+      hp.Q.value = 0.7;
+      const shaper = c.createWaveShaper();
+      shaper.oversample = "4x";
+      const excGain = c.createGain();
+      excGain.gain.value = 0.4;
+      const setCurve = (amt: number) => {
+        const n = 512;
+        const curve = new Float32Array(n);
+        const k = 1 + amt * 15;
+        for (let i = 0; i < n; i++) {
+          const x = (i / (n - 1)) * 2 - 1;
+          curve[i] = Math.tanh(k * x) / Math.tanh(k);
+        }
+        shaper.curve = curve;
+      };
+      setCurve(0.5);
+      fxIn.connect(fxOut); // dry pass-through
+      fxIn.connect(hp);
+      hp.connect(shaper);
+      shaper.connect(excGain);
+      excGain.connect(fxOut);
+      return {
+        fxIn, fxOut,
+        onParam: (k, v) => {
+          if (k === "harm") { setCurve(v); at(excGain.gain, 0.1 + v * 0.9); }
+          else if (k === "freq") at(hp.frequency, v);
+        },
+      };
+    }
+    case "transient": {
+      // parallel fast+slow compressors: fast sharpens attacks, slow controls sustain
+      const fxIn = c.createGain();
+      const fxOut = c.createGain();
+      const transComp = c.createDynamicsCompressor();
+      transComp.threshold.value = -24;
+      transComp.knee.value = 2;
+      transComp.ratio.value = 6;
+      transComp.attack.value = 0.0005;
+      transComp.release.value = 0.08;
+      const transGain = c.createGain();
+      transGain.gain.value = 1.5;
+      const sustComp = c.createDynamicsCompressor();
+      sustComp.threshold.value = -18;
+      sustComp.knee.value = 8;
+      sustComp.ratio.value = 3;
+      sustComp.attack.value = 0.06;
+      sustComp.release.value = 0.5;
+      const sustGain = c.createGain();
+      sustGain.gain.value = 0.4;
+      fxIn.connect(transComp);
+      transComp.connect(transGain);
+      transGain.connect(fxOut);
+      fxIn.connect(sustComp);
+      sustComp.connect(sustGain);
+      sustGain.connect(fxOut);
+      return {
+        fxIn, fxOut,
+        onParam: (k, v) => {
+          if (k === "attack") at(transGain.gain, 0.5 + v * 2.5);
+          else if (k === "sustain") at(sustGain.gain, v * 1.5);
+        },
+      };
+    }
+    case "multiband": {
+      // 3-band parallel compressor: lo (<250Hz) / mid (250–4kHz) / hi (>4kHz)
+      const fxIn = c.createGain();
+      const fxOut = c.createGain();
+      const loLp = c.createBiquadFilter(); loLp.type = "lowpass";  loLp.frequency.value = 250;
+      const midLp = c.createBiquadFilter(); midLp.type = "lowpass"; midLp.frequency.value = 4000;
+      const midHp = c.createBiquadFilter(); midHp.type = "highpass"; midHp.frequency.value = 250;
+      const hiHp = c.createBiquadFilter(); hiHp.type = "highpass"; hiHp.frequency.value = 4000;
+      const loComp = c.createDynamicsCompressor();
+      const midComp = c.createDynamicsCompressor();
+      const hiComp = c.createDynamicsCompressor();
+      for (const comp of [loComp, midComp, hiComp]) {
+        comp.threshold.value = -24;
+        comp.knee.value = 6;
+        comp.ratio.value = 4;
+        comp.attack.value = 0.008;
+        comp.release.value = 0.2;
+      }
+      fxIn.connect(loLp); loLp.connect(loComp); loComp.connect(fxOut);
+      fxIn.connect(midLp); midLp.connect(midHp); midHp.connect(midComp); midComp.connect(fxOut);
+      fxIn.connect(hiHp); hiHp.connect(hiComp); hiComp.connect(fxOut);
+      return {
+        fxIn, fxOut,
+        onParam: (k, v) => {
+          const comp = k === "lo" ? loComp : k === "mid" ? midComp : k === "hi" ? hiComp : null;
+          if (comp) {
+            at(comp.ratio, 1 + v * 14);
+            at(comp.threshold, -12 - v * 24);
+          }
+        },
+      };
     }
     default:
       throw new Error(`unknown rack module: ${id}`);

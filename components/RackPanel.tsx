@@ -276,6 +276,37 @@ function MiniCurve({ id, params, color }: { id: RackModuleId; params: Record<str
 }
 
 
+// ---------- per-slot digital VU meter (10 LED segments, reads rack output level) ----------
+function SlotVU({ rack, on, color }: { rack: Rack; on: boolean; color: string }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx2d = canvas.getContext("2d");
+    if (!ctx2d) return;
+    const SEGS = 10;
+    let raf = 0;
+    const draw = () => {
+      const level = on ? rack.getLevel() : 0;
+      const lit = Math.round(Math.min(1, level * 2.5) * SEGS);
+      ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+      for (let i = 0; i < SEGS; i++) {
+        const isLit = i < lit;
+        const segColor = i >= 9 ? "#ff3b30" : i >= 7 ? "#ffd23d" : color;
+        ctx2d.fillStyle = isLit ? segColor : "#1c1c1c";
+        ctx2d.shadowBlur = isLit ? 3 : 0;
+        ctx2d.shadowColor = isLit ? segColor : "transparent";
+        ctx2d.fillRect(i * 5, 0, 4, 8);
+      }
+      raf = requestAnimationFrame(draw);
+    };
+    raf = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rack, on, color]);
+  return <canvas ref={canvasRef} width={50} height={8} className="shrink-0 rounded-sm" />;
+}
+
 // ---------- BPM sync presets per module ----------
 function syncButtons(id: RackModuleId): boolean {
   return id === "delay" || id === "glitch" || id === "gate";
@@ -456,7 +487,7 @@ export function RackPanel({ deck, color }: { deck: Deck; color: string }) {
           const on = rack.isOn(id);
           const isCollapsed = collapsed.has(id);
 
-          // header is shared by both states: toggle + label (click label = fold)
+          // header is shared by both states: toggle + label + VU meter (click label = fold)
           const header = (
             <div className="flex items-center gap-1.5">
               <Toggle
@@ -475,6 +506,7 @@ export function RackPanel({ deck, color }: { deck: Deck; color: string }) {
               >
                 {def.label}
               </button>
+              <SlotVU rack={rack} on={on} color={color} />
               <span className="text-[9px] leading-none text-neutral-600">{isCollapsed ? "▸" : "▾"}</span>
             </div>
           );
