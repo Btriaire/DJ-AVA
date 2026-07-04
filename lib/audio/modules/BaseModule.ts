@@ -24,8 +24,8 @@ export abstract class BaseModule {
   protected params: Record<string, number> = {};
   protected flags: Record<string, boolean> = {};
 
-  abstract input: GainNode;
-  abstract output: GainNode;
+  abstract input: GainNode | any;
+  abstract output: GainNode | any;
 
   constructor(
     id: string,
