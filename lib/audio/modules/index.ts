@@ -51,7 +51,7 @@ export type ModuleId =
   | "autotune"
   | "eq10band";
 
-export function createModule(id: ModuleId, ctx: AudioContext): BaseModule {
+export function createModule(id: ModuleId, ctx: AudioContext): any {
   switch (id) {
     case "loudness":
       return new LoudnessModule(ctx);
