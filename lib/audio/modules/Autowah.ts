@@ -4,8 +4,8 @@ import * as Tone from "tone";
 export class AutowahModule extends BaseModule {
   input: Tone.Gain;
   output: Tone.Gain;
-  private filter: Tone.Filter;
-  private osc: Tone.LFO;
+  private filter: any; // Tone.Filter
+  private osc: any; // Tone.LFO
 
   constructor(ctx: AudioContext) {
     super(

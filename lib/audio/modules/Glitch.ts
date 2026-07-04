@@ -4,8 +4,8 @@ import * as Tone from "tone";
 export class GlitchModule extends BaseModule {
   input: Tone.Gain;
   output: Tone.Gain;
-  private delay: Tone.Delay;
-  private feedback: Tone.Gain;
+  private delay: any; // Tone.Delay
+  private feedback: any; // Tone.Gain
 
   constructor(ctx: AudioContext) {
     super(

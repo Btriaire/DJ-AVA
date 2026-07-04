@@ -4,8 +4,8 @@ import * as Tone from "tone";
 export class RobotModule extends BaseModule {
   input: Tone.Gain;
   output: Tone.Gain;
-  private crush: Tone.BitCrusher;
-  private shift: Tone.PitchShift;
+  private crush: any; // Tone.BitCrusher
+  private shift: any; // Tone.PitchShift
 
   constructor(ctx: AudioContext) {
     super(

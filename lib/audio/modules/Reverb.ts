@@ -4,8 +4,8 @@ import * as Tone from "tone";
 export class ReverbModule extends BaseModule {
   input: Tone.Gain;
   output: Tone.Gain;
-  private reverb: Tone.Reverb;
-  private wet: Tone.Gain;
+  private reverb: any; // Tone.Reverb
+  private wet: any; // Tone.Gain
 
   constructor(ctx: AudioContext) {
     super(

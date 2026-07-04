@@ -4,9 +4,9 @@ import * as Tone from "tone";
 export class ShimmerModule extends BaseModule {
   input: Tone.Gain;
   output: Tone.Gain;
-  private reverb: Tone.Reverb;
-  private pitchShift: Tone.PitchShift;
-  private wet: Tone.Gain;
+  private reverb: any; // Tone.Reverb
+  private pitchShift: any; // Tone.PitchShift
+  private wet: any; // Tone.Gain
 
   constructor(ctx: AudioContext) {
     super(

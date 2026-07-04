@@ -4,7 +4,7 @@ import * as Tone from "tone";
 export class ResonatorModule extends BaseModule {
   input: Tone.Gain;
   output: Tone.Gain;
-  private filter: Tone.Filter;
+  private filter: any; // Tone.Filter
 
   constructor(ctx: AudioContext) {
     super(

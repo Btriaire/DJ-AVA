@@ -4,9 +4,9 @@ import * as Tone from "tone";
 export class RingmodModule extends BaseModule {
   input: Tone.Gain;
   output: Tone.Gain;
-  private osc: Tone.Oscillator;
-  private mult: Tone.Multiply;
-  private gain: Tone.Gain;
+  private osc: any; // Tone.Oscillator
+  private mult: any; // Tone.Multiply
+  private gain: any; // Tone.Gain
 
   constructor(ctx: AudioContext) {
     super(

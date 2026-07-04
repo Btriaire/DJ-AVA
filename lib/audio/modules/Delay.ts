@@ -4,9 +4,9 @@ import * as Tone from "tone";
 export class DelayModule extends BaseModule {
   input: Tone.Gain;
   output: Tone.Gain;
-  private delay: Tone.Delay;
-  private feedback: Tone.Gain;
-  private wet: Tone.Gain;
+  private delay: any; // Tone.Delay
+  private feedback: any; // Tone.Gain
+  private wet: any; // Tone.Gain
 
   constructor(ctx: AudioContext) {
     super(
