@@ -1,0 +1,162 @@
+.library {
+  width: 350px;
+  background: #000;
+  border-right: 2px solid #fff;
+  display: flex;
+  flex-direction: column;
+  font-family: 'Courier New', monospace;
+}
+
+.library h1 {
+  padding: 20px;
+  margin: 0;
+  font-size: 28px;
+  border-bottom: 2px solid #fff;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.search-form {
+  padding: 16px;
+  border-bottom: 2px solid #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.source-selector {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.source-selector label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  color: #fff;
+}
+
+.search-input {
+  padding: 10px 12px;
+  border: 2px solid #fff;
+  background: #000;
+  color: #fff;
+  font-size: 14px;
+  font-family: 'Courier New', monospace;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.search-input::placeholder {
+  color: #666;
+}
+
+.search-form button {
+  padding: 12px 16px;
+  background: #fff;
+  color: #000;
+  border: 2px solid #fff;
+  cursor: pointer;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  transition: all 0.1s;
+}
+
+.search-form button:hover {
+  background: #000;
+  color: #fff;
+}
+
+.search-form button:disabled {
+  background: #333;
+  color: #666;
+  cursor: not-allowed;
+}
+
+.books-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.empty {
+  color: #666;
+  text-align: center;
+  padding: 40px 20px;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.book-item {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  border: 2px solid #333;
+  background: #000;
+  transition: all 0.1s;
+}
+
+.book-item:hover {
+  border-color: #fff;
+  background: #111;
+}
+
+.book-item.active {
+  border-color: #fff;
+  background: #fff;
+  color: #000;
+}
+
+.book-item img {
+  width: 50px;
+  height: 70px;
+  object-fit: cover;
+  border: 2px solid #fff;
+  background: #333;
+}
+
+.book-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+
+.book-info h3 {
+  margin: 0 0 4px 0;
+  font-size: 12px;
+  font-weight: bold;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.book-info p {
+  margin: 0;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.book-item.active .book-info p {
+  color: #000;
+}
+
+.highlight-badge {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 10px;
+  color: #fff;
+  text-transform: uppercase;
+}

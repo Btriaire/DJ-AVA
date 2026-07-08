@@ -1,0 +1,136 @@
+.reader {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  font-family: 'Courier New', monospace;
+}
+
+.reader-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 2px solid #fff;
+  background: #000;
+  gap: 24px;
+}
+
+.controls-left,
+.controls-right {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.controls-center {
+  flex: 1;
+  text-align: center;
+}
+
+.controls-center h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #fff;
+}
+
+.controls-center p {
+  margin: 4px 0 0 0;
+  font-size: 12px;
+  color: #999;
+  text-transform: uppercase;
+}
+
+.reader-controls label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #fff;
+  text-transform: uppercase;
+}
+
+.reader-controls input[type="range"] {
+  width: 120px;
+  accent-color: #fff;
+}
+
+.dark-mode-btn {
+  width: 40px;
+  height: 40px;
+  border: 2px solid #fff;
+  background: #000;
+  color: #fff;
+  cursor: pointer;
+  font-size: 18px;
+  transition: all 0.1s;
+}
+
+.dark-mode-btn:hover {
+  background: #fff;
+  color: #000;
+}
+
+.book-viewer {
+  flex: 1;
+  border: none;
+  width: 100%;
+  background: #000;
+}
+
+.book-viewer.dark {
+  background: #000;
+  color: #fff;
+}
+
+.highlights-panel {
+  width: 300px;
+  border-left: 2px solid #fff;
+  overflow-y: auto;
+  background: #000;
+}
+
+.highlights-panel h3 {
+  padding: 16px;
+  margin: 0;
+  font-size: 12px;
+  border-bottom: 2px solid #fff;
+  background: #000;
+  position: sticky;
+  top: 0;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #fff;
+}
+
+.highlights-list {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.highlight-item {
+  background: #111;
+  padding: 12px;
+  border: 2px solid #fff;
+  cursor: text;
+}
+
+.highlight-item p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #fff;
+  text-transform: uppercase;
+}
+
+.highlight-item small {
+  display: block;
+  margin-top: 6px;
+  font-size: 10px;
+  color: #666;
+}
