@@ -42,6 +42,11 @@ function bin(name: string, envKey: string, extra: string[] = []): string {
 const FFMPEG = bin("ffmpeg", "FFMPEG_PATH");
 const DEMUCS = bin("demucs", "DEMUCS_PATH", [join(process.cwd(), ".venv-stems/bin/demucs")]);
 
+// ffmpeg path, reused by the stems→MIDI transcription pipeline
+export function ffmpegPath(): string {
+  return FFMPEG;
+}
+
 // cache root: <project>/.stems-cache/<hash>/<model>/<stem>.mp3
 // On the VPS, point STEMS_CACHE_DIR at a persistent volume (the standalone build
 // runs from a temp-ish cwd, and Docker layers are ephemeral) so separations

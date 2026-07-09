@@ -19,6 +19,7 @@ import { BossFxPanel } from "@/components/BossFxPanel";
 import { LibraryPanel } from "@/components/LibraryPanel";
 import { YouTubeDeck } from "@/components/YouTubeDeck";
 import { Mp3Converter } from "@/components/Mp3Converter";
+import { StemsMidiConverter } from "@/components/StemsMidiConverter";
 import { LcdClock } from "@/components/LcdClock";
 import { DeckTimers } from "@/components/DeckTimers";
 import { MixScope } from "@/components/MixScope";
@@ -814,6 +815,9 @@ export default function Home() {
 
               {/* YouTube → MP3 converter, placed right under the effects unit */}
               <Mp3Converter link={convLink} onLinkChange={setConvLink} flash={convFlash} />
+
+              {/* Stems → MIDI: separate + transcribe a track to one multi-track MIDI */}
+              <StemsMidiConverter />
             </div>
 
             <DeckPanel

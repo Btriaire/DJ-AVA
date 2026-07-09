@@ -28,7 +28,10 @@ ARG WITH_STEMS=1
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ffmpeg python3 python3-pip ca-certificates \
   && pip3 install --no-cache-dir --break-system-packages yt-dlp \
-  && if [ "$WITH_STEMS" = "1" ]; then pip3 install --no-cache-dir --break-system-packages demucs; fi \
+  && if [ "$WITH_STEMS" = "1" ]; then \
+       pip3 install --no-cache-dir --break-system-packages demucs \
+         basic-pitch onnxruntime pretty_midi librosa scipy soundfile; \
+     fi \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # deno : runtime JS requis par yt-dlp pour résoudre les défis "signature"/"n" de
@@ -49,6 +52,8 @@ WORKDIR /app
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
+# transcription helper invoked by lib/stemsMidi.ts (basic-pitch + drum onsets)
+COPY --from=builder /app/scripts ./scripts
 
 RUN mkdir -p /data/stems-cache
 VOLUME ["/data/stems-cache"]
