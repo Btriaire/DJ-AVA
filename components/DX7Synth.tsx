@@ -133,6 +133,9 @@ export default function DX7Synth({ engine, embedded = false }: Props) {
 
   /* persistent chain: filter → vibrato → reverb → gain → out */
   useEffect(() => {
+    // Tone.js schedules events 100 ms ahead by default (lookAhead = 0.1), heard
+    // as key-press latency. Drop it to ~0 so a live-played note fires immediately.
+    Tone.getContext().lookAhead = 0;
     const out = new Tone.Gain(vol);
     if (engine) out.connect(engine.mixInput);
     else out.toDestination();
