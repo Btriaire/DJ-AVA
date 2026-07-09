@@ -364,6 +364,21 @@ export class DJEngine {
     return this.master.gain.value;
   }
 
+  // --- external module hooks (DX7 synth & future connectable modules) ---
+  // Node where a plug-in module injects its audio INTO the live mix, so it is
+  // heard, recorded, and processed by the master FX just like the decks.
+  get mixInput(): AudioNode {
+    return this.master;
+  }
+  // A fresh recorder tapping the POST-FX master mix, so a module can sample a few
+  // live seconds of whatever is playing (both decks + FX + synth). The caller
+  // owns start()/stop(); the tap persists for the recorder's lifetime.
+  makeLiveRecorder(maxSeconds = 12): Recorder {
+    const r = new Recorder(this.ctx, maxSeconds);
+    this.masterFx.output.connect(r.input);
+    return r;
+  }
+
   // --- master FX bus (affects the whole mix) ---
   setMasterFx(name: FxName, v: number) {
     this.masterFx.setWet(name, v);

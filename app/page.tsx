@@ -12,6 +12,7 @@ import { DeckPanel } from "@/components/DeckPanel";
 import { Fader } from "@/components/Fader";
 import { SynthPanel } from "@/components/SynthPanel";
 import { SamplerPanel } from "@/components/SamplerPanel";
+import DX7Synth from "@/components/DX7Synth";
 import { SoundFxPanel } from "@/components/SoundFxPanel";
 import { MediaLibrary } from "@/components/MediaLibrary";
 import { BossFxPanel } from "@/components/BossFxPanel";
@@ -67,6 +68,7 @@ export default function Home() {
   // --- Optional modules: all hidden by default, added on-the-fly ---------------
   type Modules = {
     synth: boolean;
+    dx7: boolean;
     sampler: boolean;
     soundfx: boolean;
     boss: boolean;
@@ -98,6 +100,7 @@ export default function Home() {
   };
   const DEFAULT_MODULES: Modules = {
     synth: false,
+    dx7: false,
     sampler: false,
     soundfx: false,
     boss: false,
@@ -146,6 +149,7 @@ export default function Home() {
   }
   const MODULE_DEFS: { key: keyof Modules; label: string; scope: string; group?: string }[] = [
     { key: "synth", label: "Synthé", scope: "global" },
+    { key: "dx7", label: "DX7 · Synthé + Sampler", scope: "global" },
     { key: "sampler", label: "Sculpteur de son", scope: "global" },
     { key: "soundfx", label: "FX Sonores", scope: "global" },
     { key: "boss", label: "Boss FX", scope: "mixer" },
@@ -852,6 +856,13 @@ export default function Home() {
                 autotune: modules.autotune,
               }}
             />
+
+            {/* DX7 synth + sampler — full-width connectable module */}
+            {modules.dx7 && (
+              <div className="lg:col-span-3">
+                <DX7Synth key={`dx7-${resetKey}`} engine={engine} embedded />
+              </div>
+            )}
 
             <div className="lg:col-span-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
               {/* left column: Synth on top, media database docked beneath it */}
