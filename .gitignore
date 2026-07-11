@@ -53,3 +53,4 @@ docker-compose.override.yml
 
 # Claude Code — état local de l'agent (plans, etc.), jamais sur le dépôt
 .claude/
+__pycache__/
