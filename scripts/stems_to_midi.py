@@ -47,31 +47,63 @@ def transcribe_pitched(wav_path):
 
 
 def transcribe_drums(wav_path):
-    """Return a list of (time, gm_pitch) from 3 frequency bands."""
-    import librosa
-    from scipy.signal import butter, sosfilt
-    y, sr = librosa.load(wav_path, sr=22050, mono=True)
-    nyq = sr / 2.0
+    """Transcribe the drums stem to (time, gm_pitch, velocity) events.
 
-    def band(lo, hi):
-        lo = max(20.0, lo) / nyq
-        hi = min(hi, nyq - 1.0) / nyq
-        sos = butter(4, [lo, hi], btype="band", output="sos")
-        return sosfilt(sos, y)
+    One onset pass over the whole stem, then each hit is classified by its
+    spectral band energy so kick / snare / hi-hat can fire together (a kick and
+    a hi-hat on the same beat both land), with a velocity from the band energy.
+    """
+    import numpy as np
+    import librosa
+
+    y, sr = librosa.load(wav_path, sr=22050, mono=True)
+    if y.size == 0:
+        return []
+
+    hop = 256
+    n_fft = 1024
+    # onsets on the full stem (percussive content is already isolated by Demucs)
+    onset_frames = librosa.onset.onset_detect(
+        y=y, sr=sr, hop_length=hop, backtrack=True, units="frames",
+        delta=0.06, wait=2, pre_max=2, post_max=2, pre_avg=4, post_avg=4,
+    )
+    if len(onset_frames) == 0:
+        return []
+    onset_times = librosa.frames_to_time(onset_frames, sr=sr, hop_length=hop)
+
+    S = np.abs(librosa.stft(y, n_fft=n_fft, hop_length=hop))
+    freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
+    nframes = S.shape[1]
+
+    def band_energy(lo, hi):
+        idx = np.where((freqs >= lo) & (freqs < hi))[0]
+        return S[idx, :].sum(axis=0) if idx.size else np.zeros(nframes)
+
+    e_low = band_energy(20, 130)     # kick
+    e_mid = band_energy(130, 3000)   # snare / body
+    e_high = band_energy(6000, 11025)  # hi-hat / cymbal
+    m_low = max(float(e_low.max()), 1e-9)
+    m_mid = max(float(e_mid.max()), 1e-9)
+    m_high = max(float(e_high.max()), 1e-9)
+
+    def peak(env, f):
+        a, b = max(0, f - 1), min(nframes, f + 3)
+        return float(env[a:b].max()) if b > a else 0.0
+
+    def vel(x, m):
+        return int(min(127, max(30, round(35 + 92 * (x / m)))))
 
     hits = []
-    for (lo, hi), pitch in [((20, 150), 36), ((180, 2500), 38), ((5000, 11000), 42)]:
-        yb = band(lo, hi)
-        try:
-            onsets = librosa.onset.onset_detect(
-                y=yb, sr=sr, units="time", backtrack=True,
-                pre_max=3, post_max=3, pre_avg=5, post_avg=5, delta=0.15, wait=3,
-            )
-        except Exception as e:
-            log("drum band failed", pitch, e)
-            onsets = []
-        for t in onsets:
-            hits.append((float(t), pitch))
+    for t in onset_times:
+        f = int(round(t * sr / hop))
+        f = min(max(f, 0), nframes - 1)
+        lo, mid, hi = peak(e_low, f), peak(e_mid, f), peak(e_high, f)
+        if lo > 0.15 * m_low:                       # kick
+            hits.append((float(t), 36, vel(lo, m_low)))
+        if mid > 0.18 * m_mid and mid > 0.45 * lo:  # snare (not just kick spill)
+            hits.append((float(t), 38, vel(mid, m_mid)))
+        if hi > 0.12 * m_high:                       # closed hi-hat / cymbal
+            hits.append((float(t), 42, vel(hi, m_high)))
     return hits
 
 
@@ -95,8 +127,8 @@ def main():
         inst = pretty_midi.Instrument(program=program, is_drum=is_drum, name=name)
         try:
             if is_drum:
-                for t, pitch in transcribe_drums(path):
-                    inst.notes.append(pretty_midi.Note(velocity=100, pitch=pitch, start=t, end=t + 0.08))
+                for t, pitch, v in transcribe_drums(path):
+                    inst.notes.append(pretty_midi.Note(velocity=v, pitch=pitch, start=t, end=t + 0.08))
             else:
                 for start, end, pitch, vel in transcribe_pitched(path):
                     inst.notes.append(pretty_midi.Note(

@@ -13,6 +13,7 @@ import { Fader } from "@/components/Fader";
 import { SynthPanel } from "@/components/SynthPanel";
 import { SamplerPanel } from "@/components/SamplerPanel";
 import DX7Synth from "@/components/DX7Synth";
+import Solar42F from "@/components/Solar42F";
 import { SoundFxPanel } from "@/components/SoundFxPanel";
 import { MediaLibrary } from "@/components/MediaLibrary";
 import { BossFxPanel } from "@/components/BossFxPanel";
@@ -70,6 +71,7 @@ export default function Home() {
   type Modules = {
     synth: boolean;
     dx7: boolean;
+    solar42: boolean;
     sampler: boolean;
     soundfx: boolean;
     boss: boolean;
@@ -102,6 +104,7 @@ export default function Home() {
   const DEFAULT_MODULES: Modules = {
     synth: false,
     dx7: false,
+    solar42: false,
     sampler: false,
     soundfx: false,
     boss: false,
@@ -151,6 +154,7 @@ export default function Home() {
   const MODULE_DEFS: { key: keyof Modules; label: string; scope: string; group?: string }[] = [
     { key: "synth", label: "Synthé", scope: "global" },
     { key: "dx7", label: "DX7 · Synthé + Sampler", scope: "global" },
+    { key: "solar42", label: "Solar 42F · Drone Machine", scope: "global" },
     { key: "sampler", label: "Sculpteur de son", scope: "global" },
     { key: "soundfx", label: "FX Sonores", scope: "global" },
     { key: "boss", label: "Boss FX", scope: "mixer" },
@@ -865,6 +869,13 @@ export default function Home() {
             {modules.dx7 && (
               <div className="lg:col-span-3">
                 <DX7Synth key={`dx7-${resetKey}`} engine={engine} embedded />
+              </div>
+            )}
+
+            {/* Solar 42F drone ambient machine — full-width connectable module */}
+            {modules.solar42 && (
+              <div className="lg:col-span-3">
+                <Solar42F key={`solar42-${resetKey}`} engine={engine} embedded />
               </div>
             )}
 

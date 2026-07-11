@@ -18,9 +18,11 @@ function scriptPath(): string {
   return join(process.cwd(), "scripts", "stems_to_midi.py");
 }
 
-// combined MIDI lives beside the cached stems: <cache>/<hash>/<model>/combined.mid
+// combined MIDI lives beside the cached stems: <cache>/<hash>/<model>/combined.v2.mid
+// The version suffix invalidates old caches when the transcription changes (e.g.
+// the improved drum transcription) so a re-request regenerates automatically.
 export function combinedMidiPath(hash: string, model: StemModel): string {
-  return join(dirname(stemPath(hash, model, "x")), "combined.mid");
+  return join(dirname(stemPath(hash, model, "x")), "combined.v2.mid");
 }
 
 export function isMidiCached(hash: string, model: StemModel): boolean {
