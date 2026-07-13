@@ -1342,6 +1342,128 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
         },
       };
     }
+    case "xymatrix": {
+      // 2D touch pad: X-axis filters (LP 200Hz → HP 16kHz), Y-axis mixes dry/wet
+      const fxIn = c.createGain();
+      const fxOut = c.createGain();
+      const dryGain = c.createGain();
+      const lpFilter = c.createBiquadFilter();
+      lpFilter.type = "lowpass";
+      lpFilter.frequency.value = 200;
+      const wetGain = c.createGain();
+      const lfo = new Tone.LFO({ frequency: 0.5, amplitude: 1 });
+      const lfoAmp = new Tone.Gain(0);
+      lfo.connect(lfoAmp);
+      lfoAmp.connect(wetGain.gain);
+      lfo.start();
+      fxIn.connect(dryGain);
+      dryGain.connect(fxOut);
+      fxIn.connect(lpFilter);
+      lpFilter.connect(wetGain);
+      wetGain.connect(fxOut);
+      dryGain.gain.value = 1;
+      wetGain.gain.value = 0;
+      return {
+        fxIn, fxOut,
+        onParam: (k, v) => {
+          if (k === "x") {
+            // X: filter sweep 200Hz→16kHz (logarithmic)
+            const freq = 200 * Math.pow(80, v); // 200 @ v=0, 16000 @ v=1
+            at(lpFilter.frequency, Math.max(20, Math.min(20000, freq)));
+          } else if (k === "y") {
+            // Y: wet/dry mix (starts at 0 = dry only)
+            // Upper half of Y range: LFO modulation on wet mix
+            if (v > 0.5) {
+              const lfoDepth = (v - 0.5) * 2; // 0→1 in upper half
+              lfoAmp.gain.value = lfoDepth * 0.3; // LFO amplitude: ±0.3
+              at(wetGain.gain, 0.5 + lfoDepth * 0.5); // Base wet level 0.5→1
+            } else {
+              lfoAmp.gain.value = 0; // No LFO in lower half
+              at(wetGain.gain, v * 2); // Simple crossfade 0→1 (scaled by 2)
+            }
+          } else if (k === "res") {
+            // res: LP filter resonance (Q)
+            at(lpFilter.Q, 1 + v * 29);
+          }
+        },
+      };
+    }
+    case "phaser": {
+      // LFO-modulated allpass filter for spatial sweep
+      const fxIn = c.createGain();
+      const fxOut = c.createGain();
+      const dryGain = c.createGain();
+      const allPass = c.createBiquadFilter();
+      allPass.type = "allpass";
+      allPass.frequency.value = 1000;
+      const wetGain = c.createGain();
+      const lfoAmp = new Tone.Gain(0);
+      const lfo = new Tone.LFO({ frequency: 2, amplitude: 1 });
+      lfo.connect(lfoAmp);
+      lfoAmp.connect(allPass.frequency);
+      lfo.start();
+      fxIn.connect(dryGain);
+      dryGain.connect(fxOut);
+      fxIn.connect(allPass);
+      allPass.connect(wetGain);
+      wetGain.connect(fxOut);
+      dryGain.gain.value = 1;
+      wetGain.gain.value = 0;
+      return {
+        fxIn, fxOut,
+        onParam: (k, v) => {
+          if (k === "rate") {
+            // rate: LFO frequency 0.1→10 Hz
+            lfo.frequency.value = 0.1 * Math.pow(100, v);
+          } else if (k === "depth") {
+            // depth: wet/dry mix (starts at 0)
+            at(wetGain.gain, v);
+            at(dryGain.gain, 1 - v);
+            // Modulate LFO amplitude with depth
+            lfoAmp.gain.value = v * 600; // sweep range 0→600 Hz around 1000 Hz base
+          }
+        },
+      };
+    }
+    case "combfilter": {
+      // Delay+feedback creates spectral notches, optional LFO sweep
+      const fxIn = c.createGain();
+      const fxOut = c.createGain();
+      const delay = c.createDelay(0.5);
+      const feedback = c.createGain();
+      const wetGain = c.createGain();
+      const lfoAmp = new Tone.Gain(0);
+      const lfo = new Tone.LFO({ frequency: 1, amplitude: 1 });
+      lfo.connect(lfoAmp);
+      lfoAmp.connect(delay.delayTime);
+      lfo.start();
+      delay.delayTime.value = 0.01;
+      feedback.gain.value = 0.5;
+      fxIn.connect(delay);
+      delay.connect(feedback);
+      feedback.connect(delay);
+      delay.connect(wetGain);
+      fxIn.connect(fxOut);
+      wetGain.connect(fxOut);
+      wetGain.gain.value = 0;
+      return {
+        fxIn, fxOut,
+        onParam: (k, v) => {
+          if (k === "time") {
+            // time: delay 0.5→50ms (logarithmic)
+            const t = 0.0005 * Math.pow(100, v);
+            at(delay.delayTime, Math.max(0.0005, Math.min(0.5, t)));
+          } else if (k === "fb") {
+            // fb: feedback 0→0.95
+            at(feedback.gain, v * 0.95);
+          } else if (k === "lfoRate") {
+            // lfoRate: LFO sweep 0→5Hz, with sweep depth 0.005 (±0.5ms)
+            lfo.frequency.value = v * 5;
+            lfoAmp.gain.value = v > 0 ? 0.005 : 0; // ±0.5ms sweep when enabled
+          }
+        },
+      };
+    }
     default:
       throw new Error(`unknown rack module: ${id}`);
   }

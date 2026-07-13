@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Deck } from "@/lib/audio/Deck";
 import { RACK_MODULES, EQ_FREQS } from "@/lib/audio/Rack";
 import { Fader } from "./Fader";
+import { levelColor, DigitalVU } from "./EqVisuals";
 
 // ---- persistent EQ presets (5 numbered slots, like a hardware EQ) ----
 const EQ_LS_KEY = "djsynth.eqpresets.v1";
@@ -63,41 +64,6 @@ function Toggle({ on, color, onClick }: { on: boolean; color: string; onClick: (
 
 // ---- real-time EQ response graph + spectrum behind it ----
 const EQ_AX_LO = 20, EQ_AX_HI = 20000, EQ_RANGE = 18;
-function levelColor(t: number) {
-  if (t < 0.5) return "#39ff6a";
-  if (t < 0.7) return "#d8ff32";
-  if (t < 0.85) return "#ffae24";
-  return "#ff3b30";
-}
-
-// ---- digital peak VU bar — 20 segments, green→amber→red ----
-function DigitalVU({ level, vertical = false }: { level: number; vertical?: boolean }) {
-  const SEGS = 20;
-  const lit = Math.round(Math.min(1, Math.max(0, level)) * SEGS);
-  const segs = Array.from({ length: SEGS }, (_, i) => {
-    const on = i < lit;
-    const rev = SEGS - 1 - i; // 0 = top when vertical
-    const segColor = rev >= SEGS - 3 ? "#ff3b30" : rev >= SEGS - 6 ? "#ffd23d" : "#39ff6a";
-    return (
-      <span key={i}
-        style={{
-          display: "block",
-          width: vertical ? 6 : 3,
-          height: vertical ? 3 : 6,
-          borderRadius: 1,
-          background: on ? segColor : "#1a1a1a",
-          boxShadow: on ? `0 0 4px ${segColor}` : "none",
-          margin: "0.5px",
-        }}
-      />
-    );
-  });
-  return (
-    <div style={{ display: "flex", flexDirection: vertical ? "column" : "row", alignItems: "center" }}>
-      {vertical ? [...segs].reverse() : segs}
-    </div>
-  );
-}
 
 function EqGraph({ deck, color }: { deck: Deck; color: string }) {
   const ref = useRef<HTMLCanvasElement>(null);

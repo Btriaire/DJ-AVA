@@ -4,6 +4,7 @@ import { Deck } from "@/lib/audio/Deck";
 import { Rack, RACK_MODULES, RackModuleId, RackPreset } from "@/lib/audio/Rack";
 import { Knob } from "./Knob";
 import { Fader } from "./Fader";
+import { DigitalVU } from "./EqVisuals";
 
 const LS_KEY = "djsynth.rackpresets.v1";
 
@@ -552,6 +553,7 @@ export function RackPanel({
               {/* FX intensity (MIX) — long vertical fader for fine latitude + params */}
               <div className="flex items-start gap-2">
                 <div className="flex flex-col items-center gap-1">
+                  <DigitalVU level={rack.getMix(id)} vertical />
                   <span
                     className="rounded px-0.5 py-0.5 text-center font-mono text-[8px] font-bold tracking-tight"
                     style={{ width: 36, color, background: "#0a0d0a", textShadow: `0 0 5px ${color}`, boxShadow: "inset 0 0 0 1px #1a1a1a" }}
