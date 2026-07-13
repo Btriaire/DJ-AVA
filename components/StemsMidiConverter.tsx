@@ -4,6 +4,26 @@ import { useRef, useState } from "react";
 type Model = "htdemucs" | "htdemucs_6s";
 type Phase = "idle" | "working" | "ready" | "error";
 
+const MAX_SEC = 8 * 60; // Demucs + basic-pitch on CPU can't keep up beyond this
+
+// read a File's duration without decoding the full PCM (cheap: just metadata)
+function probeDuration(file: File): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const audio = new Audio();
+    audio.preload = "metadata";
+    audio.onloadedmetadata = () => {
+      URL.revokeObjectURL(url);
+      resolve(audio.duration);
+    };
+    audio.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("lecture impossible"));
+    };
+    audio.src = url;
+  });
+}
+
 // Upload a track → separate its stems (Demucs) → transcribe each stem to MIDI
 // (basic-pitch + drum onset detection) → download ONE multi-track MIDI file with
 // every instrument on its own track. The heavy work runs on the server; we kick
@@ -21,8 +41,24 @@ export function StemsMidiConverter() {
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    setFileName(file.name);
     setDl(null);
+
+    // Demucs + basic-pitch on CPU can't realistically finish beyond ~8 min of
+    // audio (same limit as the deck's live stem separation) — refuse up front
+    // instead of burning minutes on a job that will time out.
+    try {
+      const dur = await probeDuration(file);
+      if (dur > MAX_SEC) {
+        setPhase("error");
+        setMsg(`Morceau de ${Math.round(dur / 60)} min — trop long (limite 8 min pour la séparation de stems).`);
+        e.target.value = "";
+        return;
+      }
+    } catch {
+      /* metadata probe failed — let the server pipeline surface any real error */
+    }
+
+    setFileName(file.name);
     setPhase("working");
     setMsg("Analyse… séparation des stems puis transcription MIDI (plusieurs minutes)");
 

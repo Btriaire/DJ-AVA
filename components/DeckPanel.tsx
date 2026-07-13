@@ -187,7 +187,9 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
   const [loop, setLoop] = useState(0);
   const [loading, setLoading] = useState(false);
   const [fxKey, setFxKey] = useState(0); // bump to remount the FX section on PANIC
-  const [stemTooLong, setStemTooLong] = useState(false);
+  // stems are simply unavailable past 8 min (Demucs on CPU can't keep up) — the
+  // whole trigger is hidden rather than allowing a click that fails later.
+  const stemTooLongForTrack = !!deck.name && deck.duration > 8 * 60 && !deck.stemReady;
 
   // per-deck PANIC: eject the loaded song and return every control of THIS deck
   // to zero (EQ, gain, filter, pitch, scratch, loop, FX) — the other deck is
@@ -292,11 +294,9 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
   }, [deck.name, deck.stemModel]);
   async function handleStems() {
     if (deck.stemStatus === "working") return;
-    if (!deck.stemReady && deck.duration > 8 * 60) {
-      setStemTooLong(true);
-      setTimeout(() => setStemTooLong(false), 4000);
-      return;
-    }
+    // defense-in-depth: the trigger is hidden past 8 min, but guard here too
+    // in case this fires from a stale render.
+    if (!deck.stemReady && deck.duration > 8 * 60) return;
     if (!deck.stemReady) {
       await deck.ensureStems();
       if (deck.stemReady) {
@@ -727,7 +727,9 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
         </div>
       </div>
 
-      {/* channel strip — always visible: Gain + 3-band EQ + Filter */}
+      {/* channel strip — always visible: Gain + 3-band EQ (same fader model as
+          the 15-band rack EQ below, so every EQ in the app reads the same way)
+          + Filter */}
       <div className="hw-recess flex items-center justify-around py-3">
         <Knob
           label="Gain"
@@ -739,9 +741,18 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
           onChange={(v) => { setTrim(v); deck.setTrim(v); }}
         />
         {(["high", "mid", "low"] as const).map((b) => (
-          <Knob key={b} label={b} value={eq[b]} min={-26} max={12} defaultValue={0} color={color}
-            onChange={(v) => { setEq((e) => ({ ...e, [b]: v })); deck.setEQ(b, v); }}
-          />
+          <div key={b} className="flex flex-col items-center gap-1">
+            <span
+              className="rounded px-0.5 py-0.5 text-center font-mono text-[8px] font-bold tracking-tight"
+              style={{ width: 32, color, background: "#0a0d0a", textShadow: `0 0 5px ${color}`, boxShadow: "inset 0 0 0 1px #1a1a1a" }}
+            >{eq[b] > 0 ? "+" : ""}{Math.round(eq[b])}</span>
+            <Fader
+              value={eq[b]} min={-26} max={12} step={0.1} neutral={0}
+              vertical onChange={(v) => { setEq((e) => ({ ...e, [b]: v })); deck.setEQ(b, v); }}
+              className="!h-[86px]"
+            />
+            <span className="text-center text-[8px] font-bold uppercase leading-none" style={{ color }}>{b}</span>
+          </div>
         ))}
         <Knob label="Filter" value={filter} min={-1} max={1} defaultValue={0} color={color}
           onChange={(v) => { setFilter(v); deck.setFilter(v); }}
@@ -756,120 +767,125 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
         <FXPad key={fxKey} deck={deck} color={color} />
       </div>}
 
-      {/* stem separation (Demucs) — split the track into live faders */}
+      {/* stem separation (Demucs) — split the track into live faders. Demucs on
+          CPU can't realistically finish beyond ~8 min of audio, so the trigger
+          is removed outright for long tracks instead of failing after a click. */}
       <div className="hw-recess flex items-stretch gap-3 p-3">
         <div className="flex w-28 shrink-0 flex-col justify-center gap-1">
           <span className="text-[9px] uppercase leading-none text-neutral-500">Séparation</span>
-          {/* quality / channel-count selector — changing it drops loaded stems */}
-          <div className="flex overflow-hidden rounded ring-1 ring-neutral-700">
-            {STEM_MODELS.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => setStemModel(m.id)}
-                disabled={deck.stemStatus === "working"}
-                className="flex-1 px-1 py-0.5 text-[8px] font-black disabled:opacity-40"
-                style={{
-                  color: deck.stemModel === m.id ? "#0a0a0a" : color,
-                  background: deck.stemModel === m.id ? color : "transparent",
-                }}
-                title={m.title}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-          <button
-            className={`hw-btn px-2 py-1.5 text-[11px] ${deck.stemsActive ? "hw-btn-on" : ""}`}
-            style={{ ["--led" as string]: color, color: deck.stemsActive ? undefined : color }}
-            disabled={deck.stemStatus === "working" || !deck.name}
-            onClick={handleStems}
-            title={
-              deck.stemCached && !deck.stemReady
-                ? "Stems déjà calculés pour ce morceau — chargement instantané"
-                : "Sépare le morceau en pistes avec Demucs, puis les contrôle en direct"
-            }
-          >
-            {deck.stemStatus === "working"
-              ? "⏳ …"
-              : deck.stemReady
-                ? deck.stemsActive
-                  ? "● STEMS"
-                  : "○ STEMS"
-                : deck.stemCached
-                  ? "⚡ STEMS"
-                  : "✂ STEMS"}
-          </button>
-          {deck.stemStatus === "working" && (
-            <span className="text-[8px] leading-tight text-neutral-500">
-              {deck.stemModel === "htdemucs" ? "peut prendre 1–2 min…" : "qualité élevée — plus long…"}
-            </span>
-          )}
-          {deck.stemCached && !deck.stemReady && deck.stemStatus !== "working" && (
-            <span className="text-[8px] leading-tight text-neutral-500">en cache — instantané</span>
-          )}
-          {deck.stemStatus === "error" && (
-            <span className="text-[9px] text-red-400">échec — réessaie</span>
-          )}
-          {stemTooLong && (
+          {stemTooLongForTrack ? (
             <span className="text-[9px] leading-tight text-amber-400">
-              Morceau &gt; 8 min — trop long pour Demucs
+              Indisponible — morceau &gt; 8 min
             </span>
-          )}
-          {/* bulk: drop or raise every stem fader at once */}
-          <div className={`flex gap-1 ${deck.stemReady && deck.stemsActive ? "" : "pointer-events-none opacity-40"}`}>
-            <button
-              className="hw-btn flex-1 px-1 py-1 text-[9px] font-bold"
-              style={{ ["--led" as string]: color, color }}
-              onClick={() => allStems(false)}
-              title="Coupe toutes les pistes d'un coup"
-            >
-              ▼ ALL
-            </button>
-            <button
-              className="hw-btn flex-1 px-1 py-1 text-[9px] font-bold"
-              style={{ ["--led" as string]: color, color }}
-              onClick={() => allStems(true)}
-              title="Remonte toutes les pistes d'un coup"
-            >
-              ▲ ALL
-            </button>
-          </div>
-          {/* STEM templates 1-5 : réglages mémorisés, réutilisables sur tout morceau */}
-          <div className={`flex flex-col gap-1 ${deck.stemReady ? "" : "pointer-events-none opacity-40"}`}>
-            <span className="text-[8px] uppercase leading-none text-neutral-500">Templates</span>
-            <div className="flex gap-0.5">
-              {stemTpls.map((t, n) => {
-                const filled = !!t;
-                const active = stemActiveTpl === n;
-                return (
+          ) : (
+            <>
+              {/* quality / channel-count selector — changing it drops loaded stems */}
+              <div className="flex overflow-hidden rounded ring-1 ring-neutral-700">
+                {STEM_MODELS.map((m) => (
                   <button
-                    key={n}
-                    onClick={() => (stemSaveMode ? saveStemSlot(n) : recallStemSlot(n))}
-                    disabled={!stemSaveMode && !filled}
-                    title={stemSaveMode ? `Enregistrer dans ${n + 1}` : filled ? `Rappeler ${n + 1}` : "Vide"}
-                    className="hw-btn flex h-5 flex-1 items-center justify-center text-[9px] font-black"
+                    key={m.id}
+                    onClick={() => setStemModel(m.id)}
+                    disabled={deck.stemStatus === "working"}
+                    className="flex-1 px-1 py-0.5 text-[8px] font-black disabled:opacity-40"
                     style={{
-                      ["--led" as string]: color,
-                      color: filled ? color : "#5b5b5b",
-                      outline: active ? `1px solid ${color}` : undefined,
-                      boxShadow: filled ? `0 0 4px ${color}55` : undefined,
-                      opacity: !stemSaveMode && !filled ? 0.45 : 1,
+                      color: deck.stemModel === m.id ? "#0a0a0a" : color,
+                      background: deck.stemModel === m.id ? color : "transparent",
                     }}
+                    title={m.title}
                   >
-                    {n + 1}
+                    {m.label}
                   </button>
-                );
-              })}
-            </div>
-            <button
-              onClick={() => setStemSaveMode((s) => !s)}
-              title="Mode sauvegarde : choisis ensuite un emplacement 1-5"
-              className="hw-btn px-1 py-0.5 text-[8px] font-black"
-              style={stemSaveMode ? { ["--led" as string]: "#ff5252", color: "#ff5252", boxShadow: "0 0 6px #ff525288" } : { ["--led" as string]: color, color }}
-            >
-              {stemSaveMode ? "CHOISIR…" : "SAVE"}
-            </button>
-          </div>
+                ))}
+              </div>
+              <button
+                className={`hw-btn px-2 py-1.5 text-[11px] ${deck.stemsActive ? "hw-btn-on" : ""}`}
+                style={{ ["--led" as string]: color, color: deck.stemsActive ? undefined : color }}
+                disabled={deck.stemStatus === "working" || !deck.name}
+                onClick={handleStems}
+                title={
+                  deck.stemCached && !deck.stemReady
+                    ? "Stems déjà calculés pour ce morceau — chargement instantané"
+                    : "Sépare le morceau en pistes avec Demucs, puis les contrôle en direct"
+                }
+              >
+                {deck.stemStatus === "working"
+                  ? "⏳ …"
+                  : deck.stemReady
+                    ? deck.stemsActive
+                      ? "● STEMS"
+                      : "○ STEMS"
+                    : deck.stemCached
+                      ? "⚡ STEMS"
+                      : "✂ STEMS"}
+              </button>
+              {deck.stemStatus === "working" && (
+                <span className="text-[8px] leading-tight text-neutral-500">
+                  {deck.stemModel === "htdemucs" ? "peut prendre 1–2 min…" : "qualité élevée — plus long…"}
+                </span>
+              )}
+              {deck.stemCached && !deck.stemReady && deck.stemStatus !== "working" && (
+                <span className="text-[8px] leading-tight text-neutral-500">en cache — instantané</span>
+              )}
+              {deck.stemStatus === "error" && (
+                <span className="text-[9px] text-red-400">échec — réessaie</span>
+              )}
+              {/* bulk: drop or raise every stem fader at once */}
+              <div className={`flex gap-1 ${deck.stemReady && deck.stemsActive ? "" : "pointer-events-none opacity-40"}`}>
+                <button
+                  className="hw-btn flex-1 px-1 py-1 text-[9px] font-bold"
+                  style={{ ["--led" as string]: color, color }}
+                  onClick={() => allStems(false)}
+                  title="Coupe toutes les pistes d'un coup"
+                >
+                  ▼ ALL
+                </button>
+                <button
+                  className="hw-btn flex-1 px-1 py-1 text-[9px] font-bold"
+                  style={{ ["--led" as string]: color, color }}
+                  onClick={() => allStems(true)}
+                  title="Remonte toutes les pistes d'un coup"
+                >
+                  ▲ ALL
+                </button>
+              </div>
+              {/* STEM templates 1-5 : réglages mémorisés, réutilisables sur tout morceau */}
+              <div className={`flex flex-col gap-1 ${deck.stemReady ? "" : "pointer-events-none opacity-40"}`}>
+                <span className="text-[8px] uppercase leading-none text-neutral-500">Templates</span>
+                <div className="flex gap-0.5">
+                  {stemTpls.map((t, n) => {
+                    const filled = !!t;
+                    const active = stemActiveTpl === n;
+                    return (
+                      <button
+                        key={n}
+                        onClick={() => (stemSaveMode ? saveStemSlot(n) : recallStemSlot(n))}
+                        disabled={!stemSaveMode && !filled}
+                        title={stemSaveMode ? `Enregistrer dans ${n + 1}` : filled ? `Rappeler ${n + 1}` : "Vide"}
+                        className="hw-btn flex h-5 flex-1 items-center justify-center text-[9px] font-black"
+                        style={{
+                          ["--led" as string]: color,
+                          color: filled ? color : "#5b5b5b",
+                          outline: active ? `1px solid ${color}` : undefined,
+                          boxShadow: filled ? `0 0 4px ${color}55` : undefined,
+                          opacity: !stemSaveMode && !filled ? 0.45 : 1,
+                        }}
+                      >
+                        {n + 1}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  onClick={() => setStemSaveMode((s) => !s)}
+                  title="Mode sauvegarde : choisis ensuite un emplacement 1-5"
+                  className="hw-btn px-1 py-0.5 text-[8px] font-black"
+                  style={stemSaveMode ? { ["--led" as string]: "#ff5252", color: "#ff5252", boxShadow: "0 0 6px #ff525288" } : { ["--led" as string]: color, color }}
+                >
+                  {stemSaveMode ? "CHOISIR…" : "SAVE"}
+                </button>
+              </div>
+            </>
+          )}
         </div>
         <div
           className={`flex flex-1 items-stretch justify-around gap-1 ${

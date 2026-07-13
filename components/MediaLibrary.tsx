@@ -36,6 +36,24 @@ function fmt(s: number) {
     .padStart(2, "0")}`;
 }
 
+// read a local file's duration without decoding the full PCM — just metadata
+function probeDuration(file: File): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const audio = new Audio();
+    audio.preload = "metadata";
+    audio.onloadedmetadata = () => {
+      URL.revokeObjectURL(url);
+      resolve(audio.duration);
+    };
+    audio.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("lecture impossible"));
+    };
+    audio.src = url;
+  });
+}
+
 // YouTube duration filters — force a wider, more relevant pool than the default.
 // min/max in seconds (max 0 = no cap). Mirrors StudioView's DUR_FILTERS.
 const DUR_FILTERS: { key: string; label: string; min: number; max: number }[] = [
@@ -177,12 +195,14 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
         const id = uid();
         await idbPutBlob(id, f); // store the audio blob first…
         const art = (await extractCover(f)) ?? undefined; // …then its embedded cover
+        const durationSec = await probeDuration(f).catch(() => undefined);
         added.push({
           id,
           name: f.name.replace(/\.[^.]+$/, ""),
           source: "local",
           deck: null,
           art,
+          durationSec,
           addedAt: Date.now(),
         });
       }
@@ -321,17 +341,23 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
     }
   }
 
-  // --- playlists ---
+  // --- sets (ordered playlists that auto-mix with a configurable transition) ---
   function newPlaylist() {
-    const name = prompt("Nom de la playlist ?")?.trim();
+    const name = prompt("Nom du set ?")?.trim();
     if (!name) return;
-    const p = { id: uid(), name, trackIds: [] as string[] };
+    const p = { id: uid(), name, trackIds: [] as string[], transitionSec: 12 };
     persist((d) => ({ ...d, playlists: [...d.playlists, p] }));
     setActivePl(p.id);
   }
   function delPlaylist(id: string) {
     persist((d) => ({ ...d, playlists: d.playlists.filter((p) => p.id !== id) }));
     if (activePl === id) setActivePl(null);
+  }
+  function setTransition(plId: string, sec: number) {
+    persist((d) => ({
+      ...d,
+      playlists: d.playlists.map((p) => (p.id === plId ? { ...p, transitionSec: sec } : p)),
+    }));
   }
   function toggleInPlaylist(plId: string, trackId: string) {
     persist((d) => ({
@@ -407,6 +433,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
       url: t.id,
       deck: null,
       art: t.artwork ?? undefined,
+      durationSec: t.duration || undefined,
       addedAt: Date.now(),
     };
     persist((d) => ({ ...d, tracks: [lt, ...d.tracks] }));
@@ -475,7 +502,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
   function saveAutoTrack(t: AudiusTrack) {
     const lt: LibTrack = {
       id: uid(), name: `${t.title} — ${t.artist}`, source: (t.source ?? "audius") as TrackSource, url: t.id,
-      deck: null, art: t.artwork ?? undefined, addedAt: Date.now(),
+      deck: null, art: t.artwork ?? undefined, durationSec: t.duration || undefined, addedAt: Date.now(),
     };
     persist((d) => ({ ...d, tracks: [lt, ...d.tracks] }));
     flash("Ajouté à la bibliothèque");
@@ -488,9 +515,9 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
     if (!name) return;
     const newTracks: LibTrack[] = autoTracks.map((t) => ({
       id: uid(), name: `${t.title} — ${t.artist}`, source: (t.source ?? "audius") as TrackSource, url: t.id,
-      deck: null, art: t.artwork ?? undefined, addedAt: Date.now(),
+      deck: null, art: t.artwork ?? undefined, durationSec: t.duration || undefined, addedAt: Date.now(),
     }));
-    const pl = { id: uid(), name, trackIds: newTracks.map((t) => t.id) };
+    const pl = { id: uid(), name, trackIds: newTracks.map((t) => t.id), transitionSec: 12 };
     persist((d) => ({ tracks: [...newTracks, ...d.tracks], playlists: [...d.playlists, pl] }));
     setTab("playlists");
     setActivePl(pl.id);
@@ -672,11 +699,19 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
     })();
   }
 
+  // transition length driving the auto-mix, taken from whichever set is queued
+  // on Deck A (the relay's canonical source) — falls back to a smooth default.
+  function relayTransitionSec(): number {
+    const plId = queueSrcRef.current.A;
+    const pl = plId ? dataRef.current.playlists.find((p) => p.id === plId) : null;
+    return pl?.transitionSec ?? 12;
+  }
+
   // Watch the foreground deck; when a song is ~ending, start the other deck and
   // autofade across to it, then cue the next single on the deck that just freed up.
   useEffect(() => {
     if (!relay) return;
-    const FADE = 12; // seconds — long, smooth blend between decks
+    const FADE = relayTransitionSec(); // seconds — smooth blend between decks
     const id = window.setInterval(() => {
       if (relayFading.current || !relayArmed.current) return;
       const side = relaySide.current;
@@ -828,28 +863,38 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
           )}
         </div>
 
-        {/* deck filing chips */}
-        <div className="flex shrink-0 overflow-hidden rounded ring-1 ring-neutral-700">
-          {(["A", "B"] as const).map((d) => (
-            <button
-              key={d}
-              onClick={() => fileFor(t, t.deck === d ? null : d)}
-              className="px-1.5 py-0.5 text-[10px] font-black"
-              style={{
-                color: t.deck === d ? "#0a0a0a" : d === "A" ? COLOR_A : COLOR_B,
-                background: t.deck === d ? (d === "A" ? COLOR_A : COLOR_B) : "transparent",
-              }}
-              title={`Classer ce single pour le Deck ${d}`}
-            >
-              {d}
-            </button>
-          ))}
-        </div>
+        {/* deck filing chips — which deck's "LIVE loop" this single belongs to
+            when no set is queued. Only shown in the raw library: inside a set
+            the order below already says everything about how it plays. */}
+        {!inPl && (
+          <div className="flex shrink-0 flex-col items-center gap-0.5">
+            <span className="text-[7px] uppercase leading-none text-neutral-600">Classer</span>
+            <div className="flex overflow-hidden rounded ring-1 ring-neutral-700">
+              {(["A", "B"] as const).map((d) => (
+                <button
+                  key={d}
+                  onClick={() => fileFor(t, t.deck === d ? null : d)}
+                  className="px-1.5 py-0.5 text-[10px] font-black"
+                  style={{
+                    color: t.deck === d ? "#0a0a0a" : d === "A" ? COLOR_A : COLOR_B,
+                    background: t.deck === d ? (d === "A" ? COLOR_A : COLOR_B) : "transparent",
+                  }}
+                  title={`Classer ce single pour le Deck ${d} (lecture en boucle solo, sans set)`}
+                >
+                  {d}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* name + meta */}
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm text-neutral-100">{t.name}</div>
           <div className="flex items-center gap-1.5 text-[9px]">
+            {typeof t.durationSec === "number" && (
+              <span className="font-mono text-neutral-400">{fmt(t.durationSec)}</span>
+            )}
             {curSide && (
               <span className="font-black" style={{ color: cueColor(curSide) }}>
                 ▶ EN COURS {curSide}
@@ -878,7 +923,12 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
         </div>
 
         {/* load — each button only disables ITSELF while loading, so a slow or
-            failed send never locks out the other rows/decks */}
+            failed send never locks out the other rows/decks. Hidden inside a
+            set: use the set's own ▶ Deck A/B/Relais controls instead. */}
+        {!inPl && (
+        <div className="flex shrink-0 flex-col items-center gap-0.5">
+          <span className="text-[7px] uppercase leading-none text-neutral-600">Charger</span>
+          <div className="flex gap-1">
         <button
           onClick={() => loadToDeck(t, "A")}
           disabled={busy === t.id + "A"}
@@ -895,8 +945,12 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
         >
           {busy === t.id + "B" ? "…" : "→ B"}
         </button>
+          </div>
+        </div>
+        )}
 
-        {/* FX capture / apply */}
+        {/* FX capture / apply — hidden inside a set for the same reason */}
+        {!inPl && (
         <div className="flex items-center gap-0.5 rounded bg-neutral-900/60 px-1 py-0.5">
           <span className="text-[8px] font-bold uppercase text-neutral-500">FX</span>
           <button
@@ -932,12 +986,13 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
             ▸B
           </button>
         </div>
+        )}
 
         {plId ? (
           <button
             onClick={() => toggleInPlaylist(plId, t.id)}
             className="hw-btn px-1.5 py-1 text-xs text-neutral-400"
-            title="Retirer de la playlist"
+            title="Retirer du set"
           >
             −
           </button>
@@ -968,7 +1023,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
             ♫ Bibliothèque
           </span>
           <span className="text-[10px] text-neutral-600">
-            {data.tracks.length} morceaux · {data.playlists.length} playlists
+            {data.tracks.length} morceaux · {data.playlists.length} set{data.playlists.length > 1 ? "s" : ""}
           </span>
         </div>
         <div className="flex items-center gap-1.5">
@@ -1127,7 +1182,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
             {(
               [
                 ["files", "⤓ Mes fichiers", "#9ca3af"],
-                ["playlists", "≣ Playlists", "#a78bfa"],
+                ["playlists", "🎚 Sets", "#a78bfa"],
                 ["audius", "♫ Audius", COLOR_B],
                 ["youtube", "▶ YouTube", "#ef4444"],
                 ["soundcloud", "☁ SoundCloud", "#ff7700"],
@@ -1205,23 +1260,57 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
                   onClick={newPlaylist}
                   className="hw-btn px-3 py-1 text-sm text-violet-300"
                 >
-                  + Nouvelle
+                  + Nouveau set
                 </button>
               </div>
 
               {activePlaylist ? (
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-violet-300">
-                      {activePlaylist.name}
-                    </span>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-xs font-bold text-violet-300">
+                        {activePlaylist.name}
+                      </span>
+                      <span className="text-[10px] text-neutral-500">
+                        {activePlaylist.trackIds.length} titre{activePlaylist.trackIds.length > 1 ? "s" : ""}
+                        {" · "}
+                        {fmt(
+                          activePlaylist.trackIds.reduce(
+                            (sum, id) => sum + (trackById(id)?.durationSec ?? 0),
+                            0
+                          )
+                        )}{" "}
+                        au total
+                      </span>
+                    </div>
                     <button
                       onClick={() => delPlaylist(activePlaylist.id)}
                       className="hw-btn px-2 py-0.5 text-[11px] text-neutral-500"
                     >
-                      Supprimer la playlist
+                      Supprimer le set
                     </button>
                   </div>
+
+                  {/* transition duration — the crossfade length used between every
+                      track when this set plays as A→B→A automix */}
+                  <div className="flex items-center gap-2 rounded bg-neutral-800/40 px-2 py-1.5">
+                    <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-neutral-500">
+                      Transition
+                    </span>
+                    <input
+                      type="range"
+                      min={2}
+                      max={20}
+                      step={1}
+                      value={activePlaylist.transitionSec ?? 12}
+                      onChange={(e) => setTransition(activePlaylist.id, parseInt(e.target.value, 10))}
+                      className="flex-1 accent-violet-400"
+                    />
+                    <span className="w-10 shrink-0 text-right font-mono text-[11px] text-violet-300">
+                      {activePlaylist.transitionSec ?? 12}s
+                    </span>
+                  </div>
+
                   {/* play this whole playlist consecutively — on a deck, or as A→B→A automix */}
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-[10px] font-bold uppercase tracking-wide text-neutral-600">
@@ -1232,7 +1321,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
                       disabled={activePlaylist.trackIds.length === 0}
                       className={`hw-btn px-2 py-1 text-[11px] font-bold disabled:opacity-40 ${queueSrc.A === activePlaylist.id && liveA ? "hw-btn-on" : ""}`}
                       style={{ ["--led" as string]: COLOR_A, color: queueSrc.A === activePlaylist.id && liveA ? undefined : COLOR_A }}
-                      title="Enchaîne tous les titres de la playlist sur le Deck A, en boucle"
+                      title="Enchaîne tous les titres du set sur le Deck A, en boucle"
                     >
                       ▶ Deck A
                     </button>
@@ -1241,7 +1330,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
                       disabled={activePlaylist.trackIds.length === 0}
                       className={`hw-btn px-2 py-1 text-[11px] font-bold disabled:opacity-40 ${queueSrc.B === activePlaylist.id && liveB ? "hw-btn-on" : ""}`}
                       style={{ ["--led" as string]: COLOR_B, color: queueSrc.B === activePlaylist.id && liveB ? undefined : COLOR_B }}
-                      title="Enchaîne tous les titres de la playlist sur le Deck B, en boucle"
+                      title="Enchaîne tous les titres du set sur le Deck B, en boucle"
                     >
                       ▶ Deck B
                     </button>
@@ -1250,7 +1339,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
                       disabled={activePlaylist.trackIds.length === 0}
                       className={`hw-btn px-2 py-1 text-[11px] font-bold disabled:opacity-40 ${relay && queueSrc.A === activePlaylist.id ? "hw-btn-on" : ""}`}
                       style={{ ["--led" as string]: "#a78bfa", color: relay && queueSrc.A === activePlaylist.id ? undefined : "#a78bfa" }}
-                      title="Automix A→B→A : enchaîne la playlist en fondu entre les deux decks"
+                      title="Automix A→B→A : enchaîne le set en fondu entre les deux decks, avec la durée de transition réglée ci-dessus"
                     >
                       ⇄ Relais A→B→A
                     </button>
@@ -1258,7 +1347,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
                   <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto">
                     {activePlaylist.trackIds.length === 0 && (
                       <p className="py-3 text-center text-xs text-neutral-600">
-                        Playlist vide — ajoute des morceaux ci-dessous.
+                        Set vide — ajoute des morceaux ci-dessous, dans l&apos;ordre où ils doivent s&apos;enchaîner.
                       </p>
                     )}
                     {activePlaylist.trackIds.map((id, i) => {
@@ -1282,7 +1371,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
                       <button
                         onClick={() => addAllToPlaylist(activePlaylist.id)}
                         className="hw-btn px-2 py-0.5 text-[11px] text-violet-300"
-                        title="Ajouter tous les morceaux de la bibliothèque à cette playlist"
+                        title="Ajouter tous les morceaux de la bibliothèque à ce set"
                       >
                         + Tout ajouter
                       </button>
@@ -1299,6 +1388,11 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
                           <span className="min-w-0 flex-1 truncate text-xs text-neutral-300">
                             {t.name}
                           </span>
+                          {typeof t.durationSec === "number" && (
+                            <span className="shrink-0 font-mono text-[10px] text-neutral-500">
+                              {fmt(t.durationSec)}
+                            </span>
+                          )}
                           <button
                             onClick={() => toggleInPlaylist(activePlaylist.id, t.id)}
                             className="hw-btn px-2 py-0.5 text-xs text-violet-300"
@@ -1311,7 +1405,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
                 </div>
               ) : (
                 <p className="py-4 text-center text-sm text-neutral-600">
-                  Choisis une playlist ou crée-en une nouvelle.
+                  Choisis un set ou crée-en un nouveau.
                 </p>
               )}
             </div>

@@ -15,6 +15,7 @@ export interface LibTrack {
   fxB?: DeckSettings; // captured FX snapshot for deck B
   art?: string; // cover/poster: remote URL (audius/yt) or small data-URL thumbnail (local ID3)
   stemHash?: string; // content hash of the audio; if its stems are cached server-side, badge it
+  durationSec?: number; // track length — lets a set be built by ear-length, not guesswork
   addedAt: number;
 }
 
@@ -22,6 +23,7 @@ export interface Playlist {
   id: string;
   name: string;
   trackIds: string[];
+  transitionSec?: number; // crossfade length (s) used between tracks when this set auto-mixes
 }
 
 export interface LibraryData {
