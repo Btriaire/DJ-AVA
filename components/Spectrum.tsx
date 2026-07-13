@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef } from "react";
 import { Deck } from "@/lib/audio/Deck";
+import { levelColor } from "./EqVisuals";
 
 interface Props {
   deck: Deck;
@@ -9,6 +10,7 @@ interface Props {
 
 // Live frequency spectrum of whatever the deck is playing (post EQ/filter/FX).
 // Runs its own animation loop reading the deck's analyser each frame.
+// Bars are colorised green→yellow→orange→red by intensity, matching the EQ meters.
 export function Spectrum({ deck, color }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -36,9 +38,10 @@ export function Spectrum({ deck, color }: Props) {
         const bin = Math.min(data.length - 1, Math.floor(frac * data.length * 0.75));
         const mag = data[bin] / 255;
         const bh = Math.max(1, mag * h);
+        const barColor = levelColor(mag);
         const grad = ctx.createLinearGradient(0, h, 0, h - bh);
-        grad.addColorStop(0, color + "33");
-        grad.addColorStop(1, color);
+        grad.addColorStop(0, barColor + "33");
+        grad.addColorStop(1, barColor);
         ctx.fillStyle = grad;
         ctx.fillRect(i * bw, h - bh, bw - gap, bh);
       }

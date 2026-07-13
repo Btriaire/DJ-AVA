@@ -4,7 +4,7 @@ import { Deck } from "@/lib/audio/Deck";
 import { Rack, RACK_MODULES, RackModuleId, RackPreset } from "@/lib/audio/Rack";
 import { Knob } from "./Knob";
 import { Fader } from "./Fader";
-import { DigitalVU } from "./EqVisuals";
+import { DigitalVU, levelColor } from "./EqVisuals";
 
 const LS_KEY = "djsynth.rackpresets.v1";
 
@@ -188,9 +188,10 @@ function RackSpectrum({ rack, color }: { rack: Rack; color: string }) {
         const bin = Math.min(data.length - 1, Math.floor(frac * data.length * 0.75));
         const mag = data[bin] / 255;
         const bh = Math.max(1, mag * h);
+        const barColor = levelColor(mag);
         const grad = ctx.createLinearGradient(0, h, 0, h - bh);
-        grad.addColorStop(0, color + "22");
-        grad.addColorStop(1, color);
+        grad.addColorStop(0, barColor + "22");
+        grad.addColorStop(1, barColor);
         ctx.fillStyle = grad;
         ctx.fillRect(i * bw, h - bh, bw - gap, bh);
       }
