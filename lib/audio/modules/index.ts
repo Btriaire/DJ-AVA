@@ -24,9 +24,12 @@ import { ReverbModule } from "./Reverb";
 import { LimiterModule } from "./Limiter";
 import { AutotuneModule } from "./Autotune";
 import { Eq10BandModule } from "./Eq10Band";
+import { XyMatrixModule } from "./XyMatrix";
+import { PhaserModule } from "./Phaser";
+import { CombFilterModule } from "./CombFilter";
 
 // Re-export for external use
-export { LoudnessModule, SurroundModule, ExciterModule, TransientModule, MultibandModule, CompModule, DriveModule, WavefoldModule, CrushModule, RobotModule, RingmodModule, VoyelleModule, IsolatorModule, AutowahModule, ResonatorModule, GateModule, GlitchModule, ShimmerModule, DelayModule, ReverbModule, LimiterModule, AutotuneModule, Eq10BandModule };
+export { LoudnessModule, SurroundModule, ExciterModule, TransientModule, MultibandModule, CompModule, DriveModule, WavefoldModule, CrushModule, RobotModule, RingmodModule, VoyelleModule, IsolatorModule, AutowahModule, ResonatorModule, GateModule, GlitchModule, ShimmerModule, DelayModule, ReverbModule, LimiterModule, AutotuneModule, Eq10BandModule, XyMatrixModule, PhaserModule, CombFilterModule };
 
 // Module factory: create an instance by ID
 export type ModuleId =
@@ -52,7 +55,10 @@ export type ModuleId =
   | "reverb"
   | "limiter"
   | "autotune"
-  | "eq10band";
+  | "eq10band"
+  | "xymatrix"
+  | "phaser"
+  | "combfilter";
 
 export function createModule(id: ModuleId, ctx: AudioContext): any {
   switch (id) {
@@ -102,6 +108,12 @@ export function createModule(id: ModuleId, ctx: AudioContext): any {
       return new AutotuneModule(ctx);
     case "eq10band":
       return new Eq10BandModule(ctx);
+    case "xymatrix":
+      return new XyMatrixModule(ctx);
+    case "phaser":
+      return new PhaserModule(ctx);
+    case "combfilter":
+      return new CombFilterModule(ctx);
     default:
       throw new Error(`Unknown module: ${id}`);
   }

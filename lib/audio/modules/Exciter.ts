@@ -63,16 +63,16 @@ export class ExciterModule extends BaseModule {
     this.dryGain.gain.value = 1;
     this.excGain.gain.value = 0.4;
     this.hp.frequency.value = 4000;
-    this.wetMix.gain.value = 0.3;
+    this.wetMix.gain.value = 0;
 
     this.updateFromParams();
   }
 
   protected onParamChange(key: string, value: number): void {
     if (key === "harm") {
-      // harm: intensity of the waveshaper + wet mix
-      this.excGain.gain.value = 0.1 + value * 0.9;
-      this.wetMix.gain.value = 0.1 + value * 0.6;
+      // harm: intensity of the waveshaper + wet mix (starts at 0)
+      this.excGain.gain.value = value * 0.9;
+      this.wetMix.gain.value = value * 0.6;
     } else if (key === "freq") {
       // freq: highpass frequency
       this.hp.frequency.value = value;

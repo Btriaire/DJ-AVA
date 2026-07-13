@@ -15,13 +15,14 @@ export class ReverbModule extends BaseModule {
       [
         { key: "decay", label: "Décroissance", min: 0.1, max: 10, def: 3.5, fmt: (v) => `${v.toFixed(1)}s` },
         { key: "pre", label: "Pré-délai", min: 0, max: 0.5, def: 0, fmt: (v) => `${(v * 1000).toFixed(0)} ms` },
+        { key: "mix", label: "Mix", min: 0, max: 1, def: 0, fmt: (v) => `${Math.round(v * 100)}%` },
       ]
     );
 
     this.input = new Tone.Gain();
     this.output = new Tone.Gain();
     this.reverb = new Tone.Reverb(3.5);
-    this.wet = new Tone.Gain(0.25);
+    this.wet = new Tone.Gain(0);
 
     this.build(ctx);
   }
@@ -38,6 +39,8 @@ export class ReverbModule extends BaseModule {
   protected onParamChange(key: string, value: number): void {
     if (key === "decay") {
       this.reverb.decay = value;
+    } else if (key === "mix") {
+      this.wet.gain.rampTo(value, 0.05);
     }
   }
 

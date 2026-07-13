@@ -16,6 +16,7 @@ export class DelayModule extends BaseModule {
       [
         { key: "time", label: "Temps", min: 0.01, max: 1.2, def: 0.5, fmt: (v) => `${(v * 1000).toFixed(0)} ms` },
         { key: "fb", label: "Feedback", min: 0, max: 0.9, def: 0.3, fmt: (v) => `${Math.round(v * 100)}%` },
+        { key: "mix", label: "Mix", min: 0, max: 1, def: 0, fmt: (v) => `${Math.round(v * 100)}%` },
       ],
       [{ key: "pingpong", label: "Ping-Pong" }]
     );
@@ -24,7 +25,7 @@ export class DelayModule extends BaseModule {
     this.output = new Tone.Gain();
     this.delay = new Tone.Delay(0.5);
     this.feedback = new Tone.Gain(0.3);
-    this.wet = new Tone.Gain(0.5);
+    this.wet = new Tone.Gain(0);
 
     this.build(ctx);
   }
@@ -45,6 +46,8 @@ export class DelayModule extends BaseModule {
       this.delay.delayTime.value = value;
     } else if (key === "fb") {
       this.feedback.gain.value = value;
+    } else if (key === "mix") {
+      this.wet.gain.rampTo(value, 0.05);
     }
   }
 

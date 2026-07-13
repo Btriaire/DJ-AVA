@@ -16,7 +16,7 @@ export class AutotuneModule extends BaseModule {
       "AUTO-TUNE",
       "Auto-Tune — correction de hauteur monophonique",
       [
-        { key: "amount", label: "Dose", min: 0, max: 1, def: 1, fmt: (v) => `${Math.round(v * 100)}%` },
+        { key: "amount", label: "Dose", min: 0, max: 1, def: 0, fmt: (v) => `${Math.round(v * 100)}%` },
         { key: "retune", label: "Glisse", min: 0, max: 1, def: 0.2, fmt: (v) => `${Math.round(v * 100)}%` },
         { key: "key", label: "Tonalité", min: 0, max: 11, def: 0, fmt: (v) => NOTE_NAMES[Math.round(v) % 12] },
         { key: "scale", label: "Gamme", min: 0, max: 2, def: 0, fmt: (v) => SCALE_LABELS[Math.round(v)] },

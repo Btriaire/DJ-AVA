@@ -15,7 +15,7 @@ export class ShimmerModule extends BaseModule {
       "Shimmer — réverbération cristalline avec décalage de hauteur",
       [
         { key: "decay", label: "Décroissance", min: 0.1, max: 10, def: 5, fmt: (v) => `${v.toFixed(1)}s` },
-        { key: "shimmer", label: "Shimmer", min: 0, max: 1, def: 0.6, fmt: (v) => `${Math.round(v * 100)}%` },
+        { key: "shimmer", label: "Shimmer", min: 0, max: 1, def: 0, fmt: (v) => `${Math.round(v * 100)}%` },
       ]
     );
 
@@ -23,7 +23,7 @@ export class ShimmerModule extends BaseModule {
     this.output = new Tone.Gain();
     this.reverb = new Tone.Reverb(5);
     this.pitchShift = new Tone.PitchShift(12);
-    this.wet = new Tone.Gain(0.4);
+    this.wet = new Tone.Gain(0);
 
     this.build(ctx);
   }
