@@ -35,7 +35,10 @@ export type RackModuleId =
   | "surround"
   | "exciter"
   | "transient"
-  | "multiband";
+  | "multiband"
+  | "xymatrix"
+  | "phaser"
+  | "combfilter";
 
 export interface RackParamDef {
   key: string;
@@ -284,6 +287,35 @@ export const RACK_MODULES: RackModuleDef[] = [
       { key: "lo", label: "Grave", min: 0, max: 1, def: 0.4, fmt: pct },
       { key: "mid", label: "Médium", min: 0, max: 1, def: 0.3, fmt: pct },
       { key: "hi", label: "Aigu", min: 0, max: 1, def: 0.5, fmt: pct },
+    ],
+  },
+  {
+    id: "xymatrix",
+    label: "XY MATRIX",
+    title: "Pad tactile 2D : X = balayage filtre LP, Y = mix wet/dry",
+    params: [
+      { key: "x", label: "X", min: 0, max: 1, def: 0.5, fmt: pct },
+      { key: "y", label: "Y", min: 0, max: 1, def: 0, fmt: pct },
+      { key: "res", label: "Résonance", min: 1, max: 30, def: 1, fmt: (v) => `Q${v.toFixed(1)}` },
+    ],
+  },
+  {
+    id: "phaser",
+    label: "PHASER",
+    title: "Sweep modulation — effet spatial DJ classique",
+    params: [
+      { key: "rate", label: "Vitesse", min: 0.1, max: 10, def: 2, fmt: (v) => `${v.toFixed(1)} Hz` },
+      { key: "depth", label: "Profondeur", min: 0, max: 1, def: 0, fmt: pct },
+    ],
+  },
+  {
+    id: "combfilter",
+    label: "COMB",
+    title: "Filtre à peigne — notches spectrales robotic/alien",
+    params: [
+      { key: "time", label: "Temps", min: 0.5, max: 50, def: 10, fmt: (v) => `${v.toFixed(1)} ms` },
+      { key: "fb", label: "Feedback", min: 0, max: 0.95, def: 0.5, fmt: pct },
+      { key: "lfoRate", label: "LFO", min: 0, max: 5, def: 0, fmt: (v) => `${v.toFixed(2)} Hz` },
     ],
   },
 ];
