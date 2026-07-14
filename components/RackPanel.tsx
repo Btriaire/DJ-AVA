@@ -5,6 +5,7 @@ import { Rack, RACK_MODULES, RackModuleId, RackPreset } from "@/lib/audio/Rack";
 import { Knob } from "./Knob";
 import { Fader } from "./Fader";
 import { DigitalVU, levelColor } from "./EqVisuals";
+import { XyPad } from "./XyPad";
 
 const LS_KEY = "djsynth.rackpresets.v1";
 
@@ -540,16 +541,19 @@ export function RackPanel({
             );
           }
 
+          const isXyMatrix = id === "xymatrix";
           return (
             <div
               key={id}
-              className="hw-recess flex w-[172px] flex-col gap-1.5 rounded p-2"
+              className={`hw-recess flex flex-col gap-1.5 rounded p-2 ${isXyMatrix ? "w-[300px]" : "w-[172px]"}`}
               style={{ opacity: on ? 1 : 0.62 }}
             >
               {header}
 
               {/* transfer-curve thumbnail (where meaningful) */}
-              <MiniCurve id={id} params={{ mix: rack.getMix(id), ...Object.fromEntries(def.params.map((p) => [p.key, rack.getParam(id, p.key)])) }} color={color} />
+              {!isXyMatrix && (
+                <MiniCurve id={id} params={{ mix: rack.getMix(id), ...Object.fromEntries(def.params.map((p) => [p.key, rack.getParam(id, p.key)])) }} color={color} />
+              )}
 
               {/* FX intensity (MIX) — long vertical fader for fine latitude + params */}
               <div className="flex items-start gap-2">
@@ -576,8 +580,24 @@ export function RackPanel({
                   />
                   <span className="text-[8px] font-bold uppercase leading-none" style={{ color: on ? color : "#6b6b6b" }}>INT</span>
                 </div>
+                {isXyMatrix && (
+                  <XyPad
+                    size={150}
+                    color={color}
+                    x={rack.getParam(id, "x")}
+                    y={rack.getParam(id, "y")}
+                    xLabel="Filtre"
+                    yLabel="Mix"
+                    onChange={(nx, ny) => {
+                      rack.setParam(id, "x", nx);
+                      rack.setParam(id, "y", ny);
+                      flashLcd(`XY MATRIX ${Math.round(nx * 100)}/${Math.round(ny * 100)}`);
+                      rerender();
+                    }}
+                  />
+                )}
                 <div className="flex flex-1 flex-wrap items-start gap-1.5">
-                {def.params.map((p) => {
+                {def.params.filter((p) => !isXyMatrix || (p.key !== "x" && p.key !== "y")).map((p) => {
                   const isTarget = armed !== null && rack.isMacroTarget(armed, { id, key: p.key });
                   return (
                     <div
