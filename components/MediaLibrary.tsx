@@ -159,6 +159,11 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   const relayRef = useRef(false);
   const relaySide = useRef<"A" | "B">("A"); // deck currently in the foreground
   const relayIdx = useRef<{ A: number; B: number }>({ A: -1, B: -1 });
+  // single shared pointer through the relay's combined queue — advanced once
+  // per relayLoadNext() call regardless of which side is loading, so a full
+  // set marches straight through in order (track0→A, track1→B, track2→A, …)
+  // instead of each side keeping its own counter and both starting on track0.
+  const relayPos = useRef(-1);
   const relayFading = useRef(false);
   const relayArmed = useRef(true); // fade exactly once per song
   // mirror of liveIdx as state so the track list re-renders when the queue moves
@@ -705,7 +710,10 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   async function relayLoadNext(side: "A" | "B", andPlay: boolean): Promise<boolean> {
     const q = liveQueue(side);
     if (!q.length) return false;
-    relayIdx.current[side] = (relayIdx.current[side] + 1) % q.length;
+    // advance the SHARED pointer, not a per-side one — otherwise A and B each
+    // start counting from -1 independently and both land on track 0 first.
+    relayPos.current = (relayPos.current + 1) % q.length;
+    relayIdx.current[side] = relayPos.current;
     const deck = side === "A" ? engine.deckA : engine.deckB;
     await loadToDeck(q[relayIdx.current[side]], side);
     if (andPlay) deck.play();
@@ -765,6 +773,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
     liveIdx.current = { A: -1, B: -1 };
     setLiveCur({ A: -1, B: -1 });
     relayIdx.current = { A: -1, B: -1 };
+    relayPos.current = -1;
     relayFading.current = false;
     relayArmed.current = true;
     relaySide.current = "A";
