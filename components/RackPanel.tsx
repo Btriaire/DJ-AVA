@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { Deck } from "@/lib/audio/Deck";
-import { Rack, RACK_MODULES, RackModuleId, RackPreset } from "@/lib/audio/Rack";
+import { Rack, RACK_MODULES, RackModuleId, RackPreset, XY_TARGETS } from "@/lib/audio/Rack";
 import { Knob } from "./Knob";
 import { Fader } from "./Fader";
 import { DigitalVU, levelColor } from "./EqVisuals";
@@ -542,10 +542,12 @@ export function RackPanel({
           }
 
           const isXyMatrix = id === "xymatrix";
+          const xTarget = isXyMatrix ? Math.round(rack.getParam(id, "xTarget")) : 0;
+          const yTarget = isXyMatrix ? Math.round(rack.getParam(id, "yTarget")) : 0;
           return (
             <div
               key={id}
-              className={`hw-recess flex flex-col gap-1.5 rounded p-2 ${isXyMatrix ? "w-[300px]" : "w-[172px]"}`}
+              className={`hw-recess flex flex-col gap-1.5 rounded p-2 ${isXyMatrix ? "w-[460px]" : "w-[172px]"}`}
               style={{ opacity: on ? 1 : 0.62 }}
             >
               {header}
@@ -576,28 +578,76 @@ export function RackPanel({
                       flashLcd(`${def.label} INTENSITÉ ${Math.round(v * 100)}%`);
                       rerender();
                     }}
-                    className="!h-[160px]"
+                    className={isXyMatrix ? "!h-[260px]" : "!h-[160px]"}
                   />
                   <span className="text-[8px] font-bold uppercase leading-none" style={{ color: on ? color : "#6b6b6b" }}>INT</span>
                 </div>
                 {isXyMatrix && (
-                  <XyPad
-                    size={150}
-                    color={color}
-                    x={rack.getParam(id, "x")}
-                    y={rack.getParam(id, "y")}
-                    xLabel="Filtre"
-                    yLabel="Mix"
-                    onChange={(nx, ny) => {
-                      rack.setParam(id, "x", nx);
-                      rack.setParam(id, "y", ny);
-                      flashLcd(`XY MATRIX ${Math.round(nx * 100)}/${Math.round(ny * 100)}`);
-                      rerender();
-                    }}
-                  />
+                  <div className="flex flex-1 flex-col gap-2">
+                    {/* Y-axis target picker, stacked so it reads top→bottom next to the pad */}
+                    <div className="flex items-center gap-2">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[8px] font-bold uppercase text-neutral-500">Effet Y</span>
+                        {XY_TARGETS.map((t, i) => (
+                          <button
+                            key={t}
+                            onClick={() => {
+                              rack.setParam(id, "yTarget", i);
+                              flashLcd(`XY MATRIX — Y = ${t}`);
+                              rerender();
+                            }}
+                            className="rounded px-2 py-1 text-[10px] font-bold transition-colors"
+                            style={
+                              yTarget === i
+                                ? { background: color, color: "#0a0a0a" }
+                                : { background: "rgba(255,255,255,0.06)", color: "#9a9a9a" }
+                            }
+                          >
+                            {t}
+                          </button>
+                        ))}
+                      </div>
+                      <XyPad
+                        size={240}
+                        color={color}
+                        x={rack.getParam(id, "x")}
+                        y={rack.getParam(id, "y")}
+                        xLabel={XY_TARGETS[xTarget]}
+                        yLabel={XY_TARGETS[yTarget]}
+                        onChange={(nx, ny) => {
+                          rack.setParam(id, "x", nx);
+                          rack.setParam(id, "y", ny);
+                          flashLcd(`XY MATRIX ${Math.round(nx * 100)}/${Math.round(ny * 100)}`);
+                          rerender();
+                        }}
+                      />
+                    </div>
+                    {/* X-axis target picker, laid out under the pad to match its horizontal axis */}
+                    <div className="flex items-center justify-end gap-1 pr-1">
+                      <span className="mr-1 text-[8px] font-bold uppercase text-neutral-500">Effet X</span>
+                      {XY_TARGETS.map((t, i) => (
+                        <button
+                          key={t}
+                          onClick={() => {
+                            rack.setParam(id, "xTarget", i);
+                            flashLcd(`XY MATRIX — X = ${t}`);
+                            rerender();
+                          }}
+                          className="rounded px-2 py-1 text-[10px] font-bold transition-colors"
+                          style={
+                            xTarget === i
+                              ? { background: color, color: "#0a0a0a" }
+                              : { background: "rgba(255,255,255,0.06)", color: "#9a9a9a" }
+                          }
+                        >
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 )}
-                <div className="flex flex-1 flex-wrap items-start gap-1.5">
-                {def.params.filter((p) => !isXyMatrix || (p.key !== "x" && p.key !== "y")).map((p) => {
+                <div className={isXyMatrix ? "flex flex-wrap items-start gap-1.5" : "flex flex-1 flex-wrap items-start gap-1.5"}>
+                {def.params.filter((p) => !isXyMatrix || !["x", "y", "xTarget", "yTarget"].includes(p.key)).map((p) => {
                   const isTarget = armed !== null && rack.isMacroTarget(armed, { id, key: p.key });
                   return (
                     <div

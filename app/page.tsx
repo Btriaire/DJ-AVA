@@ -206,59 +206,73 @@ export default function Home() {
     setConvFlash((n) => n + 1);
   }
 
+  // survives across recursive sweeps without the stale-closure issues a state
+  // variable would have (setCrossfade() updates don't land synchronously)
+  const autoLoopActive = useRef(false);
+
   function stopAuto() {
+    autoLoopActive.current = false;
     if (autoRaf.current !== null) cancelAnimationFrame(autoRaf.current);
     autoRaf.current = null;
     setAutoRunning(false);
   }
 
-  // smoothly ramp the crossfader to the opposite side over `autoDur` seconds
+  // continuously ping-pongs the crossfader side to side over `autoDur` seconds
+  // per pass, non-stop until stopAuto() is called — a hands-free auto-mix.
   function startAuto() {
     const eng = engineRef.current;
     if (!eng) return;
-    stopAuto();
-    const from = crossfade;
-    const to = from < 0.5 ? 1 : 0;
-    // the deck we're fading TOWARD (to=1 → B, to=0 → A) and the one we're leaving.
-    const target = to === 1 ? eng.deckB : eng.deckA;
-    const source = to === 1 ? eng.deckA : eng.deckB;
-    // If the incoming deck has a track but isn't playing yet, start it so the
-    // single is live for the blend.
-    if (target.name && !target.playing) {
-      eng.resume(); // make sure the audio context is awake
-      target.play();
-    }
-    // Optional: progressively glide the INCOMING deck's tempo onto the outgoing
-    // deck's BPM, finishing right as the crossfade completes (beat-matched mix).
-    let tempoFromPct = 0;
-    let tempoToPct = 0;
-    const tempoAlign =
-      autoFadeSync && !!target.bpm && !!source.effectiveBPM;
-    if (tempoAlign) {
-      tempoFromPct = target.pitchPct;
-      tempoToPct = Math.max(-50, Math.min(50, (source.effectiveBPM / target.bpm - 1) * 100));
-    }
-    const t0 = performance.now();
-    const ms = autoDur * 1000;
+    if (autoRaf.current !== null) cancelAnimationFrame(autoRaf.current);
+    autoLoopActive.current = true;
     setAutoRunning(true);
-    const step = (now: number) => {
-      const p = Math.min(1, (now - t0) / ms);
-      // ease-in-out for a musical blend
-      const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
-      const v = from + (to - from) * e;
-      setCrossfade(v);
-      eng.setCrossfade(v);
+
+    const runSweep = (from: number) => {
+      const to = from < 0.5 ? 1 : 0;
+      // the deck we're fading TOWARD (to=1 → B, to=0 → A) and the one we're leaving.
+      const target = to === 1 ? eng.deckB : eng.deckA;
+      const source = to === 1 ? eng.deckA : eng.deckB;
+      // If the incoming deck has a track but isn't playing yet, start it so the
+      // single is live for the blend.
+      if (target.name && !target.playing) {
+        eng.resume(); // make sure the audio context is awake
+        target.play();
+      }
+      // Optional: progressively glide the INCOMING deck's tempo onto the outgoing
+      // deck's BPM, finishing right as the crossfade completes (beat-matched mix).
+      let tempoFromPct = 0;
+      let tempoToPct = 0;
+      const tempoAlign = autoFadeSync && !!target.bpm && !!source.effectiveBPM;
       if (tempoAlign) {
-        target.setPitch(tempoFromPct + (tempoToPct - tempoFromPct) * e);
+        tempoFromPct = target.pitchPct;
+        tempoToPct = Math.max(-50, Math.min(50, (source.effectiveBPM / target.bpm - 1) * 100));
       }
-      if (p < 1) {
-        autoRaf.current = requestAnimationFrame(step);
-      } else {
-        autoRaf.current = null;
-        setAutoRunning(false);
-      }
+      const t0 = performance.now();
+      const ms = autoDur * 1000;
+      const step = (now: number) => {
+        if (!autoLoopActive.current) {
+          autoRaf.current = null;
+          return;
+        }
+        const p = Math.min(1, (now - t0) / ms);
+        // ease-in-out for a musical blend
+        const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+        const v = from + (to - from) * e;
+        setCrossfade(v);
+        eng.setCrossfade(v);
+        if (tempoAlign) {
+          target.setPitch(tempoFromPct + (tempoToPct - tempoFromPct) * e);
+        }
+        if (p < 1) {
+          autoRaf.current = requestAnimationFrame(step);
+        } else if (autoLoopActive.current) {
+          runSweep(to); // reverse direction and keep going — non-stop while active
+        } else {
+          autoRaf.current = null;
+        }
+      };
+      autoRaf.current = requestAnimationFrame(step);
     };
-    autoRaf.current = requestAnimationFrame(step);
+    runSweep(crossfade);
   }
 
   function panic() {

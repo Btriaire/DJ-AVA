@@ -322,6 +322,23 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
     }
     rerender();
   }
+  // isolate one stem (mute every other) — lets a Rack FX enabled on this deck
+  // audibly affect only that stem, since the others contribute silence to the
+  // mix the FX chain processes. Clicking an already-soloed stem un-isolates
+  // (restores every stem to its remembered level).
+  function soloStem(i: number) {
+    const alreadySolo =
+      deck.stemVol[i] > 0.001 && deck.stemVol.every((v, j) => j === i || v <= 0.001);
+    for (let j = 0; j < deck.stemVol.length; j++) {
+      if (deck.stemVol[j] > 0.001) stemPrev.current[j] = deck.stemVol[j];
+    }
+    if (alreadySolo) {
+      for (let j = 0; j < deck.stemVol.length; j++) deck.setStemVol(j, stemPrev.current[j] || 1);
+    } else {
+      for (let j = 0; j < deck.stemVol.length; j++) deck.setStemVol(j, j === i ? stemPrev.current[i] || 1 : 0);
+    }
+    rerender();
+  }
   // bulk faders: drop everything to silence (remembering levels) or push it all up
   function allStems(up: boolean) {
     if (!deck.stemReady) return;
@@ -919,13 +936,27 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                     />
                     <span className="fader-ticks" aria-hidden />
                   </div>
-                  <button
-                    className="text-[9px] font-bold uppercase leading-none"
-                    style={{ color: muted ? "#777" : color }}
-                    onClick={() => toggleStemMute(i)}
-                  >
-                    {info.label}
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      className="text-[9px] font-bold uppercase leading-none"
+                      style={{ color: muted ? "#777" : color }}
+                      onClick={() => toggleStemMute(i)}
+                    >
+                      {info.label}
+                    </button>
+                    <button
+                      className="rounded px-1 text-[8px] font-black leading-none"
+                      style={
+                        deck.stemReady && lvl > 0.001 && deck.stemVol.every((v, j) => j === i || v <= 0.001)
+                          ? { background: color, color: "#0a0a0a" }
+                          : { background: "rgba(255,255,255,0.08)", color: "#8a8a8a" }
+                      }
+                      title="Isoler ce stem (coupe les autres) — un FX du Rack activé sur ce deck n'affectera alors que ce stem"
+                      onClick={() => soloStem(i)}
+                    >
+                      S
+                    </button>
+                  </div>
                 </div>
                 {/* FOULE — placée juste à côté de VOIX. Reste active même stems coupés
                     (agit aussi sur le mix complet, extraction du centre mid-side). */}

@@ -72,6 +72,11 @@ const AUTOTUNE_SCALES: number[][] = [
   [0, 2, 3, 5, 7, 8, 10],
 ];
 
+// XY Matrix: each axis can independently drive one of these targets — pick
+// what X and Y do from the pad itself, like an assignable macro controller.
+export const XY_TARGETS = ["Filtre", "Résonance", "Mix"] as const;
+const xyTargetLabel = (v: number) => XY_TARGETS[Math.max(0, Math.min(XY_TARGETS.length - 1, Math.round(v)))];
+
 // 15-band 2/3-octave graphic EQ — ISO standard centre frequencies, one gain fader each.
 // Shared by the engine and the panel (fader labels + response curve).
 export const EQ_FREQS = [25, 40, 63, 100, 160, 250, 400, 630, 1000, 1600, 2500, 4000, 6300, 10000, 16000];
@@ -292,11 +297,12 @@ export const RACK_MODULES: RackModuleDef[] = [
   {
     id: "xymatrix",
     label: "XY MATRIX",
-    title: "Pad tactile 2D : X = balayage filtre LP, Y = mix wet/dry",
+    title: "Pad tactile 2D géant — assigne librement quel effet chaque axe contrôle",
     params: [
       { key: "x", label: "X", min: 0, max: 1, def: 0.5, fmt: pct },
       { key: "y", label: "Y", min: 0, max: 1, def: 0, fmt: pct },
-      { key: "res", label: "Résonance", min: 1, max: 30, def: 1, fmt: (v) => `Q${v.toFixed(1)}` },
+      { key: "xTarget", label: "Effet X", min: 0, max: XY_TARGETS.length - 1, def: 0, fmt: xyTargetLabel },
+      { key: "yTarget", label: "Effet Y", min: 0, max: XY_TARGETS.length - 1, def: 2, fmt: xyTargetLabel },
     ],
   },
   {
@@ -376,6 +382,12 @@ class RackSlot {
     this.built.fxOut.connect(this.wet);
     // NB: wet -> output is wired lazily (setWetLive) — the slot starts off, so
     // the effect stays idle and unpulled until it is first enabled.
+
+    // the graphic EQ behaves like real hardware — always inline in the signal
+    // path, not an optional bypassable FX pedal — so it starts active. Flat
+    // (all bands at 0 dB) is already transparent, matching the "start silent"
+    // rule for every other module.
+    if (id === "eq") this.on = true;
 
     const def = RACK_DEF.get(id)!;
     for (const p of def.params) this.params[p.key] = p.def;
@@ -1343,19 +1355,19 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
       };
     }
     case "xymatrix": {
-      // 2D touch pad: X-axis filters (LP 200Hz → HP 16kHz), Y-axis mixes dry/wet
+      // 2D touch pad: each axis independently drives whichever effect it's
+      // assigned to (xTarget/yTarget — see XY_TARGETS) — Filtre (LP sweep),
+      // Résonance (filter Q) or Mix (wet/dry blend). Reassigning an axis just
+      // re-applies that axis's current pad position to the newly chosen target,
+      // so nothing "jumps" when you switch what X or Y controls.
       const fxIn = c.createGain();
-      const fxOut = c.createGain();
       const dryGain = c.createGain();
       const lpFilter = c.createBiquadFilter();
       lpFilter.type = "lowpass";
       lpFilter.frequency.value = 200;
+      lpFilter.Q.value = 1;
       const wetGain = c.createGain();
-      const lfo = new Tone.LFO({ frequency: 0.5, amplitude: 1 });
-      const lfoAmp = new Tone.Gain(0);
-      lfo.connect(lfoAmp);
-      lfoAmp.connect(wetGain.gain);
-      lfo.start();
+      const fxOut = c.createGain();
       fxIn.connect(dryGain);
       dryGain.connect(fxOut);
       fxIn.connect(lpFilter);
@@ -1363,52 +1375,62 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
       wetGain.connect(fxOut);
       dryGain.gain.value = 1;
       wetGain.gain.value = 0;
+
+      let xPos = 0.5;
+      let yPos = 0;
+      let xTarget = 0; // Filtre
+      let yTarget = 2; // Mix
+      const applyTarget = (target: number, pos: number) => {
+        if (target === 0) {
+          // Filtre: LP sweep 200Hz → 16kHz (logarithmic)
+          const freq = 200 * Math.pow(80, pos);
+          at(lpFilter.frequency, Math.max(20, Math.min(20000, freq)));
+        } else if (target === 1) {
+          // Résonance: filter Q, 1 → 30
+          at(lpFilter.Q, 1 + pos * 29);
+        } else {
+          // Mix: wet/dry blend (0 = dry only)
+          at(wetGain.gain, pos);
+          at(dryGain.gain, 1 - pos);
+        }
+      };
       return {
         fxIn, fxOut,
         onParam: (k, v) => {
           if (k === "x") {
-            // X: filter sweep 200Hz→16kHz (logarithmic)
-            const freq = 200 * Math.pow(80, v); // 200 @ v=0, 16000 @ v=1
-            at(lpFilter.frequency, Math.max(20, Math.min(20000, freq)));
+            xPos = v;
+            applyTarget(xTarget, v);
           } else if (k === "y") {
-            // Y: wet/dry mix (starts at 0 = dry only)
-            // Upper half of Y range: LFO modulation on wet mix
-            if (v > 0.5) {
-              const lfoDepth = (v - 0.5) * 2; // 0→1 in upper half
-              lfoAmp.gain.value = lfoDepth * 0.3; // LFO amplitude: ±0.3
-              at(wetGain.gain, 0.5 + lfoDepth * 0.5); // Base wet level 0.5→1
-            } else {
-              lfoAmp.gain.value = 0; // No LFO in lower half
-              at(wetGain.gain, v * 2); // Simple crossfade 0→1 (scaled by 2)
-            }
-          } else if (k === "res") {
-            // res: LP filter resonance (Q)
-            at(lpFilter.Q, 1 + v * 29);
+            yPos = v;
+            applyTarget(yTarget, v);
+          } else if (k === "xTarget") {
+            xTarget = Math.round(v);
+            applyTarget(xTarget, xPos);
+          } else if (k === "yTarget") {
+            yTarget = Math.round(v);
+            applyTarget(yTarget, yPos);
           }
         },
       };
     }
     case "phaser": {
-      // LFO-modulated allpass filter for spatial sweep
+      // LFO-modulated allpass filter for spatial sweep. fxOut carries the fully
+      // processed (100% wet) signal — like every other module, the RackSlot's
+      // own dry/wet crossfade (the "INT" fader) is what controls how much of
+      // it blends in. An internal dry mix here would fight that outer control
+      // and make "depth" look like it does nothing.
       const fxIn = c.createGain();
-      const fxOut = c.createGain();
-      const dryGain = c.createGain();
       const allPass = c.createBiquadFilter();
       allPass.type = "allpass";
       allPass.frequency.value = 1000;
-      const wetGain = c.createGain();
+      const fxOut = c.createGain();
       const lfoAmp = new Tone.Gain(0);
       const lfo = new Tone.LFO({ frequency: 2, amplitude: 1 });
       lfo.connect(lfoAmp);
       lfoAmp.connect(allPass.frequency);
       lfo.start();
-      fxIn.connect(dryGain);
-      dryGain.connect(fxOut);
       fxIn.connect(allPass);
-      allPass.connect(wetGain);
-      wetGain.connect(fxOut);
-      dryGain.gain.value = 1;
-      wetGain.gain.value = 0;
+      allPass.connect(fxOut);
       return {
         fxIn, fxOut,
         onParam: (k, v) => {
@@ -1416,22 +1438,21 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
             // rate: LFO frequency 0.1→10 Hz
             lfo.frequency.value = 0.1 * Math.pow(100, v);
           } else if (k === "depth") {
-            // depth: wet/dry mix (starts at 0)
-            at(wetGain.gain, v);
-            at(dryGain.gain, 1 - v);
-            // Modulate LFO amplitude with depth
-            lfoAmp.gain.value = v * 600; // sweep range 0→600 Hz around 1000 Hz base
+            // depth: how wide the allpass sweeps (0 = static filter — still
+            // audibly colours the tone once mixed in — up to a ±600 Hz sweep)
+            lfoAmp.gain.value = v * 600;
           }
         },
       };
     }
     case "combfilter": {
-      // Delay+feedback creates spectral notches, optional LFO sweep
+      // Delay+feedback creates spectral notches, optional LFO sweep. fxOut is
+      // 100% the comb-filtered signal (same pattern as reverb/phaser above) —
+      // the outer "INT" fader controls how much blends with the dry signal.
       const fxIn = c.createGain();
-      const fxOut = c.createGain();
       const delay = c.createDelay(0.5);
       const feedback = c.createGain();
-      const wetGain = c.createGain();
+      const fxOut = c.createGain();
       const lfoAmp = new Tone.Gain(0);
       const lfo = new Tone.LFO({ frequency: 1, amplitude: 1 });
       lfo.connect(lfoAmp);
@@ -1442,10 +1463,7 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
       fxIn.connect(delay);
       delay.connect(feedback);
       feedback.connect(delay);
-      delay.connect(wetGain);
-      fxIn.connect(fxOut);
-      wetGain.connect(fxOut);
-      wetGain.gain.value = 0;
+      delay.connect(fxOut);
       return {
         fxIn, fxOut,
         onParam: (k, v) => {

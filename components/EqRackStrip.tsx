@@ -266,9 +266,12 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
       <div className="flex items-start justify-around gap-0.5 overflow-x-auto pt-1">
         {rows.map((r) => (
           <div key={r.key} className="flex flex-col items-center gap-1">
-            {/* mini digital VU above each fader (band-level simulation via gain value) */}
+            {/* mini digital VU above each fader — lights up for BOOST only (more
+                energy added = more LEDs, like a real spectrum display); a CUT
+                shows no LEDs instead of being conflated with a boost of the
+                same magnitude */}
             <DigitalVU
-              level={r.key === "mix" ? r.value : Math.abs(r.value) / 18}
+              level={r.key === "mix" ? r.value : Math.max(0, r.value) / 18}
               vertical
             />
             <span
