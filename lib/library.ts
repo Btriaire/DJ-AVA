@@ -20,11 +20,15 @@ export interface LibTrack {
   addedAt: number;
 }
 
+export type TransitionType = "fade" | "cut" | "smooth" | "filter";
+
 export interface Playlist {
   id: string;
   name: string;
   trackIds: string[];
   transitionSec?: number; // crossfade length (s) used between tracks when this set auto-mixes
+  transitionType?: TransitionType; // crossfade curve/style — see TRANSITION_TYPES in MediaLibrary
+  preloadSec?: number; // seconds before a track ends to start warming the next one (fewer gaps)
 }
 
 export interface LibraryData {

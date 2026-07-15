@@ -502,7 +502,7 @@ export default function Home() {
               🎧 Écoute
             </button>
             <button
-              onClick={() => setView("platine")}
+              onClick={() => { setView("platine"); setShowLibrary(false); }}
               className={`px-4 py-2 text-sm font-bold ${view === "platine" ? "hw-btn-on" : "text-neutral-400"}`}
               style={{ ["--led" as string]: "#4dff84" }}
               title="Deux platines vinyles qui tournent : crossfade, Autofade et Autoplay pour un mix live simple"
@@ -571,7 +571,7 @@ export default function Home() {
               PANIC
             </button>
           )}
-          {ready && (
+          {ready && view !== "platine" && (
             <button
               onClick={() => setShowLibrary(true)}
               className="hw-btn hw-btn-on px-4 py-2 text-sm"
@@ -653,7 +653,7 @@ export default function Home() {
         </div>
       </header>
 
-      {ready && engine && showLibrary && (
+      {ready && engine && showLibrary && view !== "platine" && (
         <LibraryPanel
           engine={engine}
           onClose={() => setShowLibrary(false)}

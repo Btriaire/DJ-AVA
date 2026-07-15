@@ -5,6 +5,7 @@ import {
   LibraryData,
   LibTrack,
   TrackSource,
+  TransitionType,
   loadLibrary,
   saveLibrary,
   uid,
@@ -77,6 +78,16 @@ const SRC_BADGE: Record<TrackSource, { label: string; color: string }> = {
   deezer: { label: "DEEZER", color: "#a238ff" },
 };
 
+// transition styles for the A→B→A auto-mix — inspired by the crossfade curves
+// found on real DJ mixers/controllers (Pioneer DJM "smooth/sharp", Traktor's
+// auto-crossfader curve, Serato's quick-cut vs. smooth-blend transitions).
+const TRANSITION_TYPES: { key: TransitionType; label: string; hint: string }[] = [
+  { key: "fade", label: "Fondu", hint: "Fondu enchaîné linéaire, classique" },
+  { key: "cut", label: "Coupe", hint: "Bascule instantanée, sans fondu — punch-in de scratch DJ" },
+  { key: "smooth", label: "Doux", hint: "Courbe en S — doux au début et à la fin, imperceptible" },
+  { key: "filter", label: "Filtre", hint: "Fondu + coupe le filtre passe-bas du morceau sortant, comme fermer le knob FILTER avant de le retirer" },
+];
+
 // Docked media database under the Synth: a persistent collection of local files,
 // Audius/YouTube finds and playlists. Each track can be filed for Deck A or B,
 // loaded onto either deck even while playing, and can carry a captured FX
@@ -126,6 +137,24 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   queueSrcRef.current = queueSrc;
   const liveIdx = useRef<{ A: number; B: number }>({ A: -1, B: -1 });
   const wasPlaying = useRef<{ A: boolean; B: boolean }>({ A: false, B: false });
+  // pre-load cache: warms the next track a few seconds before the current one
+  // ends, so the LIVE loop's hand-off has no audible loading gap — local blobs
+  // are cached in memory (skips the IndexedDB round trip), remote streams get
+  // their URL fetched early to warm the HTTP/CDN cache.
+  const prefetchCache = useRef<Map<string, Blob>>(new Map());
+  const prefetchedIds = useRef<Set<string>>(new Set());
+  function prefetchTrack(t: LibTrack) {
+    if (prefetchedIds.current.has(t.id)) return;
+    prefetchedIds.current.add(t.id);
+    if (t.source === "local") {
+      idbGetBlob(t.id).then((blob) => {
+        if (blob) prefetchCache.current.set(t.id, blob);
+      });
+    } else {
+      const streamUrl = `/api/${t.source}/stream?id=${encodeURIComponent(t.url ?? "")}`;
+      fetch(streamUrl).catch(() => {}); // fire-and-forget — warms the cache/CDN
+    }
+  }
   // A→B→A relay bookkeeping (refs so the watcher reads fresh values)
   const relayRef = useRef(false);
   const relaySide = useRef<"A" | "B">("A"); // deck currently in the foreground
@@ -227,7 +256,10 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
     deck.loadStartedAt = performance.now();
     try {
       if (t.source === "local") {
-        const blob = await idbGetBlob(t.id);
+        const cached = prefetchCache.current.get(t.id);
+        const blob = cached ?? (await idbGetBlob(t.id));
+        prefetchCache.current.delete(t.id);
+        prefetchedIds.current.delete(t.id);
         if (!blob) throw new Error("Fichier introuvable (effacé du navigateur)");
         // streaming: audio starts within ~200 ms; waveform/BPM decode in background
         deck.loadStreaming(blob, t.name);
@@ -360,6 +392,18 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
     persist((d) => ({
       ...d,
       playlists: d.playlists.map((p) => (p.id === plId ? { ...p, transitionSec: sec } : p)),
+    }));
+  }
+  function setTransitionType(plId: string, type: TransitionType) {
+    persist((d) => ({
+      ...d,
+      playlists: d.playlists.map((p) => (p.id === plId ? { ...p, transitionType: type } : p)),
+    }));
+  }
+  function setPreloadSec(plId: string, sec: number) {
+    persist((d) => ({
+      ...d,
+      playlists: d.playlists.map((p) => (p.id === plId ? { ...p, preloadSec: sec } : p)),
     }));
   }
   function toggleInPlaylist(plId: string, trackId: string) {
@@ -623,6 +667,13 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
         const deck = side === "A" ? engine.deckA : engine.deckB;
         if (deck.playing) {
           wasPlaying.current[side] = true;
+          // pre-load the upcoming track a few seconds before this one ends —
+          // no gap when liveAdvance() swaps in the freshly-warmed track below.
+          const remain = deck.duration - deck.position();
+          if (deck.duration > 0 && remain > 0 && remain <= livePreloadSec(side)) {
+            const q = liveQueue(side);
+            if (q.length) prefetchTrack(q[(liveIdx.current[side] + 1) % q.length]);
+          }
           return;
         }
         // bufferLoading = streaming phase 1 (full decode still in progress).
@@ -652,21 +703,42 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
     setRelayCur({ A: relayIdx.current.A, B: relayIdx.current.B }); // refresh list markers
     return true;
   }
-  // equal-time crossfade animation toward deck A (0) or B (1)
-  function relayFade(to: "A" | "B", secs: number) {
+  // crossfade animation toward deck A (0) or B (1) — the curve/style depends on
+  // `type`, inspired by the transition modes found on real DJ mixers/controllers:
+  //  - fade   : classic linear crossfade (constant-rate blend)
+  //  - cut    : instant hard cut, like a scratch-DJ punch-in (no blend at all)
+  //  - smooth : ease-in/out S-curve — gentle at both ends, like a mixer's
+  //             "slow" crossfader curve, less perceptible than a linear ramp
+  //  - filter : fades AND rolls the outgoing deck off through its low-pass
+  //             filter (like closing the filter knob before pulling out a
+  //             track) — the classic "filter transition" DJs use to tuck a
+  //             song away instead of just fading its volume
+  function relayFade(to: "A" | "B", secs: number, type: TransitionType = "fade") {
     relayFading.current = true;
     const from = engine.getCrossfade();
     const target = to === "B" ? 1 : 0;
+    const outDeck = to === "B" ? engine.deckA : engine.deckB;
+    if (type === "cut") {
+      engine.setCrossfade(target);
+      relayFading.current = false;
+      return;
+    }
     const t0 = performance.now();
     const step = () => {
       if (!relayRef.current) {
         relayFading.current = false;
+        if (type === "filter") outDeck.setFilter(0);
         return;
       }
       const k = Math.min(1, (performance.now() - t0) / (secs * 1000));
-      engine.setCrossfade(from + (target - from) * k);
+      const eased = type === "smooth" ? (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2) : k;
+      engine.setCrossfade(from + (target - from) * eased);
+      if (type === "filter") outDeck.setFilter(-eased); // sweep toward closed low-pass as it fades out
       if (k < 1) requestAnimationFrame(step);
-      else relayFading.current = false;
+      else {
+        relayFading.current = false;
+        if (type === "filter") outDeck.setFilter(0); // reset — this deck gets reused for the next song
+      }
     };
     requestAnimationFrame(step);
   }
@@ -710,12 +782,28 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
     const pl = plId ? dataRef.current.playlists.find((p) => p.id === plId) : null;
     return pl?.transitionSec ?? 12;
   }
+  function relayTransitionType(): TransitionType {
+    const plId = queueSrcRef.current.A;
+    const pl = plId ? dataRef.current.playlists.find((p) => p.id === plId) : null;
+    return pl?.transitionType ?? "fade";
+  }
+  // preload lead-time for a given deck's LIVE loop, from whichever set drives it
+  function livePreloadSec(side: "A" | "B"): number {
+    const plId = queueSrcRef.current[side];
+    const pl = plId ? dataRef.current.playlists.find((p) => p.id === plId) : null;
+    return pl?.preloadSec ?? 5;
+  }
 
   // Watch the foreground deck; when a song is ~ending, start the other deck and
   // autofade across to it, then cue the next single on the deck that just freed up.
   useEffect(() => {
     if (!relay) return;
     const FADE = relayTransitionSec(); // seconds — smooth blend between decks
+    const TYPE = relayTransitionType();
+    // "cut" ignores the transition-length slider — it's an instant swap; still
+    // wait a couple seconds before the actual cut so the incoming deck is
+    // audibly ready (buffer warmed) rather than jumping in mid-decode.
+    const preload = livePreloadSec(relaySide.current === "A" ? "B" : "A");
     const id = window.setInterval(() => {
       if (relayFading.current || !relayArmed.current) return;
       const side = relaySide.current;
@@ -724,17 +812,19 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
       const otherDeck = other === "A" ? engine.deckA : engine.deckB;
       if (!deck.playing || deck.duration <= 0) return;
       const remain = deck.duration - deck.position();
-      if (remain > FADE + 0.3) return;
+      const preFadeWindow = TYPE === "cut" ? Math.max(2, preload) : FADE;
+      if (remain > preFadeWindow + 0.3) return;
       relayArmed.current = false;
-      const secs = Math.min(FADE, Math.max(2, remain));
+      const secs = TYPE === "cut" ? 0 : Math.min(FADE, Math.max(2, remain));
       otherDeck.play(); // bring in the cued deck
-      relayFade(other, secs);
+      relayFade(other, Math.max(secs, 0.05), TYPE);
       relaySide.current = other;
       setRelayFg(other); // the incoming deck is now "en cours" in the list
       // once the fade is done, stop the old deck and cue its next single
       window.setTimeout(() => {
         if (!relayRef.current) return;
         deck.pause();
+        deck.setFilter(0); // reset — this deck gets reused for the next song
         relayLoadNext(side, false).then(() => {
           relayArmed.current = true;
         });
@@ -856,12 +946,12 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
         )}
 
         {/* cover thumbnail */}
-        <div className="h-8 w-8 shrink-0 overflow-hidden rounded bg-neutral-900">
+        <div className="h-14 w-14 shrink-0 overflow-hidden rounded bg-neutral-900">
           {t.art ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={t.art} alt="" className="h-full w-full object-cover" />
           ) : (
-            <div className="flex h-full w-full items-center justify-center text-sm text-neutral-600">
+            <div className="flex h-full w-full items-center justify-center text-xl text-neutral-600">
               ♫
             </div>
           )}
@@ -1080,6 +1170,50 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
             />
             <span className="w-10 shrink-0 text-right font-mono text-[11px] text-violet-300">
               {activePlaylist.transitionSec ?? 12}s
+            </span>
+          </div>
+
+          {/* transition style — how the outgoing track hands off to the next one */}
+          <div className="flex flex-wrap items-center gap-1.5 rounded bg-neutral-800/40 px-2 py-1.5">
+            <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-neutral-500">
+              Style
+            </span>
+            {TRANSITION_TYPES.map((tt) => (
+              <button
+                key={tt.key}
+                onClick={() => setTransitionType(activePlaylist.id, tt.key)}
+                title={tt.hint}
+                className={`rounded px-2 py-1 text-[11px] font-bold transition-colors ${
+                  (activePlaylist.transitionType ?? "fade") === tt.key
+                    ? "bg-violet-500 text-white"
+                    : "bg-neutral-900/60 text-neutral-400 hover:text-violet-300"
+                }`}
+              >
+                {tt.label}
+              </button>
+            ))}
+          </div>
+
+          {/* preload lead-time — how many seconds before a track ends the app
+              starts warming the next one, so the hand-off has no loading gap */}
+          <div
+            className="flex items-center gap-2 rounded bg-neutral-800/40 px-2 py-1.5"
+            title="Précharge le morceau suivant N secondes avant la fin du morceau en cours — évite tout blanc au changement (essentiel en LIVE mono-deck ; le relais A→B→A précharge déjà en avance)"
+          >
+            <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-neutral-500">
+              ⏱ Préchargement
+            </span>
+            <input
+              type="range"
+              min={2}
+              max={10}
+              step={1}
+              value={activePlaylist.preloadSec ?? 5}
+              onChange={(e) => setPreloadSec(activePlaylist.id, parseInt(e.target.value, 10))}
+              className="flex-1 accent-violet-400"
+            />
+            <span className="w-10 shrink-0 text-right font-mono text-[11px] text-violet-300">
+              {activePlaylist.preloadSec ?? 5}s
             </span>
           </div>
 
@@ -1523,7 +1657,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
                     <img
                       src={t.artwork ?? ""}
                       alt=""
-                      className="h-10 w-10 shrink-0 rounded bg-neutral-700 object-cover"
+                      className="h-14 w-14 shrink-0 rounded bg-neutral-700 object-cover"
                     />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm text-neutral-100">{t.title}</div>
