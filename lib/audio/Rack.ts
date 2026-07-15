@@ -356,7 +356,11 @@ class RackSlot {
   private wet: GainNode;
   private built: BuiltModule;
   on = false;
-  mix = 1;
+  // every module starts at 0% intensity — the "INT" fader must be raised by
+  // hand before an enabled effect is audible, no exceptions. (EQ is the one
+  // module that overrides this to 1 in the constructor below: its bands
+  // default to flat/0dB, so 0% mix would make raising a band do nothing.)
+  mix = 0;
   params: Record<string, number> = {};
   flags: Record<string, boolean> = {};
   // Web Audio is a *pull* graph: while the wet branch reaches the output, the
@@ -384,10 +388,14 @@ class RackSlot {
     // the effect stays idle and unpulled until it is first enabled.
 
     // the graphic EQ behaves like real hardware — always inline in the signal
-    // path, not an optional bypassable FX pedal — so it starts active. Flat
-    // (all bands at 0 dB) is already transparent, matching the "start silent"
-    // rule for every other module.
-    if (id === "eq") this.on = true;
+    // path at full intensity, not an optional bypassable FX pedal. Flat bands
+    // (0 dB, the default) are already transparent, so this doesn't add any
+    // sound — it just means moving a band fader is audible immediately,
+    // instead of being silently masked by a 0% INT mix.
+    if (id === "eq") {
+      this.on = true;
+      this.mix = 1;
+    }
 
     const def = RACK_DEF.get(id)!;
     for (const p of def.params) this.params[p.key] = p.def;
