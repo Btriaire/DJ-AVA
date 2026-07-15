@@ -310,6 +310,24 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
           }));
         }
       });
+      // BPM decodes in the background after load — poll briefly and write it
+      // back to the library entry once known, so local uploads get a BPM
+      // column too (search results already carry one from their source).
+      if (t.bpm == null) {
+        let tries = 0;
+        const pollBpm = () => {
+          tries++;
+          if (deck.bpm > 0) {
+            persist((d) => ({
+              ...d,
+              tracks: d.tracks.map((x) => (x.id === t.id && x.bpm == null ? { ...x, bpm: deck.bpm } : x)),
+            }));
+          } else if (tries < 12) {
+            window.setTimeout(pollBpm, 500);
+          }
+        };
+        window.setTimeout(pollBpm, 500);
+      }
     } catch (e) {
       flash(`Deck ${side} : ${(e as Error).message}`);
     } finally {
@@ -816,16 +834,16 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   // autofade across to it, then cue the next single on the deck that just freed up.
   useEffect(() => {
     if (!relay) return;
-    const FADE = relayTransitionSec(); // seconds — smooth blend between decks
-    const TYPE = relayTransitionType();
-    // "cut" ignores the transition-length slider — it's an instant swap; still
-    // wait a couple seconds before the actual cut so the incoming deck is
-    // audibly ready (buffer warmed) rather than jumping in mid-decode.
-    const preload = livePreloadSec(relaySide.current === "A" ? "B" : "A");
     const id = window.setInterval(() => {
       if (relayFading.current || !relayArmed.current) return;
+      // re-read the transition length/type/preload EVERY tick, not once when
+      // the relay started — otherwise changing the style/duration mid-set
+      // (a very normal thing to do) was silently ignored until stop+restart.
+      const FADE = relayTransitionSec();
+      const TYPE = relayTransitionType();
       const side = relaySide.current;
       const other = side === "A" ? "B" : "A";
+      const preload = livePreloadSec(other);
       const deck = side === "A" ? engine.deckA : engine.deckB;
       const otherDeck = other === "A" ? engine.deckA : engine.deckB;
       if (!deck.playing || deck.duration <= 0) return;
@@ -1112,15 +1130,29 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
             −
           </button>
         ) : (
-          <button
-            type="button"
-            onClick={() => del(t)}
-            className="hw-btn shrink-0 px-2 py-1 text-sm font-bold text-red-400 hover:bg-red-500/20"
-            style={{ ["--led" as string]: "#ef4444" }}
-            title="Supprimer définitivement de la bibliothèque"
-          >
-            🗑 Effacer
-          </button>
+          <>
+            {/* one click adds this track to whichever set is currently open —
+                no more hunting for a separate "add from library" list */}
+            {activePl && !activePlaylist?.trackIds.includes(t.id) && (
+              <button
+                onClick={() => toggleInPlaylist(activePl, t.id)}
+                className="hw-btn px-2 py-1 text-xs font-bold text-amber-300"
+                style={{ ["--led" as string]: "#ffcc00" }}
+                title={`Ajouter à « ${activePlaylist?.name ?? "…"} »`}
+              >
+                + Set
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => del(t)}
+              className="hw-btn shrink-0 px-2 py-1 text-sm font-bold text-red-400 hover:bg-red-500/20"
+              style={{ ["--led" as string]: "#ef4444" }}
+              title="Supprimer définitivement de la bibliothèque"
+            >
+              🗑 Effacer
+            </button>
+          </>
         )}
       </li>
     );
@@ -1325,41 +1357,21 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
               ) : null;
             })}
           </ul>
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wide text-neutral-600">
-              Ajouter depuis la bibliothèque
-            </span>
-            {data.tracks.some((t) => !activePlaylist.trackIds.includes(t.id)) && (
+          {data.tracks.some((t) => !activePlaylist.trackIds.includes(t.id)) && (
+            <div className="flex items-center justify-between rounded bg-neutral-800/30 px-2 py-1.5">
+              <span className="text-[10px] text-neutral-500">
+                Clique <span className="rounded bg-neutral-900/60 px-1 font-bold text-amber-300">+ Set</span> sur
+                n&apos;importe quel morceau (à gauche) pour l&apos;ajouter ici.
+              </span>
               <button
                 onClick={() => addAllToPlaylist(activePlaylist.id)}
-                className="hw-btn px-2 py-0.5 text-[11px] text-violet-300"
+                className="hw-btn shrink-0 px-2 py-0.5 text-[11px] text-violet-300"
                 title="Ajouter tous les morceaux de la bibliothèque à ce set"
               >
                 + Tout ajouter
               </button>
-            )}
-          </div>
-          <ul className={`flex flex-col gap-1 overflow-y-auto ${splitLayout ? "max-h-[20rem]" : "max-h-40"}`}>
-            {data.tracks
-              .filter((t) => !activePlaylist.trackIds.includes(t.id))
-              .map((t) => (
-                <li key={t.id} className="flex items-center gap-2 rounded bg-neutral-800/30 px-2 py-1">
-                  <span className="min-w-0 flex-1 truncate text-xs text-neutral-300">{t.name}</span>
-                  {typeof t.durationSec === "number" && (
-                    <span className="shrink-0 font-mono text-[10px] text-neutral-500">{fmt(t.durationSec)}</span>
-                  )}
-                  {typeof t.bpm === "number" && (
-                    <span className="shrink-0 font-mono text-[10px] text-amber-400">{Math.round(t.bpm)} BPM</span>
-                  )}
-                  <button
-                    onClick={() => toggleInPlaylist(activePlaylist.id, t.id)}
-                    className="hw-btn px-2 py-0.5 text-xs text-violet-300"
-                  >
-                    +
-                  </button>
-                </li>
-              ))}
-          </ul>
+            </div>
+          )}
         </div>
       ) : (
         <p className="py-4 text-center text-sm text-neutral-600">Choisis un set ou crée-en un nouveau.</p>
@@ -1586,7 +1598,9 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
             {(
               [
                 ["files", "⤓ Mes fichiers", "#9ca3af"],
-                ["playlists", "🎚 Sets", "#a78bfa"],
+                // "Sets" is redundant in splitLayout — the right column already
+                // always shows the current set, so hide the duplicate entry point.
+                ...(splitLayout ? [] : [["playlists", "🎚 Sets", "#a78bfa"] as const]),
                 ["audius", "♫ Audius", COLOR_B],
                 ["youtube", "▶ YouTube", "#ef4444"],
                 ["soundcloud", "☁ SoundCloud", "#ff7700"],

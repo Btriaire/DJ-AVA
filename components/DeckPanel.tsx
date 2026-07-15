@@ -149,6 +149,97 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
     rerender();
   }
 
+  // ---- pro performance FX: BRAKE (turntable stop), ECHO OUT, CENSOR (gate) ----
+  const brakeRaf = useRef<number | null>(null);
+  const [braking, setBraking] = useState(false);
+  function brake() {
+    if (brakeRaf.current !== null || !deck.playing) return;
+    const startPct = pitch;
+    const t0 = performance.now();
+    const DUR = 900;
+    setBraking(true);
+    const step = (now: number) => {
+      const p = Math.min(1, (now - t0) / DUR);
+      const pct = startPct + (-100 - startPct) * p; // ramp toward rate≈0, like a platter losing power
+      deck.setPitch(pct);
+      if (p < 1) {
+        brakeRaf.current = requestAnimationFrame(step);
+      } else {
+        brakeRaf.current = null;
+        deck.pause();
+        deck.setPitch(startPct); // restore normal pitch so the next PLAY isn't stuck slow
+        setBraking(false);
+      }
+    };
+    brakeRaf.current = requestAnimationFrame(step);
+  }
+
+  const [echoing, setEchoing] = useState(false);
+  function echoOut() {
+    if (echoing) return;
+    setEchoing(true);
+    const r = deck.rack;
+    r.setEnabled("delay", true);
+    const beatSec = deck.bpm > 0 ? 60 / deck.bpm : 0.375;
+    r.setParam("delay", "time", Math.min(1.2, beatSec));
+    r.setParam("delay", "fb", 0.55);
+    const t0 = performance.now();
+    const RISE = 250;
+    const step = (now: number) => {
+      const p = Math.min(1, (now - t0) / RISE);
+      r.setMix("delay", p);
+      if (p < 1) {
+        requestAnimationFrame(step);
+      } else {
+        // let the repeats ring out, then fade the send back to nothing
+        const t1 = performance.now();
+        const TAIL = 1700;
+        const fadeOut = (now2: number) => {
+          const p2 = Math.min(1, (now2 - t1) / TAIL);
+          r.setMix("delay", 1 - p2);
+          if (p2 < 1) {
+            requestAnimationFrame(fadeOut);
+          } else {
+            r.setEnabled("delay", false);
+            setEchoing(false);
+          }
+        };
+        requestAnimationFrame(fadeOut);
+      }
+    };
+    requestAnimationFrame(step);
+  }
+
+  const censorTimer = useRef<number | null>(null);
+  const [censoring, setCensoring] = useState(false);
+  function censorStart() {
+    if (censorTimer.current !== null) return;
+    setCensoring(true);
+    const beatSec = deck.bpm > 0 ? 60 / deck.bpm : 0.5;
+    const gateMs = Math.max(50, (beatSec * 1000) / 4); // 1/16-note stutter gate
+    let on = true;
+    deck.setVolume(0);
+    censorTimer.current = window.setInterval(() => {
+      on = !on;
+      deck.setVolume(on ? (deckOn ? 1 : 0) : 0);
+    }, gateMs);
+  }
+  function censorStop() {
+    if (censorTimer.current !== null) {
+      window.clearInterval(censorTimer.current);
+      censorTimer.current = null;
+    }
+    setCensoring(false);
+    deck.setVolume(deckOn ? 1 : 0); // release — back to whatever the power switch says
+  }
+  useEffect(
+    () => () => {
+      if (brakeRaf.current !== null) cancelAnimationFrame(brakeRaf.current);
+      if (censorTimer.current !== null) window.clearInterval(censorTimer.current);
+    },
+    []
+  );
+
   // progressive auto-sync: ramp this deck's tempo toward the other deck's BPM
   const [autoSync, setAutoSync] = useState(false);
   const syncRaf = useRef<number | null>(null);
@@ -1024,6 +1115,41 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
 
       {/* full serial DSP rack — modules now individually selectable */}
       <RackPanel deck={deck} color={color} activeModules={activeModules} />
+
+      {/* pro performance FX — the moves real DJs reach for between tracks */}
+      <div className="hw-recess flex items-center gap-3 rounded px-3 py-2">
+        <span className="text-[9px] font-bold uppercase tracking-wide text-neutral-500">FX Perfo</span>
+        <button
+          onClick={brake}
+          disabled={!deck.playing || braking}
+          className={`hw-transport h-10 w-10 text-[9px] font-black ${braking ? "hw-transport-play" : ""}`}
+          style={{ ["--led" as string]: color }}
+          title="BRAKE — arrêt platine progressif (spinback), comme couper le moteur"
+        >
+          BRK
+        </button>
+        <button
+          onClick={echoOut}
+          disabled={echoing}
+          className={`hw-transport h-10 w-10 text-[9px] font-black ${echoing ? "hw-transport-play" : ""}`}
+          style={{ ["--led" as string]: color }}
+          title="ECHO OUT — lâche un écho synchronisé au tempo qui s'éteint tout seul, classique pour sortir d'un mix"
+        >
+          ECHO
+        </button>
+        <button
+          onMouseDown={censorStart}
+          onMouseUp={censorStop}
+          onMouseLeave={censorStop}
+          onTouchStart={censorStart}
+          onTouchEnd={censorStop}
+          className={`hw-transport h-10 w-10 text-base ${censoring ? "hw-transport-play" : ""}`}
+          style={{ ["--led" as string]: color }}
+          title="CENSOR — maintiens pour hacher le son en rythme (1/16), relâche pour le révéler d'un coup"
+        >
+          ✂
+        </button>
+      </div>
 
       {/* beat loop + actions */}
       <div className="flex items-end justify-between gap-4">
