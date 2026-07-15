@@ -153,6 +153,12 @@ export class Deck {
   private loopActive = false;
   private loopStart = 0;
   private loopEnd = 0;
+  // per-stem beat loop — independent of the whole-deck loop above. Each stem
+  // plays on its own AudioBufferSourceNode (see activeSources), so its loop
+  // points can be set live without touching the other stems at all.
+  private stemLoopActive: boolean[] = [];
+  private stemLoopStart: number[] = [];
+  private stemLoopEnd: number[] = [];
   // whole-track repeat: restart the song automatically when it reaches the end
   repeat = false;
 
@@ -508,12 +514,18 @@ export class Deck {
   }
 
   // build one source feeding `dest`. The `primary` source carries the onended
-  // handler that drives end-of-track / repeat (only one is needed).
-  private buildSource(buf: AudioBuffer, dest: AudioNode, primary: boolean): AudioBufferSourceNode {
+  // handler that drives end-of-track / repeat (only one is needed). `stemIdx`
+  // (stem mode only) lets this source use ITS OWN loop points instead of the
+  // whole-deck loop, so one stem can loop while the others play straight through.
+  private buildSource(buf: AudioBuffer, dest: AudioNode, primary: boolean, stemIdx?: number): AudioBufferSourceNode {
     const src = this.ctx.createBufferSource();
     src.buffer = buf;
     src.playbackRate.value = this.effRate;
-    if (this.loopActive) {
+    if (stemIdx != null && this.stemLoopActive[stemIdx]) {
+      src.loop = true;
+      src.loopStart = this.stemLoopStart[stemIdx];
+      src.loopEnd = this.stemLoopEnd[stemIdx];
+    } else if (this.loopActive) {
       src.loop = true;
       src.loopStart = this.loopStart;
       src.loopEnd = this.loopEnd;
@@ -539,7 +551,7 @@ export class Deck {
   // one source in normal mode, N (per stem) when stems are active
   private makeSources(): AudioBufferSourceNode[] {
     if (this.stemsActive && this.stemReady) {
-      return this.stemBuffers.map((b, i) => this.buildSource(b!, this.stemGains[i], i === 0));
+      return this.stemBuffers.map((b, i) => this.buildSource(b!, this.stemGains[i], i === 0, i));
     }
     if (!this.buffer) return [];
     return [this.buildSource(this.buffer, this.trim, true)];
@@ -725,6 +737,9 @@ export class Deck {
     this.stemBuffers = [];
     this.stemNames = [];
     this.stemVol = [];
+    this.stemLoopActive = [];
+    this.stemLoopStart = [];
+    this.stemLoopEnd = [];
     this.stemStatus = "none";
     this.stemCached = false;
     this.stemHash = "";
@@ -960,6 +975,35 @@ export class Deck {
       this._playing = false;
       this.play();
     }
+  }
+
+  // beat loop of n beats on ONE stem, from its current position — the other
+  // stems keep playing untouched. Mutates the live AudioBufferSourceNode
+  // directly (Web Audio allows changing loop/loopStart/loopEnd mid-playback),
+  // so there's no stop/restart click and no risk of desyncing the other stems.
+  setStemBeatLoop(i: number, beats: number) {
+    if (!this.stemsActive || !this.stemReady || !this.bpm) return;
+    if (i < 0 || i >= this.stemGains.length) return;
+    const secPerBeat = 60 / this.bpm;
+    const start = this.position();
+    const end = Math.min(start + secPerBeat * beats, this.duration);
+    this.stemLoopActive[i] = true;
+    this.stemLoopStart[i] = start;
+    this.stemLoopEnd[i] = end;
+    const src = this.activeSources[i];
+    if (src) {
+      src.loopStart = start;
+      src.loopEnd = end;
+      src.loop = true;
+    }
+  }
+
+  clearStemLoop(i: number) {
+    if (i < 0 || i >= this.stemGains.length) return;
+    if (!this.stemLoopActive[i]) return;
+    this.stemLoopActive[i] = false;
+    const src = this.activeSources[i];
+    if (src) src.loop = false;
   }
 
   get hasLoop() {

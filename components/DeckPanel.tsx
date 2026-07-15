@@ -275,6 +275,9 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
   useEffect(() => stopAutoSync, []);
 
   const [eq, setEq] = useState({ low: 0, mid: 0, high: 0 });
+  // a new track resets the deck's own per-stem loop state — keep the button
+  // indicators (1/2/4) in sync instead of showing a stale "active" loop
+  useEffect(() => setStemLoopIdx([-1, -1, -1, -1, -1, -1]), [deck.name]);
   const [trim, setTrim] = useState(1);
   const prevForceTrimRef = useRef<number | undefined>(undefined);
   useEffect(() => {
@@ -438,6 +441,22 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
       for (let j = 0; j < deck.stemVol.length; j++) deck.setStemVol(j, stemPrev.current[j] || 1);
     } else {
       for (let j = 0; j < deck.stemVol.length; j++) deck.setStemVol(j, j === i ? stemPrev.current[i] || 1 : 0);
+    }
+    rerender();
+  }
+  // per-stem beat loop — cycles OFF → 1 → 2 → 4 beats → OFF on repeated
+  // clicks. Only this one stem loops; the others keep playing normally.
+  const STEM_LOOP_BEATS = [1, 2, 4];
+  const [stemLoopIdx, setStemLoopIdx] = useState<number[]>([-1, -1, -1, -1, -1, -1]);
+  function cycleStemLoop(i: number) {
+    const cur = stemLoopIdx[i] ?? -1;
+    const next = cur + 1;
+    if (next >= STEM_LOOP_BEATS.length) {
+      deck.clearStemLoop(i);
+      setStemLoopIdx((arr) => arr.map((v, j) => (j === i ? -1 : v)));
+    } else {
+      deck.setStemBeatLoop(i, STEM_LOOP_BEATS[next]);
+      setStemLoopIdx((arr) => arr.map((v, j) => (j === i ? next : v)));
     }
     rerender();
   }
@@ -1080,6 +1099,19 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                       }}
                     >
                       FX
+                    </button>
+                    <button
+                      className="rounded px-1 text-[8px] font-black leading-none"
+                      disabled={!deck.stemsActive || !deck.playing}
+                      style={
+                        (stemLoopIdx[i] ?? -1) >= 0
+                          ? { background: color, color: "#0a0a0a" }
+                          : { background: "rgba(255,255,255,0.08)", color: "#8a8a8a" }
+                      }
+                      title="Boucle ce stem seul (1 → 2 → 4 temps → off), les autres continuent normalement"
+                      onClick={() => cycleStemLoop(i)}
+                    >
+                      {(stemLoopIdx[i] ?? -1) >= 0 ? `${STEM_LOOP_BEATS[stemLoopIdx[i]]}` : "LOOP"}
                     </button>
                   </div>
                 </div>
