@@ -24,6 +24,9 @@ interface Props {
   // bumped when a deck writes to the library (e.g. "save to playlist"), so this
   // panel reloads its in-memory copy from localStorage and shows the change.
   libRefresh?: number;
+  // renders search (left) and the playlist workspace (right) as two permanent
+  // columns instead of one tab-switched list — used by the dedicated Playlist view.
+  splitLayout?: boolean;
 }
 
 // a "seed" single the AI auto-playlist builds a similar set around
@@ -84,7 +87,7 @@ const SRC_BADGE: Record<TrackSource, { label: string; color: string }> = {
 // stable useCallback. Without this, every frame gave the inner TrackRow a new
 // identity, remounting each row's DOM and cancelling in-flight real mouse clicks
 // on the delete / send-to-deck buttons.
-function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) {
+function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayout }: Props) {
   const [data, setData] = useState<LibraryData>({ tracks: [], playlists: [] });
   const [tab, setTab] = useState<
     "files" | "playlists" | "audius" | "youtube" | "soundcloud" | "deezer" | "auto"
@@ -434,6 +437,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
       deck: null,
       art: t.artwork ?? undefined,
       durationSec: t.duration || undefined,
+      bpm: t.bpm ?? undefined,
       addedAt: Date.now(),
     };
     persist((d) => ({ ...d, tracks: [lt, ...d.tracks] }));
@@ -502,7 +506,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
   function saveAutoTrack(t: AudiusTrack) {
     const lt: LibTrack = {
       id: uid(), name: `${t.title} — ${t.artist}`, source: (t.source ?? "audius") as TrackSource, url: t.id,
-      deck: null, art: t.artwork ?? undefined, durationSec: t.duration || undefined, addedAt: Date.now(),
+      deck: null, art: t.artwork ?? undefined, durationSec: t.duration || undefined, bpm: t.bpm ?? undefined, addedAt: Date.now(),
     };
     persist((d) => ({ ...d, tracks: [lt, ...d.tracks] }));
     flash("Ajouté à la bibliothèque");
@@ -515,7 +519,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
     if (!name) return;
     const newTracks: LibTrack[] = autoTracks.map((t) => ({
       id: uid(), name: `${t.title} — ${t.artist}`, source: (t.source ?? "audius") as TrackSource, url: t.id,
-      deck: null, art: t.artwork ?? undefined, durationSec: t.duration || undefined, addedAt: Date.now(),
+      deck: null, art: t.artwork ?? undefined, durationSec: t.duration || undefined, bpm: t.bpm ?? undefined, addedAt: Date.now(),
     }));
     const pl = { id: uid(), name, trackIds: newTracks.map((t) => t.id), transitionSec: 12 };
     persist((d) => ({ tracks: [...newTracks, ...d.tracks], playlists: [...d.playlists, pl] }));
@@ -895,6 +899,9 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
             {typeof t.durationSec === "number" && (
               <span className="font-mono text-neutral-400">{fmt(t.durationSec)}</span>
             )}
+            {typeof t.bpm === "number" && (
+              <span className="font-mono text-amber-400">{Math.round(t.bpm)} BPM</span>
+            )}
             {curSide && (
               <span className="font-black" style={{ color: cueColor(curSide) }}>
                 ▶ EN COURS {curSide}
@@ -1013,6 +1020,156 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
 
   const activePlaylist = data.playlists.find((p) => p.id === activePl) ?? null;
   const trackById = (id: string) => data.tracks.find((t) => t.id === id);
+
+  // ===== PLAYLIST WORKSPACE — extracted so it can render in a right-hand
+  // column (splitLayout) instead of only inline under the "Sets" tab =====
+  const playlistsPanel = (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        {data.playlists.map((p) => (
+          <button
+            key={p.id}
+            onClick={() => setActivePl(p.id)}
+            className={`hw-btn px-3 py-1 text-sm ${activePl === p.id ? "hw-btn-on" : "text-neutral-300"}`}
+            style={{ ["--led" as string]: "#a78bfa" }}
+          >
+            {p.name} ({p.trackIds.length})
+          </button>
+        ))}
+        <button onClick={newPlaylist} className="hw-btn px-3 py-1 text-sm text-violet-300">
+          + Nouveau set
+        </button>
+      </div>
+
+      {activePlaylist ? (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-baseline gap-2">
+              <span className="text-xs font-bold text-violet-300">{activePlaylist.name}</span>
+              <span className="text-[10px] text-neutral-500">
+                {activePlaylist.trackIds.length} titre{activePlaylist.trackIds.length > 1 ? "s" : ""}
+                {" · "}
+                {fmt(
+                  activePlaylist.trackIds.reduce((sum, id) => sum + (trackById(id)?.durationSec ?? 0), 0)
+                )}{" "}
+                au total
+              </span>
+            </div>
+            <button
+              onClick={() => delPlaylist(activePlaylist.id)}
+              className="hw-btn px-2 py-0.5 text-[11px] text-neutral-500"
+            >
+              Supprimer le set
+            </button>
+          </div>
+
+          {/* transition duration — the crossfade length used between every
+              track when this set plays as A→B→A automix */}
+          <div className="flex items-center gap-2 rounded bg-neutral-800/40 px-2 py-1.5">
+            <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-neutral-500">
+              Transition
+            </span>
+            <input
+              type="range"
+              min={2}
+              max={20}
+              step={1}
+              value={activePlaylist.transitionSec ?? 12}
+              onChange={(e) => setTransition(activePlaylist.id, parseInt(e.target.value, 10))}
+              className="flex-1 accent-violet-400"
+            />
+            <span className="w-10 shrink-0 text-right font-mono text-[11px] text-violet-300">
+              {activePlaylist.transitionSec ?? 12}s
+            </span>
+          </div>
+
+          {/* play this whole playlist consecutively — right now, on a deck, or as A→B→A automix */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-neutral-600">
+              Jouer maintenant :
+            </span>
+            <button
+              onClick={() => playPlaylistLive("A", activePlaylist.id)}
+              disabled={activePlaylist.trackIds.length === 0}
+              className={`hw-btn px-2 py-1 text-[11px] font-bold disabled:opacity-40 ${queueSrc.A === activePlaylist.id && liveA ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: COLOR_A, color: queueSrc.A === activePlaylist.id && liveA ? undefined : COLOR_A }}
+              title="Enchaîne tous les titres du set sur le Deck A, en boucle"
+            >
+              ▶ Deck A
+            </button>
+            <button
+              onClick={() => playPlaylistLive("B", activePlaylist.id)}
+              disabled={activePlaylist.trackIds.length === 0}
+              className={`hw-btn px-2 py-1 text-[11px] font-bold disabled:opacity-40 ${queueSrc.B === activePlaylist.id && liveB ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: COLOR_B, color: queueSrc.B === activePlaylist.id && liveB ? undefined : COLOR_B }}
+              title="Enchaîne tous les titres du set sur le Deck B, en boucle"
+            >
+              ▶ Deck B
+            </button>
+            <button
+              onClick={() => playPlaylistRelay(activePlaylist.id)}
+              disabled={activePlaylist.trackIds.length === 0}
+              className={`hw-btn px-2 py-1 text-[11px] font-bold disabled:opacity-40 ${relay && queueSrc.A === activePlaylist.id ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: "#a78bfa", color: relay && queueSrc.A === activePlaylist.id ? undefined : "#a78bfa" }}
+              title="Automix A→B→A : enchaîne le set en fondu entre les deux decks, avec la durée de transition réglée ci-dessus"
+            >
+              ⇄ Relais A→B→A
+            </button>
+          </div>
+          <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto">
+            {activePlaylist.trackIds.length === 0 && (
+              <p className="py-3 text-center text-xs text-neutral-600">
+                Set vide — ajoute des morceaux ci-dessous, dans l&apos;ordre où ils doivent s&apos;enchaîner.
+              </p>
+            )}
+            {activePlaylist.trackIds.map((id, i) => {
+              const t = trackById(id);
+              return t ? (
+                <TrackRow key={id} t={t} plId={activePlaylist.id} idx={i} count={activePlaylist.trackIds.length} />
+              ) : null;
+            })}
+          </ul>
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-neutral-600">
+              Ajouter depuis la bibliothèque
+            </span>
+            {data.tracks.some((t) => !activePlaylist.trackIds.includes(t.id)) && (
+              <button
+                onClick={() => addAllToPlaylist(activePlaylist.id)}
+                className="hw-btn px-2 py-0.5 text-[11px] text-violet-300"
+                title="Ajouter tous les morceaux de la bibliothèque à ce set"
+              >
+                + Tout ajouter
+              </button>
+            )}
+          </div>
+          <ul className="flex max-h-40 flex-col gap-1 overflow-y-auto">
+            {data.tracks
+              .filter((t) => !activePlaylist.trackIds.includes(t.id))
+              .map((t) => (
+                <li key={t.id} className="flex items-center gap-2 rounded bg-neutral-800/30 px-2 py-1">
+                  <span className="min-w-0 flex-1 truncate text-xs text-neutral-300">{t.name}</span>
+                  {typeof t.durationSec === "number" && (
+                    <span className="shrink-0 font-mono text-[10px] text-neutral-500">{fmt(t.durationSec)}</span>
+                  )}
+                  {typeof t.bpm === "number" && (
+                    <span className="shrink-0 font-mono text-[10px] text-amber-400">{Math.round(t.bpm)} BPM</span>
+                  )}
+                  <button
+                    onClick={() => toggleInPlaylist(activePlaylist.id, t.id)}
+                    className="hw-btn px-2 py-0.5 text-xs text-violet-300"
+                  >
+                    +
+                  </button>
+                </li>
+              ))}
+          </ul>
+        </div>
+      ) : (
+        <p className="py-4 text-center text-sm text-neutral-600">Choisis un set ou crée-en un nouveau.</p>
+      )}
+    </div>
+  );
 
   return (
     <div className="zoom-zone hw-screwed hw-panel flex flex-1 flex-col gap-3 p-4">
@@ -1177,6 +1334,9 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
             })}
           </div>
 
+          <div className={splitLayout ? "grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start" : "contents"}>
+          <div className="flex flex-col gap-3">
+
           {/* tabs */}
           <div className="flex flex-wrap items-center gap-2">
             {(
@@ -1242,174 +1402,9 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
             </ul>
           )}
 
-          {/* ===== PLAYLISTS ===== */}
-          {tab === "playlists" && (
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-wrap items-center gap-2">
-                {data.playlists.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => setActivePl(p.id)}
-                    className={`hw-btn px-3 py-1 text-sm ${activePl === p.id ? "hw-btn-on" : "text-neutral-300"}`}
-                    style={{ ["--led" as string]: "#a78bfa" }}
-                  >
-                    {p.name} ({p.trackIds.length})
-                  </button>
-                ))}
-                <button
-                  onClick={newPlaylist}
-                  className="hw-btn px-3 py-1 text-sm text-violet-300"
-                >
-                  + Nouveau set
-                </button>
-              </div>
-
-              {activePlaylist ? (
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-xs font-bold text-violet-300">
-                        {activePlaylist.name}
-                      </span>
-                      <span className="text-[10px] text-neutral-500">
-                        {activePlaylist.trackIds.length} titre{activePlaylist.trackIds.length > 1 ? "s" : ""}
-                        {" · "}
-                        {fmt(
-                          activePlaylist.trackIds.reduce(
-                            (sum, id) => sum + (trackById(id)?.durationSec ?? 0),
-                            0
-                          )
-                        )}{" "}
-                        au total
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => delPlaylist(activePlaylist.id)}
-                      className="hw-btn px-2 py-0.5 text-[11px] text-neutral-500"
-                    >
-                      Supprimer le set
-                    </button>
-                  </div>
-
-                  {/* transition duration — the crossfade length used between every
-                      track when this set plays as A→B→A automix */}
-                  <div className="flex items-center gap-2 rounded bg-neutral-800/40 px-2 py-1.5">
-                    <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-neutral-500">
-                      Transition
-                    </span>
-                    <input
-                      type="range"
-                      min={2}
-                      max={20}
-                      step={1}
-                      value={activePlaylist.transitionSec ?? 12}
-                      onChange={(e) => setTransition(activePlaylist.id, parseInt(e.target.value, 10))}
-                      className="flex-1 accent-violet-400"
-                    />
-                    <span className="w-10 shrink-0 text-right font-mono text-[11px] text-violet-300">
-                      {activePlaylist.transitionSec ?? 12}s
-                    </span>
-                  </div>
-
-                  {/* play this whole playlist consecutively — on a deck, or as A→B→A automix */}
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-neutral-600">
-                      Lecture en boucle :
-                    </span>
-                    <button
-                      onClick={() => playPlaylistLive("A", activePlaylist.id)}
-                      disabled={activePlaylist.trackIds.length === 0}
-                      className={`hw-btn px-2 py-1 text-[11px] font-bold disabled:opacity-40 ${queueSrc.A === activePlaylist.id && liveA ? "hw-btn-on" : ""}`}
-                      style={{ ["--led" as string]: COLOR_A, color: queueSrc.A === activePlaylist.id && liveA ? undefined : COLOR_A }}
-                      title="Enchaîne tous les titres du set sur le Deck A, en boucle"
-                    >
-                      ▶ Deck A
-                    </button>
-                    <button
-                      onClick={() => playPlaylistLive("B", activePlaylist.id)}
-                      disabled={activePlaylist.trackIds.length === 0}
-                      className={`hw-btn px-2 py-1 text-[11px] font-bold disabled:opacity-40 ${queueSrc.B === activePlaylist.id && liveB ? "hw-btn-on" : ""}`}
-                      style={{ ["--led" as string]: COLOR_B, color: queueSrc.B === activePlaylist.id && liveB ? undefined : COLOR_B }}
-                      title="Enchaîne tous les titres du set sur le Deck B, en boucle"
-                    >
-                      ▶ Deck B
-                    </button>
-                    <button
-                      onClick={() => playPlaylistRelay(activePlaylist.id)}
-                      disabled={activePlaylist.trackIds.length === 0}
-                      className={`hw-btn px-2 py-1 text-[11px] font-bold disabled:opacity-40 ${relay && queueSrc.A === activePlaylist.id ? "hw-btn-on" : ""}`}
-                      style={{ ["--led" as string]: "#a78bfa", color: relay && queueSrc.A === activePlaylist.id ? undefined : "#a78bfa" }}
-                      title="Automix A→B→A : enchaîne le set en fondu entre les deux decks, avec la durée de transition réglée ci-dessus"
-                    >
-                      ⇄ Relais A→B→A
-                    </button>
-                  </div>
-                  <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto">
-                    {activePlaylist.trackIds.length === 0 && (
-                      <p className="py-3 text-center text-xs text-neutral-600">
-                        Set vide — ajoute des morceaux ci-dessous, dans l&apos;ordre où ils doivent s&apos;enchaîner.
-                      </p>
-                    )}
-                    {activePlaylist.trackIds.map((id, i) => {
-                      const t = trackById(id);
-                      return t ? (
-                        <TrackRow
-                          key={id}
-                          t={t}
-                          plId={activePlaylist.id}
-                          idx={i}
-                          count={activePlaylist.trackIds.length}
-                        />
-                      ) : null;
-                    })}
-                  </ul>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-neutral-600">
-                      Ajouter depuis la bibliothèque
-                    </span>
-                    {data.tracks.some((t) => !activePlaylist.trackIds.includes(t.id)) && (
-                      <button
-                        onClick={() => addAllToPlaylist(activePlaylist.id)}
-                        className="hw-btn px-2 py-0.5 text-[11px] text-violet-300"
-                        title="Ajouter tous les morceaux de la bibliothèque à ce set"
-                      >
-                        + Tout ajouter
-                      </button>
-                    )}
-                  </div>
-                  <ul className="flex max-h-40 flex-col gap-1 overflow-y-auto">
-                    {data.tracks
-                      .filter((t) => !activePlaylist.trackIds.includes(t.id))
-                      .map((t) => (
-                        <li
-                          key={t.id}
-                          className="flex items-center gap-2 rounded bg-neutral-800/30 px-2 py-1"
-                        >
-                          <span className="min-w-0 flex-1 truncate text-xs text-neutral-300">
-                            {t.name}
-                          </span>
-                          {typeof t.durationSec === "number" && (
-                            <span className="shrink-0 font-mono text-[10px] text-neutral-500">
-                              {fmt(t.durationSec)}
-                            </span>
-                          )}
-                          <button
-                            onClick={() => toggleInPlaylist(activePlaylist.id, t.id)}
-                            className="hw-btn px-2 py-0.5 text-xs text-violet-300"
-                          >
-                            +
-                          </button>
-                        </li>
-                      ))}
-                  </ul>
-                </div>
-              ) : (
-                <p className="py-4 text-center text-sm text-neutral-600">
-                  Choisis un set ou crée-en un nouveau.
-                </p>
-              )}
-            </div>
-          )}
+          {/* PLAYLISTS panel now lives in `playlistsPanel` (see above `return`) —
+              rendered inline here when not splitLayout, or in the right column when it is. */}
+          {!splitLayout && tab === "playlists" && playlistsPanel}
 
           {/* ===== ONLINE catalogue search (Audius / YouTube / SoundCloud / Deezer) ===== */}
           {(tab === "audius" || tab === "youtube" || tab === "soundcloud" || tab === "deezer") && (
@@ -1686,6 +1681,14 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh }: Props) 
               )}
             </div>
           )}
+
+          </div>
+          {splitLayout && (
+            <div className="flex flex-col gap-3">
+              {playlistsPanel}
+            </div>
+          )}
+          </div>
         </>
       )}
 

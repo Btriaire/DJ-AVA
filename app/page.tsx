@@ -52,7 +52,7 @@ export default function Home() {
   const [tick, setTick] = useState(0);
   const [crossfade, setCrossfade] = useState(0.5);
   const [master, setMaster] = useState(0.9);
-  const [view, setView] = useState<"console" | "studio" | "platine">("console"); // top-level workspace
+  const [view, setView] = useState<"console" | "studio" | "platine" | "playlist">("console"); // top-level workspace
   const [showLibrary, setShowLibrary] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [showYouTube, setShowYouTube] = useState(false); // bottom YouTube video tool (optional)
@@ -509,6 +509,14 @@ export default function Home() {
             >
               💿 Platine
             </button>
+            <button
+              onClick={() => setView("playlist")}
+              className={`px-4 py-2 text-sm font-bold ${view === "playlist" ? "hw-btn-on" : "text-neutral-400"}`}
+              style={{ ["--led" as string]: "#a78bfa" }}
+              title="Crée et enchaîne des playlists : recherche à gauche, set à droite, choix du deck, BPM"
+            >
+              🎚 Playlist
+            </button>
           </div>
         )}
         <div className="flex items-center gap-2">
@@ -672,6 +680,14 @@ export default function Home() {
             onLoaded={bumpTick}
             stemRefresh={stemRefresh}
             libRefresh={libRefresh}
+          />
+        ) : view === "playlist" ? (
+          <MediaLibrary
+            engine={engine}
+            onLoaded={bumpTick}
+            stemRefresh={stemRefresh}
+            libRefresh={libRefresh}
+            splitLayout
           />
         ) : (
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_auto_1fr]">

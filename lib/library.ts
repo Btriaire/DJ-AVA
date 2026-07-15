@@ -16,6 +16,7 @@ export interface LibTrack {
   art?: string; // cover/poster: remote URL (audius/yt) or small data-URL thumbnail (local ID3)
   stemHash?: string; // content hash of the audio; if its stems are cached server-side, badge it
   durationSec?: number; // track length — lets a set be built by ear-length, not guesswork
+  bpm?: number; // tempo captured from the source search result (Audius/YouTube), if any
   addedAt: number;
 }
 
