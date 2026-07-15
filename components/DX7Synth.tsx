@@ -461,7 +461,7 @@ function Slider({ label, value, min, max, step, onChange, fmt }: {
         <span className="text-[8px] tracking-wider" style={{ color: '#b7a37c' }}>{label}</span>
         <span className="text-[8px] font-mono" style={{ color: '#63ffa0' }}>{fmt(value)}</span>
       </div>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(parseFloat(e.target.value))} className="w-full accent-emerald-500 h-1" />
+      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(parseFloat(e.target.value))} className="w-full accent-amber-500 h-1" />
     </label>
   );
 }

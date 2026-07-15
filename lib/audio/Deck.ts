@@ -73,6 +73,11 @@ export class Deck {
   stemStatus: "none" | "prefetching" | "working" | "ready" | "error" = "none";
   stemCached = false; // server already has the stems on disk -> loading is instant
   stemHash = ""; // server content hash of the loaded track (for the library badge)
+  // when set, the Rack DSP pedalboard is unhooked from the whole-mix chain and
+  // spliced onto ONLY this one stem instead — every other stem stays dry and
+  // fully audible, un-plugged from the effects entirely. null = normal (Rack
+  // processes the whole deck, as usual).
+  stemFxTarget: number | null = null;
 
   private trim: GainNode;
   private low: BiquadFilterNode;
@@ -715,6 +720,7 @@ export class Deck {
   // wipe any loaded stems (called when a new track is loaded / deck is cleared /
   // the model changes). Does NOT reset stemModel (user's chosen quality sticks).
   clearStems() {
+    this.setStemFxTarget(null); // un-splice before the stem indices go stale
     this.stemsActive = false;
     this.stemBuffers = [];
     this.stemNames = [];
@@ -794,6 +800,45 @@ export class Deck {
     this.stemVol[i] = v;
     if (this.stemGains[i]) this.stemGains[i].gain.value = v;
     this.recomputeStemMakeup();
+  }
+
+  // Route the Rack DSP pedalboard onto ONE stem only, instead of the whole
+  // deck — every other stem stays dry, unplugged from the rack entirely, and
+  // fully audible. Pass null to restore the normal whole-mix routing.
+  // Rack modules default their own intensity to 0% ("start silent"), so
+  // engaging this doesn't change anything audible until an FX is raised.
+  setStemFxTarget(i: number | null) {
+    if (i !== null && (i < 0 || i >= this.stemGains.length)) return;
+    if (this.stemFxTarget === i) return;
+    const disconnect = (from: AudioNode, to: AudioNode) => {
+      try {
+        from.disconnect(to);
+      } catch {
+        /* wasn't connected — fine */
+      }
+    };
+    if (this.stemFxTarget !== null) {
+      // un-splice the previously targeted stem, restore whole-mix rack routing
+      disconnect(this.stemGains[this.stemFxTarget], this.rack.input);
+      this.stemGains[this.stemFxTarget].connect(this.stemBus);
+      disconnect(this.rack.output, this.stemBus);
+      disconnect(this.fx.output, this.volume);
+      this.fx.output.connect(this.rack.input);
+      this.rack.output.connect(this.volume);
+    }
+    this.stemFxTarget = i;
+    if (i !== null) {
+      // bypass the rack from the whole-mix chain — every other stem now
+      // reaches `volume` without passing through it at all
+      disconnect(this.fx.output, this.rack.input);
+      disconnect(this.rack.output, this.volume);
+      this.fx.output.connect(this.volume);
+      // splice the targeted stem exclusively through the rack instead of the
+      // dry bus — its contribution to stemBus now comes only via rack.output
+      disconnect(this.stemGains[i], this.stemBus);
+      this.stemGains[i].connect(this.rack.input);
+      this.rack.output.connect(this.stemBus);
+    }
   }
 
   // Automatic makeup gain on the stem bus. Treating stems as roughly

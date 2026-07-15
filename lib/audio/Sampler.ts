@@ -136,8 +136,8 @@ export class Sampler {
       "#fbbf24",
       "#a3e635",
       "#34d399",
-      "#ff8a1e",
-      "#4dff84",
+      "#ffcc00",
+      "#ffcc00",
       "#facc15",
       "#22c55e",
     ];

@@ -25,7 +25,7 @@ interface Props {
 
 const SRC = {
   local: { label: "FICHIER", color: "#9ca3af" },
-  audius: { label: "AUDIUS", color: "#4dff84" },
+  audius: { label: "AUDIUS", color: "#ffcc00" },
   youtube: { label: "YT", color: "#ef4444" },
   soundcloud: { label: "SC", color: "#ff7700" },
   deezer: { label: "DEEZER", color: "#a238ff" },
@@ -54,9 +54,9 @@ const DUR_FILTERS: { key: string; label: string; min?: number; max?: number }[] 
 type FilterMode = "full" | "bass" | "mid" | "high" | "vocals" | "karaoke";
 const FILTER_MODES: { key: FilterMode; label: string; color: string; stem?: boolean }[] = [
   { key: "full", label: "Plein", color: "#9ca3af" },
-  { key: "bass", label: "Basse", color: "#ff8a1e" },
+  { key: "bass", label: "Basse", color: "#ffcc00" },
   { key: "mid", label: "Médium", color: "#facc15" },
-  { key: "high", label: "Aigu", color: "#4dff84" },
+  { key: "high", label: "Aigu", color: "#ffcc00" },
   { key: "vocals", label: "Voix", color: "#e879f9", stem: true },
   { key: "karaoke", label: "Sans voix", color: "#38bdf8", stem: true },
 ];
@@ -392,7 +392,7 @@ export function StudioView({ engine, onLoaded, stemRefresh, libRefresh }: Props)
   function heat(v: number): string {
     if (v < 0.02) return "#0a0a0f";
     if (v < 0.35) return `rgba(168,85,247,${0.25 + v})`; // violet
-    if (v < 0.7) return `rgba(255,138,30,${v})`; // orange
+    if (v < 0.7) return `rgba(255,204,0,${v})`; // orange
     return `rgba(255,255,255,${v})`; // white peaks
   }
 
@@ -484,9 +484,9 @@ export function StudioView({ engine, onLoaded, stemRefresh, libRefresh }: Props)
             <div
               className="absolute right-2 top-2 h-4 w-4 rounded-full"
               style={{
-                background: "#ff8a1e",
+                background: "#ffcc00",
                 opacity: 0.25 + beat * 0.75,
-                boxShadow: `0 0 ${4 + beat * 16}px rgba(255,138,30,${beat})`,
+                boxShadow: `0 0 ${4 + beat * 16}px rgba(255,204,0,${beat})`,
               }}
             />
           </div>
@@ -538,9 +538,9 @@ export function StudioView({ engine, onLoaded, stemRefresh, libRefresh }: Props)
               label="BPM"
               value={bpm ? Math.round(bpm).toString() : "—"}
               sub={bpm ? (bpmEstimated ? "estimé" : "catalogue") : ""}
-              color="#ff8a1e"
+              color="#ffcc00"
             />
-            <Stat label="Durée" value={dur ? fmt(dur) : "—"} color="#4dff84" />
+            <Stat label="Durée" value={dur ? fmt(dur) : "—"} color="#ffcc00" />
             <Stat
               label="Énergie"
               value={`${Math.round(((bands[0] + bands[1] + bands[2]) / 3) * 100)}%`}
@@ -584,7 +584,7 @@ export function StudioView({ engine, onLoaded, stemRefresh, libRefresh }: Props)
                     style={{
                       height: `${Math.min(100, bands[i] * 130)}%`,
                       background:
-                        i === 0 ? "#ff8a1e" : i === 1 ? "#facc15" : "#4dff84",
+                        i === 0 ? "#ffcc00" : i === 1 ? "#facc15" : "#ffcc00",
                     }}
                   />
                 </div>
@@ -594,11 +594,11 @@ export function StudioView({ engine, onLoaded, stemRefresh, libRefresh }: Props)
           </div>
           {/* destination routing */}
           <div className="flex flex-wrap gap-2">
-            <RouteBtn onClick={() => toDeck("A")} color="#ff8a1e" label="→ Deck A" disabled={!sel} />
-            <RouteBtn onClick={() => toDeck("B")} color="#4dff84" label="→ Deck B" disabled={!sel} />
+            <RouteBtn onClick={() => toDeck("A")} color="#ffcc00" label="→ Deck A" disabled={!sel} />
+            <RouteBtn onClick={() => toDeck("B")} color="#ffcc00" label="→ Deck B" disabled={!sel} />
             <RouteBtn onClick={toSynth} color="#a78bfa" label="→ Synthé" disabled={!sel} />
             <RouteBtn onClick={toPad} color="#facc15" label="→ Pad" disabled={!sel} />
-            <RouteBtn onClick={toLibrary} color="#4dff84" label="≣ Bibliothèque" disabled={!sel} />
+            <RouteBtn onClick={toLibrary} color="#ffcc00" label="≣ Bibliothèque" disabled={!sel} />
           </div>
         </div>
       </div>

@@ -50,7 +50,7 @@ export function FXPad({ deck, color }: Props) {
             onClick={toggleAll}
             className={`rounded px-2 py-0.5 text-[10px] font-bold transition-colors ${
               anyOn
-                ? "bg-emerald-500/80 text-black shadow-[0_0_8px_rgba(77,255,132,.6)]"
+                ? "bg-amber-500/80 text-black shadow-[0_0_8px_rgba(255,204,0,.6)]"
                 : "bg-neutral-800 text-neutral-400 hover:bg-neutral-700"
             }`}
             title="Allumer ou éteindre tous les effets de cette platine"

@@ -491,8 +491,8 @@ export default function Home() {
       {splash && <Splash onDone={dismissSplash} />}
       <header className="hw-screwed hw-panel mb-4 flex items-center justify-between px-4 py-2">
         <h1 className="text-xl font-black tracking-tight">
-          <span className="hw-led text-[#ff8a1e]">DJ</span>
-          <span className="hw-led text-[#4dff84]">Synth</span>
+          <span className="hw-led text-[#ffcc00]">DJ</span>
+          <span className="hw-led text-[#ffcc00]">Synth</span>
           <span className="ml-2 text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-500">
             performance controller
           </span>
@@ -502,7 +502,7 @@ export default function Home() {
             <button
               onClick={() => setView("console")}
               className={`px-4 py-2 text-sm font-bold ${view === "console" ? "hw-btn-on" : "text-neutral-400"}`}
-              style={{ ["--led" as string]: "#ff8a1e" }}
+              style={{ ["--led" as string]: "#ffcc00" }}
               title="Le contrôleur DJ complet (decks, mixer, synthé, pads)"
             >
               🎛 Console
@@ -518,7 +518,7 @@ export default function Home() {
             <button
               onClick={() => { setView("platine"); setShowLibrary(false); }}
               className={`px-4 py-2 text-sm font-bold ${view === "platine" ? "hw-btn-on" : "text-neutral-400"}`}
-              style={{ ["--led" as string]: "#4dff84" }}
+              style={{ ["--led" as string]: "#ffcc00" }}
               title="Deux platines vinyles qui tournent : crossfade, Autofade et Autoplay pour un mix live simple"
             >
               💿 Platine
@@ -536,7 +536,7 @@ export default function Home() {
         <div className="flex items-center gap-2">
           <LcdClock />
           {ready && engine && (
-            <DeckTimers deckA={engine.deckA} deckB={engine.deckB} colorA="#ff8a1e" colorB="#4dff84" />
+            <DeckTimers deckA={engine.deckA} deckB={engine.deckB} colorA="#ffcc00" colorB="#ffcc00" />
           )}
           {ready && (
             <button
@@ -589,7 +589,7 @@ export default function Home() {
             <button
               onClick={() => setShowLibrary(true)}
               className="hw-btn hw-btn-on px-4 py-2 text-sm"
-              style={{ ["--led" as string]: "#4dff84" }}
+              style={{ ["--led" as string]: "#ffcc00" }}
             >
               ♫ Bibliothèque
             </button>
@@ -599,7 +599,7 @@ export default function Home() {
               <button
                 onClick={() => setShowModulePicker((v) => !v)}
                 className={`hw-btn px-3 py-2 text-sm ${showModulePicker ? "hw-btn-on" : "text-neutral-300"}`}
-                style={{ ["--led" as string]: "#fb923c" }}
+                style={{ ["--led" as string]: "#ffcc00" }}
                 title="Ajouter / retirer des modules"
               >
                 ⊕ Modules
@@ -614,7 +614,7 @@ export default function Home() {
                       <button
                         onClick={() => toggleModule(key)}
                         className={`hw-btn px-2 py-0.5 text-[10px] ${modules[key] ? "hw-btn-on" : "text-neutral-500"}`}
-                        style={{ ["--led" as string]: "#fb923c" }}
+                        style={{ ["--led" as string]: "#ffcc00" }}
                       >
                         {modules[key] ? "ON" : "OFF"}
                       </button>
@@ -659,7 +659,7 @@ export default function Home() {
             <button
               onClick={init}
               className="hw-btn hw-btn-on px-4 py-2 text-sm"
-              style={{ ["--led" as string]: "#ff8a1e" }}
+              style={{ ["--led" as string]: "#ffcc00" }}
             >
               ⏻ Démarrer l&apos;audio
             </button>
@@ -711,8 +711,8 @@ export default function Home() {
                 <MixScope
                   deckA={engine.deckA}
                   deckB={engine.deckB}
-                  colorA="#ff8a1e"
-                  colorB="#4dff84"
+                  colorA="#ffcc00"
+                  colorB="#ffcc00"
                   crossfade={crossfade}
                   onCrossfade={(v) => {
                     stopAuto();
@@ -728,7 +728,7 @@ export default function Home() {
               key={`A-${resetKey}`}
               deck={engine.deckA}
               side="A"
-              color="#ff8a1e"
+              color="#ffcc00"
               tick={tick}
               onLoaded={() => setTick((t) => t + 1)}
               onSync={() => engine.sync("A")}
@@ -770,7 +770,7 @@ export default function Home() {
                 Mixer
               </span>
               <div className="hw-recess flex flex-col items-center gap-2 px-4 py-3">
-                <span className="hw-led text-[10px] uppercase text-emerald-400">Master</span>
+                <span className="hw-led text-[10px] uppercase text-amber-400">Master</span>
                 <Fader
                   value={master}
                   min={0}
@@ -787,7 +787,7 @@ export default function Home() {
               <button
                 onClick={normalizeLevels}
                 className={`hw-btn w-full px-3 py-2 text-[11px] font-bold tracking-widest ${normFlash ? "hw-btn-on" : ""}`}
-                style={{ ["--led" as string]: "#4dff84" }}
+                style={{ ["--led" as string]: "#ffcc00" }}
                 title="Égalise automatiquement le volume des deux decks (ajuste le GAIN)"
               >
                 ⊜ NORMALIZE
@@ -812,16 +812,16 @@ export default function Home() {
                   className="dj-fader w-full"
                 />
                 <div className="flex w-full justify-between text-xs font-black">
-                  <span className="hw-led text-[#ff8a1e]">A</span>
-                  <span className="hw-led text-[#4dff84]">B</span>
+                  <span className="hw-led text-[#ffcc00]">A</span>
+                  <span className="hw-led text-[#ffcc00]">B</span>
                 </div>
 
                 {/* automatic progressive crossfade */}
                 <div className="mt-1 flex w-full items-center gap-1.5">
                   <button
                     onClick={() => (autoRunning ? stopAuto() : startAuto())}
-                    className={`hw-btn flex-1 px-2 py-1 text-[11px] ${autoRunning ? "hw-btn-on" : "text-emerald-300"}`}
-                    style={{ ["--led" as string]: "#34d399" }}
+                    className={`hw-btn flex-1 px-2 py-1 text-[11px] ${autoRunning ? "hw-btn-on" : "text-amber-300"}`}
+                    style={{ ["--led" as string]: "#ffcc00" }}
                     title="Transition automatique et progressive vers l'autre platine"
                   >
                     {autoRunning ? "■ Auto…" : "⇄ Auto-fade"}
@@ -829,7 +829,7 @@ export default function Home() {
                   <button
                     onClick={() => setAutoFadeSync((s) => !s)}
                     className={`hw-btn flex-1 px-2 py-1 text-[11px] ${autoFadeSync ? "hw-btn-on" : "text-neutral-300"}`}
-                    style={{ ["--led" as string]: "#34d399" }}
+                    style={{ ["--led" as string]: "#ffcc00" }}
                     title="Aligner aussi le tempo : la platine entrante glisse progressivement sur le BPM de l'autre pendant le fondu"
                   >
                     ♪ BPM
@@ -858,7 +858,7 @@ export default function Home() {
               key={`B-${resetKey}`}
               deck={engine.deckB}
               side="B"
-              color="#4dff84"
+              color="#ffcc00"
               tick={tick}
               onLoaded={() => setTick((t) => t + 1)}
               onSync={() => engine.sync("B")}

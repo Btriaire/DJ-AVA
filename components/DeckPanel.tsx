@@ -138,6 +138,17 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
   const [, force] = useState(0);
   const rerender = () => force((n) => n + 1);
 
+  // per-deck power switch — mutes this deck's final output while leaving
+  // playback/EQ/FX running underneath (unlike PANIC, which resets everything).
+  // Flipping it back on restores full volume.
+  const [deckOn, setDeckOn] = useState(true);
+  function togglePower() {
+    const next = !deckOn;
+    setDeckOn(next);
+    deck.setVolume(next ? 1 : 0);
+    rerender();
+  }
+
   // progressive auto-sync: ramp this deck's tempo toward the other deck's BPM
   const [autoSync, setAutoSync] = useState(false);
   const syncRaf = useRef<number | null>(null);
@@ -516,6 +527,14 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
               ↻
             </button>
           </div>
+          <button
+            onClick={togglePower}
+            className={`hw-btn flex h-7 w-7 items-center justify-center rounded-full text-xs ${deckOn ? "hw-btn-on" : ""}`}
+            style={{ ["--led" as string]: deckOn ? "#ffcc00" : "#6b6b6b", color: deckOn ? undefined : "#6b6b6b" }}
+            title={deckOn ? `Éteindre le Deck ${side} (coupe le son, garde la lecture)` : `Allumer le Deck ${side}`}
+          >
+            ⏻
+          </button>
           <button
             onClick={panic}
             className="hw-panic text-[11px]"
@@ -951,10 +970,25 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                           ? { background: color, color: "#0a0a0a" }
                           : { background: "rgba(255,255,255,0.08)", color: "#8a8a8a" }
                       }
-                      title="Isoler ce stem (coupe les autres) — un FX du Rack activé sur ce deck n'affectera alors que ce stem"
+                      title="Isoler ce stem — coupe le son de tous les autres pour ne garder que celui-ci"
                       onClick={() => soloStem(i)}
                     >
                       S
+                    </button>
+                    <button
+                      className="rounded px-1 text-[8px] font-black leading-none"
+                      style={
+                        deck.stemFxTarget === i
+                          ? { background: color, color: "#0a0a0a" }
+                          : { background: "rgba(255,255,255,0.08)", color: "#8a8a8a" }
+                      }
+                      title="Effets sur ce stem seul — le Rack DSP n'agit plus que sur ce stem, les autres restent audibles sans effet"
+                      onClick={() => {
+                        deck.setStemFxTarget(deck.stemFxTarget === i ? null : i);
+                        rerender();
+                      }}
+                    >
+                      FX
                     </button>
                   </div>
                 </div>
@@ -1067,7 +1101,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
             </div>
           )}
           {plFlash && (
-            <span className="absolute bottom-full left-0 mb-1 whitespace-nowrap rounded bg-emerald-500/15 px-2 py-1 text-[10px] text-emerald-300">
+            <span className="absolute bottom-full left-0 mb-1 whitespace-nowrap rounded bg-amber-500/15 px-2 py-1 text-[10px] text-amber-300">
               {plFlash}
             </span>
           )}

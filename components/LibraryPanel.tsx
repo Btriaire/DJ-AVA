@@ -130,7 +130,7 @@ export function LibraryPanel({ engine, onClose, onLoaded }: Props) {
             <button
               onClick={() => { setTab("audius"); setResults([]); }}
               className={`hw-btn px-3 py-1 text-sm ${tab === "audius" ? "hw-btn-on" : "text-neutral-300"}`}
-              style={{ ["--led" as string]: "#4dff84" }}
+              style={{ ["--led" as string]: "#ffcc00" }}
             >
               ♫ Audius
             </button>
@@ -144,7 +144,7 @@ export function LibraryPanel({ engine, onClose, onLoaded }: Props) {
             <button
               onClick={() => setTab("upload")}
               className={`hw-btn px-3 py-1 text-sm ${tab === "upload" ? "hw-btn-on" : "text-neutral-300"}`}
-              style={{ ["--led" as string]: "#4dff84" }}
+              style={{ ["--led" as string]: "#ffcc00" }}
             >
               ⤓ Mes fichiers
             </button>
@@ -164,13 +164,13 @@ export function LibraryPanel({ engine, onClose, onLoaded }: Props) {
                 onChange={(e) => setQ(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && search()}
                 placeholder={tab === "youtube" ? "Rechercher une chanson sur YouTube…" : "Rechercher un titre, un artiste…"}
-                className="flex-1 rounded bg-neutral-800 px-3 py-2 text-sm outline-none ring-1 ring-neutral-700 focus:ring-[#4dff84]"
+                className="flex-1 rounded bg-neutral-800 px-3 py-2 text-sm outline-none ring-1 ring-neutral-700 focus:ring-[#ffcc00]"
               />
               <button
                 onClick={search}
                 disabled={loading}
                 className="hw-btn hw-btn-on px-4 py-2 text-sm disabled:opacity-50"
-                style={{ ["--led" as string]: tab === "youtube" ? "#ef4444" : "#4dff84" }}
+                style={{ ["--led" as string]: tab === "youtube" ? "#ef4444" : "#ffcc00" }}
               >
                 {loading ? "…" : "Chercher"}
               </button>
@@ -213,7 +213,7 @@ export function LibraryPanel({ engine, onClose, onLoaded }: Props) {
                       className="hw-btn px-2 py-1 text-xs disabled:opacity-60"
                       style={{
                         ["--led" as string]: "#facc15",
-                        color: stemState[t.id] === "ready" ? "#4dff84" : "#facc15",
+                        color: stemState[t.id] === "ready" ? "#ffcc00" : "#facc15",
                       }}
                       title="Prépare les stems en arrière-plan (chargement instantané ensuite)"
                     >
@@ -228,16 +228,16 @@ export function LibraryPanel({ engine, onClose, onLoaded }: Props) {
                     <button
                       onClick={() => loadTrack("A", t, tab as Source)}
                       disabled={busy !== null}
-                      className="hw-btn px-2 py-1 text-xs text-[#ff8a1e] disabled:opacity-40"
-                      style={{ ["--led" as string]: "#ff8a1e" }}
+                      className="hw-btn px-2 py-1 text-xs text-[#ffcc00] disabled:opacity-40"
+                      style={{ ["--led" as string]: "#ffcc00" }}
                     >
                       {busy === t.id + "A" ? "…" : "→ A"}
                     </button>
                     <button
                       onClick={() => loadTrack("B", t, tab as Source)}
                       disabled={busy !== null}
-                      className="hw-btn px-2 py-1 text-xs text-[#4dff84] disabled:opacity-40"
-                      style={{ ["--led" as string]: "#4dff84" }}
+                      className="hw-btn px-2 py-1 text-xs text-[#ffcc00] disabled:opacity-40"
+                      style={{ ["--led" as string]: "#ffcc00" }}
                     >
                       {busy === t.id + "B" ? "…" : "→ B"}
                     </button>
@@ -260,7 +260,7 @@ export function LibraryPanel({ engine, onClose, onLoaded }: Props) {
                 }}
                 disabled={busy !== null}
                 className="hw-btn hw-btn-on px-5 py-3 disabled:opacity-50"
-                style={{ ["--led" as string]: "#ff8a1e" }}
+                style={{ ["--led" as string]: "#ffcc00" }}
               >
                 {busy === "fileA" ? "…" : "⤓ Charger sur A"}
               </button>
@@ -271,7 +271,7 @@ export function LibraryPanel({ engine, onClose, onLoaded }: Props) {
                 }}
                 disabled={busy !== null}
                 className="hw-btn hw-btn-on px-5 py-3 disabled:opacity-50"
-                style={{ ["--led" as string]: "#4dff84" }}
+                style={{ ["--led" as string]: "#ffcc00" }}
               >
                 {busy === "fileB" ? "…" : "⤓ Charger sur B"}
               </button>

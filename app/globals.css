@@ -12,15 +12,37 @@ body {
   }
 }
 
-/* ---- hardware body & panels (XDJ-style brushed black metal) ---- */
+/* ---- Carbon Pro: woven carbon-fiber body & panels, single amber accent ---- */
+/* two overlapping diagonal weaves = the classic carbon-fiber checker pattern */
+.hw-carbon {
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.045) 0px, rgba(255, 255, 255, 0.045) 1px, transparent 1px, transparent 5px),
+    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.045) 0px, rgba(255, 255, 255, 0.045) 1px, transparent 1px, transparent 5px),
+    repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.5) 0px, rgba(0, 0, 0, 0.5) 5px, transparent 5px, transparent 10px),
+    repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0.5) 0px, rgba(0, 0, 0, 0.5) 5px, transparent 5px, transparent 10px);
+  background-size: 10px 10px;
+}
 .hw-body {
-  background:
-    radial-gradient(1200px 500px at 50% -10%, #1b1b20 0%, transparent 60%),
-    linear-gradient(180deg, #0c0c0e 0%, #050506 100%);
+  background-color: #0a0a0b;
+  background-image:
+    radial-gradient(1200px 500px at 50% -10%, #1c1a12 0%, transparent 60%),
+    linear-gradient(180deg, #0d0d0e 0%, #050506 100%),
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.03) 0px, rgba(255, 255, 255, 0.03) 1px, transparent 1px, transparent 5px),
+    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.03) 0px, rgba(255, 255, 255, 0.03) 1px, transparent 1px, transparent 5px),
+    repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.35) 0px, rgba(0, 0, 0, 0.35) 5px, transparent 5px, transparent 10px),
+    repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0.35) 0px, rgba(0, 0, 0, 0.35) 5px, transparent 5px, transparent 10px);
+  background-size: auto, auto, 10px 10px, 10px 10px, 10px 10px, 10px 10px;
 }
 .hw-panel {
-  background: linear-gradient(180deg, #1a1a1e 0%, #121215 60%, #0d0d10 100%);
-  border: 1px solid #2a2a30;
+  background-color: #131315;
+  background-image:
+    linear-gradient(180deg, rgba(32, 32, 36, 0.92) 0%, rgba(19, 19, 21, 0.92) 60%, rgba(13, 13, 16, 0.95) 100%),
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.045) 0px, rgba(255, 255, 255, 0.045) 1px, transparent 1px, transparent 5px),
+    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.045) 0px, rgba(255, 255, 255, 0.045) 1px, transparent 1px, transparent 5px),
+    repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.5) 0px, rgba(0, 0, 0, 0.5) 5px, transparent 5px, transparent 10px),
+    repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0.5) 0px, rgba(0, 0, 0, 0.5) 5px, transparent 5px, transparent 10px);
+  background-size: auto, 10px 10px, 10px 10px, 10px 10px, 10px 10px;
+  border: 1px solid #2e2a1c;
   border-radius: 14px;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.05),
@@ -43,7 +65,7 @@ body {
 
 /* ---- rubber buttons with LED states ---- */
 .hw-btn {
-  --led: #3a82f6;
+  --led: #ffcc00;
   position: relative;
   border-radius: 8px;
   background: linear-gradient(180deg, #26262c 0%, #161619 100%);
@@ -73,7 +95,7 @@ body {
 
 /* ---- round photorealistic transport buttons (play/pause, skip prev/next) ---- */
 .hw-transport {
-  --led: #3a82f6;
+  --led: #ffcc00;
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -152,7 +174,7 @@ body {
 
 /* ---- RGB performance pads ---- */
 .hw-pad {
-  --rgb: #ff8a1e;
+  --rgb: #ffcc00;
   position: relative;
   border-radius: 10px;
   background: linear-gradient(180deg, #1b1b20 0%, #0d0d10 100%);
@@ -489,8 +511,8 @@ body {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: radial-gradient(circle at 40% 35%, #d6ffe6 0%, #4dff84 45%, #0b6e3d 100%);
-  box-shadow: 0 0 8px rgba(77, 255, 132, 0.8), inset 0 -1px 2px rgba(0, 0, 0, 0.5);
+  background: radial-gradient(circle at 40% 35%, #d6ffe6 0%, #ffcc00 45%, #0b6e3d 100%);
+  box-shadow: 0 0 8px rgba(255, 204, 0, 0.8), inset 0 -1px 2px rgba(0, 0, 0, 0.5);
 }
 .boss-tbtn {
   display: flex;
@@ -511,7 +533,7 @@ body {
 }
 .boss-tbtn-play {
   border-color: #4a2e0e;
-  box-shadow: inset 0 0 0 1px rgba(255, 138, 30, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 8px rgba(255, 138, 30, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(255, 204, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 8px rgba(255, 204, 0, 0.35);
   color: #ffb15e;
 }
 .boss-tbtn-rec {
@@ -521,8 +543,8 @@ body {
 }
 .boss-tbtn-on {
   color: #1a1205;
-  background: linear-gradient(180deg, #ffb15e 0%, #ff8a1e 100%);
-  box-shadow: 0 0 14px rgba(255, 138, 30, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  background: linear-gradient(180deg, #ffb15e 0%, #ffcc00 100%);
+  box-shadow: 0 0 14px rgba(255, 204, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 .boss-tbtn-rec-on {
   color: #fff;
@@ -682,8 +704,8 @@ body {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #ff8a1e;
-  box-shadow: 0 0 8px #ff8a1e;
+  background: #ffcc00;
+  box-shadow: 0 0 8px #ffcc00;
   animation: panicGlow 1s ease-in-out infinite;
 }
 /* control strip */
@@ -729,9 +751,9 @@ body {
   box-shadow: 0 0 12px rgba(226, 31, 31, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 .spd-btn-on-cyan {
-  background: linear-gradient(180deg, #ffb15e 0%, #ff8a1e 100%);
+  background: linear-gradient(180deg, #ffb15e 0%, #ffcc00 100%);
   color: #2a1a05;
-  box-shadow: 0 0 12px rgba(255, 138, 30, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  box-shadow: 0 0 12px rgba(255, 204, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 .spd-logo {
   font-family: ui-serif, Georgia, serif;
@@ -987,7 +1009,7 @@ body.has-zoom::before {
   overflow: auto;
   z-index: 60;
   border-radius: 16px;
-  box-shadow: 0 0 0 2px rgba(255, 138, 30, 0.55), 0 24px 70px rgba(0, 0, 0, 0.85);
+  box-shadow: 0 0 0 2px rgba(255, 204, 0, 0.55), 0 24px 70px rgba(0, 0, 0, 0.85);
   cursor: zoom-out;
 }
 

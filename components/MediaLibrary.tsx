@@ -72,7 +72,7 @@ const DUR_FILTERS: { key: string; label: string; min: number; max: number }[] = 
 
 const SRC_BADGE: Record<TrackSource, { label: string; color: string }> = {
   local: { label: "FICHIER", color: "#9ca3af" },
-  audius: { label: "AUDIUS", color: "#4dff84" },
+  audius: { label: "AUDIUS", color: "#ffcc00" },
   youtube: { label: "YT", color: "#ef4444" },
   soundcloud: { label: "SC", color: "#ff7700" },
   deezer: { label: "DEEZER", color: "#a238ff" },
@@ -875,8 +875,8 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
     if (wasPlay) deck.play();
   }
 
-  const COLOR_A = "#ff8a1e";
-  const COLOR_B = "#4dff84";
+  const COLOR_A = "#ffcc00";
+  const COLOR_B = "#ffcc00";
 
   // While LIVE is on for a deck, figure out which filed single is playing now and
   // which one is queued next, so the list can mark "en cours" and blink "à suivre"
@@ -1626,7 +1626,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
           </div>
 
           {msg && (
-            <div className="rounded bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-300">
+            <div className="rounded bg-amber-500/10 px-3 py-1.5 text-xs text-amber-300">
               {msg}
             </div>
           )}
@@ -1667,7 +1667,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
                           ? "Rechercher sur Deezer (aperçu 30s)…"
                           : "Rechercher un titre, un artiste…"
                   }
-                  className="flex-1 rounded bg-neutral-800 px-3 py-2 text-sm outline-none ring-1 ring-neutral-700 focus:ring-[#4dff84]"
+                  className="flex-1 rounded bg-neutral-800 px-3 py-2 text-sm outline-none ring-1 ring-neutral-700 focus:ring-[#ffcc00]"
                 />
                 <button
                   onClick={() => search()}
@@ -1885,7 +1885,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
                             {t.artist} · {fmt(t.duration)}
                             {t.genre ? ` · ${t.genre}` : ""}
                             {t.bpm ? (
-                              <span style={close ? { color: "#34d399", fontWeight: 700 } : undefined}>
+                              <span style={close ? { color: "#ffcc00", fontWeight: 700 } : undefined}>
                                 {" · "}{t.bpm} BPM{close ? " ✓" : ""}
                               </span>
                             ) : ""}

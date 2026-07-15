@@ -63,9 +63,9 @@ export function LcdClock() {
         <span className="text-[7px] font-bold uppercase tracking-[0.25em] text-neutral-600">
           Heure
         </span>
-        <span className="hw-led font-mono text-lg font-bold tabular-nums text-[#4dff84]">
+        <span className="hw-led font-mono text-lg font-bold tabular-nums text-[#ffcc00]">
           {hh}:{mm}
-          <span className="text-[#4dff84]/60">:{ss}</span>
+          <span className="text-[#ffcc00]/60">:{ss}</span>
         </span>
       </div>
 
@@ -76,9 +76,9 @@ export function LcdClock() {
         <span className="text-[7px] font-bold uppercase tracking-[0.25em] text-neutral-600">
           Chrono
         </span>
-        <span className="hw-led font-mono text-lg font-bold tabular-nums text-[#ff8a1e]">
+        <span className="hw-led font-mono text-lg font-bold tabular-nums text-[#ffcc00]">
           {cm}:{cs}
-          <span className="text-[#ff8a1e]/60">.{cms}</span>
+          <span className="text-[#ffcc00]/60">.{cms}</span>
         </span>
       </div>
 
@@ -87,7 +87,7 @@ export function LcdClock() {
         <button
           onClick={toggle}
           className={`hw-btn px-2 py-1 text-[11px] ${running ? "hw-btn-on" : ""}`}
-          style={{ ["--led" as string]: "#ff8a1e", color: running ? undefined : "#ff8a1e" }}
+          style={{ ["--led" as string]: "#ffcc00", color: running ? undefined : "#ffcc00" }}
           title={running ? "Pause" : "Démarrer le chrono"}
         >
           {running ? "❚❚" : "▶"}

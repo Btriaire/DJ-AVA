@@ -112,7 +112,7 @@ export function StemsMidiConverter() {
           ♪ Stems → MIDI
         </span>
         {phase === "working" && <span className="animate-pulse text-[9px] text-amber-300">analyse…</span>}
-        {phase === "ready" && <span className="text-[9px] text-emerald-300">prêt ✓</span>}
+        {phase === "ready" && <span className="text-[9px] text-amber-300">prêt ✓</span>}
       </div>
 
       <select
@@ -140,7 +140,7 @@ export function StemsMidiConverter() {
           href={dl}
           download={`${fileName.replace(/\.[^.]+$/, "") || "stems"}.mid`}
           className="hw-btn px-3 py-1.5 text-center text-xs"
-          style={{ ["--led" as string]: "#34d399" }}
+          style={{ ["--led" as string]: "#ffcc00" }}
         >
           ⤓ Re-télécharger le MIDI
         </a>

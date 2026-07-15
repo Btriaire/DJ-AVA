@@ -105,10 +105,10 @@ function WaveformEditor({
     ctx.fillRect(0, 0, sx, h);
     ctx.fillRect(ex, 0, w - ex, h);
     // trim handles
-    ctx.fillStyle = "#ff8a1e";
+    ctx.fillStyle = "#ffcc00";
     ctx.fillRect(sx - 1, 0, 2, h);
     ctx.fillRect(sx - 5, 0, 10, 7);
-    ctx.fillStyle = "#4dff84";
+    ctx.fillStyle = "#ffcc00";
     ctx.fillRect(ex - 1, 0, 2, h);
     ctx.fillRect(ex - 5, 0, 10, 7);
     // cue markers
@@ -388,13 +388,13 @@ export function SamplerPanel({ engine }: Props) {
           <span className="font-mono text-2xl font-bold leading-none text-orange-400">
             {padNo}
           </span>
-          <span className="max-w-[110px] truncate text-[11px] font-semibold text-emerald-300">
+          <span className="max-w-[110px] truncate text-[11px] font-semibold text-amber-300">
             {pad.name}
           </span>
           <div className="mt-0.5 flex gap-1 text-[8px] font-bold uppercase">
             <span className={pad.reverse ? "text-red-400" : "text-neutral-600"}>REV</span>
-            <span className={pad.loop ? "text-[#ff8a1e]" : "text-neutral-600"}>LOOP</span>
-            <span className={pad.reverb > 0.01 ? "text-[#4dff84]" : "text-neutral-600"}>VERB</span>
+            <span className={pad.loop ? "text-[#ffcc00]" : "text-neutral-600"}>LOOP</span>
+            <span className={pad.reverb > 0.01 ? "text-[#ffcc00]" : "text-neutral-600"}>VERB</span>
           </div>
         </div>
 
@@ -407,7 +407,7 @@ export function SamplerPanel({ engine }: Props) {
             max={2}
             defaultValue={1.3}
             size={68}
-            color="#ff8a1e"
+            color="#ffcc00"
             format={(v) => `${Math.round(v * 100)}%`}
             onChange={setMasterVol}
           />
@@ -503,14 +503,14 @@ export function SamplerPanel({ engine }: Props) {
             <button
               onClick={() => grab("A")}
               className="spd-btn flex-1"
-              style={{ ["--led" as string]: "#ff8a1e" }}
+              style={{ ["--led" as string]: "#ffcc00" }}
             >
               ⏺ GRAB A
             </button>
             <button
               onClick={() => grab("B")}
               className="spd-btn flex-1"
-              style={{ ["--led" as string]: "#4dff84" }}
+              style={{ ["--led" as string]: "#ffcc00" }}
             >
               ⏺ GRAB B
             </button>
@@ -540,7 +540,7 @@ export function SamplerPanel({ engine }: Props) {
                 key={m}
                 onClick={() => setP("voicing", m)}
                 className={`spd-btn px-1.5 text-[10px] ${pad.voicing === m ? "spd-btn-on" : ""}`}
-                style={{ ["--led" as string]: "#4dff84" }}
+                style={{ ["--led" as string]: "#ffcc00" }}
                 title={m === "poly" ? "Polyphonique : les voix se superposent" : "Monophonique : chaque frappe coupe la précédente"}
               >
                 {m === "poly" ? "POLY" : "MONO"}
@@ -559,7 +559,7 @@ export function SamplerPanel({ engine }: Props) {
                 key={m}
                 onClick={() => setP("mode", m)}
                 className={`spd-btn px-1.5 text-[10px] ${pad.mode === m ? "spd-btn-on" : ""}`}
-                style={{ ["--led" as string]: "#ff8a1e" }}
+                style={{ ["--led" as string]: "#ffcc00" }}
                 title={
                   m === "oneshot"
                     ? "One-shot : joue jusqu'au bout"
@@ -586,7 +586,7 @@ export function SamplerPanel({ engine }: Props) {
           <button
             onClick={() => setP("quantize", !pad.quantize)}
             className={`spd-btn px-1.5 text-[10px] ${pad.quantize ? "spd-btn-on" : ""}`}
-            style={{ ["--led" as string]: "#4dff84" }}
+            style={{ ["--led" as string]: "#ffcc00" }}
             title="Quantize : aligne les frappes sur la grille du séquenceur"
           >
             QUANT
@@ -821,7 +821,7 @@ export function SamplerPanel({ engine }: Props) {
                   rerender();
                 }}
                 className={`spd-btn px-1.5 text-[10px] ${steps === n ? "spd-btn-on" : ""}`}
-                style={{ ["--led" as string]: "#4dff84" }}
+                style={{ ["--led" as string]: "#ffcc00" }}
                 title={`Boucle de ${n} pas`}
               >
                 {n}
@@ -831,7 +831,7 @@ export function SamplerPanel({ engine }: Props) {
           <button
             onClick={() => setGrid((g) => !g)}
             className={`spd-btn px-1.5 text-[10px] ${grid ? "spd-btn-on" : ""}`}
-            style={{ ["--led" as string]: "#4dff84" }}
+            style={{ ["--led" as string]: "#ffcc00" }}
             title="Vue grille : voir et programmer plusieurs sons par pas"
           >
             ▦ GRILLE

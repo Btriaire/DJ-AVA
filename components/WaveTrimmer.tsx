@@ -14,7 +14,7 @@ interface Props {
 
 // Compact waveform display with two draggable trim handles. Used by the OP-XY
 // synth to visualise a captured sample and crop the looped region.
-export function WaveTrimmer({ buffer, start, end, onChange, color = "#34d399", height = 56, version = 0, playheads }: Props) {
+export function WaveTrimmer({ buffer, start, end, onChange, color = "#ffcc00", height = 56, version = 0, playheads }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const playRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);

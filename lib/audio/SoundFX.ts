@@ -37,12 +37,12 @@ export const SFX_LIST: SfxDef[] = [
   { id: "zap", label: "Zap", glyph: "⚡", color: "#38bdf8", group: "Tone" },
   { id: "bleep", label: "Bleep", glyph: "●", color: "#38bdf8", group: "Tone" },
   // scratch / turntable / bass — green
-  { id: "vinylstop", label: "Vinyl Stop", glyph: "⏻", color: "#4dff84", group: "Scratch" },
-  { id: "scratch", label: "Scratch", glyph: "⟿", color: "#4dff84", group: "Scratch" },
-  { id: "rewind", label: "Rewind", glyph: "⟲", color: "#4dff84", group: "Scratch" },
-  { id: "wobble", label: "Wobble", glyph: "≋", color: "#4dff84", group: "Scratch" },
-  { id: "revcymbal", label: "Rev Cymbal", glyph: "⤒", color: "#4dff84", group: "Scratch" },
-  { id: "whoosh", label: "Whoosh", glyph: "～", color: "#4dff84", group: "Scratch" },
+  { id: "vinylstop", label: "Vinyl Stop", glyph: "⏻", color: "#ffcc00", group: "Scratch" },
+  { id: "scratch", label: "Scratch", glyph: "⟿", color: "#ffcc00", group: "Scratch" },
+  { id: "rewind", label: "Rewind", glyph: "⟲", color: "#ffcc00", group: "Scratch" },
+  { id: "wobble", label: "Wobble", glyph: "≋", color: "#ffcc00", group: "Scratch" },
+  { id: "revcymbal", label: "Rev Cymbal", glyph: "⤒", color: "#ffcc00", group: "Scratch" },
+  { id: "whoosh", label: "Whoosh", glyph: "～", color: "#ffcc00", group: "Scratch" },
 ];
 
 export class SoundFX {

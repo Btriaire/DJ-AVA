@@ -26,7 +26,7 @@ export function Knob({
   max,
   defaultValue = (min + max) / 2,
   onChange,
-  color = "#ff8a1e",
+  color = "#ffcc00",
   size = 54,
   format,
   variant = "dark",

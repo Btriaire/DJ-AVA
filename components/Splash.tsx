@@ -42,8 +42,8 @@ export function Splash({ onDone }: { onDone: () => void }) {
           <defs>
             {/* sober accent gradient: orange → green, used for waveform + bars */}
             <linearGradient id="djsAccent" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#ff8a1e" />
-              <stop offset="100%" stopColor="#4dff84" />
+              <stop offset="0%" stopColor="#ffcc00" />
+              <stop offset="100%" stopColor="#ffcc00" />
             </linearGradient>
             {/* dark platter body */}
             <radialGradient id="djsPlatter" cx="50%" cy="42%" r="65%">
@@ -89,8 +89,8 @@ export function Splash({ onDone }: { onDone: () => void }) {
               filter="url(#djsGlow)"
             />
             {/* centre label */}
-            <circle r="22" fill="#0a0a0c" stroke="#ff8a1e" strokeWidth="1.5" />
-            <circle r="22" fill="none" stroke="#ff8a1e" strokeOpacity="0.25" strokeWidth="6" />
+            <circle r="22" fill="#0a0a0c" stroke="#ffcc00" strokeWidth="1.5" />
+            <circle r="22" fill="none" stroke="#ffcc00" strokeOpacity="0.25" strokeWidth="6" />
             <circle r="3" fill="#e7e7ea" />
           </g>
 
@@ -188,8 +188,8 @@ const splashCss = `
 .djs-word{ margin-top:-.4rem; font-weight:900; letter-spacing:-.02em;
   font-size:clamp(34px,7vw,58px); line-height:1; display:flex; gap:.06em;
   opacity:0; animation: djsRise .7s cubic-bezier(.2,.9,.25,1) .55s forwards; }
-.djs-dj{ color:#ff8a1e; text-shadow:0 0 14px rgba(255,138,30,.55),0 0 30px rgba(255,138,30,.25); }
-.djs-syn{ color:#4dff84; text-shadow:0 0 14px rgba(77,255,132,.5),0 0 30px rgba(77,255,132,.22); }
+.djs-dj{ color:#ffcc00; text-shadow:0 0 14px rgba(255,204,0,.55),0 0 30px rgba(255,204,0,.25); }
+.djs-syn{ color:#ffcc00; text-shadow:0 0 14px rgba(255,204,0,.5),0 0 30px rgba(255,204,0,.22); }
 @keyframes djsRise{ from{opacity:0; transform:translateY(14px)} to{opacity:1; transform:translateY(0)} }
 
 .djs-tag{ margin-top:.5rem; font-size:clamp(9px,1.5vw,11px); font-weight:700;
@@ -201,8 +201,8 @@ const splashCss = `
   background:rgba(255,255,255,.07); overflow:hidden;
   opacity:0; animation: djsFadeUp .5s ease .7s forwards; }
 .djs-progress > span{ display:block; height:100%; width:100%; transform-origin:left;
-  background:linear-gradient(90deg,#ff8a1e,#4dff84);
-  box-shadow:0 0 10px rgba(255,138,30,.5);
+  background:linear-gradient(90deg,#ffcc00,#ffcc00);
+  box-shadow:0 0 10px rgba(255,204,0,.5);
   transform:scaleX(0); animation: djsFill 1.9s ease .6s forwards; }
 @keyframes djsFill{ to{ transform:scaleX(1) } }
 

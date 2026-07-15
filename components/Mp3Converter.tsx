@@ -50,11 +50,11 @@ export function Mp3Converter({ link, onLinkChange, flash = 0 }: Props) {
   return (
     <div
       className={`flex w-full flex-col gap-2 rounded-lg bg-black/30 p-2.5 ring-1 transition-shadow ${
-        flash ? "ring-emerald-400 shadow-[0_0_14px_rgba(52,211,153,.55)]" : "ring-white/10"
+        flash ? "ring-amber-400 shadow-[0_0_14px_rgba(52,211,153,.55)]" : "ring-white/10"
       }`}
     >
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold uppercase tracking-wide text-emerald-300">
+        <span className="text-[10px] font-bold uppercase tracking-wide text-amber-300">
           ⤓ Convertisseur MP3
         </span>
         {converting && (
@@ -66,12 +66,12 @@ export function Mp3Converter({ link, onLinkChange, flash = 0 }: Props) {
         onChange={(e) => onLinkChange(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && convert(link)}
         placeholder="Lien YouTube…"
-        className="w-full rounded bg-neutral-800 px-2 py-1.5 text-xs outline-none ring-1 ring-neutral-700 focus:ring-emerald-500"
+        className="w-full rounded bg-neutral-800 px-2 py-1.5 text-xs outline-none ring-1 ring-neutral-700 focus:ring-amber-500"
       />
       <button
         onClick={() => convert(link)}
         className="hw-btn hw-btn-on px-3 py-1.5 text-xs"
-        style={{ ["--led" as string]: "#34d399" }}
+        style={{ ["--led" as string]: "#ffcc00" }}
       >
         ⤓ Convertir en MP3
       </button>

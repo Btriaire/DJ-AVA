@@ -59,7 +59,7 @@ export function MidiButton({ engine }: { engine: DJEngine }) {
       <span
         className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full"
         style={{
-          background: on ? (flash ? "#ffe000" : "#4dff84") : "#444",
+          background: on ? (flash ? "#ffe000" : "#ffcc00") : "#444",
           boxShadow: on && flash ? "0 0 5px #ffe000" : "none",
         }}
       />

@@ -38,7 +38,7 @@ export function Waveform({ peaks, progress, cue, color, onSeek }: Props) {
 
     // cue marker
     const cx = cue * w;
-    ctx.fillStyle = "#f59e0b";
+    ctx.fillStyle = "#ffcc00";
     ctx.fillRect(cx, 0, 2, h);
 
     // playhead

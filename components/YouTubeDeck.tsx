@@ -195,8 +195,8 @@ export function YouTubeDeck() {
           <button
             onClick={convertCurrent}
             disabled={!currentId}
-            className="hw-btn px-3 py-2 text-xs text-emerald-300 disabled:opacity-40"
-            style={{ ["--led" as string]: "#34d399" }}
+            className="hw-btn px-3 py-2 text-xs text-amber-300 disabled:opacity-40"
+            style={{ ["--led" as string]: "#ffcc00" }}
             title="Télécharge l'audio de la vidéo en cours en MP3"
           >
             {converting ? "conversion en cours…" : "⤓ Convertir cette vidéo en MP3"}

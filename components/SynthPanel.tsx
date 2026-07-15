@@ -67,7 +67,7 @@ const NOTE_NAME = (m: number) => KEYS.find((k) => k.midi === m)?.name ?? "?";
 // Small oscilloscope LCD — draws the synth's live time-domain output. A simple
 // zero-crossing trigger keeps the trace from sliding so the waveform shape reads
 // clearly even while idle (it just flat-lines on the centre when silent).
-function SynthScope({ analyser, color = "#34d399" }: { analyser: AnalyserNode; color?: string }) {
+function SynthScope({ analyser, color = "#ffcc00" }: { analyser: AnalyserNode; color?: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const cv = ref.current;
@@ -519,7 +519,7 @@ export function SynthPanel({ engine }: Props) {
                   <div key={s.id} className="flex items-center gap-1">
                     <button
                       onClick={() => recallSample(s)}
-                      className="flex-1 truncate rounded px-2 py-1 text-left text-[11px] text-emerald-200 hover:bg-white/10"
+                      className="flex-1 truncate rounded px-2 py-1 text-left text-[11px] text-amber-200 hover:bg-white/10"
                       title={`Charger « ${s.name} »`}
                     >
                       ◆ {s.name}
@@ -585,7 +585,7 @@ export function SynthPanel({ engine }: Props) {
         {/* small oscilloscope LCD — live synth waveform */}
         <div className="opxy-screen relative h-[54px] w-[150px] shrink-0 overflow-hidden rounded-[4px] p-[3px]">
           <SynthScope analyser={synth.analyser} />
-          <span className="pointer-events-none absolute bottom-[1px] right-1 font-mono text-[7px] tracking-[0.2em] text-emerald-300/60">
+          <span className="pointer-events-none absolute bottom-[1px] right-1 font-mono text-[7px] tracking-[0.2em] text-amber-300/60">
             SCOPE
           </span>
         </div>
@@ -744,7 +744,7 @@ export function SynthPanel({ engine }: Props) {
             <span className="w-14 text-center tabular-nums">{bpm} BPM</span>
             <button onClick={() => setSeqBpm(bpm + 1)} className="opxy-minibtn" title="BPM ＋">＋</button>
           </div>
-          <span className="font-mono text-[10px] text-emerald-300" title="Note écrite au clic (joue une touche pour la changer)">
+          <span className="font-mono text-[10px] text-amber-300" title="Note écrite au clic (joue une touche pour la changer)">
             ♪ {NOTE_NAME(armed)}
           </span>
           <button onClick={clearSeq} className="opxy-minibtn" title="Effacer la séquence">✕</button>
@@ -760,10 +760,10 @@ export function SynthPanel({ engine }: Props) {
                 onClick={() => toggleStep(i)}
                 className="flex h-6 flex-1 items-center justify-center rounded-[3px] text-[8px] font-bold transition-colors"
                 style={{
-                  background: on ? "#34d399" : "rgba(255,255,255,0.04)",
+                  background: on ? "#ffcc00" : "rgba(255,255,255,0.04)",
                   color: on ? "#06281e" : "#555",
                   boxShadow: playing
-                    ? "0 0 0 2px #fff, 0 0 7px #34d399"
+                    ? "0 0 0 2px #fff, 0 0 7px #ffcc00"
                     : "inset 0 0 0 1px rgba(255,255,255,0.06)",
                 }}
               >
@@ -778,7 +778,7 @@ export function SynthPanel({ engine }: Props) {
       {sampleName && synth.sampleBuffer && (
         <div className="opxy-recess flex flex-col gap-1 p-2">
           <div className="flex items-center justify-between text-[10px]">
-            <span className="truncate font-semibold text-emerald-300">◆ {sampleName}</span>
+            <span className="truncate font-semibold text-amber-300">◆ {sampleName}</span>
             <span className="font-mono text-neutral-500">
               {(synth.sampleBuffer.duration * (trim[1] - trim[0])).toFixed(2)}s
             </span>
@@ -813,7 +813,7 @@ export function SynthPanel({ engine }: Props) {
                 start={trim[0]}
                 end={trim[1]}
                 height={50}
-                color="#34d399"
+                color="#ffcc00"
                 version={editVer * 16 + zoom}
                 playheads={getPlayheads}
                 onChange={(s, e) => setTrimBoth(s, e)}

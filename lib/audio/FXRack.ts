@@ -1,8 +1,8 @@
 export type FxName = "echo" | "reverb" | "flanger" | "phaser" | "gate" | "crush";
 
 export const FX_LIST: { id: FxName; label: string; color: string }[] = [
-  { id: "echo", label: "Echo", color: "#ff8a1e" },
-  { id: "reverb", label: "Reverb", color: "#4dff84" },
+  { id: "echo", label: "Echo", color: "#ffcc00" },
+  { id: "reverb", label: "Reverb", color: "#ffcc00" },
   { id: "flanger", label: "Flanger", color: "#34d399" },
   { id: "phaser", label: "Phaser", color: "#fbbf24" },
   { id: "gate", label: "Gate", color: "#a3e635" },

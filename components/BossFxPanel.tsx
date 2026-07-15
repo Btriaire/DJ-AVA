@@ -10,7 +10,7 @@ interface Props {
 }
 
 // on the BOSS master unit every effect shares one uniform accent colour
-const BOSS_FX_COLOR = "#ff8a1e";
+const BOSS_FX_COLOR = "#ffcc00";
 
 // glyph + the 4 knobs that get a quick-access intensity dial
 const FX_GLYPH: Record<FxName, string> = {

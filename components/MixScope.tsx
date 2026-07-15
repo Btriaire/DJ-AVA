@@ -97,7 +97,7 @@ export function MixScope({ deckA, deckB, colorA, colorB, crossfade, onCrossfade 
     const beatTier = (ratio: number, base: string) => {
       if (ratio >= 2.0) return { color: "#ffffff", alpha: 0.95, frac: 1, glow: 10 };
       if (ratio >= 1.5) return { color: "#ff3b30", alpha: 0.92, frac: 0.95, glow: 7 };
-      if (ratio >= 1.18) return { color: "#ff8a1e", alpha: 0.85, frac: 0.82, glow: 0 };
+      if (ratio >= 1.18) return { color: "#ffcc00", alpha: 0.85, frac: 0.82, glow: 0 };
       if (ratio >= 0.88) return { color: "#facc15", alpha: 0.72, frac: 0.62, glow: 0 };
       return { color: base, alpha: 0.4, frac: 0.42, glow: 0 };
     };
@@ -411,7 +411,7 @@ export function MixScope({ deckA, deckB, colorA, colorB, crossfade, onCrossfade 
               onClick={() => setMode(m)}
               title={title}
               className={`hw-btn px-2 py-0.5 text-[10px] ${mode === m ? "hw-btn-on" : "text-neutral-300"}`}
-              style={{ ["--led" as string]: "#4dff84" }}
+              style={{ ["--led" as string]: "#ffcc00" }}
             >
               {label}
             </button>
@@ -430,7 +430,7 @@ export function MixScope({ deckA, deckB, colorA, colorB, crossfade, onCrossfade 
             onClick={() => setFrozen((f) => !f)}
             title={frozen ? "Reprendre le défilement" : "Figer les spectres"}
             className={`hw-btn px-2 py-0.5 text-[10px] ${frozen ? "hw-btn-on" : "text-neutral-300"}`}
-            style={{ ["--led" as string]: "#ff8a1e" }}
+            style={{ ["--led" as string]: "#ffcc00" }}
           >
             {frozen ? "▶ Live" : "⏸ Geler"}
           </button>
