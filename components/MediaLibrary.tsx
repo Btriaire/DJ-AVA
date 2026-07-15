@@ -178,6 +178,15 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
     setData(loadLibrary());
   }, []);
 
+  // lightweight re-render clock so the playlist's play/pause transport button
+  // reflects deck.playing even when it changed outside the LIVE/relay loops
+  // (e.g. the user hit PLAY on the deck panel directly)
+  const [, forceLibTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => forceLibTick((n) => n + 1), 400);
+    return () => clearInterval(id);
+  }, []);
+
   // a deck saved a track to a playlist (wrote straight to localStorage) — pull
   // the fresh copy in so the playlists tab reflects it. Skipped on first mount.
   const firstLib = useRef(true);
@@ -1250,6 +1259,50 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
               ⇄ Relais A→B→A
             </button>
           </div>
+
+          {/* classic transport — appears once this set is actively driving a
+              deck: skip-previous / play-pause / skip-next, styled like real
+              hardware transport buttons (round, glossy, backlit while playing) */}
+          {(["A", "B"] as const).map((side) => {
+            if (queueSrc[side] !== activePlaylist.id) return null;
+            const deck = side === "A" ? engine.deckA : engine.deckB;
+            const color = side === "A" ? COLOR_A : COLOR_B;
+            return (
+              <div key={side} className="flex items-center gap-3 rounded bg-black/30 px-3 py-2">
+                <span className="w-14 shrink-0 text-[10px] font-black uppercase" style={{ color }}>
+                  Deck {side}
+                </span>
+                <button
+                  onClick={() => stepSingle(side, -1)}
+                  className="hw-transport h-9 w-9 text-sm"
+                  style={{ ["--led" as string]: color }}
+                  title="Titre précédent"
+                >
+                  ⏮
+                </button>
+                <button
+                  onClick={() => (deck.playing ? deck.pause() : deck.play())}
+                  className={`hw-transport h-11 w-11 text-lg ${deck.playing ? "hw-transport-play" : ""}`}
+                  style={{ ["--led" as string]: color }}
+                  title={deck.playing ? "Pause" : "Lecture"}
+                >
+                  {deck.playing ? "⏸" : "▶"}
+                </button>
+                <button
+                  onClick={() => stepSingle(side, 1)}
+                  className="hw-transport h-9 w-9 text-sm"
+                  style={{ ["--led" as string]: color }}
+                  title="Titre suivant"
+                >
+                  ⏭
+                </button>
+                <span className="min-w-0 flex-1 truncate text-xs text-neutral-400">
+                  {deck.name || "— vide —"}
+                </span>
+              </div>
+            );
+          })}
+
           <ul className={`flex flex-col gap-1 overflow-y-auto ${splitLayout ? "max-h-[28rem]" : "max-h-48"}`}>
             {activePlaylist.trackIds.length === 0 && (
               <p className="py-3 text-center text-xs text-neutral-600">
