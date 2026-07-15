@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { Deck } from "@/lib/audio/Deck";
-import { Rack, RACK_MODULES, RackModuleId, RackPreset, XY_TARGETS } from "@/lib/audio/Rack";
+import { Rack, RACK_MODULES, RackModuleId, RackPreset, XY_TARGETS, XY_FILTER_TYPES } from "@/lib/audio/Rack";
 import { Knob } from "./Knob";
 import { Fader } from "./Fader";
 import { DigitalVU, levelColor } from "./EqVisuals";
@@ -582,72 +582,136 @@ export function RackPanel({
                   />
                   <span className="text-[8px] font-bold uppercase leading-none" style={{ color: on ? color : "#6b6b6b" }}>INT</span>
                 </div>
-                {isXyMatrix && (
-                  <div className="flex flex-1 flex-col gap-2">
-                    {/* Y-axis target picker, stacked so it reads top→bottom next to the pad */}
-                    <div className="flex items-center gap-2">
-                      <div className="flex flex-col gap-1">
-                        <span className="text-[8px] font-bold uppercase text-neutral-500">Effet Y</span>
-                        {XY_TARGETS.map((t, i) => (
-                          <button
-                            key={t}
-                            onClick={() => {
-                              rack.setParam(id, "yTarget", i);
-                              flashLcd(`XY MATRIX — Y = ${t}`);
-                              rerender();
-                            }}
-                            className="rounded px-2 py-1 text-[10px] font-bold transition-colors"
-                            style={
-                              yTarget === i
-                                ? { background: color, color: "#0a0a0a" }
-                                : { background: "rgba(255,255,255,0.06)", color: "#9a9a9a" }
-                            }
+                {isXyMatrix && (() => {
+                  const xFilterType = Math.round(rack.getParam(id, "xFilterType"));
+                  const yFilterType = Math.round(rack.getParam(id, "yFilterType"));
+                  const FILTER_ABBR = ["LP", "HP", "BP", "CB"]; // Passe-bas/haut/bande, Coupe-bande
+                  return (
+                    <div className="flex flex-1 flex-col gap-2">
+                      {/* Y-axis target picker, stacked so it reads top→bottom next to the pad */}
+                      <div className="flex items-center gap-2">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[8px] font-bold uppercase text-neutral-500">Effet Y</span>
+                          {XY_TARGETS.map((t, i) => (
+                            <button
+                              key={t}
+                              onClick={() => {
+                                rack.setParam(id, "yTarget", i);
+                                flashLcd(`XY MATRIX — Y = ${t}`);
+                                rerender();
+                              }}
+                              className="rounded px-2 py-1 text-[10px] font-bold transition-colors"
+                              style={
+                                yTarget === i
+                                  ? { background: color, color: "#0a0a0a" }
+                                  : { background: "rgba(255,255,255,0.06)", color: "#9a9a9a" }
+                              }
+                            >
+                              {t}
+                            </button>
+                          ))}
+                          {/* filter type for Y — only meaningful while Effet Y = Filtre */}
+                          <span
+                            className="mt-1 text-[8px] font-bold uppercase"
+                            style={{ color: yTarget === 0 ? "#9a9a9a" : "#4a4a4a" }}
                           >
-                            {t}
-                          </button>
-                        ))}
-                      </div>
-                      <XyPad
-                        size={240}
-                        color={color}
-                        x={rack.getParam(id, "x")}
-                        y={rack.getParam(id, "y")}
-                        xLabel={XY_TARGETS[xTarget]}
-                        yLabel={XY_TARGETS[yTarget]}
-                        onChange={(nx, ny) => {
-                          rack.setParam(id, "x", nx);
-                          rack.setParam(id, "y", ny);
-                          flashLcd(`XY MATRIX ${Math.round(nx * 100)}/${Math.round(ny * 100)}`);
-                          rerender();
-                        }}
-                      />
-                    </div>
-                    {/* X-axis target picker, laid out under the pad to match its horizontal axis */}
-                    <div className="flex items-center justify-end gap-1 pr-1">
-                      <span className="mr-1 text-[8px] font-bold uppercase text-neutral-500">Effet X</span>
-                      {XY_TARGETS.map((t, i) => (
-                        <button
-                          key={t}
-                          onClick={() => {
-                            rack.setParam(id, "xTarget", i);
-                            flashLcd(`XY MATRIX — X = ${t}`);
+                            Type Y
+                          </span>
+                          <div className="flex gap-0.5">
+                            {XY_FILTER_TYPES.map((t, i) => (
+                              <button
+                                key={t}
+                                title={t}
+                                disabled={yTarget !== 0}
+                                onClick={() => {
+                                  rack.setParam(id, "yFilterType", i);
+                                  flashLcd(`XY MATRIX — Filtre Y = ${t}`);
+                                  rerender();
+                                }}
+                                className="flex-1 rounded px-1 py-0.5 text-[9px] font-bold transition-colors disabled:opacity-30"
+                                style={
+                                  yFilterType === i
+                                    ? { background: color, color: "#0a0a0a" }
+                                    : { background: "rgba(255,255,255,0.06)", color: "#9a9a9a" }
+                                }
+                              >
+                                {FILTER_ABBR[i]}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <XyPad
+                          size={240}
+                          color={color}
+                          x={rack.getParam(id, "x")}
+                          y={rack.getParam(id, "y")}
+                          xLabel={XY_TARGETS[xTarget]}
+                          yLabel={XY_TARGETS[yTarget]}
+                          onChange={(nx, ny) => {
+                            rack.setParam(id, "x", nx);
+                            rack.setParam(id, "y", ny);
+                            flashLcd(`XY MATRIX ${Math.round(nx * 100)}/${Math.round(ny * 100)}`);
                             rerender();
                           }}
-                          className="rounded px-2 py-1 text-[10px] font-bold transition-colors"
-                          style={
-                            xTarget === i
-                              ? { background: color, color: "#0a0a0a" }
-                              : { background: "rgba(255,255,255,0.06)", color: "#9a9a9a" }
-                          }
-                        >
-                          {t}
-                        </button>
-                      ))}
+                        />
+                      </div>
+                      {/* X-axis target + filter-type pickers, laid out under the pad to match its horizontal axis */}
+                      <div className="flex items-center justify-end gap-3 pr-1">
+                        <div className="flex items-center gap-1">
+                          <span
+                            className="text-[8px] font-bold uppercase"
+                            style={{ color: xTarget === 0 ? "#9a9a9a" : "#4a4a4a" }}
+                          >
+                            Type X
+                          </span>
+                          {XY_FILTER_TYPES.map((t, i) => (
+                            <button
+                              key={t}
+                              title={t}
+                              disabled={xTarget !== 0}
+                              onClick={() => {
+                                rack.setParam(id, "xFilterType", i);
+                                flashLcd(`XY MATRIX — Filtre X = ${t}`);
+                                rerender();
+                              }}
+                              className="rounded px-1.5 py-1 text-[9px] font-bold transition-colors disabled:opacity-30"
+                              style={
+                                xFilterType === i
+                                  ? { background: color, color: "#0a0a0a" }
+                                  : { background: "rgba(255,255,255,0.06)", color: "#9a9a9a" }
+                              }
+                            >
+                              {FILTER_ABBR[i]}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="mr-1 text-[8px] font-bold uppercase text-neutral-500">Effet X</span>
+                          {XY_TARGETS.map((t, i) => (
+                            <button
+                              key={t}
+                              onClick={() => {
+                                rack.setParam(id, "xTarget", i);
+                                flashLcd(`XY MATRIX — X = ${t}`);
+                                rerender();
+                              }}
+                              className="rounded px-2 py-1 text-[10px] font-bold transition-colors"
+                              style={
+                                xTarget === i
+                                  ? { background: color, color: "#0a0a0a" }
+                                  : { background: "rgba(255,255,255,0.06)", color: "#9a9a9a" }
+                              }
+                            >
+                              {t}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
                 <div className={isXyMatrix ? "flex flex-wrap items-start gap-1.5" : "flex flex-1 flex-wrap items-start gap-1.5"}>
-                {def.params.filter((p) => !isXyMatrix || !["x", "y", "xTarget", "yTarget"].includes(p.key)).map((p) => {
+                {def.params.filter((p) => !isXyMatrix || !["x", "y", "xTarget", "yTarget", "xFilterType", "yFilterType"].includes(p.key)).map((p) => {
                   const isTarget = armed !== null && rack.isMacroTarget(armed, { id, key: p.key });
                   return (
                     <div

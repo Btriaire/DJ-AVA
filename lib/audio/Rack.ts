@@ -77,6 +77,14 @@ const AUTOTUNE_SCALES: number[][] = [
 export const XY_TARGETS = ["Filtre", "Résonance", "Mix"] as const;
 const xyTargetLabel = (v: number) => XY_TARGETS[Math.max(0, Math.min(XY_TARGETS.length - 1, Math.round(v)))];
 
+// XY Matrix: when an axis is assigned "Filtre", pick which kind it sweeps —
+// each axis has its own filter node, so X and Y can run two different filter
+// types at once (e.g. X = low-pass, Y = high-pass, like a DJ isolator pad).
+export const XY_FILTER_TYPES = ["Passe-bas", "Passe-haut", "Passe-bande", "Coupe-bande"] as const;
+const XY_FILTER_BIQUAD: BiquadFilterType[] = ["lowpass", "highpass", "bandpass", "notch"];
+const xyFilterTypeLabel = (v: number) =>
+  XY_FILTER_TYPES[Math.max(0, Math.min(XY_FILTER_TYPES.length - 1, Math.round(v)))];
+
 // 15-band 2/3-octave graphic EQ — ISO standard centre frequencies, one gain fader each.
 // Shared by the engine and the panel (fader labels + response curve).
 export const EQ_FREQS = [25, 40, 63, 100, 160, 250, 400, 630, 1000, 1600, 2500, 4000, 6300, 10000, 16000];
@@ -303,6 +311,8 @@ export const RACK_MODULES: RackModuleDef[] = [
       { key: "y", label: "Y", min: 0, max: 1, def: 0, fmt: pct },
       { key: "xTarget", label: "Effet X", min: 0, max: XY_TARGETS.length - 1, def: 0, fmt: xyTargetLabel },
       { key: "yTarget", label: "Effet Y", min: 0, max: XY_TARGETS.length - 1, def: 2, fmt: xyTargetLabel },
+      { key: "xFilterType", label: "Filtre X", min: 0, max: XY_FILTER_TYPES.length - 1, def: 0, fmt: xyFilterTypeLabel },
+      { key: "yFilterType", label: "Filtre Y", min: 0, max: XY_FILTER_TYPES.length - 1, def: 1, fmt: xyFilterTypeLabel },
     ],
   },
   {
@@ -1364,22 +1374,35 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
     }
     case "xymatrix": {
       // 2D touch pad: each axis independently drives whichever effect it's
-      // assigned to (xTarget/yTarget — see XY_TARGETS) — Filtre (LP sweep),
-      // Résonance (filter Q) or Mix (wet/dry blend). Reassigning an axis just
-      // re-applies that axis's current pad position to the newly chosen target,
-      // so nothing "jumps" when you switch what X or Y controls.
+      // assigned to (xTarget/yTarget — see XY_TARGETS) — Filtre, Résonance or
+      // Mix. X and Y get their OWN filter node with its own selectable type
+      // (xFilterType/yFilterType — see XY_FILTER_TYPES), so e.g. X can sweep
+      // a low-pass while Y independently sweeps a high-pass at the same time,
+      // like a real DJ isolator pad. A filter only contributes to the signal
+      // while its axis is actually assigned to "Filtre" (gated by its own
+      // gain stage) — otherwise it sits silently out of the path.
       const fxIn = c.createGain();
       const dryGain = c.createGain();
-      const lpFilter = c.createBiquadFilter();
-      lpFilter.type = "lowpass";
-      lpFilter.frequency.value = 200;
-      lpFilter.Q.value = 1;
+      const filterX = c.createBiquadFilter();
+      filterX.type = "lowpass";
+      filterX.frequency.value = 200;
+      const filterXGain = c.createGain();
+      filterXGain.gain.value = 0;
+      const filterY = c.createBiquadFilter();
+      filterY.type = "highpass";
+      filterY.frequency.value = 200;
+      const filterYGain = c.createGain();
+      filterYGain.gain.value = 0;
       const wetGain = c.createGain();
       const fxOut = c.createGain();
       fxIn.connect(dryGain);
       dryGain.connect(fxOut);
-      fxIn.connect(lpFilter);
-      lpFilter.connect(wetGain);
+      fxIn.connect(filterX);
+      filterX.connect(filterXGain);
+      filterXGain.connect(wetGain);
+      fxIn.connect(filterY);
+      filterY.connect(filterYGain);
+      filterYGain.connect(wetGain);
       wetGain.connect(fxOut);
       dryGain.gain.value = 1;
       wetGain.gain.value = 0;
@@ -1388,35 +1411,50 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
       let yPos = 0;
       let xTarget = 0; // Filtre
       let yTarget = 2; // Mix
-      const applyTarget = (target: number, pos: number) => {
+      const freqFor = (pos: number) => Math.max(20, Math.min(20000, 200 * Math.pow(80, pos)));
+      const applyTarget = (target: number, pos: number, axis: "x" | "y") => {
+        const filt = axis === "x" ? filterX : filterY;
         if (target === 0) {
-          // Filtre: LP sweep 200Hz → 16kHz (logarithmic)
-          const freq = 200 * Math.pow(80, pos);
-          at(lpFilter.frequency, Math.max(20, Math.min(20000, freq)));
+          // Filtre: sweep 200Hz → 16kHz (logarithmic), through this axis's own filter/type
+          at(filt.frequency, freqFor(pos));
         } else if (target === 1) {
-          // Résonance: filter Q, 1 → 30
-          at(lpFilter.Q, 1 + pos * 29);
+          // Résonance: filter Q, 1 → 30 — shared, applies to whichever filter(s) are active
+          at(filterX.Q, 1 + pos * 29);
+          at(filterY.Q, 1 + pos * 29);
         } else {
           // Mix: wet/dry blend (0 = dry only)
           at(wetGain.gain, pos);
           at(dryGain.gain, 1 - pos);
         }
       };
+      // gate a filter's contribution in/out of the mix depending on whether
+      // its axis is currently assigned to "Filtre"
+      const updateGates = () => {
+        filterXGain.gain.value = xTarget === 0 ? 1 : 0;
+        filterYGain.gain.value = yTarget === 0 ? 1 : 0;
+      };
+      updateGates();
       return {
         fxIn, fxOut,
         onParam: (k, v) => {
           if (k === "x") {
             xPos = v;
-            applyTarget(xTarget, v);
+            applyTarget(xTarget, v, "x");
           } else if (k === "y") {
             yPos = v;
-            applyTarget(yTarget, v);
+            applyTarget(yTarget, v, "y");
           } else if (k === "xTarget") {
             xTarget = Math.round(v);
-            applyTarget(xTarget, xPos);
+            updateGates();
+            applyTarget(xTarget, xPos, "x");
           } else if (k === "yTarget") {
             yTarget = Math.round(v);
-            applyTarget(yTarget, yPos);
+            updateGates();
+            applyTarget(yTarget, yPos, "y");
+          } else if (k === "xFilterType") {
+            filterX.type = XY_FILTER_BIQUAD[Math.round(v)];
+          } else if (k === "yFilterType") {
+            filterY.type = XY_FILTER_BIQUAD[Math.round(v)];
           }
         },
       };
