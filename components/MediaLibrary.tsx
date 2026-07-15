@@ -1116,7 +1116,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
               ⇄ Relais A→B→A
             </button>
           </div>
-          <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto">
+          <ul className={`flex flex-col gap-1 overflow-y-auto ${splitLayout ? "max-h-[28rem]" : "max-h-48"}`}>
             {activePlaylist.trackIds.length === 0 && (
               <p className="py-3 text-center text-xs text-neutral-600">
                 Set vide — ajoute des morceaux ci-dessous, dans l&apos;ordre où ils doivent s&apos;enchaîner.
@@ -1143,7 +1143,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
               </button>
             )}
           </div>
-          <ul className="flex max-h-40 flex-col gap-1 overflow-y-auto">
+          <ul className={`flex flex-col gap-1 overflow-y-auto ${splitLayout ? "max-h-[20rem]" : "max-h-40"}`}>
             {data.tracks
               .filter((t) => !activePlaylist.trackIds.includes(t.id))
               .map((t) => (
@@ -1246,6 +1246,54 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
             <span className="text-neutral-500">→</span>
             <span style={{ color: COLOR_A }}>A</span>
           </button>
+          {/* quick set launcher — play a saved playlist right from the header,
+              without switching into the "Sets" tab first */}
+          {data.playlists.length > 0 && (
+            <div className="flex items-center gap-1 rounded bg-black/30 px-1.5 py-1">
+              <select
+                value={activePl ?? ""}
+                onChange={(e) => setActivePl(e.target.value || null)}
+                className="rounded bg-neutral-800 px-1.5 py-1 text-xs text-violet-300 outline-none ring-1 ring-neutral-700"
+                title="Choisir un set à lancer"
+              >
+                <option value="" disabled>
+                  Set…
+                </option>
+                {data.playlists.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.trackIds.length})
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => activePl && playPlaylistLive("A", activePl)}
+                disabled={!activePl}
+                className="hw-btn px-1.5 py-1 text-xs disabled:opacity-30"
+                style={{ ["--led" as string]: COLOR_A, color: COLOR_A }}
+                title="Lancer ce set sur le Deck A, maintenant"
+              >
+                ▶A
+              </button>
+              <button
+                onClick={() => activePl && playPlaylistLive("B", activePl)}
+                disabled={!activePl}
+                className="hw-btn px-1.5 py-1 text-xs disabled:opacity-30"
+                style={{ ["--led" as string]: COLOR_B, color: COLOR_B }}
+                title="Lancer ce set sur le Deck B, maintenant"
+              >
+                ▶B
+              </button>
+              <button
+                onClick={() => activePl && playPlaylistRelay(activePl)}
+                disabled={!activePl}
+                className="hw-btn px-1.5 py-1 text-xs disabled:opacity-30"
+                style={{ ["--led" as string]: "#a78bfa", color: "#a78bfa" }}
+                title="Relais A→B→A avec ce set, maintenant"
+              >
+                ⇄
+              </button>
+            </div>
+          )}
           <button
             onClick={() => setCollapsed((c) => !c)}
             className="hw-btn px-2 py-0.5 text-xs text-neutral-400"
@@ -1389,7 +1437,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
 
           {/* ===== FILES ===== */}
           {tab === "files" && (
-            <ul className="flex max-h-80 flex-col gap-1 overflow-y-auto">
+            <ul className={`flex flex-col gap-1 overflow-y-auto ${splitLayout ? "max-h-[34rem]" : "max-h-80"}`}>
               {data.tracks.length === 0 && (
                 <p className="py-6 text-center text-sm text-neutral-600">
                   Aucun morceau. Clique sur « + Importer » pour ajouter des MP3 / WAV, ou
@@ -1454,7 +1502,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
                   ))}
                 </div>
               )}
-              <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto">
+              <ul className={`flex flex-col gap-1 overflow-y-auto ${splitLayout ? "max-h-[34rem]" : "max-h-72"}`}>
                 {results.length === 0 && !loading && (
                   <p className="py-6 text-center text-sm text-neutral-600">
                     {tab === "youtube"
@@ -1615,7 +1663,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
               )}
 
               {!autoLoading && autoTracks.length > 0 && (
-                <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto">
+                <ul className={`flex flex-col gap-1 overflow-y-auto ${splitLayout ? "max-h-[34rem]" : "max-h-72"}`}>
                   {autoTracks.map((t) => {
                     const seedBpm = autoSeed?.bpm ?? null;
                     const close = seedBpm && t.bpm ? Math.abs(seedBpm - t.bpm) <= 4 : false;
