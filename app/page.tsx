@@ -57,8 +57,9 @@ export default function Home() {
   const [showConfig, setShowConfig] = useState(false);
   const [showYouTube, setShowYouTube] = useState(false); // bottom YouTube video tool (optional)
   const [resetKey, setResetKey] = useState(0);
-  const [autoDur, setAutoDur] = useState(8); // auto-crossfade duration (s)
-  const [autoRunning, setAutoRunning] = useState(false);
+  const [autoDur, setAutoDur] = useState(8); // seconds-before-end trigger + fade length
+  const [autoArmed, setAutoArmed] = useState(false); // "Auto-fade" toggle — watches for track-end
+  const [autoRunning, setAutoRunning] = useState(false); // a sweep is actively animating right now
   const [autoFadeSync, setAutoFadeSync] = useState(false); // also glide tempo onto the incoming deck
   const autoRaf = useRef<number | null>(null);
   const [convLink, setConvLink] = useState(""); // shared MP3-converter input
@@ -206,74 +207,100 @@ export default function Home() {
     setConvFlash((n) => n + 1);
   }
 
-  // survives across recursive sweeps without the stale-closure issues a state
-  // variable would have (setCrossfade() updates don't land synchronously)
-  const autoLoopActive = useRef(false);
+  // live mirror of `crossfade` — the position watcher runs in a setInterval
+  // whose closure would otherwise see a stale value from whenever the effect
+  // last (re)ran, not the current fader position.
+  const crossfadeRef = useRef(crossfade);
+  crossfadeRef.current = crossfade;
 
   function stopAuto() {
-    autoLoopActive.current = false;
+    autoArmedRef.current = false;
+    setAutoArmed(false);
     if (autoRaf.current !== null) cancelAnimationFrame(autoRaf.current);
     autoRaf.current = null;
     setAutoRunning(false);
   }
 
-  // continuously ping-pongs the crossfader side to side over `autoDur` seconds
-  // per pass, non-stop until stopAuto() is called — a hands-free auto-mix.
-  function startAuto() {
+  // the crossfade sweep animation itself, from `from` toward the opposite side
+  function runAutoSweep(from: number, secs: number) {
     const eng = engineRef.current;
-    if (!eng) return;
-    if (autoRaf.current !== null) cancelAnimationFrame(autoRaf.current);
-    autoLoopActive.current = true;
+    if (!eng || autoRaf.current !== null) return; // a sweep is already in flight
+    const to = from < 0.5 ? 1 : 0;
+    // the deck we're fading TOWARD (to=1 → B, to=0 → A) and the one we're leaving.
+    const target = to === 1 ? eng.deckB : eng.deckA;
+    const source = to === 1 ? eng.deckA : eng.deckB;
+    // If the incoming deck has a track but isn't playing yet, start it so the
+    // single is live for the blend.
+    if (target.name && !target.playing) {
+      eng.resume(); // make sure the audio context is awake
+      target.play();
+    }
+    // Optional: progressively glide the INCOMING deck's tempo onto the outgoing
+    // deck's BPM, finishing right as the crossfade completes (beat-matched mix).
+    let tempoFromPct = 0;
+    let tempoToPct = 0;
+    const tempoAlign = autoFadeSync && !!target.bpm && !!source.effectiveBPM;
+    if (tempoAlign) {
+      tempoFromPct = target.pitchPct;
+      tempoToPct = Math.max(-50, Math.min(50, (source.effectiveBPM / target.bpm - 1) * 100));
+    }
+    const t0 = performance.now();
+    const ms = Math.max(0.2, secs) * 1000;
     setAutoRunning(true);
-
-    const runSweep = (from: number) => {
-      const to = from < 0.5 ? 1 : 0;
-      // the deck we're fading TOWARD (to=1 → B, to=0 → A) and the one we're leaving.
-      const target = to === 1 ? eng.deckB : eng.deckA;
-      const source = to === 1 ? eng.deckA : eng.deckB;
-      // If the incoming deck has a track but isn't playing yet, start it so the
-      // single is live for the blend.
-      if (target.name && !target.playing) {
-        eng.resume(); // make sure the audio context is awake
-        target.play();
-      }
-      // Optional: progressively glide the INCOMING deck's tempo onto the outgoing
-      // deck's BPM, finishing right as the crossfade completes (beat-matched mix).
-      let tempoFromPct = 0;
-      let tempoToPct = 0;
-      const tempoAlign = autoFadeSync && !!target.bpm && !!source.effectiveBPM;
+    const step = (now: number) => {
+      const p = Math.min(1, (now - t0) / ms);
+      // ease-in-out for a musical blend
+      const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+      const v = from + (to - from) * e;
+      setCrossfade(v);
+      eng.setCrossfade(v);
       if (tempoAlign) {
-        tempoFromPct = target.pitchPct;
-        tempoToPct = Math.max(-50, Math.min(50, (source.effectiveBPM / target.bpm - 1) * 100));
+        target.setPitch(tempoFromPct + (tempoToPct - tempoFromPct) * e);
       }
-      const t0 = performance.now();
-      const ms = autoDur * 1000;
-      const step = (now: number) => {
-        if (!autoLoopActive.current) {
-          autoRaf.current = null;
-          return;
-        }
-        const p = Math.min(1, (now - t0) / ms);
-        // ease-in-out for a musical blend
-        const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
-        const v = from + (to - from) * e;
-        setCrossfade(v);
-        eng.setCrossfade(v);
-        if (tempoAlign) {
-          target.setPitch(tempoFromPct + (tempoToPct - tempoFromPct) * e);
-        }
-        if (p < 1) {
-          autoRaf.current = requestAnimationFrame(step);
-        } else if (autoLoopActive.current) {
-          runSweep(to); // reverse direction and keep going — non-stop while active
-        } else {
-          autoRaf.current = null;
-        }
-      };
-      autoRaf.current = requestAnimationFrame(step);
+      if (p < 1) {
+        autoRaf.current = requestAnimationFrame(step);
+      } else {
+        autoRaf.current = null;
+        setAutoRunning(false);
+      }
     };
-    runSweep(crossfade);
+    autoRaf.current = requestAnimationFrame(step);
   }
+
+  // arm/disarm Auto-fade. While armed, a watcher (below) checks whichever
+  // deck the crossfader currently favors and swaps to the other one `autoDur`
+  // seconds before that track ends — same idea as the Playlist relay, but for
+  // two manually-loaded singles instead of a queued set.
+  const autoArmedRef = useRef(false);
+  function toggleAutoArm() {
+    const next = !autoArmedRef.current;
+    autoArmedRef.current = next;
+    setAutoArmed(next);
+    if (!next && autoRaf.current !== null) {
+      cancelAnimationFrame(autoRaf.current);
+      autoRaf.current = null;
+      setAutoRunning(false);
+    }
+  }
+  // double-click: force the switch right now, regardless of position
+  function forceAutoSwitch() {
+    runAutoSweep(crossfadeRef.current, autoDur);
+  }
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (!autoArmedRef.current || autoRaf.current !== null) return;
+      const eng = engineRef.current;
+      if (!eng) return;
+      const fg = crossfadeRef.current < 0.5 ? "A" : "B";
+      const deck = fg === "A" ? eng.deckA : eng.deckB;
+      if (!deck.playing || deck.duration <= 0) return;
+      const remain = deck.duration - deck.position();
+      if (remain > autoDur + 0.3) return;
+      runAutoSweep(crossfadeRef.current, Math.min(autoDur, Math.max(2, remain)));
+    }, 300);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoDur, autoFadeSync]);
 
   function panic() {
     engineRef.current?.panic();
@@ -819,12 +846,13 @@ export default function Home() {
                 {/* automatic progressive crossfade */}
                 <div className="mt-1 flex w-full items-center gap-1.5">
                   <button
-                    onClick={() => (autoRunning ? stopAuto() : startAuto())}
-                    className={`hw-btn flex-1 px-2 py-1 text-[11px] ${autoRunning ? "hw-btn-on" : "text-amber-300"}`}
+                    onClick={toggleAutoArm}
+                    onDoubleClick={forceAutoSwitch}
+                    className={`hw-btn flex-1 px-2 py-1 text-[11px] ${autoArmed ? "hw-btn-on" : "text-amber-300"}`}
                     style={{ ["--led" as string]: "#ffcc00" }}
-                    title="Transition automatique et progressive vers l'autre platine"
+                    title={`Bascule automatiquement vers l'autre platine ${autoDur}s avant la fin du morceau en cours — double-clic pour forcer maintenant`}
                   >
-                    {autoRunning ? "■ Auto…" : "⇄ Auto-fade"}
+                    {autoRunning ? "⇄ Transition…" : autoArmed ? "⏳ Auto-fade armé" : "⇄ Auto-fade"}
                   </button>
                   <button
                     onClick={() => setAutoFadeSync((s) => !s)}
@@ -837,7 +865,7 @@ export default function Home() {
                   <button
                     onClick={() => setAutoDur((d) => (d >= 16 ? 4 : d * 2))}
                     className="hw-btn px-2 py-1 text-[11px] text-neutral-300"
-                    title="Durée de la transition"
+                    title="Déclenche le fondu N secondes avant la fin du morceau (aussi la durée du fondu)"
                   >
                     {autoDur}s
                   </button>

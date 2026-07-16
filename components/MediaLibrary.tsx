@@ -15,6 +15,7 @@ import {
   extractCover,
 } from "@/lib/library";
 import { AudiusTrack } from "@/lib/audius";
+import { CdPlayerFace } from "./CdPlayerFace";
 
 interface Props {
   engine: DJEngine;
@@ -1301,46 +1302,29 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
             </button>
           </div>
 
-          {/* classic transport — appears once this set is actively driving a
-              deck: skip-previous / play-pause / skip-next, styled like real
-              hardware transport buttons (round, glossy, backlit while playing) */}
+          {/* retro CD-player face — appears once this set is actively driving a
+              deck: spinning disc, LCD track/time/BPM readout, progress bar and
+              next-up preview, plus the classic ⏮ ▶/⏸ ⏭ transport — makes it
+              obvious at a glance what's playing and what's coming up next. */}
           {(["A", "B"] as const).map((side) => {
             if (queueSrc[side] !== activePlaylist.id) return null;
             const deck = side === "A" ? engine.deckA : engine.deckB;
             const color = side === "A" ? COLOR_A : COLOR_B;
+            const curIdx = activePlaylist.trackIds.findIndex((id) => id === deck.origin?.id);
+            const nextT = curIdx >= 0 ? trackById(activePlaylist.trackIds[(curIdx + 1) % activePlaylist.trackIds.length]) : null;
             return (
-              <div key={side} className="flex items-center gap-3 rounded bg-black/30 px-3 py-2">
-                <span className="w-14 shrink-0 text-[10px] font-black uppercase" style={{ color }}>
-                  Deck {side}
-                </span>
-                <button
-                  onClick={() => stepSingle(side, -1)}
-                  className="hw-transport h-9 w-9 text-sm"
-                  style={{ ["--led" as string]: color }}
-                  title="Titre précédent"
-                >
-                  ⏮
-                </button>
-                <button
-                  onClick={() => (deck.playing ? deck.pause() : deck.play())}
-                  className={`hw-transport h-11 w-11 text-lg ${deck.playing ? "hw-transport-play" : ""}`}
-                  style={{ ["--led" as string]: color }}
-                  title={deck.playing ? "Pause" : "Lecture"}
-                >
-                  {deck.playing ? "⏸" : "▶"}
-                </button>
-                <button
-                  onClick={() => stepSingle(side, 1)}
-                  className="hw-transport h-9 w-9 text-sm"
-                  style={{ ["--led" as string]: color }}
-                  title="Titre suivant"
-                >
-                  ⏭
-                </button>
-                <span className="min-w-0 flex-1 truncate text-xs text-neutral-400">
-                  {deck.name || "— vide —"}
-                </span>
-              </div>
+              <CdPlayerFace
+                key={side}
+                deck={deck}
+                color={color}
+                side={side}
+                trackNo={curIdx >= 0 ? curIdx + 1 : undefined}
+                trackCount={activePlaylist.trackIds.length}
+                nextName={nextT?.name ?? null}
+                onPrev={() => stepSingle(side, -1)}
+                onPlayPause={() => (deck.playing ? deck.pause() : deck.play())}
+                onNext={() => stepSingle(side, 1)}
+              />
             );
           })}
 

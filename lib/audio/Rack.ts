@@ -74,7 +74,7 @@ const AUTOTUNE_SCALES: number[][] = [
 
 // XY Matrix: each axis can independently drive one of these targets — pick
 // what X and Y do from the pad itself, like an assignable macro controller.
-export const XY_TARGETS = ["Filtre", "Résonance", "Mix"] as const;
+export const XY_TARGETS = ["Filtre", "Résonance", "Mix", "Echo", "Bitcrush", "Stutter"] as const;
 const xyTargetLabel = (v: number) => XY_TARGETS[Math.max(0, Math.min(XY_TARGETS.length - 1, Math.round(v)))];
 
 // XY Matrix: when an axis is assigned "Filtre", pick which kind it sweeps —
@@ -1373,67 +1373,146 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
       };
     }
     case "xymatrix": {
-      // 2D touch pad: each axis independently drives whichever effect it's
-      // assigned to (xTarget/yTarget — see XY_TARGETS) — Filtre, Résonance or
-      // Mix. X and Y get their OWN filter node with its own selectable type
-      // (xFilterType/yFilterType — see XY_FILTER_TYPES), so e.g. X can sweep
-      // a low-pass while Y independently sweeps a high-pass at the same time,
-      // like a real DJ isolator pad. A filter only contributes to the signal
-      // while its axis is actually assigned to "Filtre" (gated by its own
-      // gain stage) — otherwise it sits silently out of the path.
+      // 2D touch pad, now a genuinely independent multi-effect DSP: each axis
+      // picks ANY of 6 targets (see XY_TARGETS) — Filtre, Résonance, Mix,
+      // Echo, Bitcrush or Stutter — and drives it directly from the pad
+      // position. X and Y each get their OWN full set of effect chains, all
+      // gated to zero except whichever one that axis currently has assigned,
+      // so e.g. X can run a low-pass filter while Y independently runs an
+      // echo, both live and controllable at once — a real dual-effect pad,
+      // not a single fixed effect with two knobs.
       const fxIn = c.createGain();
       const dryGain = c.createGain();
-      const filterX = c.createBiquadFilter();
-      filterX.type = "lowpass";
-      filterX.frequency.value = 200;
-      const filterXGain = c.createGain();
-      filterXGain.gain.value = 0;
-      const filterY = c.createBiquadFilter();
-      filterY.type = "highpass";
-      filterY.frequency.value = 200;
-      const filterYGain = c.createGain();
-      filterYGain.gain.value = 0;
       const wetGain = c.createGain();
       const fxOut = c.createGain();
       fxIn.connect(dryGain);
       dryGain.connect(fxOut);
-      fxIn.connect(filterX);
-      filterX.connect(filterXGain);
-      filterXGain.connect(wetGain);
-      fxIn.connect(filterY);
-      filterY.connect(filterYGain);
-      filterYGain.connect(wetGain);
       wetGain.connect(fxOut);
       dryGain.gain.value = 1;
       wetGain.gain.value = 0;
+
+      type Chain = {
+        filt: BiquadFilterNode; filtGate: GainNode;
+        delay: DelayNode; fb: GainNode; echoGate: GainNode;
+        crush: WaveShaperNode; crushGate: GainNode;
+        stutDelay: DelayNode; stutFb: GainNode; stutGate: GainNode;
+      };
+      const makeChain = (defaultFilterType: BiquadFilterType): Chain => {
+        const filt = c.createBiquadFilter();
+        filt.type = defaultFilterType;
+        filt.frequency.value = 200;
+        const filtGate = c.createGain();
+        filtGate.gain.value = 0;
+        fxIn.connect(filt);
+        filt.connect(filtGate);
+        filtGate.connect(wetGain);
+
+        // Echo: delay + feedback, position drives time and repeat count together
+        const delay = c.createDelay(1);
+        delay.delayTime.value = 0.25;
+        const fb = c.createGain();
+        fb.gain.value = 0.3;
+        const echoGate = c.createGain();
+        echoGate.gain.value = 0;
+        fxIn.connect(delay);
+        delay.connect(fb);
+        fb.connect(delay);
+        delay.connect(echoGate);
+        echoGate.connect(wetGain);
+
+        // Bitcrush: waveshaper quantizing the signal to fewer amplitude steps
+        const crush = c.createWaveShaper();
+        const crushGate = c.createGain();
+        crushGate.gain.value = 0;
+        fxIn.connect(crush);
+        crush.connect(crushGate);
+        crushGate.connect(wetGain);
+
+        // Stutter: short delay + high feedback — a rhythmic repeat/glitch,
+        // position drives the repeat rate from fast/robotic to slow/echoey —
+        // the "loop with lots of variation" the pad's Stutter target gives you.
+        const stutDelay = c.createDelay(0.25);
+        stutDelay.delayTime.value = 0.06;
+        const stutFb = c.createGain();
+        stutFb.gain.value = 0.75;
+        const stutGate = c.createGain();
+        stutGate.gain.value = 0;
+        fxIn.connect(stutDelay);
+        stutDelay.connect(stutFb);
+        stutFb.connect(stutDelay);
+        stutDelay.connect(stutGate);
+        stutGate.connect(wetGain);
+
+        return { filt, filtGate, delay, fb, echoGate, crush, crushGate, stutDelay, stutFb, stutGate };
+      };
+      const X = makeChain("lowpass");
+      const Y = makeChain("highpass");
+
+      const setCrushAmount = (ws: WaveShaperNode, amt: number) => {
+        // amt 0 = transparent, 1 = heavily quantized/crushed
+        const n = 256;
+        const curve = new Float32Array(n);
+        const levels = Math.max(3, Math.round(64 - amt * 60));
+        for (let i = 0; i < n; i++) {
+          const xv = (i / (n - 1)) * 2 - 1;
+          curve[i] = Math.round(xv * levels) / levels;
+        }
+        ws.curve = curve;
+      };
+      setCrushAmount(X.crush, 0);
+      setCrushAmount(Y.crush, 0);
 
       let xPos = 0.5;
       let yPos = 0;
       let xTarget = 0; // Filtre
       let yTarget = 2; // Mix
       const freqFor = (pos: number) => Math.max(20, Math.min(20000, 200 * Math.pow(80, pos)));
+
+      // zero every gate on both axes, then re-open whichever is currently assigned
+      const updateGates = () => {
+        for (const ch of [X, Y]) {
+          ch.filtGate.gain.value = 0;
+          ch.echoGate.gain.value = 0;
+          ch.crushGate.gain.value = 0;
+          ch.stutGate.gain.value = 0;
+        }
+        const open = (ch: Chain, target: number) => {
+          if (target === 0) ch.filtGate.gain.value = 1;
+          else if (target === 3) ch.echoGate.gain.value = 1;
+          else if (target === 4) ch.crushGate.gain.value = 1;
+          else if (target === 5) ch.stutGate.gain.value = 1;
+        };
+        open(X, xTarget);
+        open(Y, yTarget);
+      };
+      updateGates();
+
       const applyTarget = (target: number, pos: number, axis: "x" | "y") => {
-        const filt = axis === "x" ? filterX : filterY;
+        const ch = axis === "x" ? X : Y;
         if (target === 0) {
           // Filtre: sweep 200Hz → 16kHz (logarithmic), through this axis's own filter/type
-          at(filt.frequency, freqFor(pos));
+          at(ch.filt.frequency, freqFor(pos));
         } else if (target === 1) {
           // Résonance: filter Q, 1 → 30 — shared, applies to whichever filter(s) are active
-          at(filterX.Q, 1 + pos * 29);
-          at(filterY.Q, 1 + pos * 29);
-        } else {
+          at(X.filt.Q, 1 + pos * 29);
+          at(Y.filt.Q, 1 + pos * 29);
+        } else if (target === 2) {
           // Mix: wet/dry blend (0 = dry only)
           at(wetGain.gain, pos);
           at(dryGain.gain, 1 - pos);
+        } else if (target === 3) {
+          // Echo: position drives delay time (30ms→630ms) and repeat count together
+          at(ch.delay.delayTime, 0.03 + pos * 0.6);
+          at(ch.fb.gain, pos * 0.75);
+        } else if (target === 4) {
+          // Bitcrush: position drives how heavily quantized the signal is
+          setCrushAmount(ch.crush, pos);
+        } else if (target === 5) {
+          // Stutter: position drives the repeat rate, fast/robotic → slow/echoey
+          at(ch.stutDelay.delayTime, 0.015 + pos * 0.2);
+          at(ch.stutFb.gain, 0.55 + pos * 0.35);
         }
       };
-      // gate a filter's contribution in/out of the mix depending on whether
-      // its axis is currently assigned to "Filtre"
-      const updateGates = () => {
-        filterXGain.gain.value = xTarget === 0 ? 1 : 0;
-        filterYGain.gain.value = yTarget === 0 ? 1 : 0;
-      };
-      updateGates();
       return {
         fxIn, fxOut,
         onParam: (k, v) => {
@@ -1452,9 +1531,9 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
             updateGates();
             applyTarget(yTarget, yPos, "y");
           } else if (k === "xFilterType") {
-            filterX.type = XY_FILTER_BIQUAD[Math.round(v)];
+            X.filt.type = XY_FILTER_BIQUAD[Math.round(v)];
           } else if (k === "yFilterType") {
-            filterY.type = XY_FILTER_BIQUAD[Math.round(v)];
+            Y.filt.type = XY_FILTER_BIQUAD[Math.round(v)];
           }
         },
       };

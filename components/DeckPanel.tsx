@@ -1065,53 +1065,59 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                     />
                     <span className="fader-ticks" aria-hidden />
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex flex-col items-center gap-1">
                     <button
-                      className="text-[9px] font-bold uppercase leading-none"
+                      className="text-[10px] font-bold uppercase leading-none"
                       style={{ color: muted ? "#777" : color }}
                       onClick={() => toggleStemMute(i)}
                     >
                       {info.label}
                     </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        className="min-w-[26px] rounded px-2 py-1 text-[11px] font-black leading-none"
+                        style={
+                          deck.stemReady && lvl > 0.001 && deck.stemVol.every((v, j) => j === i || v <= 0.001)
+                            ? { background: color, color: "#0a0a0a" }
+                            : { background: "rgba(255,255,255,0.1)", color: "#b0b0b0" }
+                        }
+                        title="Isoler ce stem — coupe le son de tous les autres pour ne garder que celui-ci"
+                        onClick={() => soloStem(i)}
+                      >
+                        S
+                      </button>
+                      <button
+                        className="min-w-[26px] rounded px-2 py-1 text-[11px] font-black leading-none"
+                        style={
+                          deck.stemFxTarget === i
+                            ? { background: color, color: "#0a0a0a" }
+                            : { background: "rgba(255,255,255,0.1)", color: "#b0b0b0" }
+                        }
+                        title="Effets sur ce stem seul — le Rack DSP n'agit plus que sur ce stem, les autres restent audibles sans effet"
+                        onClick={() => {
+                          deck.setStemFxTarget(deck.stemFxTarget === i ? null : i);
+                          rerender();
+                        }}
+                      >
+                        FX
+                      </button>
+                    </div>
                     <button
-                      className="rounded px-1 text-[8px] font-black leading-none"
-                      style={
-                        deck.stemReady && lvl > 0.001 && deck.stemVol.every((v, j) => j === i || v <= 0.001)
-                          ? { background: color, color: "#0a0a0a" }
-                          : { background: "rgba(255,255,255,0.08)", color: "#8a8a8a" }
-                      }
-                      title="Isoler ce stem — coupe le son de tous les autres pour ne garder que celui-ci"
-                      onClick={() => soloStem(i)}
-                    >
-                      S
-                    </button>
-                    <button
-                      className="rounded px-1 text-[8px] font-black leading-none"
-                      style={
-                        deck.stemFxTarget === i
-                          ? { background: color, color: "#0a0a0a" }
-                          : { background: "rgba(255,255,255,0.08)", color: "#8a8a8a" }
-                      }
-                      title="Effets sur ce stem seul — le Rack DSP n'agit plus que sur ce stem, les autres restent audibles sans effet"
-                      onClick={() => {
-                        deck.setStemFxTarget(deck.stemFxTarget === i ? null : i);
-                        rerender();
-                      }}
-                    >
-                      FX
-                    </button>
-                    <button
-                      className="rounded px-1 text-[8px] font-black leading-none"
-                      disabled={!deck.stemsActive || !deck.playing}
+                      className="w-full min-w-[54px] rounded px-2 py-1 text-[11px] font-black leading-none disabled:opacity-30"
+                      disabled={!deck.stemsActive || !deck.playing || !deck.bpm}
                       style={
                         (stemLoopIdx[i] ?? -1) >= 0
                           ? { background: color, color: "#0a0a0a" }
-                          : { background: "rgba(255,255,255,0.08)", color: "#8a8a8a" }
+                          : { background: "rgba(255,255,255,0.1)", color: "#b0b0b0" }
                       }
-                      title="Boucle ce stem seul (1 → 2 → 4 temps → off), les autres continuent normalement"
+                      title={
+                        !deck.bpm
+                          ? "BPM pas encore détecté — attends la fin de l'analyse pour boucler ce stem"
+                          : "Boucle ce stem seul (1 → 2 → 4 temps → off), les autres continuent normalement"
+                      }
                       onClick={() => cycleStemLoop(i)}
                     >
-                      {(stemLoopIdx[i] ?? -1) >= 0 ? `${STEM_LOOP_BEATS[stemLoopIdx[i]]}` : "LOOP"}
+                      {(stemLoopIdx[i] ?? -1) >= 0 ? `⟳ ${STEM_LOOP_BEATS[stemLoopIdx[i]]} TEMPS` : "LOOP"}
                     </button>
                   </div>
                 </div>
