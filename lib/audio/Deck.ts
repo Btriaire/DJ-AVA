@@ -2,6 +2,19 @@ import { detectBPM, buildWaveformPeaks } from "./bpm";
 import { FXRack, FxName } from "./FXRack";
 import { Rack, RackPreset } from "./Rack";
 
+// synthesized white-noise impulse response for the shared per-stem reverb
+// send bus — same technique as the Rack's own "reverb" module.
+function makeReverbImpulse(ctx: AudioContext, decay: number): AudioBuffer {
+  const rate = ctx.sampleRate;
+  const len = Math.max(1, Math.floor(rate * decay));
+  const buf = ctx.createBuffer(2, len, rate);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = buf.getChannelData(ch);
+    for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.2);
+  }
+  return buf;
+}
+
 export interface DeckState {
   loaded: boolean;
   playing: boolean;
@@ -73,11 +86,28 @@ export class Deck {
   stemStatus: "none" | "prefetching" | "working" | "ready" | "error" = "none";
   stemCached = false; // server already has the stems on disk -> loading is instant
   stemHash = ""; // server content hash of the loaded track (for the library badge)
-  // when set, the Rack DSP pedalboard is unhooked from the whole-mix chain and
-  // spliced onto ONLY this one stem instead — every other stem stays dry and
-  // fully audible, un-plugged from the effects entirely. null = normal (Rack
-  // processes the whole deck, as usual).
-  stemFxTarget: number | null = null;
+  // when non-empty, the Rack DSP pedalboard is unhooked from the whole-mix
+  // chain and spliced onto ONLY these stems instead — every other stem stays
+  // dry and fully audible, un-plugged from the effects entirely. Empty set =
+  // normal (Rack processes the whole deck, as usual).
+  stemFxTargets: Set<number> = new Set();
+  private stemFxAnyActive = false; // tracks whether the whole-mix bypass wiring is engaged
+
+  // shared per-stem effect SENDS (Reverb / Delay) — independent of the Rack
+  // DSP splice above: every stem gets its own send amount into one shared
+  // reverb bus and one shared delay bus, like sends on a real mixer, so e.g.
+  // vocals can sit wetter than drums while everything keeps playing together
+  // (a send blends a stem WITH an effect; the Rack splice routes a stem
+  // THROUGH one instead).
+  stemReverbSend: number[] = []; // 0..1 per stem, public read for the UI
+  stemDelaySend: number[] = [];
+  private stemReverbSendGain: GainNode[] = [];
+  private stemDelaySendGain: GainNode[] = [];
+  private stemReverbConv!: ConvolverNode;
+  private stemReverbReturn!: GainNode;
+  private stemDelayNode!: DelayNode;
+  private stemDelayFb!: GainNode;
+  private stemDelayReturn!: GainNode;
 
   private trim: GainNode;
   private low: BiquadFilterNode;
@@ -159,6 +189,11 @@ export class Deck {
   private stemLoopActive: boolean[] = [];
   private stemLoopStart: number[] = [];
   private stemLoopEnd: number[] = [];
+  private stemLoopWrapTimer: (ReturnType<typeof setTimeout> | null)[] = [];
+  private stemLoopWrapCount: number[] = []; // wraps seen since engagement — drives Roll mode
+  // public so the UI can read/adjust these live, per stem
+  stemLoopSmoothMs: number[] = []; // 0..80ms fade applied right at each loop seam ("smooth" boundary)
+  stemLoopRollAt: (number | null)[] = []; // auto-release after N wraps; null = stays locked until cleared
   // whole-track repeat: restart the song automatically when it reaches the end
   repeat = false;
 
@@ -198,6 +233,27 @@ export class Deck {
     // FX, volume — is identical whether we play the full mix or N stems.
     this.stemBus = C();
     this.stemBus.connect(this.trim);
+
+    // shared reverb/delay send buses — built once per deck, always present;
+    // each stem's SEND gain (below) starts at 0 so this is silent until raised.
+    this.stemReverbConv = ctx.createConvolver();
+    this.stemReverbConv.buffer = makeReverbImpulse(ctx, 2.4);
+    this.stemReverbReturn = C();
+    this.stemReverbReturn.gain.value = 1.3;
+    this.stemReverbConv.connect(this.stemReverbReturn);
+    this.stemReverbReturn.connect(this.stemBus);
+
+    this.stemDelayNode = ctx.createDelay(1.5);
+    this.stemDelayNode.delayTime.value = 0.375;
+    this.stemDelayFb = C();
+    this.stemDelayFb.gain.value = 0.35;
+    this.stemDelayNode.connect(this.stemDelayFb);
+    this.stemDelayFb.connect(this.stemDelayNode);
+    this.stemDelayReturn = C();
+    this.stemDelayReturn.gain.value = 1;
+    this.stemDelayNode.connect(this.stemDelayReturn);
+    this.stemDelayReturn.connect(this.stemBus);
+
     for (let i = 0; i < Deck.STEM_MAX; i++) {
       const g = C();
       g.connect(this.stemBus);
@@ -209,6 +265,25 @@ export class Deck {
       this.stemGains.push(g);
       this.stemAnalysers.push(an);
       this.stemEnv.push(0);
+
+      const rSend = C();
+      rSend.gain.value = 0;
+      g.connect(rSend);
+      rSend.connect(this.stemReverbConv);
+      this.stemReverbSendGain.push(rSend);
+      this.stemReverbSend.push(0);
+
+      const dSend = C();
+      dSend.gain.value = 0;
+      g.connect(dSend);
+      dSend.connect(this.stemDelayNode);
+      this.stemDelaySendGain.push(dSend);
+      this.stemDelaySend.push(0);
+
+      this.stemLoopWrapTimer.push(null);
+      this.stemLoopWrapCount.push(0);
+      this.stemLoopSmoothMs.push(10); // a light 10ms fade by default — on, but subtle
+      this.stemLoopRollAt.push(null); // Lock by default (no auto-release)
     }
 
     // crowd / ambience reducer: a per-channel mix matrix that scales the side
@@ -576,6 +651,11 @@ export class Deck {
     this.startCtxTime = when;
     this.startOffset = offset;
     this._playing = true;
+    // re-arm any stem loops still active — their wrap-timing depends on
+    // startCtxTime/startOffset, which just changed
+    for (let i = 0; i < this.stemLoopActive.length; i++) {
+      if (this.stemLoopActive[i]) this.scheduleStemLoopWrap(i);
+    }
   }
 
   pause() {
@@ -587,6 +667,7 @@ export class Deck {
       this._playing = false;
       return;
     }
+    for (let i = 0; i < this.stemLoopWrapTimer.length; i++) this.clearStemLoopTimer(i);
     this.pausedAt = this.position();
     this.stopSources();
     this._playing = false;
@@ -732,11 +813,13 @@ export class Deck {
   // wipe any loaded stems (called when a new track is loaded / deck is cleared /
   // the model changes). Does NOT reset stemModel (user's chosen quality sticks).
   clearStems() {
-    this.setStemFxTarget(null); // un-splice before the stem indices go stale
+    this.clearAllStemFxTargets(); // un-splice before the stem indices go stale
     this.stemsActive = false;
     this.stemBuffers = [];
     this.stemNames = [];
     this.stemVol = [];
+    for (let i = 0; i < this.stemLoopWrapTimer.length; i++) this.clearStemLoopTimer(i);
+    this.stemLoopWrapCount = this.stemLoopWrapCount.map(() => 0);
     this.stemLoopActive = [];
     this.stemLoopStart = [];
     this.stemLoopEnd = [];
@@ -745,6 +828,12 @@ export class Deck {
     this.stemHash = "";
     for (const g of this.stemGains) g.gain.value = 1;
     if (this.stemBus) this.stemBus.gain.value = 1;
+    for (let i = 0; i < this.stemReverbSendGain.length; i++) {
+      this.stemReverbSend[i] = 0;
+      this.stemReverbSendGain[i].gain.value = 0;
+      this.stemDelaySend[i] = 0;
+      this.stemDelaySendGain[i].gain.value = 0;
+    }
   }
 
   // switch analysis model (standard / fine-tuned / 6-stem). Drops any loaded
@@ -817,14 +906,14 @@ export class Deck {
     this.recomputeStemMakeup();
   }
 
-  // Route the Rack DSP pedalboard onto ONE stem only, instead of the whole
-  // deck — every other stem stays dry, unplugged from the rack entirely, and
-  // fully audible. Pass null to restore the normal whole-mix routing.
-  // Rack modules default their own intensity to 0% ("start silent"), so
-  // engaging this doesn't change anything audible until an FX is raised.
-  setStemFxTarget(i: number | null) {
-    if (i !== null && (i < 0 || i >= this.stemGains.length)) return;
-    if (this.stemFxTarget === i) return;
+  // Route the Rack DSP pedalboard onto one or more stems, instead of the
+  // whole deck — every non-targeted stem stays dry, unplugged from the rack
+  // entirely, and fully audible. Call again on the same stem to un-target it;
+  // once no stems are targeted, routing reverts to normal whole-mix. Rack
+  // modules default their own intensity to 0% ("start silent"), so engaging
+  // this doesn't change anything audible until an FX is raised.
+  toggleStemFxTarget(i: number) {
+    if (i < 0 || i >= this.stemGains.length) return;
     const disconnect = (from: AudioNode, to: AudioNode) => {
       try {
         from.disconnect(to);
@@ -832,28 +921,58 @@ export class Deck {
         /* wasn't connected — fine */
       }
     };
-    if (this.stemFxTarget !== null) {
-      // un-splice the previously targeted stem, restore whole-mix rack routing
-      disconnect(this.stemGains[this.stemFxTarget], this.rack.input);
-      this.stemGains[this.stemFxTarget].connect(this.stemBus);
-      disconnect(this.rack.output, this.stemBus);
-      disconnect(this.fx.output, this.volume);
-      this.fx.output.connect(this.rack.input);
-      this.rack.output.connect(this.volume);
-    }
-    this.stemFxTarget = i;
-    if (i !== null) {
-      // bypass the rack from the whole-mix chain — every other stem now
-      // reaches `volume` without passing through it at all
-      disconnect(this.fx.output, this.rack.input);
-      disconnect(this.rack.output, this.volume);
-      this.fx.output.connect(this.volume);
-      // splice the targeted stem exclusively through the rack instead of the
-      // dry bus — its contribution to stemBus now comes only via rack.output
+    if (this.stemFxTargets.has(i)) {
+      disconnect(this.stemGains[i], this.rack.input);
+      this.stemGains[i].connect(this.stemBus);
+      this.stemFxTargets.delete(i);
+    } else {
       disconnect(this.stemGains[i], this.stemBus);
       this.stemGains[i].connect(this.rack.input);
-      this.rack.output.connect(this.stemBus);
+      this.stemFxTargets.add(i);
     }
+    // the whole-mix bypass wiring only needs to change when we cross the
+    // "any stem targeted at all" boundary — not on every individual toggle,
+    // which would otherwise double-connect the same edge.
+    const any = this.stemFxTargets.size > 0;
+    if (any !== this.stemFxAnyActive) {
+      this.stemFxAnyActive = any;
+      if (any) {
+        disconnect(this.fx.output, this.rack.input);
+        disconnect(this.rack.output, this.volume);
+        this.fx.output.connect(this.volume);
+        this.rack.output.connect(this.stemBus);
+      } else {
+        disconnect(this.fx.output, this.volume);
+        disconnect(this.rack.output, this.stemBus);
+        this.fx.output.connect(this.rack.input);
+        this.rack.output.connect(this.volume);
+      }
+    }
+  }
+
+  private clearAllStemFxTargets() {
+    for (const i of Array.from(this.stemFxTargets)) this.toggleStemFxTarget(i);
+  }
+
+  // ---- shared per-stem Reverb/Delay sends (see field comments above) ----
+  setStemReverbSend(i: number, v: number) {
+    if (i < 0 || i >= this.stemReverbSendGain.length) return;
+    this.stemReverbSend[i] = Math.min(1, Math.max(0, v));
+    this.stemReverbSendGain[i].gain.value = this.stemReverbSend[i] * 0.9; // headroom
+  }
+  setStemDelaySend(i: number, v: number) {
+    if (i < 0 || i >= this.stemDelaySendGain.length) return;
+    this.stemDelaySend[i] = Math.min(1, Math.max(0, v));
+    this.stemDelaySendGain[i].gain.value = this.stemDelaySend[i] * 0.8;
+  }
+  setStemReverbDecay(sec: number) {
+    this.stemReverbConv.buffer = makeReverbImpulse(this.ctx, Math.min(6, Math.max(0.3, sec)));
+  }
+  setStemDelayTime(sec: number) {
+    this.stemDelayNode.delayTime.value = Math.min(1.5, Math.max(0.02, sec));
+  }
+  setStemDelayFeedback(v: number) {
+    this.stemDelayFb.gain.value = Math.min(0.9, Math.max(0, v));
   }
 
   // Automatic makeup gain on the stem bus. Treating stems as roughly
@@ -981,29 +1100,115 @@ export class Deck {
   // stems keep playing untouched. Mutates the live AudioBufferSourceNode
   // directly (Web Audio allows changing loop/loopStart/loopEnd mid-playback),
   // so there's no stop/restart click and no risk of desyncing the other stems.
-  setStemBeatLoop(i: number, beats: number) {
+  // opts.quantize (default true) snaps the loop-in point to the nearest beat
+  // instead of the exact click position, for a cleaner capture.
+  setStemBeatLoop(i: number, beats: number, opts?: { quantize?: boolean }) {
     if (!this.stemsActive || !this.stemReady || !this.bpm) return;
     if (i < 0 || i >= this.stemGains.length) return;
     const secPerBeat = 60 / this.bpm;
-    const start = this.position();
+    const rawStart = this.position();
+    const start = (opts?.quantize ?? true) ? Math.round(rawStart / secPerBeat) * secPerBeat : rawStart;
     const end = Math.min(start + secPerBeat * beats, this.duration);
     this.stemLoopActive[i] = true;
     this.stemLoopStart[i] = start;
     this.stemLoopEnd[i] = end;
+    this.stemLoopWrapCount[i] = 0;
     const src = this.activeSources[i];
     if (src) {
       src.loopStart = start;
       src.loopEnd = end;
       src.loop = true;
     }
+    this.scheduleStemLoopWrap(i);
   }
 
   clearStemLoop(i: number) {
     if (i < 0 || i >= this.stemGains.length) return;
     if (!this.stemLoopActive[i]) return;
     this.stemLoopActive[i] = false;
+    this.clearStemLoopTimer(i);
     const src = this.activeSources[i];
     if (src) src.loop = false;
+    // restore full volume in case the loop was cleared mid-fade
+    const g = this.stemGains[i];
+    if (g) {
+      g.gain.cancelScheduledValues(this.ctx.currentTime);
+      g.gain.value = this.stemVol[i] ?? 1;
+    }
+  }
+
+  // halve/double the CURRENT loop length live, keeping the same start point —
+  // the classic loop-resize gesture (½ / ×2) on real DJ hardware.
+  resizeStemLoop(i: number, factor: 0.5 | 2) {
+    if (i < 0 || i >= this.stemGains.length || !this.stemLoopActive[i]) return;
+    const start = this.stemLoopStart[i];
+    const newLen = Math.max(0.01, (this.stemLoopEnd[i] - start) * factor);
+    const end = Math.min(start + newLen, this.duration);
+    this.stemLoopEnd[i] = end;
+    this.stemLoopWrapCount[i] = 0;
+    const src = this.activeSources[i];
+    if (src) src.loopEnd = end;
+    this.scheduleStemLoopWrap(i);
+  }
+
+  // "smooth" loop boundary: a short fade-to-silence-and-back centred on every
+  // loop seam so successive repeats don't click/thump. 0 = off (hard cut).
+  setStemLoopSmooth(i: number, ms: number) {
+    if (i < 0 || i >= Deck.STEM_MAX) return;
+    this.stemLoopSmoothMs[i] = Math.max(0, Math.min(80, ms));
+    if (this.stemLoopActive[i]) this.scheduleStemLoopWrap(i);
+  }
+
+  // "Roll" mode: after `repeats` wraps the loop releases itself and the stem
+  // continues on naturally from wherever the track would be — as opposed to
+  // "Lock" (repeats = null), which stays looped until manually cleared.
+  setStemLoopRoll(i: number, repeats: number | null) {
+    if (i < 0 || i >= Deck.STEM_MAX) return;
+    this.stemLoopRollAt[i] = repeats;
+  }
+
+  private clearStemLoopTimer(i: number) {
+    const t = this.stemLoopWrapTimer[i];
+    if (t) {
+      clearTimeout(t);
+      this.stemLoopWrapTimer[i] = null;
+    }
+  }
+
+  // precisely schedules the NEXT loop-wrap instant for stem `i` (via a
+  // recursively-recomputed setTimeout, so no drift accumulates), and at that
+  // instant applies the smoothing duck and/or counts toward Roll release.
+  private scheduleStemLoopWrap(i: number) {
+    this.clearStemLoopTimer(i);
+    if (!this.stemLoopActive[i] || !this._playing) return;
+    const start = this.stemLoopStart[i];
+    const len = (this.stemLoopEnd[i] - start) / Math.max(0.01, this.effRate);
+    if (!(len > 0) || !isFinite(len)) return;
+    const posNow = this.startOffset + (this.ctx.currentTime - this.startCtxTime) * this.effRate;
+    const sinceStart = Math.max(0, posNow - start);
+    const untilWrapSec = len - (sinceStart % len);
+    const smoothMs = this.stemLoopSmoothMs[i] ?? 0;
+    const fadeSec = Math.min(untilWrapSec * 0.9, smoothMs / 1000);
+    const fireInMs = Math.max(0, (untilWrapSec - fadeSec / 2) * 1000);
+    this.stemLoopWrapTimer[i] = setTimeout(() => {
+      if (!this.stemLoopActive[i]) return;
+      if (fadeSec > 0.0005) {
+        const g = this.stemGains[i];
+        const now = this.ctx.currentTime;
+        const base = this.stemVol[i] ?? 1;
+        g.gain.cancelScheduledValues(now);
+        g.gain.setValueAtTime(g.gain.value, now);
+        g.gain.linearRampToValueAtTime(0, now + fadeSec / 2);
+        g.gain.linearRampToValueAtTime(base, now + fadeSec);
+      }
+      this.stemLoopWrapCount[i]++;
+      const rollAt = this.stemLoopRollAt[i];
+      if (rollAt != null && this.stemLoopWrapCount[i] >= rollAt) {
+        this.clearStemLoop(i); // Roll: release — the stem continues naturally
+        return;
+      }
+      this.scheduleStemLoopWrap(i);
+    }, fireInMs);
   }
 
   get hasLoop() {

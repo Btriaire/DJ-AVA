@@ -458,6 +458,20 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
     setOpenStemLoopMenu(null);
     rerender();
   }
+  // ½ / ×2 — resize the current loop live, snapped to the same preset ladder
+  // so the button label always reads a clean value. No-ops at the ends.
+  function resizeStemLoop(i: number, factor: 0.5 | 2) {
+    const cur = stemLoopBeats[i];
+    if (cur == null) return;
+    const idx = STEM_LOOP_BEATS.indexOf(cur);
+    const nextIdx = idx + (factor === 2 ? 1 : -1);
+    if (nextIdx < 0 || nextIdx >= STEM_LOOP_BEATS.length) return;
+    deck.resizeStemLoop(i, factor);
+    setStemLoopBeats((arr) => arr.map((v, j) => (j === i ? STEM_LOOP_BEATS[nextIdx] : v)));
+    rerender();
+  }
+  const ROLL_OPTIONS: (number | null)[] = [null, 2, 4, 8]; // null = Lock (stays until cleared)
+  const [openSendMenu, setOpenSendMenu] = useState<number | null>(null);
   // bulk faders: drop everything to silence (remembering levels) or push it all up
   function allStems(up: boolean) {
     if (!deck.stemReady) return;
@@ -1087,13 +1101,13 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                       <button
                         className="min-w-[26px] rounded px-2 py-1 text-[11px] font-black leading-none"
                         style={
-                          deck.stemFxTarget === i
+                          deck.stemFxTargets.has(i)
                             ? { background: color, color: "#0a0a0a" }
                             : { background: "rgba(255,255,255,0.1)", color: "#b0b0b0" }
                         }
-                        title="Effets sur ce stem seul — le Rack DSP n'agit plus que sur ce stem, les autres restent audibles sans effet"
+                        title="Effets sur ce stem — le Rack DSP agit sur les stems marqués FX (plusieurs possibles), les autres restent audibles sans effet"
                         onClick={() => {
-                          deck.setStemFxTarget(deck.stemFxTarget === i ? null : i);
+                          deck.toggleStemFxTarget(i);
                           rerender();
                         }}
                       >
@@ -1102,7 +1116,83 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                     </div>
                     <div className="relative w-full">
                       <button
-                        className="w-full min-w-[54px] rounded px-2 py-1.5 text-[11px] font-black leading-none disabled:opacity-30"
+                        className="w-full rounded px-2 py-1 text-[10px] font-black leading-none"
+                        disabled={!deck.stemReady}
+                        style={
+                          (deck.stemReverbSend[i] ?? 0) > 0.01 || (deck.stemDelaySend[i] ?? 0) > 0.01
+                            ? { background: color, color: "#0a0a0a" }
+                            : { background: "rgba(255,255,255,0.1)", color: "#b0b0b0" }
+                        }
+                        title="Envoie ce stem vers la Reverb / le Delay partagés du deck (les autres stems gardent leurs propres réglages d'envoi)"
+                        onClick={() => setOpenSendMenu(openSendMenu === i ? null : i)}
+                      >
+                        SEND
+                      </button>
+                      {openSendMenu === i && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => setOpenSendMenu(null)} />
+                          <div
+                            className="absolute bottom-full left-1/2 z-50 mb-1.5 flex w-max -translate-x-1/2 flex-col gap-2 rounded-lg p-2.5"
+                            style={{
+                              background: "linear-gradient(180deg,#1c1c1e,#0e0e10)",
+                              border: "1px solid #000",
+                              boxShadow: "0 10px 24px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.06)",
+                            }}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-10 shrink-0 text-[8px] font-bold uppercase text-neutral-500">Verb</span>
+                              <input
+                                type="range"
+                                min={0}
+                                max={1}
+                                step={0.01}
+                                value={deck.stemReverbSend[i] ?? 0}
+                                onChange={(e) => {
+                                  deck.setStemReverbSend(i, parseFloat(e.target.value));
+                                  rerender();
+                                }}
+                                className="h-1 w-28 accent-current"
+                                style={{ color }}
+                              />
+                              <span className="w-9 shrink-0 text-right font-mono text-[9px]" style={{ color }}>
+                                {Math.round((deck.stemReverbSend[i] ?? 0) * 100)}%
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-10 shrink-0 text-[8px] font-bold uppercase text-neutral-500">Delay</span>
+                              <input
+                                type="range"
+                                min={0}
+                                max={1}
+                                step={0.01}
+                                value={deck.stemDelaySend[i] ?? 0}
+                                onChange={(e) => {
+                                  deck.setStemDelaySend(i, parseFloat(e.target.value));
+                                  rerender();
+                                }}
+                                className="h-1 w-28 accent-current"
+                                style={{ color }}
+                              />
+                              <span className="w-9 shrink-0 text-right font-mono text-[9px]" style={{ color }}>
+                                {Math.round((deck.stemDelaySend[i] ?? 0) * 100)}%
+                              </span>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    <div className="relative flex w-full items-stretch gap-0.5">
+                      <button
+                        disabled={stemLoopBeats[i] == null || STEM_LOOP_BEATS.indexOf(stemLoopBeats[i]!) <= 0}
+                        onClick={() => resizeStemLoop(i, 0.5)}
+                        className="rounded px-1.5 py-1.5 text-[10px] font-black leading-none disabled:opacity-20"
+                        style={{ background: "rgba(255,255,255,0.08)", color: "#d8d8d8" }}
+                        title="Moitié — divise la longueur du loop par 2"
+                      >
+                        ½
+                      </button>
+                      <button
+                        className="min-w-0 flex-1 rounded px-1 py-1.5 text-[11px] font-black leading-none disabled:opacity-30"
                         disabled={!deck.stemsActive || !deck.playing || !deck.bpm}
                         style={
                           stemLoopBeats[i] != null
@@ -1117,38 +1207,95 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                         onClick={() => setOpenStemLoopMenu(openStemLoopMenu === i ? null : i)}
                       >
                         {stemLoopBeats[i] != null
-                          ? `⟳ ${STEM_LOOP_LABELS[STEM_LOOP_BEATS.indexOf(stemLoopBeats[i]!)]}`
+                          ? `⟳${STEM_LOOP_LABELS[STEM_LOOP_BEATS.indexOf(stemLoopBeats[i]!)]}`
                           : "LOOP"}
+                      </button>
+                      <button
+                        disabled={stemLoopBeats[i] == null || STEM_LOOP_BEATS.indexOf(stemLoopBeats[i]!) >= STEM_LOOP_BEATS.length - 1}
+                        onClick={() => resizeStemLoop(i, 2)}
+                        className="rounded px-1.5 py-1.5 text-[10px] font-black leading-none disabled:opacity-20"
+                        style={{ background: "rgba(255,255,255,0.08)", color: "#d8d8d8" }}
+                        title="Double — multiplie la longueur du loop par 2"
+                      >
+                        ×2
                       </button>
                       {openStemLoopMenu === i && (
                         <>
                           {/* backdrop — click anywhere outside to close */}
                           <div className="fixed inset-0 z-40" onClick={() => setOpenStemLoopMenu(null)} />
                           <div
-                            className="absolute bottom-full left-1/2 z-50 mb-1.5 grid w-max -translate-x-1/2 grid-cols-3 gap-1 rounded-lg p-2"
+                            className="absolute bottom-full left-1/2 z-50 mb-1.5 flex w-max -translate-x-1/2 flex-col gap-1.5 rounded-lg p-2"
                             style={{
                               background: "linear-gradient(180deg,#1c1c1e,#0e0e10)",
                               border: "1px solid #000",
                               boxShadow: "0 10px 24px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.06)",
                             }}
                           >
-                            {STEM_LOOP_BEATS.map((b, bi) => (
-                              <button
-                                key={b}
-                                onClick={() => setStemLoop(i, stemLoopBeats[i] === b ? null : b)}
-                                className="rounded px-2.5 py-1.5 text-[11px] font-bold leading-none"
-                                style={
-                                  stemLoopBeats[i] === b
-                                    ? { background: color, color: "#0a0a0a" }
-                                    : { background: "rgba(255,255,255,0.08)", color: "#d8d8d8" }
-                                }
-                              >
-                                {STEM_LOOP_LABELS[bi]}
-                              </button>
-                            ))}
+                            <div className="grid grid-cols-3 gap-1">
+                              {STEM_LOOP_BEATS.map((b, bi) => (
+                                <button
+                                  key={b}
+                                  onClick={() => setStemLoop(i, stemLoopBeats[i] === b ? null : b)}
+                                  className="rounded px-2.5 py-1.5 text-[11px] font-bold leading-none"
+                                  style={
+                                    stemLoopBeats[i] === b
+                                      ? { background: color, color: "#0a0a0a" }
+                                      : { background: "rgba(255,255,255,0.08)", color: "#d8d8d8" }
+                                  }
+                                >
+                                  {STEM_LOOP_LABELS[bi]}
+                                </button>
+                              ))}
+                            </div>
+
+                            {/* Roll vs Lock: auto-release the loop after N repeats, or keep it until cleared */}
+                            <div className="flex items-center gap-1 border-t border-white/10 pt-1.5">
+                              <span className="mr-0.5 text-[8px] font-bold uppercase text-neutral-500">Fin</span>
+                              {ROLL_OPTIONS.map((r) => (
+                                <button
+                                  key={String(r)}
+                                  onClick={() => {
+                                    deck.setStemLoopRoll(i, r);
+                                    rerender();
+                                  }}
+                                  className="flex-1 rounded px-1.5 py-1 text-[9px] font-bold leading-none"
+                                  style={
+                                    (deck.stemLoopRollAt[i] ?? null) === r
+                                      ? { background: color, color: "#0a0a0a" }
+                                      : { background: "rgba(255,255,255,0.08)", color: "#d8d8d8" }
+                                  }
+                                  title={r == null ? "Lock — reste en boucle jusqu'à ce que tu l'arrêtes" : `Roll — se relâche automatiquement après ${r} répétitions et le morceau reprend son cours`}
+                                >
+                                  {r == null ? "LOCK" : `ROLL ${r}×`}
+                                </button>
+                              ))}
+                            </div>
+
+                            {/* Smooth: fade the loop seam instead of a hard cut */}
+                            <div className="flex items-center gap-1.5 border-t border-white/10 pt-1.5">
+                              <span className="text-[8px] font-bold uppercase text-neutral-500">Doux</span>
+                              <input
+                                type="range"
+                                min={0}
+                                max={60}
+                                step={5}
+                                value={deck.stemLoopSmoothMs[i] ?? 10}
+                                onChange={(e) => {
+                                  deck.setStemLoopSmooth(i, parseInt(e.target.value, 10));
+                                  rerender();
+                                }}
+                                className="h-1 flex-1 accent-current"
+                                style={{ color }}
+                                title="Lisse la jonction du loop (fondu court) pour éviter le clic entre deux répétitions"
+                              />
+                              <span className="w-8 shrink-0 text-right font-mono text-[9px]" style={{ color }}>
+                                {deck.stemLoopSmoothMs[i] ?? 10}ms
+                              </span>
+                            </div>
+
                             <button
                               onClick={() => setStemLoop(i, null)}
-                              className="col-span-3 rounded px-2 py-1 text-[10px] font-black uppercase tracking-wide text-red-400"
+                              className="rounded px-2 py-1 text-[10px] font-black uppercase tracking-wide text-red-400"
                               style={{ background: "rgba(255,60,60,0.14)" }}
                             >
                               ✕ Off
