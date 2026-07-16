@@ -277,7 +277,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
   const [eq, setEq] = useState({ low: 0, mid: 0, high: 0 });
   // a new track resets the deck's own per-stem loop state — keep the button
   // indicators (1/2/4) in sync instead of showing a stale "active" loop
-  useEffect(() => setStemLoopIdx([-1, -1, -1, -1, -1, -1]), [deck.name]);
+  useEffect(() => setStemLoopBeats([null, null, null, null, null, null]), [deck.name]);
   const [trim, setTrim] = useState(1);
   const prevForceTrimRef = useRef<number | undefined>(undefined);
   useEffect(() => {
@@ -444,20 +444,18 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
     }
     rerender();
   }
-  // per-stem beat loop — cycles OFF → 1 → 2 → 4 beats → OFF on repeated
-  // clicks. Only this one stem loops; the others keep playing normally.
-  const STEM_LOOP_BEATS = [1, 2, 4];
-  const [stemLoopIdx, setStemLoopIdx] = useState<number[]>([-1, -1, -1, -1, -1, -1]);
-  function cycleStemLoop(i: number) {
-    const cur = stemLoopIdx[i] ?? -1;
-    const next = cur + 1;
-    if (next >= STEM_LOOP_BEATS.length) {
-      deck.clearStemLoop(i);
-      setStemLoopIdx((arr) => arr.map((v, j) => (j === i ? -1 : v)));
-    } else {
-      deck.setStemBeatLoop(i, STEM_LOOP_BEATS[next]);
-      setStemLoopIdx((arr) => arr.map((v, j) => (j === i ? next : v)));
-    }
+  // per-stem beat loop — a popover with every length the main Beat Loop row
+  // offers, so you can jump straight to e.g. 1/8 or 8 without cycling through
+  // everything in between. Only this one stem loops; the others play on.
+  const STEM_LOOP_BEATS = [1 / 16, 1 / 8, 1 / 4, 1 / 2, 1, 2, 4, 8, 16];
+  const STEM_LOOP_LABELS = ["1/16", "1/8", "1/4", "1/2", "1", "2", "4", "8", "16"];
+  const [stemLoopBeats, setStemLoopBeats] = useState<(number | null)[]>([null, null, null, null, null, null]);
+  const [openStemLoopMenu, setOpenStemLoopMenu] = useState<number | null>(null);
+  function setStemLoop(i: number, beats: number | null) {
+    if (beats === null) deck.clearStemLoop(i);
+    else deck.setStemBeatLoop(i, beats);
+    setStemLoopBeats((arr) => arr.map((v, j) => (j === i ? beats : v)));
+    setOpenStemLoopMenu(null);
     rerender();
   }
   // bulk faders: drop everything to silence (remembering levels) or push it all up
@@ -1102,23 +1100,63 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                         FX
                       </button>
                     </div>
-                    <button
-                      className="w-full min-w-[54px] rounded px-2 py-1 text-[11px] font-black leading-none disabled:opacity-30"
-                      disabled={!deck.stemsActive || !deck.playing || !deck.bpm}
-                      style={
-                        (stemLoopIdx[i] ?? -1) >= 0
-                          ? { background: color, color: "#0a0a0a" }
-                          : { background: "rgba(255,255,255,0.1)", color: "#b0b0b0" }
-                      }
-                      title={
-                        !deck.bpm
-                          ? "BPM pas encore détecté — attends la fin de l'analyse pour boucler ce stem"
-                          : "Boucle ce stem seul (1 → 2 → 4 temps → off), les autres continuent normalement"
-                      }
-                      onClick={() => cycleStemLoop(i)}
-                    >
-                      {(stemLoopIdx[i] ?? -1) >= 0 ? `⟳ ${STEM_LOOP_BEATS[stemLoopIdx[i]]} TEMPS` : "LOOP"}
-                    </button>
+                    <div className="relative w-full">
+                      <button
+                        className="w-full min-w-[54px] rounded px-2 py-1.5 text-[11px] font-black leading-none disabled:opacity-30"
+                        disabled={!deck.stemsActive || !deck.playing || !deck.bpm}
+                        style={
+                          stemLoopBeats[i] != null
+                            ? { background: color, color: "#0a0a0a", boxShadow: `0 0 6px ${color}88` }
+                            : { background: "rgba(255,255,255,0.1)", color: "#b0b0b0" }
+                        }
+                        title={
+                          !deck.bpm
+                            ? "BPM pas encore détecté — attends la fin de l'analyse pour boucler ce stem"
+                            : "Boucle ce stem seul — choisis une longueur, les autres stems continuent normalement"
+                        }
+                        onClick={() => setOpenStemLoopMenu(openStemLoopMenu === i ? null : i)}
+                      >
+                        {stemLoopBeats[i] != null
+                          ? `⟳ ${STEM_LOOP_LABELS[STEM_LOOP_BEATS.indexOf(stemLoopBeats[i]!)]}`
+                          : "LOOP"}
+                      </button>
+                      {openStemLoopMenu === i && (
+                        <>
+                          {/* backdrop — click anywhere outside to close */}
+                          <div className="fixed inset-0 z-40" onClick={() => setOpenStemLoopMenu(null)} />
+                          <div
+                            className="absolute bottom-full left-1/2 z-50 mb-1.5 grid w-max -translate-x-1/2 grid-cols-3 gap-1 rounded-lg p-2"
+                            style={{
+                              background: "linear-gradient(180deg,#1c1c1e,#0e0e10)",
+                              border: "1px solid #000",
+                              boxShadow: "0 10px 24px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.06)",
+                            }}
+                          >
+                            {STEM_LOOP_BEATS.map((b, bi) => (
+                              <button
+                                key={b}
+                                onClick={() => setStemLoop(i, stemLoopBeats[i] === b ? null : b)}
+                                className="rounded px-2.5 py-1.5 text-[11px] font-bold leading-none"
+                                style={
+                                  stemLoopBeats[i] === b
+                                    ? { background: color, color: "#0a0a0a" }
+                                    : { background: "rgba(255,255,255,0.08)", color: "#d8d8d8" }
+                                }
+                              >
+                                {STEM_LOOP_LABELS[bi]}
+                              </button>
+                            ))}
+                            <button
+                              onClick={() => setStemLoop(i, null)}
+                              className="col-span-3 rounded px-2 py-1 text-[10px] font-black uppercase tracking-wide text-red-400"
+                              style={{ background: "rgba(255,60,60,0.14)" }}
+                            >
+                              ✕ Off
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
                 {/* FOULE — placée juste à côté de VOIX. Reste active même stems coupés

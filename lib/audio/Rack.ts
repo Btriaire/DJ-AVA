@@ -1467,6 +1467,18 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
       let xTarget = 0; // Filtre
       let yTarget = 2; // Mix
       const freqFor = (pos: number) => Math.max(20, Math.min(20000, 200 * Math.pow(80, pos)));
+      // Non-linear response curve: gentle/wide in the middle of the pad, then
+      // rapidly steepens toward each edge — so the last bit of travel near an
+      // extreme packs a much bigger, more dramatic change than the same
+      // physical distance near the centre. Endpoints and the midpoint (0, 0.5,
+      // 1) stay put; only the "feel" between them is reshaped. gamma > 1
+      // widens the calm middle zone and sharpens the edges (2.4 ≈ noticeably
+      // "tighter steps, stronger effect" without the ends feeling twitchy).
+      const GAMMA = 2.4;
+      const curve = (pos: number) => {
+        const t = pos - 0.5;
+        return 0.5 + Math.sign(t) * Math.pow(Math.abs(t) * 2, GAMMA) / 2;
+      };
 
       // zero every gate on both axes, then re-open whichever is currently assigned
       const updateGates = () => {
@@ -1487,8 +1499,9 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
       };
       updateGates();
 
-      const applyTarget = (target: number, pos: number, axis: "x" | "y") => {
+      const applyTarget = (target: number, rawPos: number, axis: "x" | "y") => {
         const ch = axis === "x" ? X : Y;
+        const pos = curve(rawPos); // shape the response — the pad's dot still tracks your finger 1:1
         if (target === 0) {
           // Filtre: sweep 200Hz → 16kHz (logarithmic), through this axis's own filter/type
           at(ch.filt.frequency, freqFor(pos));

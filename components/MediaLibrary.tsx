@@ -1182,6 +1182,34 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
         </button>
       </div>
 
+      {/* CD players — always shown as soon as a deck has a track loaded, so it's
+          obvious at a glance what's playing on each deck and what comes next. */}
+      {(["A", "B"] as const).map((side) => {
+        const deck = side === "A" ? engine.deckA : engine.deckB;
+        if (!deck.name) return null;
+        const color = side === "A" ? COLOR_A : COLOR_B;
+        // find "now / next" from whichever set is driving this deck, else the active one
+        const drivingId = queueSrc[side] ?? activePl;
+        const drivingPl = drivingId ? data.playlists.find((p) => p.id === drivingId) : null;
+        const ids = drivingPl?.trackIds ?? [];
+        const curIdx = ids.findIndex((id) => id === deck.origin?.id);
+        const nextT = curIdx >= 0 && ids.length ? trackById(ids[(curIdx + 1) % ids.length]) : null;
+        return (
+          <CdPlayerFace
+            key={side}
+            deck={deck}
+            color={color}
+            side={side}
+            trackNo={curIdx >= 0 ? curIdx + 1 : undefined}
+            trackCount={ids.length || undefined}
+            nextName={nextT?.name ?? null}
+            onPrev={() => stepSingle(side, -1)}
+            onPlayPause={() => (deck.playing ? deck.pause() : deck.play())}
+            onNext={() => stepSingle(side, 1)}
+          />
+        );
+      })}
+
       {activePlaylist ? (
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">

@@ -288,9 +288,7 @@ function SlotVU({ rack, on, color }: { rack: Rack; on: boolean; color: string })
     const ctx2d = canvas.getContext("2d");
     if (!ctx2d) return;
     const SEGS = 10;
-    let raf = 0;
-    const draw = () => {
-      const level = on ? rack.getLevel() : 0;
+    const paint = (level: number) => {
       const lit = Math.round(Math.min(1, level * 2.5) * SEGS);
       ctx2d.clearRect(0, 0, canvas.width, canvas.height);
       for (let i = 0; i < SEGS; i++) {
@@ -301,9 +299,27 @@ function SlotVU({ rack, on, color }: { rack: Rack; on: boolean; color: string })
         ctx2d.shadowColor = isLit ? segColor : "transparent";
         ctx2d.fillRect(i * 5, 0, 4, 8);
       }
-      raf = requestAnimationFrame(draw);
     };
-    raf = requestAnimationFrame(draw);
+    // a bypassed module reads 0 forever — paint once and skip the loop
+    // entirely instead of redrawing a dark meter 60×/s for nothing. With up
+    // to 23 modules × 2 decks, most idle at any time, this was the single
+    // biggest source of needless main-thread work in the whole app.
+    if (!on) {
+      paint(0);
+      return;
+    }
+    let raf = 0;
+    let last = 0;
+    // ~20 fps is plenty for a 10-segment bar — a quarter of the redraw+shadow
+    // cost of 60 fps with no visible loss of smoothness.
+    const step = (ts: number) => {
+      if (ts - last >= 50) {
+        last = ts;
+        paint(rack.getLevel());
+      }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rack, on, color]);
