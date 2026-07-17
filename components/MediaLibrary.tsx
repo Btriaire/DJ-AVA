@@ -832,11 +832,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
     const next = { ...queueSrcRef.current, [side]: plId };
     setQueueSrc(next);
     queueSrcRef.current = next; // make liveQueue() see it synchronously
-    if (relay) {
-      setRelay(false);
-      relayRef.current = false;
-      setRelayCur({ A: -1, B: -1 });
-    }
+    if (relay) stopRelay();
     (side === "A" ? setLiveA : setLiveB)(true);
     liveIdx.current[side] = (startIdx ?? 0) - 1;
     liveAdvance(side); // loads + plays from startIdx (0 = the playlist's first title)
@@ -846,18 +842,18 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   // Run the A→B→A relay through one playlist on both decks (long automix set).
   // `startIdx` (default 0) picks up the set from any track — B cues the very
   // next track after it, and the relay continues in order from there, looping.
+  // Always goes through startRelay() directly (never the on/off toggleRelay())
+  // so re-triggering it while a relay is already running — e.g. jumping to a
+  // different track mid-set via "▶ ici" — can't hit the stale-closure trap a
+  // stop-then-setTimeout-then-restart dance would (setRelay(false) followed
+  // 80ms later by a toggle that still closes over the pre-update `relay`
+  // value used to silently no-op the restart: it started fine, then never
+  // advanced again).
   function playPlaylistRelay(plId: string, startIdx?: number) {
     const next = { A: plId, B: plId };
     setQueueSrc(next);
     queueSrcRef.current = next;
-    if (relay) {
-      // already running — restart so both decks reload from the chosen track
-      relayRef.current = false;
-      setRelay(false);
-      window.setTimeout(() => toggleRelay(startIdx), 80);
-    } else {
-      toggleRelay(startIdx);
-    }
+    startRelay(startIdx);
   }
 
   // watch each live deck; when its single ends (position snaps back to ~0 while
@@ -955,14 +951,12 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   // `startIdx` (default 0) is where the SHARED relay pointer picks up — Deck A
   // starts there, Deck B cues the track right after it, and the relay carries
   // on in order (looping) from that point instead of always from track 0.
-  function toggleRelay(startIdx?: number) {
-    const next = !relay;
-    setRelay(next);
-    relayRef.current = next;
-    if (!next) {
-      setRelayCur({ A: -1, B: -1 }); // clear "en cours" markers
-      return;
-    }
+  // Unconditional (does NOT read `relay` to decide anything) so it's safe to
+  // call whether or not a relay is already running — see stopRelay/toggleRelay
+  // below for why that matters.
+  function startRelay(startIdx?: number) {
+    setRelay(true);
+    relayRef.current = true;
     // mutually exclusive with the per-deck LIVE loops
     if (liveA) setLiveA(false);
     if (liveB) setLiveB(false);
@@ -988,6 +982,19 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
         flash("A→B→A : automix lancé");
       }
     })();
+  }
+  function stopRelay() {
+    setRelay(false);
+    relayRef.current = false;
+    setRelayCur({ A: -1, B: -1 }); // clear "en cours" markers
+  }
+  // header button: flip on/off. NOT used for "jump to a different track while
+  // already running" — that always goes through startRelay directly (see
+  // playPlaylistRelay) so it never has to read stale `relay` state through a
+  // closure captured before a pending setState landed.
+  function toggleRelay() {
+    if (relay) stopRelay();
+    else startRelay();
   }
 
   // transition length driving the auto-mix, taken from whichever set is queued
