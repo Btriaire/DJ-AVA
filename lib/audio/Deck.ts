@@ -16,6 +16,21 @@ function makeReverbImpulse(ctx: AudioContext, decay: number): AudioBuffer {
   return buf;
 }
 
+// WaveShaper curve for the per-stem Drive knob: tanh soft-clip, normalized so
+// the loudest sample stays at unity gain even as drive increases. amt<=0 is
+// exactly transparent (identity curve) so a stem at 0% drive is untouched.
+function driveCurve(amt: number): Float32Array<ArrayBuffer> {
+  const n = 256;
+  const curve = new Float32Array(n);
+  const k = 1 + amt * 30;
+  const norm = Math.tanh(k);
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    curve[i] = amt <= 0.001 ? x : Math.tanh(k * x) / norm;
+  }
+  return curve;
+}
+
 export interface DeckState {
   loaded: boolean;
   playing: boolean;
@@ -124,6 +139,15 @@ export class Deck {
   private stemDelayNode!: DelayNode;
   private stemDelayFb!: GainNode;
   private stemDelayReturn!: GainNode;
+
+  // dedicated per-stem FX — unlike the shared Rack splice above (one pedalboard,
+  // spliced onto whichever stems are "targeted"), these live directly in each
+  // stem's own signal path: turning the knob IS the effect, no separate
+  // targeting step, and each stem can run a totally different setting at once.
+  stemFilterX: number[] = []; // -1..1 bipolar: <0 lowpass sweep, 0 bypass, >0 highpass sweep
+  stemDriveAmt: number[] = []; // 0..1 soft-clip saturation amount
+  private stemFilter: BiquadFilterNode[] = [];
+  private stemDrive: WaveShaperNode[] = [];
 
   private trim: GainNode;
   private low: BiquadFilterNode;
@@ -282,26 +306,43 @@ export class Deck {
 
     for (let i = 0; i < Deck.STEM_MAX; i++) {
       const g = C();
-      g.connect(this.stemBus);
-      // post-fader tap for the per-stem LED meter (analyser doesn't forward audio)
+      this.stemGains.push(g);
+
+      // dedicated per-stem FX, always live: g -> filter -> drive -> stemBus
+      // (or -> rack.input, if this stem is later targeted for the shared
+      // pedalboard — see toggleStemFxTarget, which re-splices AFTER this pair).
+      const filt = ctx.createBiquadFilter();
+      filt.type = "allpass";
+      filt.frequency.value = 20000;
+      const drive = ctx.createWaveShaper();
+      drive.curve = driveCurve(0);
+      drive.oversample = "2x";
+      g.connect(filt);
+      filt.connect(drive);
+      drive.connect(this.stemBus);
+      this.stemFilter.push(filt);
+      this.stemFilterX.push(0);
+      this.stemDrive.push(drive);
+      this.stemDriveAmt.push(0);
+
+      // post-fader (post-FX) tap for the per-stem LED meter
       const an = ctx.createAnalyser();
       an.fftSize = 256;
       an.smoothingTimeConstant = 0.6;
-      g.connect(an);
-      this.stemGains.push(g);
+      drive.connect(an);
       this.stemAnalysers.push(an);
       this.stemEnv.push(0);
 
       const rSend = C();
       rSend.gain.value = 0;
-      g.connect(rSend);
+      drive.connect(rSend);
       rSend.connect(this.stemReverbConv);
       this.stemReverbSendGain.push(rSend);
       this.stemReverbSend.push(0);
 
       const dSend = C();
       dSend.gain.value = 0;
-      g.connect(dSend);
+      drive.connect(dSend);
       dSend.connect(this.stemDelayNode);
       this.stemDelaySendGain.push(dSend);
       this.stemDelaySend.push(0);
@@ -870,6 +911,8 @@ export class Deck {
       this.stemDelaySend[i] = 0;
       this.stemDelaySendGain[i].gain.value = 0;
     }
+    for (let i = 0; i < this.stemFilter.length; i++) this.setStemFilter(i, 0);
+    for (let i = 0; i < this.stemDrive.length; i++) this.setStemDrive(i, 0);
   }
 
   // switch analysis model (standard / fine-tuned / 6-stem). Drops any loaded
@@ -998,13 +1041,17 @@ export class Deck {
         /* wasn't connected — fine */
       }
     };
+    // splice AFTER this stem's own dedicated filter/drive, not the raw gain —
+    // those always apply regardless of whether the stem is also routed through
+    // the shared Rack pedalboard
+    const node = this.stemDrive[i];
     if (this.stemFxTargets.has(i)) {
-      disconnect(this.stemGains[i], this.rack.input);
-      this.stemGains[i].connect(this.stemBus);
+      disconnect(node, this.rack.input);
+      node.connect(this.stemBus);
       this.stemFxTargets.delete(i);
     } else {
-      disconnect(this.stemGains[i], this.stemBus);
-      this.stemGains[i].connect(this.rack.input);
+      disconnect(node, this.stemBus);
+      node.connect(this.rack.input);
       this.stemFxTargets.add(i);
     }
     // the whole-mix bypass wiring only needs to change when we cross the
@@ -1050,6 +1097,35 @@ export class Deck {
   }
   setStemDelayFeedback(v: number) {
     this.stemDelayFb.gain.value = Math.min(0.9, Math.max(0, v));
+  }
+
+  // ---- dedicated per-stem FX (see field comments above) — always live,
+  // no targeting step: turning the knob IS the effect ----
+  // bipolar filter: -1..0 = lowpass sweep, 0 = bypass, 0..1 = highpass sweep
+  // (same curve as the whole-deck setFilter, just one instance per stem)
+  setStemFilter(i: number, x: number) {
+    if (i < 0 || i >= this.stemFilter.length) return;
+    this.stemFilterX[i] = x;
+    const filt = this.stemFilter[i];
+    if (Math.abs(x) < 0.02) {
+      filt.type = "allpass";
+      filt.frequency.value = 20000;
+      return;
+    }
+    if (x < 0) {
+      filt.type = "lowpass";
+      filt.frequency.value = 20000 * Math.pow(40 / 20000, -x);
+    } else {
+      filt.type = "highpass";
+      filt.frequency.value = 20 * Math.pow(12000 / 20, x);
+    }
+    filt.Q.value = 1 + Math.abs(x) * 6;
+  }
+  setStemDrive(i: number, amt: number) {
+    if (i < 0 || i >= this.stemDrive.length) return;
+    const v = Math.min(1, Math.max(0, amt));
+    this.stemDriveAmt[i] = v;
+    this.stemDrive[i].curve = driveCurve(v);
   }
 
   // Automatic makeup gain on the stem bus. Treating stems as roughly

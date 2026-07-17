@@ -1156,7 +1156,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                             ? { background: color, color: "#0a0a0a" }
                             : { background: "rgba(255,255,255,0.1)", color: "#b0b0b0" }
                         }
-                        title="Effets sur ce stem — le Rack DSP agit sur les stems marqués FX (plusieurs possibles), les autres restent audibles sans effet"
+                        title="Route ce stem à travers le Rack DSP en bas — pense à aussi ALLUMER un module ET monter son fader INT là-bas, sinon rien ne s'entend (le Rack démarre à 0%)"
                         onClick={() => {
                           deck.toggleStemFxTarget(i);
                           rerender();
@@ -1170,14 +1170,17 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                         className="w-full rounded px-2 py-1 text-[10px] font-black leading-none"
                         disabled={!deck.stemReady}
                         style={
-                          (deck.stemReverbSend[i] ?? 0) > 0.01 || (deck.stemDelaySend[i] ?? 0) > 0.01
+                          (deck.stemReverbSend[i] ?? 0) > 0.01 ||
+                          (deck.stemDelaySend[i] ?? 0) > 0.01 ||
+                          Math.abs(deck.stemFilterX[i] ?? 0) > 0.01 ||
+                          (deck.stemDriveAmt[i] ?? 0) > 0.01
                             ? { background: color, color: "#0a0a0a" }
                             : { background: "rgba(255,255,255,0.1)", color: "#b0b0b0" }
                         }
-                        title="Envoie ce stem vers la Reverb / le Delay partagés du deck (les autres stems gardent leurs propres réglages d'envoi)"
+                        title="FX dédiés à ce stem : filtre, drive, envois Reverb/Delay — toujours actifs, pas besoin du bouton FX (qui lui splice le Rack partagé)"
                         onClick={() => setOpenSendMenu(openSendMenu === i ? null : i)}
                       >
-                        SEND
+                        FX•
                       </button>
                       {openSendMenu === i && (
                         <>
@@ -1191,6 +1194,46 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                             }}
                           >
                             <div className="flex items-center gap-1.5">
+                              <span className="w-10 shrink-0 text-[8px] font-bold uppercase text-neutral-500">Filtre</span>
+                              <input
+                                type="range"
+                                min={-1}
+                                max={1}
+                                step={0.01}
+                                value={deck.stemFilterX[i] ?? 0}
+                                onChange={(e) => {
+                                  deck.setStemFilter(i, parseFloat(e.target.value));
+                                  rerender();
+                                }}
+                                className="h-1 w-28 accent-current"
+                                style={{ color }}
+                                title="Négatif = passe-bas (étouffe), positif = passe-haut (aminci) — centre = transparent"
+                              />
+                              <span className="w-9 shrink-0 text-right font-mono text-[9px]" style={{ color }}>
+                                {Math.round((deck.stemFilterX[i] ?? 0) * 100)}%
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-10 shrink-0 text-[8px] font-bold uppercase text-neutral-500">Drive</span>
+                              <input
+                                type="range"
+                                min={0}
+                                max={1}
+                                step={0.01}
+                                value={deck.stemDriveAmt[i] ?? 0}
+                                onChange={(e) => {
+                                  deck.setStemDrive(i, parseFloat(e.target.value));
+                                  rerender();
+                                }}
+                                className="h-1 w-28 accent-current"
+                                style={{ color }}
+                                title="Saturation douce (soft-clip) — ajoute du grain/de la chaleur"
+                              />
+                              <span className="w-9 shrink-0 text-right font-mono text-[9px]" style={{ color }}>
+                                {Math.round((deck.stemDriveAmt[i] ?? 0) * 100)}%
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 border-t border-white/10 pt-2">
                               <span className="w-10 shrink-0 text-[8px] font-bold uppercase text-neutral-500">Verb</span>
                               <input
                                 type="range"
