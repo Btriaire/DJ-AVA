@@ -415,16 +415,19 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
       onLoaded?.();
       flash(`« ${t.name} » → Deck ${side}`);
       // probe the server cache so we can record this track's content hash and
-      // badge it if its stems already exist (no-op for non-stored results)
-      deck.probeStems().then(() => {
-        if (deck.stemHash) {
-          if (deck.stemCached) setStemSet((s) => new Set(s).add(deck.stemHash));
+      // badge it if its stems already exist (no-op for non-stored results).
+      // Use the result THIS call returned, not deck.stemHash read after the
+      // await — if the user loads a different track onto this deck before the
+      // probe resolves, deck.stemHash may already belong to that newer track,
+      // and writing it into t.id's (this track's) library record would
+      // silently tag the wrong single as having stems ready.
+      deck.probeStems().then((result) => {
+        if (result?.hash) {
+          if (result.cached) setStemSet((s) => new Set(s).add(result.hash));
           persist((d) => ({
             ...d,
             tracks: d.tracks.map((x) =>
-              x.id === t.id && x.stemHash !== deck.stemHash
-                ? { ...x, stemHash: deck.stemHash }
-                : x
+              x.id === t.id && x.stemHash !== result.hash ? { ...x, stemHash: result.hash } : x
             ),
           }));
         }

@@ -275,9 +275,6 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
   useEffect(() => stopAutoSync, []);
 
   const [eq, setEq] = useState({ low: 0, mid: 0, high: 0 });
-  // a new track resets the deck's own per-stem loop state — keep the button
-  // indicators (1/2/4) in sync instead of showing a stale "active" loop
-  useEffect(() => setStemLoopBeats([null, null, null, null, null, null]), [deck.name]);
   const [trim, setTrim] = useState(1);
   const prevForceTrimRef = useRef<number | undefined>(undefined);
   useEffect(() => {
@@ -461,12 +458,15 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
   // everything in between. Only this one stem loops; the others play on.
   const STEM_LOOP_BEATS = [1 / 16, 1 / 8, 1 / 4, 1 / 2, 1, 2, 4, 8, 16];
   const STEM_LOOP_LABELS = ["1/16", "1/8", "1/4", "1/2", "1", "2", "4", "8", "16"];
-  const [stemLoopBeats, setStemLoopBeats] = useState<(number | null)[]>([null, null, null, null, null, null]);
+  // read live off the deck (not a mirrored useState) so the UI can never show a
+  // loop as engaged when the deck-side call actually silently no-op'd — same
+  // fix pattern the earlier "ghost-loop" bug used for the outer LOOP button,
+  // now applied to the length picker and ½/×2 buttons too.
+  const stemLoopBeats = deck.stemLoopBeatsVal;
   const [openStemLoopMenu, setOpenStemLoopMenu] = useState<number | null>(null);
   function setStemLoop(i: number, beats: number | null) {
     if (beats === null) deck.clearStemLoop(i);
     else deck.setStemBeatLoop(i, beats);
-    setStemLoopBeats((arr) => arr.map((v, j) => (j === i ? beats : v)));
     setOpenStemLoopMenu(null);
     rerender();
   }
@@ -479,7 +479,6 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
     const nextIdx = idx + (factor === 2 ? 1 : -1);
     if (nextIdx < 0 || nextIdx >= STEM_LOOP_BEATS.length) return;
     deck.resizeStemLoop(i, factor);
-    setStemLoopBeats((arr) => arr.map((v, j) => (j === i ? STEM_LOOP_BEATS[nextIdx] : v)));
     rerender();
   }
   const ROLL_OPTIONS: (number | null)[] = [null, 2, 4, 8]; // null = Lock (stays until cleared)
@@ -1287,8 +1286,9 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                               {STEM_LOOP_BEATS.map((b, bi) => (
                                 <button
                                   key={b}
+                                  disabled={!deck.stemsActive || !deck.stemReady || !deck.bpm}
                                   onClick={() => setStemLoop(i, stemLoopBeats[i] === b ? null : b)}
-                                  className="rounded px-2.5 py-1.5 text-[11px] font-bold leading-none"
+                                  className="rounded px-2.5 py-1.5 text-[11px] font-bold leading-none disabled:opacity-30"
                                   style={
                                     stemLoopBeats[i] === b
                                       ? { background: color, color: "#0a0a0a" }

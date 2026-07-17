@@ -46,6 +46,13 @@ export class Deck {
   private rawData: ArrayBuffer | null = null; // kept so we can ship the track to the stem separator
   private activeSources: AudioBufferSourceNode[] = []; // 1 in normal mode, N in stem mode
 
+  // bumped on every load()/_streamSetup()/unload() — every async stem call
+  // (probeStems/prefetchStems/ensureStems) captures it before its first await
+  // and checks it again at each resolution point, so a slow response for a
+  // track the user has since swapped out on this deck can't write stale
+  // names/buffers/hash over whatever's actually loaded now.
+  private loadGen = 0;
+
   // ---------- streaming fast-path (phase 1 of two-phase loading) ----------
   // While a long file is being decoded in the background, a MediaElementSource
   // lets the browser stream/play it immediately through the same effects chain.
@@ -196,7 +203,11 @@ export class Deck {
   // per-stem beat loop — independent of the whole-deck loop above. Each stem
   // plays on its own AudioBufferSourceNode (see activeSources), so its loop
   // points can be set live without touching the other stems at all.
-  private stemLoopActive: boolean[] = [];
+  // public: the panel derives its "is this stem looping" display straight from
+  // this array (+ stemLoopBeatsVal below) instead of a separate mirrored
+  // useState, so the UI can never show a loop as engaged when the deck-side
+  // call actually no-op'd.
+  stemLoopActive: boolean[] = [];
   private stemLoopStart: number[] = [];
   private stemLoopEnd: number[] = [];
   private stemLoopWrapTimer: (ReturnType<typeof setTimeout> | null)[] = [];
@@ -204,6 +215,11 @@ export class Deck {
   // public so the UI can read/adjust these live, per stem
   stemLoopSmoothMs: number[] = []; // 0..80ms fade applied right at each loop seam ("smooth" boundary)
   stemLoopRollAt: (number | null)[] = []; // auto-release after N wraps; null = stays locked until cleared
+  // nominal loop length in beats (the exact value the UI asked for — e.g. 1/4,
+  // 2, 8) — kept alongside the derived stemLoopStart/End times so the panel can
+  // show which preset is engaged without recomputing it from times/bpm, which
+  // would drift out of sync with the ½/×2 preset ladder after float rounding.
+  stemLoopBeatsVal: (number | null)[] = [];
   // whole-track repeat: restart the song automatically when it reaches the end
   repeat = false;
 
@@ -294,6 +310,7 @@ export class Deck {
       this.stemLoopWrapCount.push(0);
       this.stemLoopSmoothMs.push(10); // a light 10ms fade by default — on, but subtle
       this.stemLoopRollAt.push(null); // Lock by default (no auto-release)
+      this.stemLoopBeatsVal.push(null);
     }
 
     // crowd / ambience reducer: a per-channel mix matrix that scales the side
@@ -472,6 +489,7 @@ export class Deck {
     this._playing = false;
     this.buffer = buf;
     this.clearStems();
+    this.loadGen++;
     this.name = name;
     this.duration = buf.duration;
     this.peaks = buildWaveformPeaks(buf);
@@ -507,6 +525,7 @@ export class Deck {
     this.pausedAt = 0;
     this.cuePoint = 0;
     this.clearStems();
+    this.loadGen++;
 
     el.preload = "auto";
     el.addEventListener("loadedmetadata", () => { this.duration = el.duration; }, { once: true });
@@ -839,6 +858,7 @@ export class Deck {
     this.stemLoopActive = [];
     this.stemLoopStart = [];
     this.stemLoopEnd = [];
+    this.stemLoopBeatsVal = this.stemLoopBeatsVal.map(() => null);
     this.stemStatus = "none";
     this.stemCached = false;
     this.stemHash = "";
@@ -858,6 +878,7 @@ export class Deck {
     if (model === this.stemModel) return;
     this.stemModel = model;
     this.clearStems();
+    this.loadGen++; // invalidate any in-flight probe/prefetch/separate for the old model
     void this.probeStems();
   }
 
@@ -867,18 +888,21 @@ export class Deck {
     if (on === this.stemUltra) return;
     this.stemUltra = on;
     this.clearStems();
+    this.loadGen++;
     void this.probeStems();
   }
   setStemLossless(on: boolean) {
     if (on === this.stemLossless) return;
     this.stemLossless = on;
     this.clearStems();
+    this.loadGen++;
     void this.probeStems();
   }
   setStemDenoiseVocals(on: boolean) {
     if (on === this.stemDenoiseVocals) return;
     this.stemDenoiseVocals = on;
     this.clearStems();
+    this.loadGen++;
     void this.probeStems();
   }
 
@@ -890,22 +914,31 @@ export class Deck {
 
   // cheap check: does the server already have separated stems for this track +
   // model? (no separation is launched). Lets the UI show "instant" before a click.
-  async probeStems(): Promise<void> {
+  // Returns the probe result (or null if it no-op'd / a different track or setting
+  // is now loaded on this deck by the time it resolves) — callers that persist
+  // the result elsewhere (e.g. the library's "stems available" badge) MUST use
+  // this return value rather than re-reading deck.stemHash after the await, since
+  // that field may have moved on to a newer track by then.
+  async probeStems(): Promise<{ hash: string; cached: boolean } | null> {
+    const gen = this.loadGen;
     this.stemCached = false;
-    if (!this.rawData || this.stemReady) return;
+    if (!this.rawData || this.stemReady) return null;
     try {
       const res = await fetch(`/api/stems/separate?probe=1&model=${this.stemModel}${this.stemOptsQS()}`, {
         method: "POST",
         body: this.rawData.slice(0),
       });
-      if (!res.ok) return;
+      if (!res.ok) return null;
       const { cached, hash } = (await res.json()) as { cached: boolean; hash: string };
+      if (this.loadGen !== gen) return null; // a different track/setting loaded meanwhile — discard
       this.stemCached = !!cached;
       if (hash) this.stemHash = hash;
       // a background prefetch just finished — drop the "préparation…" badge
       if (cached && this.stemStatus === "prefetching") this.stemStatus = "none";
+      return { hash, cached };
     } catch {
       /* offline / route missing — leave as-is */
+      return null;
     }
   }
 
@@ -918,6 +951,7 @@ export class Deck {
     // don't stomp on a live, foreground separation
     if (this.stemStatus === "working") return;
     const model = this.stemModel;
+    const gen = this.loadGen;
     this.stemStatus = "prefetching";
     try {
       const res = await fetch(`/api/stems/separate?prefetch=1&model=${model}${this.stemOptsQS()}`, {
@@ -925,11 +959,11 @@ export class Deck {
         body: this.rawData.slice(0),
       });
       if (!res.ok) {
-        if (this.stemStatus === "prefetching") this.stemStatus = "none";
+        if (this.loadGen === gen && this.stemStatus === "prefetching") this.stemStatus = "none";
         return;
       }
       const { hash, cached } = (await res.json()) as { hash: string; cached: boolean };
-      if (this.stemModel !== model) return; // model swapped meanwhile
+      if (this.loadGen !== gen || this.stemModel !== model) return; // track/settings swapped meanwhile
       if (hash) this.stemHash = hash;
       if (cached) {
         this.stemCached = true;
@@ -937,7 +971,7 @@ export class Deck {
       }
       // else: leave status "prefetching"; the poller will clear it when ready
     } catch {
-      if (this.stemStatus === "prefetching") this.stemStatus = "none";
+      if (this.loadGen === gen && this.stemStatus === "prefetching") this.stemStatus = "none";
     }
   }
 
@@ -1065,6 +1099,7 @@ export class Deck {
     }
     this.stemStatus = "working";
     const model = this.stemModel;
+    const gen = this.loadGen;
     try {
       const stemOpts = this.stemOptsQS();
       const res = await fetch(`/api/stems/separate?model=${model}${stemOpts}`, {
@@ -1073,15 +1108,15 @@ export class Deck {
       });
       if (!res.ok) throw new Error(await res.text());
       const { hash, stems } = (await res.json()) as { hash: string; stems: string[] };
-      // user may have swapped the model while we were separating — bail if so
-      if (this.stemModel !== model) return;
+      // user may have swapped tracks or the model/quality while we were separating — bail if so
+      if (this.loadGen !== gen || this.stemModel !== model) return;
       const bufs: AudioBuffer[] = [];
       for (const n of stems) {
         const r = await fetch(`/api/stems/${hash}/${n}?model=${model}${stemOpts}`);
         if (!r.ok) throw new Error(`stem ${n}: ${r.status}`);
         bufs.push(await this.ctx.decodeAudioData(await r.arrayBuffer()));
       }
-      if (this.stemModel !== model) return;
+      if (this.loadGen !== gen || this.stemModel !== model) return;
       this.stemNames = stems;
       this.stemVol = stems.map(() => 1);
       this.stemBuffers = bufs;
@@ -1091,7 +1126,7 @@ export class Deck {
       this.recomputeStemMakeup();
       this.stemStatus = "ready";
     } catch (e) {
-      this.stemStatus = "error";
+      if (this.loadGen === gen) this.stemStatus = "error"; // a newer track's own status shouldn't be clobbered
       console.error("[stems]", e);
     }
   }
@@ -1147,9 +1182,13 @@ export class Deck {
   // so there's no stop/restart click and no risk of desyncing the other stems.
   // opts.quantize (default true) snaps the loop-in point to the nearest beat
   // instead of the exact click position, for a cleaner capture.
-  setStemBeatLoop(i: number, beats: number, opts?: { quantize?: boolean }) {
-    if (!this.stemsActive || !this.stemReady || !this.bpm) return;
-    if (i < 0 || i >= this.stemGains.length) return;
+  // Returns whether the loop actually engaged — false on every silent-no-op
+  // guard below (stems off, not ready, BPM unknown, bad index). The panel uses
+  // this to decide whether to show the loop as active, instead of assuming a
+  // click always "took" (see stemLoopBeatsVal comment above).
+  setStemBeatLoop(i: number, beats: number, opts?: { quantize?: boolean }): boolean {
+    if (!this.stemsActive || !this.stemReady || !this.bpm) return false;
+    if (i < 0 || i >= this.stemGains.length) return false;
     const secPerBeat = 60 / this.bpm;
     const rawStart = this.position();
     const start = (opts?.quantize ?? true) ? Math.round(rawStart / secPerBeat) * secPerBeat : rawStart;
@@ -1157,6 +1196,7 @@ export class Deck {
     this.stemLoopActive[i] = true;
     this.stemLoopStart[i] = start;
     this.stemLoopEnd[i] = end;
+    this.stemLoopBeatsVal[i] = beats;
     this.stemLoopWrapCount[i] = 0;
     const src = this.activeSources[i];
     if (src) {
@@ -1165,10 +1205,12 @@ export class Deck {
       src.loop = true;
     }
     this.scheduleStemLoopWrap(i);
+    return true;
   }
 
   clearStemLoop(i: number) {
     if (i < 0 || i >= this.stemGains.length) return;
+    this.stemLoopBeatsVal[i] = null;
     if (!this.stemLoopActive[i]) return;
     this.stemLoopActive[i] = false;
     this.clearStemLoopTimer(i);
@@ -1183,17 +1225,20 @@ export class Deck {
   }
 
   // halve/double the CURRENT loop length live, keeping the same start point —
-  // the classic loop-resize gesture (½ / ×2) on real DJ hardware.
-  resizeStemLoop(i: number, factor: 0.5 | 2) {
-    if (i < 0 || i >= this.stemGains.length || !this.stemLoopActive[i]) return;
+  // the classic loop-resize gesture (½ / ×2) on real DJ hardware. Returns
+  // whether it actually resized (false if no loop is active on this stem).
+  resizeStemLoop(i: number, factor: 0.5 | 2): boolean {
+    if (i < 0 || i >= this.stemGains.length || !this.stemLoopActive[i]) return false;
     const start = this.stemLoopStart[i];
     const newLen = Math.max(0.01, (this.stemLoopEnd[i] - start) * factor);
     const end = Math.min(start + newLen, this.duration);
     this.stemLoopEnd[i] = end;
+    if (this.stemLoopBeatsVal[i] != null) this.stemLoopBeatsVal[i] = this.stemLoopBeatsVal[i]! * factor;
     this.stemLoopWrapCount[i] = 0;
     const src = this.activeSources[i];
     if (src) src.loopEnd = end;
     this.scheduleStemLoopWrap(i);
+    return true;
   }
 
   // "smooth" loop boundary: a short fade-to-silence-and-back centred on every
@@ -1307,6 +1352,7 @@ export class Deck {
     this.rawData = null;
     this.origin = null;
     this.clearStems();
+    this.loadGen++;
     this.reset();
   }
 
