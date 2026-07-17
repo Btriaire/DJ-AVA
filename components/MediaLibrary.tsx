@@ -1175,7 +1175,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
         )}
 
         {/* cover thumbnail */}
-        <div className="h-14 w-14 shrink-0 overflow-hidden rounded bg-neutral-900">
+        <div className="h-28 w-28 shrink-0 overflow-hidden rounded bg-neutral-900">
           {t.art ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={t.art} alt="" className="h-full w-full object-cover" />
@@ -1952,7 +1952,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
                     <img
                       src={t.artwork ?? ""}
                       alt=""
-                      className="h-14 w-14 shrink-0 rounded bg-neutral-700 object-cover"
+                      className="h-28 w-28 shrink-0 rounded bg-neutral-700 object-cover"
                     />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm text-neutral-100">{t.title}</div>
