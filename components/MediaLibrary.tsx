@@ -113,6 +113,11 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   const [autoLoading, setAutoLoading] = useState(false);
   const [autoUsedAI, setAutoUsedAI] = useState(false);
   const [sameArtist, setSameArtist] = useState(false); // restrict Auto-IA to the seed's artist
+  // keyword-driven discovery ("années 80; 100 BPM; Electro; live" → ~20 proposals),
+  // an alternate entry point into the same Auto-IA result list/UI — no seed track
+  // needed, so a themed set can be launched from a pure idea instead
+  const [autoKeywords, setAutoKeywords] = useState<string | null>(null);
+  const [keywordInput, setKeywordInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -704,6 +709,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   async function generateAuto(seed: Seed, opts?: { sameArtist?: boolean }) {
     const only = opts?.sameArtist ?? sameArtist;
     setTab("auto");
+    setAutoKeywords(null);
     setAutoSeed(seed);
     setAutoTracks([]);
     setAutoLoading(true);
@@ -719,6 +725,34 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
       setAutoUsedAI(!!j.usedAI);
       if ((j.tracks ?? []).length === 0 && !j.error)
         flash("Aucun titre proche trouvé — essaie une autre graine.");
+    } catch (e) {
+      flash((e as Error).message);
+    } finally {
+      setAutoLoading(false);
+    }
+  }
+  // keyword-driven discovery: "années 80; 100 BPM; Electro; live" → ~20
+  // proposals, no seed track needed — reuses the same Auto-IA result list/UI.
+  async function generateDiscover(keywords: string) {
+    const kw = keywords.trim();
+    if (!kw) return;
+    setTab("auto");
+    setAutoSeed(null);
+    setAutoKeywords(kw);
+    setAutoTracks([]);
+    setAutoLoading(true);
+    try {
+      const r = await fetch("/api/ai/discover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keywords: kw }),
+      });
+      const j = await r.json();
+      if (j.error) flash(j.error);
+      setAutoTracks(j.tracks ?? []);
+      setAutoUsedAI(!!j.usedAI);
+      if ((j.tracks ?? []).length === 0 && !j.error)
+        flash("Aucun titre trouvé — essaie d'autres mots-clés.");
     } catch (e) {
       flash((e as Error).message);
     } finally {
@@ -756,7 +790,11 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   // persist the whole generated set as a real playlist (Audius tracks + playlist)
   function saveAutoAsPlaylist() {
     if (!autoTracks.length) return;
-    const base = autoSeed?.title ? `Auto · ${autoSeed.title}`.slice(0, 40) : "Playlist auto";
+    const base = autoSeed?.title
+      ? `Auto · ${autoSeed.title}`.slice(0, 40)
+      : autoKeywords
+        ? `Auto · ${autoKeywords}`.slice(0, 40)
+        : "Playlist auto";
     const name = (prompt("Nom de la playlist auto ?", base) || "").trim();
     if (!name) return;
     const newTracks: LibTrack[] = autoTracks.map((t) => ({
@@ -2048,6 +2086,60 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
                 </div>
               </div>
 
+              {/* keyword-driven discovery — no seed track needed: launch a themed
+                  set straight from an idea ("années 80; 100 BPM; Electro; live") */}
+              <div className="flex items-center gap-1.5 rounded bg-fuchsia-500/5 px-2 py-1.5 ring-1 ring-fuchsia-500/20">
+                <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-fuchsia-400">
+                  🔍 Découverte par mots-clés
+                </span>
+                <input
+                  value={keywordInput}
+                  onChange={(e) => setKeywordInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") generateDiscover(keywordInput);
+                  }}
+                  placeholder="ex : années 80 ; 100 BPM ; Electro ; live"
+                  className="min-w-0 flex-1 rounded bg-neutral-900 px-2 py-1 text-xs text-neutral-100 outline-none ring-1 ring-neutral-700 placeholder:text-neutral-600"
+                  title="Sépare tes mots-clés par ; — décennie, genre, BPM, ambiance… L'IA propose ~20 titres, sans avoir besoin d'un morceau de départ"
+                />
+                <button
+                  onClick={() => generateDiscover(keywordInput)}
+                  disabled={!keywordInput.trim()}
+                  className="hw-btn shrink-0 px-2 py-1 text-xs disabled:opacity-30"
+                  style={{ ["--led" as string]: "#e879f9", color: "#e879f9" }}
+                >
+                  Chercher
+                </button>
+              </div>
+
+              {/* keywords card */}
+              {autoKeywords && (
+                <div className="flex items-center gap-2 rounded bg-fuchsia-500/10 px-3 py-2 ring-1 ring-fuchsia-500/30">
+                  <span className="text-lg">🔍</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm text-neutral-100">{autoKeywords}</div>
+                    <div className="truncate text-[11px] text-neutral-400">Mots-clés</div>
+                  </div>
+                  <span
+                    className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-black"
+                    style={{ color: "#0a0a0a", background: autoUsedAI ? "#e879f9" : "#6b7280" }}
+                    title={autoUsedAI ? "Mots-clés interprétés par l'IA (Groq) — sources Audius + YouTube" : "IA non configurée — recherche directe des mots-clés, Audius + YouTube"}
+                  >
+                    {autoUsedAI ? "IA · AUDIUS+YT" : "AUDIUS+YT"}
+                  </span>
+                  {autoTracks.length > 0 && (
+                    <button
+                      onClick={saveAutoAsPlaylist}
+                      className="hw-btn hw-btn-on shrink-0 px-3 py-1 text-xs"
+                      style={{ ["--led" as string]: "#e879f9" }}
+                      title="Enregistrer toute la sélection comme playlist"
+                    >
+                      ≣ Enregistrer la playlist
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* seed card */}
               {autoSeed && (
                 <div className="flex items-center gap-2 rounded bg-fuchsia-500/10 px-3 py-2 ring-1 ring-fuchsia-500/30">
@@ -2084,10 +2176,12 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
                 </p>
               )}
 
-              {!autoLoading && !autoSeed && (
+              {!autoLoading && !autoSeed && !autoKeywords && (
                 <p className="py-6 text-center text-sm text-neutral-600">
-                  Cherche un titre dans l&apos;onglet ♫ Audius et clique sur « ✨ Auto », ou pars d&apos;un
-                  morceau chargé sur un deck. L&apos;IA proposera des singles proches en style, BPM et son.
+                  Tape des mots-clés ci-dessus (décennie, genre, BPM, ambiance…) pour un set instantané sur
+                  un thème, ou cherche un titre dans l&apos;onglet ♫ Audius et clique sur « ✨ Auto », ou pars
+                  d&apos;un morceau chargé sur un deck. L&apos;IA propose ~20 titres à écouter, filer en
+                  bibliothèque et enchaîner en set.
                 </p>
               )}
 
