@@ -799,7 +799,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
     deck.play();
     wasPlaying.current[side] = true;
   }
-  function toggleLive(side: "A" | "B") {
+  function toggleLive(side: "A" | "B", startIdx?: number) {
     const next = !(side === "A" ? liveA : liveB);
     (side === "A" ? setLiveA : setLiveB)(next);
     if (next && relay) {
@@ -809,10 +809,11 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
     }
     if (next) {
       const deck = side === "A" ? engine.deckA : engine.deckB;
-      if (deck.playing) {
+      if (deck.playing && startIdx == null) {
         wasPlaying.current[side] = true;
       } else {
-        liveIdx.current[side] = -1;
+        // one below the desired start so liveAdvance()'s +1 lands exactly on it
+        liveIdx.current[side] = (startIdx ?? 0) - 1;
         liveAdvance(side);
       }
     } else {
@@ -825,7 +826,9 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   // --- play a chosen playlist consecutively, in order -----------------------
   // Assigns the playlist as the deck's queue source, then (re)starts the LIVE
   // loop so the deck rolls through every title back-to-back, looping forever.
-  function playPlaylistLive(side: "A" | "B", plId: string) {
+  // `startIdx` (default 0) lets a set be picked up from any track, not just
+  // the top — the rest of the playlist still follows in order after it.
+  function playPlaylistLive(side: "A" | "B", plId: string, startIdx?: number) {
     const next = { ...queueSrcRef.current, [side]: plId };
     setQueueSrc(next);
     queueSrcRef.current = next; // make liveQueue() see it synchronously
@@ -835,23 +838,25 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
       setRelayCur({ A: -1, B: -1 });
     }
     (side === "A" ? setLiveA : setLiveB)(true);
-    liveIdx.current[side] = -1;
-    liveAdvance(side); // loads + plays the playlist's first title
+    liveIdx.current[side] = (startIdx ?? 0) - 1;
+    liveAdvance(side); // loads + plays from startIdx (0 = the playlist's first title)
     const n = liveQueue(side).length;
     flash(`File Deck ${side} : playlist (${n} titre${n > 1 ? "s" : ""})`);
   }
   // Run the A→B→A relay through one playlist on both decks (long automix set).
-  function playPlaylistRelay(plId: string) {
+  // `startIdx` (default 0) picks up the set from any track — B cues the very
+  // next track after it, and the relay continues in order from there, looping.
+  function playPlaylistRelay(plId: string, startIdx?: number) {
     const next = { A: plId, B: plId };
     setQueueSrc(next);
     queueSrcRef.current = next;
     if (relay) {
-      // already running — restart so both decks reload from the playlist start
+      // already running — restart so both decks reload from the chosen track
       relayRef.current = false;
       setRelay(false);
-      window.setTimeout(() => toggleRelay(), 80);
+      window.setTimeout(() => toggleRelay(startIdx), 80);
     } else {
-      toggleRelay();
+      toggleRelay(startIdx);
     }
   }
 
@@ -947,7 +952,10 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
     };
     requestAnimationFrame(step);
   }
-  function toggleRelay() {
+  // `startIdx` (default 0) is where the SHARED relay pointer picks up — Deck A
+  // starts there, Deck B cues the track right after it, and the relay carries
+  // on in order (looping) from that point instead of always from track 0.
+  function toggleRelay(startIdx?: number) {
     const next = !relay;
     setRelay(next);
     relayRef.current = next;
@@ -961,7 +969,8 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
     liveIdx.current = { A: -1, B: -1 };
     setLiveCur({ A: -1, B: -1 });
     relayIdx.current = { A: -1, B: -1 };
-    relayPos.current = -1;
+    // one below the desired start so relayLoadNext()'s +1 lands exactly on it
+    relayPos.current = (startIdx ?? 0) - 1;
     relayFading.current = false;
     relayArmed.current = true;
     relaySide.current = "A";
@@ -1148,6 +1157,13 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
                 ▼
               </button>
             </div>
+            <button
+              onClick={() => playPlaylistRelay(plId!, idx!)}
+              className="rounded px-1.5 py-1 text-[10px] font-black leading-none text-violet-300 ring-1 ring-violet-800/60"
+              title="Démarrer le set ici : Relais A→B→A à partir de ce titre — les suivants s'enchaînent dans l'ordre, en boucle"
+            >
+              ▶ ici
+            </button>
           </div>
         )}
 
@@ -1639,7 +1655,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
             ⏭
           </button>
           <button
-            onClick={toggleRelay}
+            onClick={() => toggleRelay()}
             className={`hw-btn px-2 py-1 text-xs ${relay ? "hw-btn-on" : ""}`}
             style={{ ["--led" as string]: "#22d3ee" }}
             title="AUTOMIX A→B→A : joue le Deck A, puis bascule en autofade sur le Deck B en fin de morceau, puis revient sur A… en boucle"
