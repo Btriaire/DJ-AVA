@@ -103,6 +103,15 @@ export function CdPlayerFace({ deck, color, side, trackNo, trackCount, nextName,
                 TITRE {trackNo}/{trackCount}
               </span>
             )}
+            {deck.key && (
+              <span
+                className="rounded px-1.5 py-0.5 font-mono text-[10px] font-bold leading-none"
+                style={{ color, boxShadow: `inset 0 0 0 1px ${color}44` }}
+                title={`Tonalité détectée : ${deck.key.name} (Camelot ${deck.key.camelot})`}
+              >
+                {deck.key.camelot}
+              </span>
+            )}
             {deck.bpm > 0 && (
               <span
                 className="ml-auto rounded px-1.5 py-0.5 font-mono text-[10px] font-bold leading-none"

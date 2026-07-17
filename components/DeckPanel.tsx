@@ -418,6 +418,18 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
     stemPrev.current = [1, 1, 1, 1, 1, 1];
     rerender();
   }
+  function toggleStemUltra() {
+    deck.setStemUltra(!deck.stemUltra);
+    rerender();
+  }
+  function toggleStemLossless() {
+    deck.setStemLossless(!deck.stemLossless);
+    rerender();
+  }
+  function toggleStemDenoise() {
+    deck.setStemDenoiseVocals(!deck.stemDenoiseVocals);
+    rerender();
+  }
   function toggleStemMute(i: number) {
     if (deck.stemVol[i] > 0.001) {
       stemPrev.current[i] = deck.stemVol[i];
@@ -954,6 +966,46 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                     {m.label}
                   </button>
                 ))}
+              </div>
+              {/* orthogonal quality knobs — stack on top of whichever model is
+                  chosen above; each drops any loaded stems on change */}
+              <div className="flex overflow-hidden rounded ring-1 ring-neutral-700">
+                <button
+                  onClick={toggleStemUltra}
+                  disabled={deck.stemStatus === "working"}
+                  className="flex-1 px-1 py-0.5 text-[7px] font-black disabled:opacity-40"
+                  style={{
+                    color: deck.stemUltra ? "#0a0a0a" : color,
+                    background: deck.stemUltra ? color : "transparent",
+                  }}
+                  title="Mode ULTRA : passes de précision supplémentaires, séparation plus propre, plusieurs fois plus lent"
+                >
+                  ULTRA
+                </button>
+                <button
+                  onClick={toggleStemLossless}
+                  disabled={deck.stemStatus === "working"}
+                  className="flex-1 px-1 py-0.5 text-[7px] font-black disabled:opacity-40"
+                  style={{
+                    color: deck.stemLossless ? "#0a0a0a" : color,
+                    background: deck.stemLossless ? color : "transparent",
+                  }}
+                  title="Cache sans perte : stems en WAV au lieu de MP3 (plus lourd, aucun artefact de compression)"
+                >
+                  WAV
+                </button>
+                <button
+                  onClick={toggleStemDenoise}
+                  disabled={deck.stemStatus === "working"}
+                  className="flex-1 px-1 py-0.5 text-[7px] font-black disabled:opacity-40"
+                  style={{
+                    color: deck.stemDenoiseVocals ? "#0a0a0a" : color,
+                    background: deck.stemDenoiseVocals ? color : "transparent",
+                  }}
+                  title="Nettoyage vocal : réduction de bruit/souffle sur la piste voix (pas une vraie suppression de réverbe)"
+                >
+                  DENOISE
+                </button>
               </div>
               <button
                 className={`hw-btn px-2 py-1.5 text-[11px] ${deck.stemsActive ? "hw-btn-on" : ""}`}

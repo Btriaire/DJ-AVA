@@ -1,13 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
-import { hashBytes, isCached, isModel, MODEL_STEMS, prefetch, separate, StemModel } from "@/lib/stems";
+import { hashBytes, isCached, isModel, MODEL_STEMS, prefetch, separate, StemModel, StemOpts } from "@/lib/stems";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 600; // Demucs on CPU is slow (minutes per track)
 
+function optsFrom(req: NextRequest): StemOpts {
+  const q = req.nextUrl.searchParams;
+  return {
+    ultra: q.get("ultra") === "1",
+    lossless: q.get("wav") === "1",
+    denoiseVocals: q.get("denoise") === "1",
+  };
+}
+
 // POST the raw audio bytes of a track. Returns { hash, cached, model, stems }
 // once the stems are available under /api/stems/<hash>/<stem>?model=<model>.
 // Query: `model` (htdemucs | htdemucs_ft | htdemucs_6s), `shifts` (precision),
+// `ultra=1` (extra-precision pass, several× slower), `wav=1` (lossless cache),
+// `denoise=1` (noise-reduction pass on the vocals stem),
 // `probe=1` to only check the cache without launching a (long) separation,
 // `prefetch=1` to schedule a low-priority background separation and return
 // immediately (the caller polls `probe=1` to learn when it's ready).
@@ -16,6 +27,7 @@ export async function POST(req: NextRequest) {
     const modelParam = req.nextUrl.searchParams.get("model") || "htdemucs";
     const model: StemModel = isModel(modelParam) ? modelParam : "htdemucs";
     const shifts = parseInt(req.nextUrl.searchParams.get("shifts") || "0", 10) || 0;
+    const opts = optsFrom(req);
     const stems = MODEL_STEMS[model];
 
     const data = await req.arrayBuffer();
@@ -23,17 +35,17 @@ export async function POST(req: NextRequest) {
 
     if (req.nextUrl.searchParams.get("probe") === "1") {
       const hash = hashBytes(data);
-      return NextResponse.json({ hash, model, stems, cached: isCached(hash, model) });
+      return NextResponse.json({ hash, model, stems, cached: isCached(hash, model, opts) });
     }
 
     // Non-blocking: queue a niced background job and return at once. The deck
     // polls `probe=1` to flip its badge once the cache is populated.
     if (req.nextUrl.searchParams.get("prefetch") === "1") {
-      const { hash, cached } = prefetch(data, model, shifts);
+      const { hash, cached } = prefetch(data, model, shifts, opts);
       return NextResponse.json({ hash, model, stems, cached, queued: !cached });
     }
 
-    const hash = await separate(data, model, shifts);
+    const hash = await separate(data, model, shifts, opts);
     return NextResponse.json({ hash, model, stems, cached: true });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });

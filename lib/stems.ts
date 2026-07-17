@@ -47,14 +47,34 @@ export function ffmpegPath(): string {
   return FFMPEG;
 }
 
-// cache root: <project>/.stems-cache/<hash>/<model>/<stem>.mp3
+// cache root: <project>/.stems-cache/<hash>/<model>[_ultra][_wav][_dn]/<stem>.<ext>
 // On the VPS, point STEMS_CACHE_DIR at a persistent volume (the standalone build
 // runs from a temp-ish cwd, and Docker layers are ephemeral) so separations
 // survive restarts and redeploys.
 const CACHE = process.env.STEMS_CACHE_DIR || join(process.cwd(), ".stems-cache");
 
-function modelDir(hash: string, model: StemModel) {
-  return join(CACHE, hash, model);
+// Orthogonal quality knobs, stacked on top of whichever model is chosen:
+//   ultra    — shifts≥2 + overlap 0.25 (vs 0.1 default): several extra Demucs
+//              passes averaged together, ~3-4× slower, cleaner separation
+//   lossless — cache stems as WAV instead of MP3 (bigger, no lossy artifacts)
+//   denoiseVocals — ffmpeg afftdn noise-reduction pass on the vocals stem only
+//              (cuts hiss/bleed, not real de-reverb — ffmpeg has no such filter)
+export interface StemOpts {
+  ultra?: boolean;
+  lossless?: boolean;
+  denoiseVocals?: boolean;
+}
+
+function dirSuffix(opts: StemOpts): string {
+  return `${opts.ultra ? "_ultra" : ""}${opts.lossless ? "_wav" : ""}${opts.denoiseVocals ? "_dn" : ""}`;
+}
+
+function stemExt(opts: StemOpts): "wav" | "mp3" {
+  return opts.lossless ? "wav" : "mp3";
+}
+
+function modelDir(hash: string, model: StemModel, opts: StemOpts = {}) {
+  return join(CACHE, hash, model + dirSuffix(opts));
 }
 
 export function hashBytes(data: ArrayBuffer | Uint8Array): string {
@@ -62,18 +82,19 @@ export function hashBytes(data: ArrayBuffer | Uint8Array): string {
   return createHash("sha1").update(buf).digest("hex").slice(0, 16);
 }
 
-// have all stems for this content hash + model already been separated?
-export function isCached(hash: string, model: StemModel): boolean {
-  const dir = modelDir(hash, model);
-  return MODEL_STEMS[model].every((s) => existsSync(join(dir, `${s}.mp3`)));
+// have all stems for this content hash + model (+ quality opts) already been separated?
+export function isCached(hash: string, model: StemModel, opts: StemOpts = {}): boolean {
+  const dir = modelDir(hash, model, opts);
+  const ext = stemExt(opts);
+  return MODEL_STEMS[model].every((s) => existsSync(join(dir, `${s}.${ext}`)));
 }
 
-export function stemPath(hash: string, model: StemModel, stem: string): string {
-  return join(modelDir(hash, model), `${stem}.mp3`);
+export function stemPath(hash: string, model: StemModel, stem: string, opts: StemOpts = {}): string {
+  return join(modelDir(hash, model, opts), `${stem}.${stemExt(opts)}`);
 }
 
-// every content hash that has at least one fully-cached model (for the library
-// "stems available" badge — cheap directory listing, no hashing of audio)
+// every content hash that has at least one fully-cached model at default
+// quality (for the library "stems available" badge — cheap directory listing)
 export function listCachedHashes(): string[] {
   if (!existsSync(CACHE)) return [];
   const out: string[] = [];
@@ -147,7 +168,7 @@ function releaseSlot(): void {
 // job share one Demucs run instead of launching it twice
 const inflight = new Map<string, Promise<void>>();
 
-export interface SeparateOpts {
+export interface SeparateOpts extends StemOpts {
   priority?: number; // higher = scheduled first (on-demand 1, prefetch 0)
   nice?: boolean; // run Demucs under `nice` (background prefetch jobs)
 }
@@ -161,8 +182,8 @@ export async function separate(
   opts: SeparateOpts = {}
 ): Promise<string> {
   const hash = hashBytes(data);
-  if (isCached(hash, model)) return hash;
-  const key = `${hash}:${model}`;
+  if (isCached(hash, model, opts)) return hash;
+  const key = `${hash}:${model}:${dirSuffix(opts)}`;
   const existing = inflight.get(key);
   if (existing) {
     await existing;
@@ -180,12 +201,13 @@ export async function separate(
 export function prefetch(
   data: ArrayBuffer,
   model: StemModel = "htdemucs",
-  shifts = 0
+  shifts = 0,
+  opts: StemOpts = {}
 ): { hash: string; cached: boolean } {
   const hash = hashBytes(data);
-  const cached = isCached(hash, model);
+  const cached = isCached(hash, model, opts);
   if (!cached) {
-    separate(data, model, shifts, { priority: 0, nice: true }).catch((e) =>
+    separate(data, model, shifts, { ...opts, priority: 0, nice: true }).catch((e) =>
       console.error("[stems prefetch]", (e as Error).message)
     );
   }
@@ -212,25 +234,44 @@ async function doSeparate(
     const wav = join(work, "source.wav");
     await run(FFMPEG, ["-hide_banner", "-loglevel", "error", "-y", "-i", raw, "-ac", "2", "-ar", "44100", wav], niceness);
 
-    // 2. run Demucs (CPU) -> MP3 stems under <out>/<model>/source/<stem>.mp3
+    // 2. run Demucs (CPU) -> stems under <out>/<model>/source/<stem>.<ext>
     //    --overlap 0.1 (vs Demucs' 0.25 default) computes fewer overlapping
-    //    windows → ~15% faster on CPU for a negligible quality cost.
-    //    STEMS_SEGMENT caps the chunk length to bound peak RAM on memory-tight
-    //    hosts (avoids swap thrashing on long tracks). Both are env-tunable.
+    //    windows → ~15% faster on CPU for a negligible quality cost. ULTRA mode
+    //    inverts that trade: overlap 0.25 + ≥2 shifts (test-time augmentation,
+    //    several offset passes averaged together) for the cleanest separation
+    //    at several times the CPU cost. STEMS_SEGMENT caps the chunk length to
+    //    bound peak RAM on memory-tight hosts. All env-tunable except ultra.
     const out = join(work, "out");
-    const overlap = process.env.STEMS_OVERLAP || "0.1";
-    const args = ["-n", model, "-d", "cpu", "--mp3", "--mp3-bitrate", "256", "--overlap", overlap];
+    const overlap = opts.ultra ? "0.25" : process.env.STEMS_OVERLAP || "0.1";
+    const ext = stemExt(opts);
+    const args = ["-n", model, "-d", "cpu", "--overlap", overlap];
+    if (ext === "mp3") args.push("--mp3", "--mp3-bitrate", "256");
     if (process.env.STEMS_SEGMENT) args.push("--segment", process.env.STEMS_SEGMENT);
-    if (shifts > 0) args.push("--shifts", String(Math.min(shifts, 10)));
+    const shiftsEff = opts.ultra ? Math.max(shifts, 2) : shifts;
+    if (shiftsEff > 0) args.push("--shifts", String(Math.min(shiftsEff, 10)));
     args.push("-o", out, wav);
     await run(DEMUCS, args, niceness);
 
-    // 3. atomically publish into the cache dir
-    const dir = modelDir(hash, model);
-    mkdirSync(dir, { recursive: true });
+    // 3. optional vocal cleanup: ffmpeg's afftdn adaptive noise-reduction filter
+    //    on the vocals stem only (there's no true de-reverb filter in ffmpeg —
+    //    this cuts hiss/bleed/background noise, framed honestly as that, not
+    //    "reverb removal")
     const produced = join(out, model, "source");
+    if (opts.denoiseVocals && MODEL_STEMS[model].includes("vocals")) {
+      const vocalsIn = join(produced, `vocals.${ext}`);
+      const vocalsOut = join(produced, `vocals.dn.${ext}`);
+      const dnArgs = ["-hide_banner", "-loglevel", "error", "-y", "-i", vocalsIn, "-af", "afftdn=nr=12:nf=-25"];
+      if (ext === "mp3") dnArgs.push("-b:a", "256k");
+      dnArgs.push(vocalsOut);
+      await run(FFMPEG, dnArgs, niceness);
+      await rename(vocalsOut, vocalsIn);
+    }
+
+    // 4. atomically publish into the cache dir
+    const dir = modelDir(hash, model, opts);
+    mkdirSync(dir, { recursive: true });
     for (const s of MODEL_STEMS[model]) {
-      await moveFile(join(produced, `${s}.mp3`), join(dir, `${s}.mp3`));
+      await moveFile(join(produced, `${s}.${ext}`), join(dir, `${s}.${ext}`));
     }
   } finally {
     releaseSlot();
@@ -238,6 +279,11 @@ async function doSeparate(
   }
 }
 
-export async function readStem(hash: string, model: StemModel, stem: string): Promise<Buffer> {
-  return readFile(stemPath(hash, model, stem));
+export async function readStem(
+  hash: string,
+  model: StemModel,
+  stem: string,
+  opts: StemOpts = {}
+): Promise<Buffer> {
+  return readFile(stemPath(hash, model, stem, opts));
 }

@@ -1,4 +1,5 @@
 import { detectBPM, buildWaveformPeaks } from "./bpm";
+import { detectKey, KeyResult } from "./key";
 import { FXRack, FxName } from "./FXRack";
 import { Rack, RackPreset } from "./Rack";
 
@@ -81,6 +82,9 @@ export class Deck {
   stemMakeup = true; // auto-compensate level when stem faders are pulled down
   stemNames: string[] = []; // active stem labels (drives the fader count)
   stemModel: "htdemucs" | "htdemucs_ft" | "htdemucs_6s" = "htdemucs";
+  stemUltra = false; // extra-precision Demucs pass (shifts≥2, overlap 0.25) — several× slower
+  stemLossless = false; // cache/serve stems as WAV instead of MP3
+  stemDenoiseVocals = false; // ffmpeg noise-reduction pass on the vocals stem
   stemsActive = false; // play the stems (with per-stem gain) instead of the full mix
   stemVol: number[] = []; // one entry per active stem
   stemStatus: "none" | "prefetching" | "working" | "ready" | "error" = "none";
@@ -158,6 +162,7 @@ export class Deck {
   name = "";
   duration = 0;
   bpm = 0;
+  key: KeyResult | null = null; // musical key + Camelot notation, for harmonic mixing
   peaks: Float32Array = new Float32Array(0);
   cuePoint = 0;
   // original YouTube link of the loaded track (empty for uploads / Audius) —
@@ -466,6 +471,7 @@ export class Deck {
     this.duration = buf.duration;
     this.peaks = buildWaveformPeaks(buf);
     this.bpm = detectBPM(buf);
+    this.key = detectKey(buf);
     this.pausedAt = 0;
     this.cuePoint = 0;
     this.loopActive = false;
@@ -490,6 +496,7 @@ export class Deck {
     this.name = name;
     this.peaks = new Float32Array(0);
     this.bpm = 0;
+    this.key = null;
     this.duration = 0;
     this.pausedAt = 0;
     this.cuePoint = 0;
@@ -512,6 +519,7 @@ export class Deck {
     this.duration = buf.duration;
     this.peaks = buildWaveformPeaks(buf);
     this.bpm = detectBPM(buf);
+    this.key = detectKey(buf);
     this.pausedAt = Math.min(Math.max(0, pos), buf.duration - 0.05);
     this._playing = false;
     if (wasPlaying) this.play();
@@ -845,13 +853,40 @@ export class Deck {
     void this.probeStems();
   }
 
+  // quality knobs, orthogonal to the model — each drops any loaded stems so
+  // the next STEMS click re-separates (or re-probes an already-cached variant)
+  setStemUltra(on: boolean) {
+    if (on === this.stemUltra) return;
+    this.stemUltra = on;
+    this.clearStems();
+    void this.probeStems();
+  }
+  setStemLossless(on: boolean) {
+    if (on === this.stemLossless) return;
+    this.stemLossless = on;
+    this.clearStems();
+    void this.probeStems();
+  }
+  setStemDenoiseVocals(on: boolean) {
+    if (on === this.stemDenoiseVocals) return;
+    this.stemDenoiseVocals = on;
+    this.clearStems();
+    void this.probeStems();
+  }
+
+  // query-string suffix carrying the current quality opts, shared by every
+  // /api/stems/* call so cache hits/misses stay consistent across them
+  private stemOptsQS(): string {
+    return `${this.stemUltra ? "&ultra=1" : ""}${this.stemLossless ? "&wav=1" : ""}${this.stemDenoiseVocals ? "&denoise=1" : ""}`;
+  }
+
   // cheap check: does the server already have separated stems for this track +
   // model? (no separation is launched). Lets the UI show "instant" before a click.
   async probeStems(): Promise<void> {
     this.stemCached = false;
     if (!this.rawData || this.stemReady) return;
     try {
-      const res = await fetch(`/api/stems/separate?probe=1&model=${this.stemModel}`, {
+      const res = await fetch(`/api/stems/separate?probe=1&model=${this.stemModel}${this.stemOptsQS()}`, {
         method: "POST",
         body: this.rawData.slice(0),
       });
@@ -877,7 +912,7 @@ export class Deck {
     const model = this.stemModel;
     this.stemStatus = "prefetching";
     try {
-      const res = await fetch(`/api/stems/separate?prefetch=1&model=${model}`, {
+      const res = await fetch(`/api/stems/separate?prefetch=1&model=${model}${this.stemOptsQS()}`, {
         method: "POST",
         body: this.rawData.slice(0),
       });
@@ -1022,7 +1057,8 @@ export class Deck {
     this.stemStatus = "working";
     const model = this.stemModel;
     try {
-      const res = await fetch(`/api/stems/separate?model=${model}`, {
+      const stemOpts = this.stemOptsQS();
+      const res = await fetch(`/api/stems/separate?model=${model}${stemOpts}`, {
         method: "POST",
         body: this.rawData.slice(0),
       });
@@ -1032,7 +1068,7 @@ export class Deck {
       if (this.stemModel !== model) return;
       const bufs: AudioBuffer[] = [];
       for (const n of stems) {
-        const r = await fetch(`/api/stems/${hash}/${n}?model=${model}`);
+        const r = await fetch(`/api/stems/${hash}/${n}?model=${model}${stemOpts}`);
         if (!r.ok) throw new Error(`stem ${n}: ${r.status}`);
         bufs.push(await this.ctx.decodeAudioData(await r.arrayBuffer()));
       }
@@ -1251,6 +1287,7 @@ export class Deck {
     this.name = "";
     this.duration = 0;
     this.bpm = 0;
+    this.key = null;
     this.peaks = new Float32Array(0);
     this.cuePoint = 0;
     this.pausedAt = 0;
