@@ -124,8 +124,10 @@ async function moveFile(src: string, dst: string): Promise<void> {
 
 // run a child process to completion, rejecting on non-zero exit. When `niceness`
 // is set, the process is launched under `nice` so background (prefetch) jobs
-// yield CPU to the live app and any on-demand separation.
-function run(cmd: string, args: string[], niceness?: number): Promise<void> {
+// yield CPU to the live app and any on-demand separation. `onProgress`, when
+// given, is fed every stderr chunk so the caller can scrape a percentage out
+// of it (Demucs writes a tqdm bar there — see doSeparate below).
+function run(cmd: string, args: string[], niceness?: number, onProgress?: (chunk: string) => void): Promise<void> {
   return new Promise((resolve, reject) => {
     let exe = cmd;
     let exeArgs = args;
@@ -135,12 +137,35 @@ function run(cmd: string, args: string[], niceness?: number): Promise<void> {
     }
     const p = spawn(exe, exeArgs, { stdio: ["ignore", "ignore", "pipe"] });
     let err = "";
-    p.stderr.on("data", (d) => (err += d));
+    p.stderr.on("data", (d) => {
+      err += d;
+      onProgress?.(d.toString());
+    });
     p.on("error", reject);
     p.on("close", (code) =>
       code === 0 ? resolve() : reject(new Error(`${cmd} exit ${code}: ${err.slice(-400)}`))
     );
   });
+}
+
+// live progress (0..100) of any separation currently running or queued, keyed
+// the same way as `inflight` below. Demucs runs its Python-side apply_model
+// with `progress=True` unconditionally, which prints a tqdm bar to stderr
+// ("  45%|████▌     | 112.50/250.00 [...]") — parsed out in doSeparate. With
+// --shifts > 1 the bar restarts once per shift, so progress isn't perfectly
+// linear across the whole job, but it's a faithful "how far along is THIS
+// pass" reading, which is what a DJ waiting on a badge actually wants.
+const progress = new Map<string, number>();
+
+function progressKey(hash: string, model: StemModel, opts: StemOpts): string {
+  return `${hash}:${model}:${dirSuffix(opts)}`;
+}
+
+// null = nothing running for this hash/model/opts combo right now (either
+// finished, failed, or never started) — the caller falls back to isCached().
+export function getProgress(hash: string, model: StemModel, opts: StemOpts = {}): number | null {
+  const v = progress.get(progressKey(hash, model, opts));
+  return v == null ? null : v;
 }
 
 // This box is CPU-bound (often a single core), so run at most ONE Demucs at a
@@ -224,6 +249,8 @@ async function doSeparate(
   if (!existsSync(CACHE)) mkdirSync(CACHE, { recursive: true });
   const work = await mkdtemp(join(tmpdir(), "stems-"));
   const niceness = opts.nice ? 15 : undefined;
+  const pKey = progressKey(hash, model, opts);
+  progress.set(pKey, 0); // visible immediately, even while still queued behind another job
   // serialise the heavy work: only one Demucs at a time on this CPU-bound box
   await acquireSlot(opts.priority ?? 1);
   try {
@@ -250,7 +277,15 @@ async function doSeparate(
     const shiftsEff = opts.ultra ? Math.max(shifts, 2) : shifts;
     if (shiftsEff > 0) args.push("--shifts", String(Math.min(shiftsEff, 10)));
     args.push("-o", out, wav);
-    await run(DEMUCS, args, niceness);
+    // Demucs prints a tqdm bar to stderr while separating ("  45%|███ |...");
+    // scrape the last percentage out of each chunk (tqdm redraws via \r, so a
+    // single chunk can contain several updates — keep only the latest).
+    await run(DEMUCS, args, niceness, (chunk) => {
+      const matches = chunk.match(/(\d{1,3})%\|/g);
+      if (!matches || !matches.length) return;
+      const pct = parseInt(matches[matches.length - 1], 10);
+      if (!isNaN(pct)) progress.set(pKey, Math.min(99, pct)); // 100 reserved for "done"
+    });
 
     // 3. optional vocal cleanup: ffmpeg's afftdn adaptive noise-reduction filter
     //    on the vocals stem only (there's no true de-reverb filter in ffmpeg —
@@ -275,6 +310,7 @@ async function doSeparate(
     }
   } finally {
     releaseSlot();
+    progress.delete(pKey); // done (or failed) — getProgress() falls back to isCached()
     await rm(work, { recursive: true, force: true });
   }
 }

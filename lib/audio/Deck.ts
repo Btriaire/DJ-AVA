@@ -2,6 +2,7 @@ import { detectBPM, buildWaveformPeaks } from "./bpm";
 import { detectKey, KeyResult } from "./key";
 import { FXRack, FxName } from "./FXRack";
 import { Rack, RackPreset } from "./Rack";
+import { sha1Hex16 } from "./stemHash";
 
 // synthesized white-noise impulse response for the shared per-stem reverb
 // send bus — same technique as the Rack's own "reverb" module.
@@ -115,6 +116,11 @@ export class Deck {
   stemsWanted = false;
   stemVol: number[] = []; // one entry per active stem
   stemStatus: "none" | "prefetching" | "working" | "ready" | "error" = "none";
+  // 0..100 while a separation is actively running/queued server-side for the
+  // currently-loading track (working or prefetching); null the rest of the
+  // time — see pollStemProgress()/stopStemProgressPoll() below.
+  stemProgress: number | null = null;
+  private stemProgressTimer: ReturnType<typeof setInterval> | null = null;
   stemCached = false; // server already has the stems on disk -> loading is instant
   stemHash = ""; // server content hash of the loaded track (for the library badge)
   // when non-empty, the Rack DSP pedalboard is unhooked from the whole-mix
@@ -890,6 +896,7 @@ export class Deck {
   // the model changes). Does NOT reset stemModel (user's chosen quality sticks).
   clearStems() {
     this.clearAllStemFxTargets(); // un-splice before the stem indices go stale
+    this.stopStemProgressPoll();
     this.stemsActive = false;
     this.stemBuffers = [];
     this.stemNames = [];
@@ -955,6 +962,37 @@ export class Deck {
     return `${this.stemUltra ? "&ultra=1" : ""}${this.stemLossless ? "&wav=1" : ""}${this.stemDenoiseVocals ? "&denoise=1" : ""}`;
   }
 
+  // polls /api/stems/progress every ~1.2s while a separation is running for
+  // `hash`, updating stemProgress live. `gen` pins this poll to the load that
+  // started it — if the track changes mid-separation, polling for the old
+  // job stops touching this deck's fields (same generation-guard pattern as
+  // probeStems/prefetchStems/ensureStems).
+  private pollStemProgress(hash: string, model: Deck["stemModel"], gen: number) {
+    this.stopStemProgressPoll();
+    const qs = this.stemOptsQS();
+    this.stemProgressTimer = setInterval(async () => {
+      if (this.loadGen !== gen || (this.stemStatus !== "prefetching" && this.stemStatus !== "working")) {
+        this.stopStemProgressPoll();
+        return;
+      }
+      try {
+        const r = await fetch(`/api/stems/progress?hash=${hash}&model=${model}${qs}`);
+        if (!r.ok || this.loadGen !== gen) return;
+        const { progress } = (await r.json()) as { progress: number | null };
+        if (this.loadGen === gen) this.stemProgress = progress;
+      } catch {
+        /* offline / route missing — leave the last known value showing */
+      }
+    }, 1200);
+  }
+  private stopStemProgressPoll() {
+    if (this.stemProgressTimer) {
+      clearInterval(this.stemProgressTimer);
+      this.stemProgressTimer = null;
+    }
+    this.stemProgress = null;
+  }
+
   // cheap check: does the server already have separated stems for this track +
   // model? (no separation is launched). Lets the UI show "instant" before a click.
   // Returns the probe result (or null if it no-op'd / a different track or setting
@@ -1011,8 +1049,9 @@ export class Deck {
       if (cached) {
         this.stemCached = true;
         if (this.stemStatus === "prefetching") this.stemStatus = "none";
+      } else {
+        this.pollStemProgress(hash, model, gen); // else: leave status "prefetching"; the poller will clear it when ready
       }
-      // else: leave status "prefetching"; the poller will clear it when ready
     } catch {
       if (this.loadGen === gen && this.stemStatus === "prefetching") this.stemStatus = "none";
     }
@@ -1178,12 +1217,18 @@ export class Deck {
     const gen = this.loadGen;
     try {
       const stemOpts = this.stemOptsQS();
+      // the /separate POST below blocks server-side until the whole Demucs run
+      // finishes, so progress has to come from a side-channel poll — compute
+      // the content hash ourselves (matches the server's hashBytes()) so we
+      // can start polling immediately, without waiting on that response.
+      const hash = await sha1Hex16(this.rawData);
+      if (this.loadGen === gen) this.pollStemProgress(hash, model, gen);
       const res = await fetch(`/api/stems/separate?model=${model}${stemOpts}`, {
         method: "POST",
         body: this.rawData.slice(0),
       });
       if (!res.ok) throw new Error(await res.text());
-      const { hash, stems } = (await res.json()) as { hash: string; stems: string[] };
+      const { stems } = (await res.json()) as { hash: string; stems: string[] };
       // user may have swapped tracks or the model/quality while we were separating — bail if so
       if (this.loadGen !== gen || this.stemModel !== model) return;
       const bufs: AudioBuffer[] = [];
@@ -1204,6 +1249,8 @@ export class Deck {
     } catch (e) {
       if (this.loadGen === gen) this.stemStatus = "error"; // a newer track's own status shouldn't be clobbered
       console.error("[stems]", e);
+    } finally {
+      if (this.loadGen === gen) this.stopStemProgressPoll();
     }
   }
 

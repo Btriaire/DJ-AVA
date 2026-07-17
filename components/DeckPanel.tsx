@@ -1018,7 +1018,9 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                 }
               >
                 {deck.stemStatus === "working"
-                  ? "⏳ …"
+                  ? deck.stemProgress != null
+                    ? `⏳ ${deck.stemProgress}%`
+                    : "⏳ …"
                   : deck.stemReady
                     ? deck.stemsActive
                       ? "● STEMS"

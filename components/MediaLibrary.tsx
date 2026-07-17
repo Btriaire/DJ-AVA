@@ -184,6 +184,11 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   // and we're polling the cache list until it lands (see the effect below).
   const [stemsPreparing, setStemsPreparing] = useState<Set<string>>(new Set());
   const [stemsQueued, setStemsQueued] = useState<Set<string>>(new Set());
+  // 0..100 per queued track id, polled from /api/stems/progress — separate
+  // from stemsQueued (which only tracks membership) because progress needs
+  // the hash + model/quality querystring the job was actually launched with
+  const [stemsProgress, setStemsProgress] = useState<Map<string, number>>(new Map());
+  const stemsRun = useRef<Map<string, { hash: string; model: string; qs: string }>>(new Map());
   // ids already prepped once per side during the LIVE preload window, so the
   // tick loop below doesn't refire the request every 400ms while it's in range
   const stemsPrefetchedIds = useRef<Set<string>>(new Set());
@@ -243,7 +248,16 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
             const next = new Set(cur);
             for (const id2 of cur) {
               const track = dataRef.current.tracks.find((x) => x.id === id2);
-              if (track?.stemHash && fresh.has(track.stemHash)) next.delete(id2);
+              if (track?.stemHash && fresh.has(track.stemHash)) {
+                next.delete(id2);
+                stemsRun.current.delete(id2);
+                setStemsProgress((m) => {
+                  if (!m.has(id2)) return m;
+                  const n = new Map(m);
+                  n.delete(id2);
+                  return n;
+                });
+              }
             }
             return next;
           });
@@ -252,6 +266,31 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
     }, 15000);
     return () => clearInterval(id);
   }, [stemsQueued.size]);
+
+  // faster companion poll: while any track is queued, refresh its live 0..100
+  // percentage every ~3s (the 15s poll above only detects completion, which is
+  // too coarse to feel "live" on a badge the DJ is actively watching)
+  useEffect(() => {
+    if (stemsQueued.size === 0) {
+      setStemsProgress(new Map());
+      return;
+    }
+    const id = window.setInterval(() => {
+      for (const trackId of stemsQueued) {
+        const run = stemsRun.current.get(trackId);
+        if (!run) continue;
+        fetch(`/api/stems/progress?hash=${run.hash}&model=${run.model}${run.qs}`)
+          .then((r) => r.json())
+          .then((j) => {
+            if (typeof j.progress === "number") {
+              setStemsProgress((m) => new Map(m).set(trackId, j.progress));
+            }
+          })
+          .catch(() => {});
+      }
+    }, 3000);
+    return () => clearInterval(id);
+  }, [stemsQueued]);
 
   // manual per-track "prepare stems now" — separates a single ahead of time,
   // in the background, before it's ever loaded onto a deck (uses the standard
@@ -283,6 +322,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
         setStemSet((s) => new Set(s).add(hash));
         flash(`« ${t.name} » : stems déjà prêts`);
       } else {
+        stemsRun.current.set(t.id, { hash, model: "htdemucs", qs: "" });
         setStemsQueued((s) => new Set(s).add(t.id));
         flash(`« ${t.name} » : préparation des stems lancée en arrière-plan`);
       }
@@ -329,8 +369,12 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
           ...d,
           tracks: d.tracks.map((x) => (x.id === t.id && x.stemHash !== hash ? { ...x, stemHash: hash } : x)),
         }));
-        if (cached) setStemSet((s) => new Set(s).add(hash));
-        else setStemsQueued((s) => new Set(s).add(t.id));
+        if (cached) {
+          setStemSet((s) => new Set(s).add(hash));
+        } else {
+          stemsRun.current.set(t.id, { hash, model: deck.stemModel, qs });
+          setStemsQueued((s) => new Set(s).add(t.id));
+        }
       } catch {
         stemsPrefetchedIds.current.delete(key); // allow a retry on the next tick
       }
@@ -1178,7 +1222,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
             )}
             {!hasStems && stemsQueued.has(t.id) && (
               <span className="font-bold text-cyan-500" title="Séparation en cours sur le serveur">
-                ⏳ préparation…
+                {stemsProgress.has(t.id) ? `⏳ préparation… ${stemsProgress.get(t.id)}%` : "⏳ préparation…"}
               </span>
             )}
             {!hasStems && !stemsQueued.has(t.id) && (
