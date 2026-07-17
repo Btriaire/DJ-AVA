@@ -179,6 +179,14 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   // track can show a "STEMS" badge. Refreshed on mount and whenever the parent
   // bumps `stemRefresh` (i.e. a deck just probed or finished a separation).
   const [stemSet, setStemSet] = useState<Set<string>>(new Set());
+  // manual "prepare stems" button: `preparing` = the POST to launch the job is
+  // in flight (fast); `queued` = the server is separating it in the background
+  // and we're polling the cache list until it lands (see the effect below).
+  const [stemsPreparing, setStemsPreparing] = useState<Set<string>>(new Set());
+  const [stemsQueued, setStemsQueued] = useState<Set<string>>(new Set());
+  // ids already prepped once per side during the LIVE preload window, so the
+  // tick loop below doesn't refire the request every 400ms while it's in range
+  const stemsPrefetchedIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     setData(loadLibrary());
@@ -218,6 +226,116 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
       cancelled = true;
     };
   }, [stemRefresh]);
+
+  // while any manually-prepped track is still being separated server-side,
+  // poll the cheap cache-list endpoint until its hash shows up, then drop it
+  // out of the "queued" set (its ✂ STEMS badge appears via the stemSet update)
+  useEffect(() => {
+    if (stemsQueued.size === 0) return;
+    const id = window.setInterval(() => {
+      fetch("/api/stems/list")
+        .then((r) => r.json())
+        .then((j) => {
+          if (!Array.isArray(j.hashes)) return;
+          const fresh = new Set<string>(j.hashes);
+          setStemSet(fresh);
+          setStemsQueued((cur) => {
+            const next = new Set(cur);
+            for (const id2 of cur) {
+              const track = dataRef.current.tracks.find((x) => x.id === id2);
+              if (track?.stemHash && fresh.has(track.stemHash)) next.delete(id2);
+            }
+            return next;
+          });
+        })
+        .catch(() => {});
+    }, 15000);
+    return () => clearInterval(id);
+  }, [stemsQueued.size]);
+
+  // manual per-track "prepare stems now" — separates a single ahead of time,
+  // in the background, before it's ever loaded onto a deck (uses the standard
+  // model/quality; per-deck ULTRA/WAV/DENOISE picks still apply once it's
+  // actually loaded and re-separated under those settings if different).
+  async function prepareStemsManually(t: LibTrack) {
+    setStemsPreparing((s) => new Set(s).add(t.id));
+    try {
+      let raw: ArrayBuffer;
+      if (t.source === "local") {
+        const blob = prefetchCache.current.get(t.id) ?? (await idbGetBlob(t.id));
+        if (!blob) throw new Error("fichier introuvable");
+        raw = await blob.arrayBuffer();
+      } else {
+        const streamUrl = `/api/${t.source}/stream?id=${encodeURIComponent(t.url ?? "")}`;
+        raw = await (await fetch(streamUrl)).arrayBuffer();
+      }
+      const res = await fetch(`/api/stems/separate?prefetch=1&model=htdemucs`, {
+        method: "POST",
+        body: raw,
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const { hash, cached } = (await res.json()) as { hash: string; cached: boolean };
+      persist((d) => ({
+        ...d,
+        tracks: d.tracks.map((x) => (x.id === t.id && x.stemHash !== hash ? { ...x, stemHash: hash } : x)),
+      }));
+      if (cached) {
+        setStemSet((s) => new Set(s).add(hash));
+        flash(`« ${t.name} » : stems déjà prêts`);
+      } else {
+        setStemsQueued((s) => new Set(s).add(t.id));
+        flash(`« ${t.name} » : préparation des stems lancée en arrière-plan`);
+      }
+    } catch (e) {
+      flash(`Préparation impossible : ${(e as Error).message}`);
+    } finally {
+      setStemsPreparing((s) => {
+        const n = new Set(s);
+        n.delete(t.id);
+        return n;
+      });
+    }
+  }
+
+  // LIVE loop counterpart of prepareStemsManually: fires automatically for the
+  // next track in a deck's queue, once it enters the same preload window as
+  // the raw-audio prefetch above — but only if that deck's DJ already has
+  // stems switched on (deck.stemsWanted), so idle decks stay silent.
+  function prefetchTrackStems(t: LibTrack, side: "A" | "B") {
+    const deck = side === "A" ? engine.deckA : engine.deckB;
+    if (!deck.stemsWanted) return;
+    const key = `${t.id}:${side}`;
+    if (stemsPrefetchedIds.current.has(key)) return;
+    stemsPrefetchedIds.current.add(key);
+    (async () => {
+      try {
+        let raw: ArrayBuffer;
+        if (t.source === "local") {
+          const blob = prefetchCache.current.get(t.id) ?? (await idbGetBlob(t.id));
+          if (!blob) return;
+          raw = await blob.arrayBuffer();
+        } else {
+          const streamUrl = `/api/${t.source}/stream?id=${encodeURIComponent(t.url ?? "")}`;
+          raw = await (await fetch(streamUrl)).arrayBuffer();
+        }
+        const qs = `${deck.stemUltra ? "&ultra=1" : ""}${deck.stemLossless ? "&wav=1" : ""}${deck.stemDenoiseVocals ? "&denoise=1" : ""}`;
+        const res = await fetch(`/api/stems/separate?prefetch=1&model=${deck.stemModel}${qs}`, {
+          method: "POST",
+          body: raw,
+        });
+        if (!res.ok) return;
+        const { hash, cached } = (await res.json()) as { hash: string; cached: boolean };
+        persist((d) => ({
+          ...d,
+          tracks: d.tracks.map((x) => (x.id === t.id && x.stemHash !== hash ? { ...x, stemHash: hash } : x)),
+        }));
+        if (cached) setStemSet((s) => new Set(s).add(hash));
+        else setStemsQueued((s) => new Set(s).add(t.id));
+      } catch {
+        stemsPrefetchedIds.current.delete(key); // allow a retry on the next tick
+      }
+    })();
+  }
 
   // Functional updater: every change is computed from the LATEST state, so rapid
   // successive edits (e.g. deleting several rows quickly) never clobber each other
@@ -705,7 +823,11 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
           const remain = deck.duration - deck.position();
           if (deck.duration > 0 && remain > 0 && remain <= livePreloadSec(side)) {
             const q = liveQueue(side);
-            if (q.length) prefetchTrack(q[(liveIdx.current[side] + 1) % q.length]);
+            if (q.length) {
+              const nt = q[(liveIdx.current[side] + 1) % q.length];
+              prefetchTrack(nt);
+              prefetchTrackStems(nt, side);
+            }
           }
           return;
         }
@@ -1050,6 +1172,21 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
               >
                 ✂ STEMS
               </span>
+            )}
+            {!hasStems && stemsQueued.has(t.id) && (
+              <span className="font-bold text-cyan-500" title="Séparation en cours sur le serveur">
+                ⏳ préparation…
+              </span>
+            )}
+            {!hasStems && !stemsQueued.has(t.id) && (
+              <button
+                onClick={() => prepareStemsManually(t)}
+                disabled={stemsPreparing.has(t.id)}
+                className="rounded-sm px-1 font-black text-cyan-300 ring-1 ring-cyan-800 disabled:opacity-40"
+                title="Lance la séparation des stems en tâche de fond, avant de charger ce morceau sur un deck"
+              >
+                {stemsPreparing.has(t.id) ? "⏳…" : "✂ Préparer"}
+              </button>
             )}
             {t.fxA && <span style={{ color: COLOR_A }}>● FX A</span>}
             {t.fxB && <span style={{ color: COLOR_B }}>● FX B</span>}

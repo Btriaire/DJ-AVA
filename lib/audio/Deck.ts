@@ -86,6 +86,11 @@ export class Deck {
   stemLossless = false; // cache/serve stems as WAV instead of MP3
   stemDenoiseVocals = false; // ffmpeg noise-reduction pass on the vocals stem
   stemsActive = false; // play the stems (with per-stem gain) instead of the full mix
+  // sticks across track loads (unlike stemsActive, which clearStems() resets) so
+  // that once a DJ turns stems on for a deck, every track queued into it next —
+  // e.g. the "cued" side during an A→B→A relay — gets separated ahead of time
+  // instead of waiting for a STEMS click after it's already live
+  stemsWanted = false;
   stemVol: number[] = []; // one entry per active stem
   stemStatus: "none" | "prefetching" | "working" | "ready" | "error" = "none";
   stemCached = false; // server already has the stems on disk -> loading is instant
@@ -479,6 +484,7 @@ export class Deck {
     this.sourceLink = ""; // default: no external source; caller may set it after
     this.coverArt = ""; // default: no art; caller (library) may set it after
     this.origin = null; // default: unknown origin; library sets it after load
+    if (this.stemsWanted) void this.prefetchStems(); // prep in the background — this deck was using stems
   }
 
   // Two-phase loading: start audio immediately through a MediaElementSource while
@@ -548,6 +554,7 @@ export class Deck {
     blob.arrayBuffer().then((raw) => {
       if (capturedEl !== this.mediaEl) return null; // superseded load, drop it
       this.rawData = raw.slice(0); // keep a copy; decodeAudioData detaches its arg
+      if (this.stemsWanted) void this.prefetchStems(); // prep in the background — this deck was using stems
       return this.ctx.decodeAudioData(raw);
     }).then((buf) => {
       if (!buf || capturedEl !== this.mediaEl) return; // superseded
@@ -578,6 +585,7 @@ export class Deck {
     fetch(url).then((r) => r.arrayBuffer()).then((raw) => {
       if (capturedEl !== this.mediaEl) return null;
       this.rawData = raw.slice(0);
+      if (this.stemsWanted) void this.prefetchStems(); // prep in the background — this deck was using stems
       return this.ctx.decodeAudioData(raw);
     }).then((buf) => {
       if (!buf || capturedEl !== this.mediaEl) return;
@@ -1035,6 +1043,7 @@ export class Deck {
 
   // toggle stem playback on/off, seamlessly if currently playing
   setStemsActive(on: boolean) {
+    this.stemsWanted = on; // remembers intent across the next track loaded here
     if (on && !this.stemReady) return;
     if (on === this.stemsActive) return;
     const resume = this._playing;
