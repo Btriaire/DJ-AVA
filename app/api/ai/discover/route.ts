@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { AudiusTrack, audiusSearch, audiusTrending } from "@/lib/audius";
+import { AudiusTrack } from "@/lib/audius";
 import { searchYouTube } from "@/lib/youtube";
 
 // Keyword-driven crate dig: "années 80; 100 BPM; Electro; live" → ~20 proposed
@@ -7,14 +7,20 @@ import { searchYouTube } from "@/lib/youtube";
 // (which expands ONE seed track into similar ones), this starts from raw,
 // free-form intent with no track to anchor on — the whole point is launching a
 // themed set fast without already having a first song in hand.
+// YouTube-only: Audius' catalog skews thin/stale for keyword crate-digging
+// (decade/mood searches mostly come up empty), so this pool is dropped —
+// yt-dlp's flat-playlist search covers far more ground for this use case.
 
-async function ytSearchSafe(q: string): Promise<AudiusTrack[]> {
+async function ytSearchSafe(q: string, maxDurationSec: number | null): Promise<AudiusTrack[]> {
   if (!q?.trim()) return [];
   try {
     const timeout = new Promise<never[]>((res) => setTimeout(() => res([]), 9000));
-    const got = await Promise.race([searchYouTube(q), timeout]);
+    const got = await Promise.race([
+      searchYouTube(q, { limit: 25, maxDur: maxDurationSec ?? undefined }),
+      timeout,
+    ]);
     return (got as { id: string; title: string; artist: string; duration: number; artwork: string | null }[])
-      .slice(0, 8)
+      .slice(0, 12)
       .map((t) => ({
         id: t.id,
         title: t.title,
@@ -106,6 +112,11 @@ function fallbackCriteria(keywords: string): Criteria {
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
+// Long-form results (full DJ sets, live streams, mixtapes) drown out actual
+// singles when crate-digging by vibe — soften them instead of hard-dropping,
+// unless the caller picked an explicit duration cap (then searchYouTube's
+// maxDur already excludes them upstream).
+const LONG_TRACK_SEC = 600; // 10 min
 function score(c: Criteria, t: AudiusTrack, sourceWeight: number): number {
   let s = sourceWeight;
   if (c.genre && t.genre && norm(t.genre).includes(norm(c.genre))) s += 2;
@@ -117,32 +128,30 @@ function score(c: Criteria, t: AudiusTrack, sourceWeight: number): number {
     }
   }
   if (t.artwork) s += 0.3;
+  if (t.duration > LONG_TRACK_SEC) s -= 2 + (t.duration - LONG_TRACK_SEC) / 300;
   return s;
 }
 
 export async function POST(req: NextRequest) {
-  let body: { keywords?: string };
+  let body: { keywords?: string; maxDurationMin?: number | null };
   try {
-    body = (await req.json()) as { keywords?: string };
+    body = (await req.json()) as { keywords?: string; maxDurationMin?: number | null };
   } catch {
     return NextResponse.json({ error: "Requête invalide" }, { status: 400 });
   }
   const keywords = (body.keywords || "").trim();
   if (!keywords) return NextResponse.json({ error: "Mots-clés manquants" }, { status: 400 });
+  const maxDurationSec =
+    typeof body.maxDurationMin === "number" && body.maxDurationMin > 0 ? body.maxDurationMin * 60 : null;
 
   try {
     const ai = await aiCriteria(keywords);
     const usedAI = !!ai;
     const c = ai ?? fallbackCriteria(keywords);
 
-    const ytQueries = c.queries.slice(0, 3);
-
-    const pools: Promise<{ tracks: AudiusTrack[]; w: number }>[] = [
-      c.genre ? audiusTrending(c.genre).then((tracks) => ({ tracks, w: 1.5 })) : Promise.resolve({ tracks: [], w: 1.5 }),
-      ...c.queries.map((q) => audiusSearch(q).then((tracks) => ({ tracks, w: 2 }))),
-      ...ytQueries.map((q) => ytSearchSafe(q).then((tracks) => ({ tracks, w: 2.2 }))),
-    ];
-    const resolved = await Promise.all(pools);
+    const resolved = await Promise.all(
+      c.queries.map((q) => ytSearchSafe(q, maxDurationSec).then((tracks) => ({ tracks, w: 2 })))
+    );
 
     const best = new Map<string, { t: AudiusTrack; w: number }>();
     for (const { tracks, w } of resolved) {
@@ -153,23 +162,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const scored = [...best.values()]
-      .map(({ t, w }) => ({ t, s: score(c, t, w) }))
-      .sort((a, b) => b.s - a.s);
-
-    // guarantee both catalogs show up, same balance as /api/ai/playlist
     const LIMIT = 20;
-    const ytPick = scored.filter((x) => x.t.source === "youtube").slice(0, 8);
-    const auPick = scored.filter((x) => x.t.source !== "youtube").slice(0, LIMIT - ytPick.length);
-    const keep = new Set([...ytPick, ...auPick].map((x) => x.t.id));
-    const ranked = scored.filter((x) => keep.has(x.t.id)).slice(0, LIMIT).map((x) => x.t);
+    const ranked = [...best.values()]
+      .map(({ t, w }) => ({ t, s: score(c, t, w) }))
+      .sort((a, b) => b.s - a.s)
+      .slice(0, LIMIT)
+      .map((x) => x.t);
 
-    return NextResponse.json({
-      usedAI,
-      count: ranked.length,
-      youtube: ranked.filter((t) => t.source === "youtube").length,
-      tracks: ranked,
-    });
+    return NextResponse.json({ usedAI, count: ranked.length, tracks: ranked });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message, tracks: [] }, { status: 502 });
   }

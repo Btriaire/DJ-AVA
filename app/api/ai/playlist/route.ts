@@ -1,23 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  AudiusTrack,
-  audiusSearch,
-  audiusTrending,
-  audiusRelated,
-  audiusGetTrack,
-} from "@/lib/audius";
+import { AudiusTrack, audiusGetTrack } from "@/lib/audius";
 import { searchYouTube } from "@/lib/youtube";
 
-// YouTube search (via yt-dlp) as an extra candidate pool. No genre/bpm metadata,
-// so these rank on query relevance — but they massively widen the catalog.
+// YouTube-only candidate pool (via yt-dlp). Audius' catalog is thin/stale for
+// this kind of style-matching crate dig, so results come from YouTube alone —
+// `audiusGetTrack` below is still used, but only to enrich the SEED's own
+// genre/bpm when it came from an Audius track, not to fetch candidates.
 // Raced against a timeout so a slow yt-dlp can never stall the whole request.
-async function ytSearchSafe(q: string): Promise<AudiusTrack[]> {
+async function ytSearchSafe(q: string, maxDurationSec: number | null): Promise<AudiusTrack[]> {
   if (!q?.trim()) return [];
   try {
     const timeout = new Promise<never[]>((res) => setTimeout(() => res([]), 9000));
-    const got = await Promise.race([searchYouTube(q), timeout]);
+    const got = await Promise.race([
+      searchYouTube(q, { limit: 25, maxDur: maxDurationSec ?? undefined }),
+      timeout,
+    ]);
     return (got as { id: string; title: string; artist: string; duration: number; artwork: string | null }[])
-      .slice(0, 8)
+      .slice(0, 12)
       .map((t) => ({
         id: t.id,
         title: t.title,
@@ -41,6 +40,7 @@ interface SeedIn {
   genre?: string;
   bpm?: number | null;
   sameArtist?: boolean; // restrict the whole set to the seed's artist/group
+  maxDurationMin?: number | null; // hard cap; null = no cap (long tracks are still soft-penalized)
 }
 
 // Ask Groq (OpenAI-compatible) to expand a seed into similar search phrases.
@@ -93,6 +93,11 @@ const genreRoot = (g?: string) => (g ? g.split("/")[0].trim().toLowerCase() : ""
 const compact = (s: string) =>
   s.toLowerCase().replace(/-\s*topic\s*$/, "").replace(/[^a-z0-9]/g, "");
 
+// Long-form results (full DJ sets, live streams, mixtapes) drown out actual
+// singles — softened instead of hard-dropped, unless the caller picked an
+// explicit duration cap (then searchYouTube's maxDur already excludes them).
+const LONG_TRACK_SEC = 600; // 10 min
+
 // How well a candidate matches the seed — higher is closer in style/BPM.
 function score(seed: SeedIn, t: AudiusTrack, sourceWeight: number): number {
   let s = sourceWeight;
@@ -109,6 +114,7 @@ function score(seed: SeedIn, t: AudiusTrack, sourceWeight: number): number {
     s -= 0.2; // unknown tempo is slightly less useful for mixing
   }
   if (t.artwork) s += 0.3;
+  if (t.duration > LONG_TRACK_SEC) s -= 2 + (t.duration - LONG_TRACK_SEC) / 300;
   return s;
 }
 
@@ -122,9 +128,12 @@ export async function POST(req: NextRequest) {
   if (!seed?.title) return NextResponse.json({ error: "Titre manquant" }, { status: 400 });
 
   const sameArtist = !!seed.sameArtist;
+  const maxDurationSec =
+    typeof seed.maxDurationMin === "number" && seed.maxDurationMin > 0 ? seed.maxDurationMin * 60 : null;
 
   try {
-    // enrich the seed with genre / bpm if it came from Audius without them
+    // enrich the seed with genre / bpm if it came from Audius without them —
+    // this is about understanding the SEED, not fetching Audius candidates
     if (seed.id && (!seed.genre || seed.bpm == null)) {
       const full = await audiusGetTrack(seed.id);
       if (full) {
@@ -144,37 +153,23 @@ export async function POST(req: NextRequest) {
     const queries = sameArtist ? [] : await aiQueries(seed);
     const usedAI = queries.length > 0;
 
-    // YouTube queries. In same-artist mode we search only the artist's name so YT
-    // returns their catalog; otherwise reuse the AI's similar-style phrases (or fall
-    // back to the seed's artist / genre+bpm) so YT pulls tracks in the same vibe.
+    // YouTube queries — the sole candidate source. In same-artist mode we search
+    // only the artist's name so YT returns their catalog; otherwise reuse the
+    // AI's similar-style phrases (or fall back to the seed's artist / genre+bpm).
     const ytQueries = (
       sameArtist
         ? [seed.artist, seed.artist ? `${seed.artist} mix` : ""]
         : usedAI
-          ? queries.slice(0, 3)
+          ? queries
           : [seed.artist, seed.genre ? `${seed.genre}${seed.bpm ? ` ${Math.round(seed.bpm)} bpm` : ""}` : ""]
     )
       .filter((s): s is string => !!s && s.trim().length > 0)
-      .slice(0, 3);
+      .slice(0, 8);
     if (!ytQueries.length && seed.title) ytQueries.push(`${seed.title} ${seed.artist ?? ""}`.trim());
 
-    // gather candidate pools in parallel, each tagged with a base weight. Same-artist
-    // mode drops the trending/AI pools (they pull other artists) and leans on the
-    // artist search + YouTube, which we hard-filter to the seed's artist below.
-    const pools: Promise<{ tracks: AudiusTrack[]; w: number }>[] = sameArtist
-      ? [
-          seed.id ? audiusRelated(seed.id).then((tracks) => ({ tracks, w: 2 })) : Promise.resolve({ tracks: [], w: 2 }),
-          seed.artist ? audiusSearch(seed.artist).then((tracks) => ({ tracks, w: 3 })) : Promise.resolve({ tracks: [], w: 3 }),
-          ...ytQueries.map((q) => ytSearchSafe(q).then((tracks) => ({ tracks, w: 2.2 }))),
-        ]
-      : [
-          seed.id ? audiusRelated(seed.id).then((tracks) => ({ tracks, w: 3 })) : Promise.resolve({ tracks: [], w: 3 }),
-          audiusTrending(seed.genre).then((tracks) => ({ tracks, w: 2 })),
-          seed.artist ? audiusSearch(seed.artist).then((tracks) => ({ tracks, w: 1 })) : Promise.resolve({ tracks: [], w: 1 }),
-          ...queries.slice(0, 6).map((q) => audiusSearch(q).then((tracks) => ({ tracks, w: 2 }))),
-          ...ytQueries.map((q) => ytSearchSafe(q).then((tracks) => ({ tracks, w: 2.2 }))),
-        ];
-    const resolved = await Promise.all(pools);
+    const resolved = await Promise.all(
+      ytQueries.map((q) => ytSearchSafe(q, maxDurationSec).then((tracks) => ({ tracks, w: 2.2 })))
+    );
 
     // merge & dedupe, keeping the strongest pool weight seen per track id
     const seedTitle = norm(seed.title);
@@ -201,24 +196,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const scored = [...best.values()]
-      .map(({ t, w }) => ({ t, s: score(seed, t, w) }))
-      .sort((a, b) => b.s - a.s);
-
-    // guarantee both catalogs show up: reserve up to 8 of the 24 slots for the
-    // best YouTube finds, fill the rest with the best Audius ones, then re-sort
-    // the chosen set by score so the closest matches still lead.
     const LIMIT = 24;
-    const ytPick = scored.filter((x) => x.t.source === "youtube").slice(0, 8);
-    const auPick = scored.filter((x) => x.t.source !== "youtube").slice(0, LIMIT - ytPick.length);
-    const keep = new Set([...ytPick, ...auPick].map((x) => x.t.id));
-    const ranked = scored.filter((x) => keep.has(x.t.id)).slice(0, LIMIT).map((x) => x.t);
+    const ranked = [...best.values()]
+      .map(({ t, w }) => ({ t, s: score(seed, t, w) }))
+      .sort((a, b) => b.s - a.s)
+      .slice(0, LIMIT)
+      .map((x) => x.t);
 
     return NextResponse.json({
       seed: { ...seed },
       usedAI,
       count: ranked.length,
-      youtube: ranked.filter((t) => t.source === "youtube").length,
       tracks: ranked,
     });
   } catch (e) {

@@ -118,6 +118,9 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   // needed, so a themed set can be launched from a pure idea instead
   const [autoKeywords, setAutoKeywords] = useState<string | null>(null);
   const [keywordInput, setKeywordInput] = useState("");
+  // duration cap for Auto-IA results (minutes; null = no hard cap — long tracks
+  // are still soft-penalized server-side so full sets/mixes don't crowd out singles)
+  const [autoMaxDurationMin, setAutoMaxDurationMin] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -717,7 +720,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
       const r = await fetch("/api/ai/playlist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...seed, sameArtist: only }),
+        body: JSON.stringify({ ...seed, sameArtist: only, maxDurationMin: autoMaxDurationMin }),
       });
       const j = await r.json();
       if (j.error) flash(j.error);
@@ -745,7 +748,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
       const r = await fetch("/api/ai/discover", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ keywords: kw }),
+        body: JSON.stringify({ keywords: kw, maxDurationMin: autoMaxDurationMin }),
       });
       const j = await r.json();
       if (j.error) flash(j.error);
@@ -2112,6 +2115,34 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
                 </button>
               </div>
 
+              {/* duration filter — long-form results (sets/mixes/live streams)
+                  are always soft-penalized; picking a cap here hard-excludes them */}
+              <div className="flex items-center gap-1.5">
+                <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-neutral-500">
+                  ⏱ Durée
+                </span>
+                {([
+                  [null, "Tout"],
+                  [5, "≤ 5 min"],
+                  [8, "≤ 8 min"],
+                  [10, "≤ 10 min"],
+                ] as const).map(([min, label]) => (
+                  <button
+                    key={String(min)}
+                    onClick={() => {
+                      setAutoMaxDurationMin(min);
+                      if (autoKeywords) generateDiscover(autoKeywords);
+                      else if (autoSeed) generateAuto(autoSeed);
+                    }}
+                    className={`hw-btn px-2 py-1 text-xs ${autoMaxDurationMin === min ? "hw-btn-on" : ""}`}
+                    style={{ ["--led" as string]: "#e879f9", color: autoMaxDurationMin === min ? "#0a0a0a" : "#e879f9" }}
+                    title={min == null ? "Pas de plafond — les titres longs (sets/mixes/lives) restent juste moins bien classés" : `Exclut tout ce qui dépasse ${min} minutes`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
               {/* keywords card */}
               {autoKeywords && (
                 <div className="flex items-center gap-2 rounded bg-fuchsia-500/10 px-3 py-2 ring-1 ring-fuchsia-500/30">
@@ -2193,7 +2224,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
                     return (
                       <li key={t.id} className="flex items-center gap-3 rounded bg-neutral-800/50 p-2 hover:bg-neutral-800">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={t.artwork ?? ""} alt="" className="h-10 w-10 shrink-0 rounded bg-neutral-700 object-cover" />
+                        <img src={t.artwork ?? ""} alt="" className="h-20 w-20 shrink-0 rounded bg-neutral-700 object-cover" />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
                             <span
