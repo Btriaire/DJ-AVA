@@ -316,23 +316,48 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
         const streamUrl = `/api/${t.source}/stream?id=${encodeURIComponent(t.url ?? "")}`;
         raw = await (await fetch(streamUrl)).arrayBuffer();
       }
-      const res = await fetch(`/api/stems/separate?prefetch=1&model=htdemucs`, {
-        method: "POST",
-        body: raw,
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const { hash, cached } = (await res.json()) as { hash: string; cached: boolean };
-      persist((d) => ({
-        ...d,
-        tracks: d.tracks.map((x) => (x.id === t.id && x.stemHash !== hash ? { ...x, stemHash: hash } : x)),
-      }));
-      if (cached) {
-        setStemSet((s) => new Set(s).add(hash));
-        flash(`« ${t.name} » : stems déjà prêts`);
-      } else {
-        stemsRun.current.set(t.id, { hash, model: "htdemucs", qs: "" });
+      // Separate for every quality combo actually dialed in on Deck A / Deck B
+      // right now (deduplicated), not just the plain default — otherwise
+      // "prepared" only ever meant "the DEFAULT quality is cached", so loading
+      // it onto a deck with ULTRA/WAV/DENOISE active (a different cache
+      // subdirectory) silently forced a full re-separation despite the badge
+      // saying ready. This makes it ready however it actually gets loaded.
+      const combos = new Map<string, { model: string; qs: string }>();
+      for (const deck of [engine.deckA, engine.deckB]) {
+        const model = deck.stemModel;
+        const qs = `${deck.stemUltra ? "&ultra=1" : ""}${deck.stemLossless ? "&wav=1" : ""}${deck.stemDenoiseVocals ? "&denoise=1" : ""}`;
+        combos.set(`${model}${qs}`, { model, qs });
+      }
+      if (!combos.size) combos.set("htdemucs", { model: "htdemucs", qs: "" });
+
+      let hash = "";
+      let anyQueued = false;
+      for (const { model, qs } of combos.values()) {
+        const res = await fetch(`/api/stems/separate?prefetch=1&model=${model}${qs}`, {
+          method: "POST",
+          body: raw.slice(0),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const r = (await res.json()) as { hash: string; cached: boolean };
+        hash = r.hash;
+        if (r.cached) {
+          setStemSet((s) => new Set(s).add(r.hash));
+        } else {
+          stemsRun.current.set(t.id, { hash: r.hash, model, qs });
+          anyQueued = true;
+        }
+      }
+      if (hash) {
+        persist((d) => ({
+          ...d,
+          tracks: d.tracks.map((x) => (x.id === t.id && x.stemHash !== hash ? { ...x, stemHash: hash } : x)),
+        }));
+      }
+      if (anyQueued) {
         setStemsQueued((s) => new Set(s).add(t.id));
         flash(`« ${t.name} » : préparation des stems lancée en arrière-plan`);
+      } else {
+        flash(`« ${t.name} » : stems déjà prêts`);
       }
     } catch (e) {
       flash(`Préparation impossible : ${(e as Error).message}`);
