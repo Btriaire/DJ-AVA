@@ -664,7 +664,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
             onClick={togglePower}
             className={`hw-btn flex h-7 w-7 items-center justify-center rounded-full text-xs ${deckOn ? "hw-btn-on" : ""}`}
             style={{ ["--led" as string]: deckOn ? "#ffcc00" : "#6b6b6b", color: deckOn ? undefined : "#6b6b6b" }}
-            title={deckOn ? `Éteindre le Deck ${side} (coupe le son, garde la lecture)` : `Allumer le Deck ${side}`}
+            title={deckOn ? `Éteindre le Deck ${side} (coupe le son, garde la lecture, masque les outils ci-dessous)` : `Allumer le Deck ${side}`}
           >
             ⏻
           </button>
@@ -928,6 +928,23 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
         />
       </div>
 
+      {/* everything below is the deck's "tool belt" — EQ rack, FX pad, stems,
+          DSP rack, pro FX, beat loop — hidden while the deck is powered off to
+          reclaim screen space (and stop rendering things like the RackPanel's
+          spectrum/VU meters for a deck nobody's looking at). Playback itself
+          keeps running underneath (POWER only mutes output), so flipping it
+          back on doesn't lose anything — just re-shows the same live state. */}
+      {!deckOn && (
+        <button
+          onClick={togglePower}
+          className="hw-recess flex items-center justify-center gap-2 py-2 text-[11px] font-bold uppercase tracking-wide text-neutral-500"
+          title={`Allumer le Deck ${side} pour retrouver EQ, FX, stems et Rack DSP`}
+        >
+          ⏻ Deck éteint — outils masqués, clique pour rallumer
+        </button>
+      )}
+      {deckOn && (
+      <>
       {/* 15-band rack EQ — independent from Rack DSP, own toggle */}
       {activeModules?.eq !== false && <EqRackStrip deck={deck} color={color} />}
 
@@ -1580,6 +1597,8 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
           onChange={handleFile}
         />
       </div>
+      </>
+      )}
     </div>
   );
 }
