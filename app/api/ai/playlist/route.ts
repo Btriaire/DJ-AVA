@@ -196,7 +196,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const LIMIT = 24;
+    const LIMIT = 32;
     const ranked = [...best.values()]
       .map(({ t, w }) => ({ t, s: score(seed, t, w) }))
       .sort((a, b) => b.s - a.s)

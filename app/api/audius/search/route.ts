@@ -6,7 +6,7 @@ export async function GET(req: NextRequest) {
   if (!q) return NextResponse.json({ tracks: [] });
   try {
     const host = await getDiscoveryHost();
-    const url = `${host}/v1/tracks/search?query=${encodeURIComponent(q)}&app_name=${appName()}`;
+    const url = `${host}/v1/tracks/search?query=${encodeURIComponent(q)}&app_name=${appName()}&limit=60`;
     const r = await fetch(url, { cache: "no-store" });
     if (!r.ok) throw new Error(`Audius ${r.status}`);
     const j = (await r.json()) as { data?: unknown[] };

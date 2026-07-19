@@ -162,7 +162,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const LIMIT = 20;
+    const LIMIT = 30;
     const ranked = [...best.values()]
       .map(({ t, w }) => ({ t, s: score(c, t, w) }))
       .sort((a, b) => b.s - a.s)
