@@ -21,6 +21,7 @@ interface Props {
   otherBpm: () => number; // live effective BPM of the opposite deck (for auto-sync)
   onStems?: () => void; // fired when stems become available (refreshes the library badge)
   onLibraryChange?: () => void; // fired after the deck writes to the library (save to playlist)
+  onClose?: () => void; // fully remove this deck's panel from the layout (parent handles reopening)
   forceTrim?: number; // externally imposed trim (normalize button); updates knob display
   activeModules?: {
     eq?: boolean;
@@ -132,7 +133,7 @@ function StemMeter({ level, color }: { level: number; color: string }) {
   );
 }
 
-export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToConverter, otherBpm, onStems, onLibraryChange, forceTrim, activeModules }: Props) {
+export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToConverter, otherBpm, onStems, onLibraryChange, onClose, forceTrim, activeModules }: Props) {
   void tick;
   const fileRef = useRef<HTMLInputElement>(null);
   const [, force] = useState(0);
@@ -675,6 +676,15 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
           >
             PANIC
           </button>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="hw-btn flex h-7 w-7 items-center justify-center rounded-full text-xs text-neutral-400"
+              title={`Fermer complètement le Deck ${side} — libère la place, se rouvre depuis le Mixer`}
+            >
+              ✕
+            </button>
+          )}
         </div>
       </div>
 

@@ -57,6 +57,18 @@ export default function Home() {
   const [showConfig, setShowConfig] = useState(false);
   const [showYouTube, setShowYouTube] = useState(false); // bottom YouTube video tool (optional)
   const [resetKey, setResetKey] = useState(0);
+  // fully close a deck's whole panel (not just POWER, which only mutes output
+  // and hides its tools — this removes it from the layout entirely so the
+  // remaining deck + mixer get the freed-up width). Always keep at least one
+  // open — closing both would leave nothing to mix.
+  const [deckClosed, setDeckClosed] = useState<{ A: boolean; B: boolean }>({ A: false, B: false });
+  function toggleDeckClosed(side: "A" | "B") {
+    setDeckClosed((c) => {
+      const next = { ...c, [side]: !c[side] };
+      if (next.A && next.B) return c; // never close both
+      return next;
+    });
+  }
   const [autoDur, setAutoDur] = useState(8); // seconds-before-end trigger + fade length
   const [autoArmed, setAutoArmed] = useState(false); // "Auto-fade" toggle — watches for track-end
   const [autoRunning, setAutoRunning] = useState(false); // a sweep is actively animating right now
@@ -516,7 +528,7 @@ export default function Home() {
   return (
     <main className="hw-body min-h-screen p-4 text-neutral-100">
       {splash && <Splash onDone={dismissSplash} />}
-      <header className="hw-screwed hw-panel mb-4 flex items-center justify-between px-4 py-2">
+      <header className="hw-screwed hw-panel mb-4 flex flex-wrap items-center justify-between gap-2 px-4 py-2">
         <h1 className="text-xl font-black tracking-tight">
           <span className="hw-led text-[#ffcc00]">DJ</span>
           <span className="hw-led text-[#ffcc00]">Synth</span>
@@ -525,10 +537,13 @@ export default function Home() {
           </span>
         </h1>
         {ready && (
-          <div className="flex overflow-hidden rounded-lg ring-1 ring-white/10">
+          // horizontal scroll instead of overflow-hidden: on an iPhone-width
+          // screen the 4 view buttons don't all fit, and clipping them would
+          // make some views unreachable — swipe to see the rest instead.
+          <div className="flex max-w-full overflow-x-auto rounded-lg ring-1 ring-white/10">
             <button
               onClick={() => setView("console")}
-              className={`px-4 py-2 text-sm font-bold ${view === "console" ? "hw-btn-on" : "text-neutral-400"}`}
+              className={`shrink-0 whitespace-nowrap px-4 py-2 text-sm font-bold ${view === "console" ? "hw-btn-on" : "text-neutral-400"}`}
               style={{ ["--led" as string]: "#ffcc00" }}
               title="Le contrôleur DJ complet (decks, mixer, synthé, pads)"
             >
@@ -536,7 +551,7 @@ export default function Home() {
             </button>
             <button
               onClick={() => setView("studio")}
-              className={`px-4 py-2 text-sm font-bold ${view === "studio" ? "hw-btn-on" : "text-neutral-400"}`}
+              className={`shrink-0 whitespace-nowrap px-4 py-2 text-sm font-bold ${view === "studio" ? "hw-btn-on" : "text-neutral-400"}`}
               style={{ ["--led" as string]: "#e879f9" }}
               title="Écoute, analyse (BPM/beats/fréquences), playlists, base de données et Auto-IA"
             >
@@ -544,7 +559,7 @@ export default function Home() {
             </button>
             <button
               onClick={() => { setView("platine"); setShowLibrary(false); }}
-              className={`px-4 py-2 text-sm font-bold ${view === "platine" ? "hw-btn-on" : "text-neutral-400"}`}
+              className={`shrink-0 whitespace-nowrap px-4 py-2 text-sm font-bold ${view === "platine" ? "hw-btn-on" : "text-neutral-400"}`}
               style={{ ["--led" as string]: "#ffcc00" }}
               title="Deux platines vinyles qui tournent : crossfade, Autofade et Autoplay pour un mix live simple"
             >
@@ -552,7 +567,7 @@ export default function Home() {
             </button>
             <button
               onClick={() => setView("playlist")}
-              className={`px-4 py-2 text-sm font-bold ${view === "playlist" ? "hw-btn-on" : "text-neutral-400"}`}
+              className={`shrink-0 whitespace-nowrap px-4 py-2 text-sm font-bold ${view === "playlist" ? "hw-btn-on" : "text-neutral-400"}`}
               style={{ ["--led" as string]: "#a78bfa" }}
               title="Crée et enchaîne des playlists : recherche à gauche, set à droite, choix du deck, BPM"
             >
@@ -731,9 +746,17 @@ export default function Home() {
             splitLayout
           />
         ) : (
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_auto_1fr]">
+          <div
+            className={`grid grid-cols-1 gap-4 ${
+              deckClosed.A ? "lg:grid-cols-[auto_1fr]" : deckClosed.B ? "lg:grid-cols-[1fr_auto]" : "lg:grid-cols-[1fr_auto_1fr]"
+            }`}
+          >
             {/* Edjay-style master screen: both tracks' spectra blended live */}
-            <div className="zoom-zone hw-screwed hw-panel lg:col-span-3 flex items-stretch gap-3 p-3">
+            <div
+              className={`zoom-zone hw-screwed hw-panel flex items-stretch gap-3 p-3 ${
+                deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"
+              }`}
+            >
               <div className="min-w-0 flex-1">
                 <MixScope
                   deckA={engine.deckA}
@@ -751,12 +774,14 @@ export default function Home() {
               <CpuMeter engine={engine} />
             </div>
 
+            {!deckClosed.A && (
             <DeckPanel
               key={`A-${resetKey}`}
               deck={engine.deckA}
               side="A"
               color="#ffcc00"
               tick={tick}
+              onClose={() => toggleDeckClosed("A")}
               onLoaded={() => setTick((t) => t + 1)}
               onSync={() => engine.sync("A")}
               onSendToConverter={sendToConverter}
@@ -791,11 +816,37 @@ export default function Home() {
                 autotune: modules.autotune,
               }}
             />
+            )}
 
             <div className="hw-screwed hw-panel flex flex-col items-center justify-between gap-4 p-4 lg:w-52">
               <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-neutral-500">
                 Mixer
               </span>
+              {/* reopen a fully-closed deck — always at least one stays visible */}
+              {(deckClosed.A || deckClosed.B) && (
+                <div className="flex w-full gap-1.5">
+                  {deckClosed.A && (
+                    <button
+                      onClick={() => toggleDeckClosed("A")}
+                      className="hw-btn flex-1 px-2 py-1 text-[10px] font-bold"
+                      style={{ ["--led" as string]: "#ffcc00", color: "#ffcc00" }}
+                      title="Rouvrir le Deck A"
+                    >
+                      + Deck A
+                    </button>
+                  )}
+                  {deckClosed.B && (
+                    <button
+                      onClick={() => toggleDeckClosed("B")}
+                      className="hw-btn flex-1 px-2 py-1 text-[10px] font-bold"
+                      style={{ ["--led" as string]: "#ffcc00", color: "#ffcc00" }}
+                      title="Rouvrir le Deck B"
+                    >
+                      + Deck B
+                    </button>
+                  )}
+                </div>
+              )}
               <div className="hw-recess flex flex-col items-center gap-2 px-4 py-3">
                 <span className="hw-led text-[10px] uppercase text-amber-400">Master</span>
                 <Fader
@@ -882,12 +933,14 @@ export default function Home() {
               <StemsMidiConverter />
             </div>
 
+            {!deckClosed.B && (
             <DeckPanel
               key={`B-${resetKey}`}
               deck={engine.deckB}
               side="B"
               color="#ffcc00"
               tick={tick}
+              onClose={() => toggleDeckClosed("B")}
               onLoaded={() => setTick((t) => t + 1)}
               onSync={() => engine.sync("B")}
               onSendToConverter={sendToConverter}
@@ -922,22 +975,23 @@ export default function Home() {
                 autotune: modules.autotune,
               }}
             />
+            )}
 
             {/* DX7 synth + sampler — full-width connectable module */}
             {modules.dx7 && (
-              <div className="lg:col-span-3">
+              <div className={deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}>
                 <DX7Synth key={`dx7-${resetKey}`} engine={engine} embedded />
               </div>
             )}
 
             {/* Solar 42F drone ambient machine — full-width connectable module */}
             {modules.solar42 && (
-              <div className="lg:col-span-3">
+              <div className={deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}>
                 <Solar42F key={`solar42-${resetKey}`} engine={engine} embedded />
               </div>
             )}
 
-            <div className="lg:col-span-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className={`grid grid-cols-1 gap-4 lg:grid-cols-2 ${deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}`}>
               {/* left column: Synth on top, media database docked beneath it */}
               <div className="flex flex-col gap-4">
                 {modules.synth && <SynthPanel key={`synth-${resetKey}`} engine={engine} />}
