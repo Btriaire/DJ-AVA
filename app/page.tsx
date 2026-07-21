@@ -383,6 +383,15 @@ export default function Home() {
       stopAuto();
       const ok = await loadEngineState(eng);
       if (ok) {
+        // the saved state doesn't include the per-deck POWER mute (that's
+        // DeckPanel-local UI state, not part of the mix) — but resetKey below
+        // remounts the panels, which resets their POWER toggle display back to
+        // "on" regardless. Without this, a deck muted (volume 0) via POWER
+        // before saving/restoring would silently stay muted while its panel
+        // looks perfectly normal — audible only as "no sound, nothing wrong
+        // on screen".
+        eng.deckA.setVolume(1);
+        eng.deckB.setVolume(1);
         setCrossfade(eng.getCrossfade());
         setMaster(eng.getMaster());
         setResetKey((k) => k + 1); // remount panels onto the restored decks
