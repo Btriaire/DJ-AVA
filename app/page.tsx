@@ -69,6 +69,38 @@ export default function Home() {
       return next;
     });
   }
+  // device mode chosen at launch — "iphone" starts compact (single deck,
+  // library collapsed) so the whole console fits without horizontal scroll;
+  // "desktop" (PC/iPad) keeps both decks side by side as before. Persisted
+  // and pre-guessed from screen width so returning visitors aren't asked
+  // again, but always overridable from the launch screen.
+  const [deviceMode, setDeviceMode] = useState<"desktop" | "iphone" | null>(null);
+  // Resolved client-side only, after mount: reading localStorage/innerWidth in
+  // the useState initializer would return a different value on the server
+  // (no window) vs. the client, causing a hydration mismatch on first paint.
+  // The one-tick "neither button highlighted yet" flash this causes instead
+  // is invisible in practice — it resolves within the same frame.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("djsynth.deviceMode");
+      if (saved === "desktop" || saved === "iphone") {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate client-only init, see comment above
+        setDeviceMode(saved);
+        return;
+      }
+    } catch {
+      /* ignore */
+    }
+    setDeviceMode(window.innerWidth < 700 ? "iphone" : "desktop");
+  }, []);
+  function chooseDeviceMode(mode: "desktop" | "iphone") {
+    setDeviceMode(mode);
+    try {
+      localStorage.setItem("djsynth.deviceMode", mode);
+    } catch {
+      /* ignore */
+    }
+  }
   const [autoDur, setAutoDur] = useState(8); // seconds-before-end trigger + fade length
   const [autoArmed, setAutoArmed] = useState(false); // "Auto-fade" toggle — watches for track-end
   const [autoRunning, setAutoRunning] = useState(false); // a sweep is actively animating right now
@@ -442,6 +474,10 @@ export default function Home() {
       eng.onFatalSilence = () => { void recoverSound(); }; // let the engine self-heal silence
       engineRef.current = eng;
       setReady(true);
+      // iPhone mode starts with only Deck A visible — one deck's worth of
+      // controls fits a 375-430px screen without scrolling sideways; Deck B
+      // is one tap away via "+ Deck B" in the Mixer panel.
+      if (deviceMode === "iphone") setDeckClosed({ A: false, B: true });
     }
     engineRef.current.resume();
   }
@@ -497,6 +533,36 @@ export default function Home() {
       window.removeEventListener("focus", wake);
     };
   }, []);
+
+  // Screen Wake Lock: stop iOS/Android from auto-locking the screen while the
+  // console is running, so playback never gets backgrounded/suspended in the
+  // first place. Honest limits: this only prevents the AUTO-lock timeout —
+  // it can't stop the user manually pressing the side button, and there is
+  // no web API to keep audio running once iOS Safari actually backgrounds a
+  // tab (that needs a native app). The wake lock itself is also released by
+  // the OS whenever the tab goes hidden, so it's re-requested on return.
+  useEffect(() => {
+    if (!ready || !("wakeLock" in navigator)) return;
+    let sentinel: WakeLockSentinel | null = null;
+    let cancelled = false;
+    const acquire = async () => {
+      try {
+        sentinel = await navigator.wakeLock.request("screen");
+      } catch {
+        /* denied / unsupported in this context — playback still works, screen may just sleep */
+      }
+    };
+    acquire();
+    const reacquire = () => {
+      if (!cancelled && document.visibilityState === "visible" && !sentinel) acquire();
+    };
+    document.addEventListener("visibilitychange", reacquire);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", reacquire);
+      sentinel?.release().catch(() => {});
+    };
+  }, [ready]);
 
   // double-click the "metal" of a zone (deck, FX, synth, pad, boss) to pop it to
   // the centre, magnified; double-click again (or press Esc) to put it back.
@@ -707,13 +773,33 @@ export default function Home() {
             </div>
           )}
           {!ready && (
-            <button
-              onClick={init}
-              className="hw-btn hw-btn-on px-4 py-2 text-sm"
-              style={{ ["--led" as string]: "#ffcc00" }}
-            >
-              ⏻ Démarrer l&apos;audio
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex overflow-hidden rounded-lg ring-1 ring-white/10">
+                <button
+                  onClick={() => chooseDeviceMode("desktop")}
+                  className={`px-3 py-1.5 text-xs font-bold ${deviceMode === "desktop" ? "hw-btn-on" : "text-neutral-400"}`}
+                  style={{ ["--led" as string]: "#ffcc00" }}
+                  title="Console complète, les deux decks côte à côte"
+                >
+                  💻 PC / iPad
+                </button>
+                <button
+                  onClick={() => chooseDeviceMode("iphone")}
+                  className={`px-3 py-1.5 text-xs font-bold ${deviceMode === "iphone" ? "hw-btn-on" : "text-neutral-400"}`}
+                  style={{ ["--led" as string]: "#ffcc00" }}
+                  title="Démarre avec un seul deck affiché — tient sans défilement horizontal sur iPhone"
+                >
+                  📱 iPhone
+                </button>
+              </div>
+              <button
+                onClick={init}
+                className="hw-btn hw-btn-on px-4 py-2 text-sm"
+                style={{ ["--led" as string]: "#ffcc00" }}
+              >
+                ⏻ Démarrer l&apos;audio
+              </button>
+            </div>
           )}
         </div>
       </header>
