@@ -1668,7 +1668,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   return (
     <div className="zoom-zone hw-screwed hw-panel flex flex-1 flex-col gap-3 p-4">
       {/* header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="text-sm font-black uppercase tracking-[0.2em] text-neutral-300">
             ♫ Bibliothèque
@@ -1677,7 +1677,10 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
             {data.tracks.length} morceaux · {data.playlists.length} set{data.playlists.length > 1 ? "s" : ""}
           </span>
         </div>
-        <div className="flex items-center gap-1.5">
+        {/* LIVE A/B + relais + lanceur de set rapide — beaucoup de boutons, ne
+            tient jamais sur une largeur d'iPhone : retour à la ligne au lieu
+            de déborder hors du panneau. */}
+        <div className="flex flex-wrap items-center gap-1.5">
           {/* Deck A : single précédent · LIVE · single suivant */}
           <button
             onClick={() => stepSingle("A", -1)}

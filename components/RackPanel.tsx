@@ -506,8 +506,11 @@ export function RackPanel({
 
       {/* pedalboard — wraps onto rows so it never widens the page. `items-start` so a
           collapsed card keeps its small height (no stretching to taller neighbours) →
-          replier un module fait bien remonter ce qui est en dessous. */}
-      <div className="flex w-full min-w-0 flex-wrap items-start content-start gap-1.5">
+          replier un module fait bien remonter ce qui est en dessous. overflow-x-auto
+          is the fallback for the XY Matrix card alone (460px, a 2D touch pad that
+          can't usefully shrink below that) — on an iPhone-width screen it scrolls
+          within this row instead of forcing the whole page to scroll sideways. */}
+      <div className="flex w-full min-w-0 flex-wrap items-start content-start gap-1.5 overflow-x-auto">
         {rack.order
           .filter((id) => {
             // EQ is pinned above, never shown here

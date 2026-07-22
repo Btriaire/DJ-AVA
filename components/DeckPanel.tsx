@@ -967,7 +967,9 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
       {/* stem separation (Demucs) — split the track into live faders. Demucs on
           CPU can't realistically finish beyond ~8 min of audio, so the trigger
           is removed outright for long tracks instead of failing after a click. */}
-      <div className="hw-recess flex items-stretch gap-3 p-3">
+      {/* up to 6 stem fader columns + controls don't fit an iPhone width —
+          scroll horizontally instead of squishing/overflowing the panel */}
+      <div className="hw-recess flex items-stretch gap-3 overflow-x-auto p-3">
         <div className="flex w-28 shrink-0 flex-col justify-center gap-1">
           <span className="text-[9px] uppercase leading-none text-neutral-500">Séparation</span>
           {stemTooLongForTrack ? (
