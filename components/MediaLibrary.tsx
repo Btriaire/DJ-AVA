@@ -1334,7 +1334,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
             failed send never locks out the other rows/decks. Hidden inside a
             set: use the set's own ▶ Deck A/B/Relais controls instead. */}
         {!inPl && (
-        <div className="flex shrink-0 flex-col items-center gap-0.5">
+        <div className="flex basis-full flex-col items-center gap-0.5 sm:basis-auto sm:shrink-0">
           <span className="text-[7px] uppercase leading-none text-neutral-600">Charger</span>
           <div className="flex gap-1">
         <button
@@ -1805,7 +1805,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
       {!collapsed && (
         <>
           {/* ===== affiche : cover of the active single on each deck ===== */}
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             {(["A", "B"] as const).map((side) => {
               const a = active[side];
               const color = side === "A" ? COLOR_A : COLOR_B;
