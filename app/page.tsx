@@ -76,8 +76,17 @@ export default function Home() {
   const [deckClosed, setDeckClosed] = useState<{ A: boolean; B: boolean }>({ A: false, B: false });
   function toggleDeckClosed(side: "A" | "B") {
     setDeckClosed((c) => {
+      const wasClosed = c[side];
       const next = { ...c, [side]: !c[side] };
       if (next.A && next.B) return c; // never close both
+      if (wasClosed && engineRef.current) {
+        // reopening: the fresh DeckPanel's local POWER toggle defaults to
+        // "on" (a brand-new mount has no memory of a prior mute) — force the
+        // deck's actual volume to match so it isn't silently still muted
+        // from before it was closed, with the panel showing no sign of it.
+        const deck = side === "A" ? engineRef.current.deckA : engineRef.current.deckB;
+        deck.setVolume(1);
+      }
       return next;
     });
   }

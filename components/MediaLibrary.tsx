@@ -1242,7 +1242,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
 
         {/* cover thumbnail — bigger in a set (explicit ask), a bit smaller in
             the plain library list ("Écouter") so more rows fit at once */}
-        <div className={`${inPl ? "h-28 w-28" : "h-20 w-20"} shrink-0 overflow-hidden rounded bg-neutral-900`}>
+        <div className={`${inPl ? "h-24 w-24" : "h-16 w-16"} shrink-0 overflow-hidden rounded bg-neutral-900`}>
           {t.art ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={t.art} alt="" className="h-full w-full object-cover" />
@@ -1486,10 +1486,12 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
 
       {activePlaylist ? (
         <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-baseline gap-2">
-              <span className="text-xs font-bold text-violet-300">{activePlaylist.name}</span>
-              <span className="text-[10px] text-neutral-500">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 items-baseline gap-2">
+              <span className="max-w-[60vw] truncate text-xs font-bold text-violet-300" title={activePlaylist.name}>
+                {activePlaylist.name}
+              </span>
+              <span className="shrink-0 text-[10px] text-neutral-500">
                 {activePlaylist.trackIds.length} titre{activePlaylist.trackIds.length > 1 ? "s" : ""}
                 {" · "}
                 {fmt(
@@ -1500,7 +1502,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
             </div>
             <button
               onClick={() => delPlaylist(activePlaylist.id)}
-              className="hw-btn px-2 py-0.5 text-[11px] text-neutral-500"
+              className="hw-btn shrink-0 px-2 py-0.5 text-[11px] text-neutral-500"
             >
               Supprimer le set
             </button>
@@ -1818,7 +1820,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
                   style={{ ["--led" as string]: color, boxShadow: `inset 0 0 0 1px ${color}33` }}
                 >
                   <div
-                    className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md bg-neutral-800"
+                    className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md bg-neutral-800"
                     style={{ boxShadow: `0 0 12px ${color}55` }}
                   >
                     {a?.art ? (
@@ -2022,7 +2024,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
                     <img
                       src={t.artwork ?? ""}
                       alt=""
-                      className="h-20 w-20 shrink-0 rounded bg-neutral-700 object-cover"
+                      className="h-16 w-16 shrink-0 rounded bg-neutral-700 object-cover"
                     />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm text-neutral-100">{t.title}</div>
@@ -2253,7 +2255,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
                     return (
                       <li key={t.id} className="flex items-center gap-3 rounded bg-neutral-800/50 p-2 hover:bg-neutral-800">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={t.artwork ?? ""} alt="" className="h-16 w-16 shrink-0 rounded bg-neutral-700 object-cover" />
+                        <img src={t.artwork ?? ""} alt="" className="h-14 w-14 shrink-0 rounded bg-neutral-700 object-cover" />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
                             <span
