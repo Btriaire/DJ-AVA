@@ -38,7 +38,7 @@ export function MixScope({ deckA, deckB, colorA, colorB, crossfade, onCrossfade 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [mode, setMode] = useState<Mode>("waterfall");
   const [frozen, setFrozen] = useState(false);
-  const [beats, setBeats] = useState(true); // beat-grid / sync lines on the cascade
+  const [beats, setBeats] = useState(false); // beat-grid / sync lines on the cascade — off by default like every other DSP/analysis option
 
   const xfRef = useRef(crossfade);
   xfRef.current = crossfade;
