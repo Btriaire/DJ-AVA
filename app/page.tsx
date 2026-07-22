@@ -496,10 +496,11 @@ export default function Home() {
       eng.onFatalSilence = () => { void recoverSound(); }; // let the engine self-heal silence
       engineRef.current = eng;
       setReady(true);
-      // iPhone mode starts with only Deck A visible — one deck's worth of
-      // controls fits a 375-430px screen without scrolling sideways; Deck B
-      // is one tap away via "+ Deck B" in the Mixer panel.
-      if (deviceMode === "iphone") setDeckClosed({ A: false, B: true });
+      // iPhone mode used to auto-close Deck B here to save width — dropped:
+      // a deck vanishing right after launch, with no visible cue why, read as
+      // broken rather than a space-saving feature. Both decks now start open
+      // in every mode; the ✕ close button (added for this) is still there
+      // for whoever wants to close one deliberately.
       attachBackgroundAudio(eng);
     }
     engineRef.current.resume();
