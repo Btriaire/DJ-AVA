@@ -31,6 +31,18 @@ import { Splash } from "@/components/Splash";
 
 export default function Home() {
   const engineRef = useRef<DJEngine | null>(null);
+  // hidden <audio> mirroring the master mix — see DJEngine.backgroundAudioStream
+  // for why: an actively-playing HTMLMediaElement is what stops iOS Safari
+  // from suspending the whole page (and its AudioContext) once backgrounded.
+  const bgAudioRef = useRef<HTMLAudioElement | null>(null);
+  function attachBackgroundAudio(eng: DJEngine) {
+    const el = bgAudioRef.current;
+    if (!el) return;
+    el.srcObject = eng.backgroundAudioStream;
+    el.play().catch(() => {
+      /* needs a user gesture — init()/recoverSound() are both click-triggered, so this should succeed */
+    });
+  }
   // animated opening screen — shown once per browser session
   const [splash, setSplash] = useState(true);
   useEffect(() => {
@@ -371,6 +383,7 @@ export default function Home() {
       const next = await rebuildEngine();
       next.onFatalSilence = () => { void recoverSound(); }; // keep auto-heal wired on the new engine
       engineRef.current = next;
+      attachBackgroundAudio(next); // fresh engine = fresh MediaStream, re-attach
       setCrossfade(0.5);
       setMaster(next.getMaster());
       setResetKey((k) => k + 1); // remount every panel onto the new decks
@@ -478,6 +491,7 @@ export default function Home() {
       // controls fits a 375-430px screen without scrolling sideways; Deck B
       // is one tap away via "+ Deck B" in the Mixer panel.
       if (deviceMode === "iphone") setDeckClosed({ A: false, B: true });
+      attachBackgroundAudio(eng);
     }
     engineRef.current.resume();
   }
@@ -602,6 +616,9 @@ export default function Home() {
 
   return (
     <main className="hw-body min-h-screen p-4 text-neutral-100">
+      {/* silent mirror of the master mix — keeps iOS Safari from suspending
+          playback in the background, see attachBackgroundAudio() above */}
+      <audio ref={bgAudioRef} playsInline className="hidden" />
       {splash && <Splash onDone={dismissSplash} />}
       <header className="hw-screwed hw-panel mb-4 flex flex-wrap items-center justify-between gap-2 px-4 py-2">
         <h1 className="text-xl font-black tracking-tight">

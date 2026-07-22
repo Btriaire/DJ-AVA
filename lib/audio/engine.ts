@@ -42,6 +42,18 @@ export class DJEngine {
   private meterAnalyser: AnalyserNode;
   private meterBuf: Uint8Array<ArrayBuffer>;
   private crossfade = 0.5;
+  // iOS Safari suspends a page's AudioContext as soon as the tab backgrounds
+  // (screen lock, app switch) — that's what kills playback, not the Wake
+  // Lock elsewhere. But it does NOT suspend an actively playing HTMLMediaElement
+  // (<audio>/<video>): that's how web radio players survive a locked screen.
+  // This tap mirrors the exact same post-FX mix into a MediaStream that a
+  // hidden <audio> element (wired up in app/page.tsx) plays from — WebKit
+  // then treats the whole page as "legitimate background audio" and keeps
+  // the AudioContext (and this stream) alive too. Not a 100% guarantee on
+  // every iOS version, but it's the standard trick, and there's no other
+  // web-only lever for it — reliable background audio otherwise needs a
+  // native app wrapper (AVAudioSession background mode).
+  private bgStreamDest: MediaStreamAudioDestinationNode;
 
   constructor() {
     this.ctx = lowLatencyContext();
@@ -61,6 +73,8 @@ export class DJEngine {
     this.master.connect(this.masterFx.input);
     this.masterFx.output.connect(this.meterAnalyser);
     this.meterAnalyser.connect(this.ctx.destination);
+    this.bgStreamDest = this.ctx.createMediaStreamDestination();
+    this.meterAnalyser.connect(this.bgStreamDest); // parallel tap, see field comment
 
     this.chA = this.ctx.createGain();
     this.chB = this.ctx.createGain();
@@ -355,6 +369,12 @@ export class DJEngine {
     this.sampler.resetFx();
     this.setMaster(0.9);
     this.setCrossfade(0.5);
+  }
+
+  // stream to hand to a hidden <audio> element for background-audio survival
+  // on iOS — see the bgStreamDest field comment for why this exists.
+  get backgroundAudioStream(): MediaStream {
+    return this.bgStreamDest.stream;
   }
 
   setMaster(v: number) {
