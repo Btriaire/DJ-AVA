@@ -584,7 +584,7 @@ export default function Home() {
             </button>
           </div>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <LcdClock />
           {ready && engine && (
             <DeckTimers deckA={engine.deckA} deckB={engine.deckB} colorA="#ffcc00" colorB="#ffcc00" />

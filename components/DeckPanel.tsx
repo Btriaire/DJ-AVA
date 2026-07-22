@@ -595,7 +595,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
   return (
     <div className="zoom-zone hw-screwed hw-panel flex flex-col gap-3 self-start p-4">
       {/* header */}
-      <div className="hw-brushed flex items-center justify-between px-3 py-2">
+      <div className="hw-brushed flex flex-wrap items-center justify-between gap-2 px-3 py-2">
         <div className="flex items-center gap-2">
           <span
             className="rounded px-2 py-0.5 text-xs font-black text-black"
@@ -768,8 +768,9 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
       {/* live spectrum */}
       <Spectrum deck={deck} color={color} />
 
-      {/* transport */}
-      <div className="flex gap-2">
+      {/* transport — wraps on narrow screens: 11 controls in one row don't fit
+          an iPhone width, unlike on desktop where there's room to spare */}
+      <div className="flex flex-wrap gap-2">
         <button
           className="hw-btn px-2 py-2 text-sm disabled:opacity-40"
           style={{ ["--led" as string]: color, color }}
@@ -860,9 +861,9 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
       </div>
 
       {/* pitch + scratch — two halves directly under the SYNC / Auto-sync buttons */}
-      <div className="flex items-stretch gap-3">
+      <div className="flex flex-wrap items-stretch gap-3">
         {/* left half: pitch / tempo */}
-        <div className="flex flex-1 items-center gap-2">
+        <div className="flex min-w-[140px] flex-1 items-center gap-2">
           <span className="shrink-0 text-[10px] uppercase text-neutral-500">
             Pitch {pitch > 0 ? "+" : ""}
             {pitch.toFixed(1)}%
@@ -883,7 +884,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
           />
         </div>
         {/* right half: momentary scratch / pitch-bend (springs back to 0 on release) */}
-        <div className="flex flex-1 items-center gap-2">
+        <div className="flex min-w-[140px] flex-1 items-center gap-2">
           <span className="shrink-0 text-[10px] uppercase text-neutral-500">Scratch</span>
           <Fader
             value={scratch}

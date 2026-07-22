@@ -383,7 +383,7 @@ export function MixScope({ deckA, deckB, colorA, colorB, crossfade, onCrossfade 
   return (
     <div>
       {/* header: track names + render-mode selector + freeze */}
-      <div className="mb-1 flex items-center justify-between gap-2">
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-1 text-[10px] font-bold">
           <span style={{ color: colorA }}>A</span>
           <span className="max-w-[84px] truncate text-neutral-400">{deckA.name || "—"}</span>
