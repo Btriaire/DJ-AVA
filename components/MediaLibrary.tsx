@@ -99,14 +99,49 @@ const TRANSITION_TYPES: { key: TransitionType; label: string; hint: string }[] =
 // stable useCallback. Without this, every frame gave the inner TrackRow a new
 // identity, remounting each row's DOM and cancelling in-flight real mouse clicks
 // on the delete / send-to-deck buttons.
+// The Console/Écoute/Playlist workspaces each mount their own MediaLibrary
+// instance (three separate places in the tree, never simultaneously — see
+// app/page.tsx and StudioView.tsx), so switching between them unmounts one
+// and mounts a fresh one with blank React state. Search results (and the
+// tab/query that produced them) are stashed in sessionStorage on every
+// change and read back on mount, so hopping between workspaces — or loading
+// a track and coming back — doesn't force the same search to be re-run.
+// sessionStorage (not localStorage): a stale search from days ago isn't
+// worth resurrecting, but "I just searched, then tapped over to Playlist" is.
+const SEARCH_STATE_KEY = "djsynth.searchState.v1";
+interface SearchState {
+  tab: "files" | "playlists" | "audius" | "youtube" | "soundcloud" | "deezer" | "auto";
+  q: string;
+  durKey: string;
+  results: AudiusTrack[];
+}
+function loadSearchState(): SearchState | null {
+  try {
+    const raw = sessionStorage.getItem(SEARCH_STATE_KEY);
+    return raw ? (JSON.parse(raw) as SearchState) : null;
+  } catch {
+    return null;
+  }
+}
+
 function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayout }: Props) {
   const [data, setData] = useState<LibraryData>({ tracks: [], playlists: [] });
+  // memoized once via useState's lazy initializer, not a ref — reading a ref's
+  // .current during render is flagged (and rightly so, it's not meant for that)
+  const [initialSearch] = useState(loadSearchState);
   const [tab, setTab] = useState<
     "files" | "playlists" | "audius" | "youtube" | "soundcloud" | "deezer" | "auto"
-  >("files");
-  const [q, setQ] = useState("");
-  const [durKey, setDurKey] = useState<string>("all"); // YouTube duration filter
-  const [results, setResults] = useState<AudiusTrack[]>([]);
+  >(initialSearch?.tab ?? "files");
+  const [q, setQ] = useState(initialSearch?.q ?? "");
+  const [durKey, setDurKey] = useState<string>(initialSearch?.durKey ?? "all"); // YouTube duration filter
+  const [results, setResults] = useState<AudiusTrack[]>(initialSearch?.results ?? []);
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(SEARCH_STATE_KEY, JSON.stringify({ tab, q, durKey, results }));
+    } catch {
+      /* quota/unavailable — persistence is a nicety, not required */
+    }
+  }, [tab, q, durKey, results]);
   // --- AI auto-playlist (similar style / BPM / sound) ---
   const [autoSeed, setAutoSeed] = useState<Seed | null>(null);
   const [autoTracks, setAutoTracks] = useState<AudiusTrack[]>([]);
