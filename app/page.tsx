@@ -38,6 +38,13 @@ export default function Home() {
   function attachBackgroundAudio(eng: DJEngine) {
     const el = bgAudioRef.current;
     if (!el) return;
+    // MUST stay muted: this element exists purely to keep iOS from suspending
+    // the page in the background (see field comment) — it is NOT meant to be
+    // heard. Unmuted, it doubles the exact same mix through a second,
+    // slightly-delayed path (its own audio pipeline vs. the direct
+    // AudioContext→destination one), which is audible as a faint echo/slap-
+    // back on every track. That bug shipped once already; don't repeat it.
+    el.muted = true;
     el.srcObject = eng.backgroundAudioStream;
     el.play().catch(() => {
       /* needs a user gesture — init()/recoverSound() are both click-triggered, so this should succeed */
@@ -628,7 +635,7 @@ export default function Home() {
     <main className="hw-body min-h-screen p-4 text-neutral-100">
       {/* silent mirror of the master mix — keeps iOS Safari from suspending
           playback in the background, see attachBackgroundAudio() above */}
-      <audio ref={bgAudioRef} playsInline className="hidden" />
+      <audio ref={bgAudioRef} playsInline muted className="hidden" />
       {splash && <Splash onDone={dismissSplash} />}
       <header className="hw-screwed hw-panel mb-4 flex flex-wrap items-center justify-between gap-2 px-4 py-2">
         <h1 className="text-xl font-black tracking-tight">

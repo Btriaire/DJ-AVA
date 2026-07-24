@@ -390,6 +390,16 @@ export function RackPanel({
   const toggleAll = () => {
     setCollapsed(allCollapsed ? new Set() : new Set(rack.order));
   };
+  // bulk bypass — every module off in one tap, e.g. to A/B against the dry
+  // signal or start a set from a clean slate. EQ is skipped: it behaves like
+  // always-inline hardware, not a bypassable pedal (see Rack.ts).
+  const allOff = () => {
+    for (const id of rack.order) {
+      if (id !== "eq") rack.setEnabled(id, false);
+    }
+    flashLcd("TOUS LES EFFETS OFF");
+    rerender();
+  };
 
   // BPM-synced value for a sync button (returns param key + value)
   const syncValue = (id: RackModuleId, frac: number): [string, number] => {
@@ -415,6 +425,14 @@ export function RackPanel({
           title="Tout replier / déplier"
         >
           {allCollapsed ? "⊕ DÉPLIER" : "⊖ REPLIER"}
+        </button>
+        <button
+          onClick={allOff}
+          className="hw-btn px-1.5 py-0.5 text-[8px] font-bold text-red-400"
+          style={{ ["--led" as string]: "#ef4444" }}
+          title="Coupe tous les effets d'un coup (l'EQ reste actif — toujours inline comme du vrai matériel)"
+        >
+          ⏻ TOUT OFF
         </button>
         <div className="ml-auto flex flex-wrap items-center gap-1">
           {FACTORY.map((f) => (
