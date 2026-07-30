@@ -36,6 +36,7 @@ import Admin from "./pages/Admin";
 import GameRules from "./components/GameRules";
 import Splash from "./components/Splash";
 import BrainBg from "./components/BrainBg";
+import ZenBg from "./components/ZenBg";
 import { ensureProfiles } from "./lib/profile";
 
 // Garantit qu'un profil actif existe (et migre l'ancien) dès le chargement,
@@ -61,6 +62,7 @@ function Shell({ title, game, children }: { title: string; game?: string; childr
 export default function App() {
   return (
     <>
+    <ZenBg />
     <BrainBg />
     <Splash />
     <Routes>
