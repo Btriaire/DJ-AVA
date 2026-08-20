@@ -17,7 +17,7 @@ export class FXRack {
   readonly input: GainNode;
   readonly output: GainNode;
   private dry: GainNode;
-  private ctx: AudioContext;
+  private ctx: BaseAudioContext;
   private wets = new Map<FxName, GainNode>();
   // which effects are currently routed to the output. Web Audio is a pull
   // graph, so an effect whose wet branch reaches the output is rendered every
@@ -25,7 +25,7 @@ export class FXRack {
   // unused effects (incl. convolver reverbs) cost no CPU. 6 effects × 3 racks.
   private wetLive = new Set<FxName>();
 
-  constructor(ctx: AudioContext) {
+  constructor(ctx: BaseAudioContext) {
     this.ctx = ctx;
     this.input = ctx.createGain();
     this.output = ctx.createGain();

@@ -13,7 +13,7 @@ const DELAY_TIME = 0.1;
 const FADE_TIME = 0.05;
 const BUFFER_TIME = 0.1;
 
-function createFadeBuffer(ctx: AudioContext, activeTime: number, fadeTime: number) {
+function createFadeBuffer(ctx: BaseAudioContext, activeTime: number, fadeTime: number) {
   const sr = ctx.sampleRate;
   const length1 = activeTime * sr;
   const length2 = (activeTime - 2 * fadeTime) * sr;
@@ -35,7 +35,7 @@ function createFadeBuffer(ctx: AudioContext, activeTime: number, fadeTime: numbe
 }
 
 function createDelayTimeBuffer(
-  ctx: AudioContext,
+  ctx: BaseAudioContext,
   activeTime: number,
   fadeTime: number,
   shiftUp: boolean
@@ -66,7 +66,7 @@ export class PitchShifter {
   private modGain2: GainNode;
   private started = false;
 
-  constructor(private ctx: AudioContext) {
+  constructor(private ctx: BaseAudioContext) {
     this.input = ctx.createGain();
     this.output = ctx.createGain();
 
