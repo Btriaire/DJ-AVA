@@ -19,6 +19,14 @@ export interface VocalParams {
   carrierNote: number; // MIDI note for the synth carrier's root
   pitchSemis: number; // -12..12, tempo-preserving pitch shift
   robotOn: boolean; // quantizes pitchSemis to the nearest semitone step
+  // formant-lock (approximate): vocodes a pitch-shifted carrier through the
+  // ORIGINAL (unshifted) vocal's amplitude envelope via a dedicated internal
+  // Vocoder, so the pitch moves while the vowel/formant character stays
+  // closer to the natural voice. This is a real, known technique but with
+  // only 16 bands it isn't a transparent studio-grade formant correction —
+  // it imparts some of the vocoder's own character. Off = plain pitch shift
+  // (pitch and formants move together, the classic chipmunk/demon sound).
+  formantLock: boolean;
   harmonize: HarmonizeMode;
   eqLow: number; // dB, -12..12
   eqMid: number;
@@ -35,6 +43,7 @@ export const defaultVocalParams: VocalParams = {
   carrierNote: 45, // A2-ish drone root
   pitchSemis: 0,
   robotOn: false,
+  formantLock: false,
   harmonize: "off",
   eqLow: 0,
   eqMid: 0,
@@ -247,23 +256,46 @@ export async function renderVocalToWav(
   params: VocalParams
 ): Promise<Blob> {
   const ctx = new OfflineAudioContext(2, vocals.length, vocals.sampleRate);
+  const semisEffective = params.robotOn ? Math.round(params.pitchSemis) : params.pitchSemis;
 
-  const src = ctx.createBufferSource();
-  src.buffer = vocals;
+  let pitchedOutput: AudioNode;
+  if (params.formantLock && semisEffective !== 0) {
+    const unshiftedSrc = ctx.createBufferSource();
+    unshiftedSrc.buffer = vocals;
+    const pitchedSrc = ctx.createBufferSource();
+    pitchedSrc.buffer = vocals;
 
-  const pitch = new PitchShifter(ctx);
-  pitch.start(0);
-  pitch.setSemitones(params.robotOn ? Math.round(params.pitchSemis) : params.pitchSemis);
-  src.connect(pitch.input);
+    const pitch = new PitchShifter(ctx);
+    pitch.start(0);
+    pitch.setSemitones(semisEffective);
+    pitchedSrc.connect(pitch.input);
+
+    const formantVocoder = new Vocoder(ctx);
+    unshiftedSrc.connect(formantVocoder.input);
+    pitch.output.connect(formantVocoder.carrierInput);
+
+    unshiftedSrc.start(0);
+    pitchedSrc.start(0);
+    pitchedOutput = formantVocoder.output;
+  } else {
+    const src = ctx.createBufferSource();
+    src.buffer = vocals;
+    const pitch = new PitchShifter(ctx);
+    pitch.start(0);
+    pitch.setSemitones(semisEffective);
+    src.connect(pitch.input);
+    src.start(0);
+    pitchedOutput = pitch.output;
+  }
 
   const dry = ctx.createGain();
   dry.gain.value = params.vocoderOn ? 1 - params.vocoderMix : 1;
-  pitch.output.connect(dry);
+  pitchedOutput.connect(dry);
 
   let carrierStop: ((when: number) => void) | null = null;
   if (params.vocoderOn) {
     const vocoder = new Vocoder(ctx);
-    pitch.output.connect(vocoder.input);
+    pitchedOutput.connect(vocoder.input);
     const carrier =
       params.carrier === "noise" ? makeNoiseCarrier(ctx) : makeSynthCarrier(ctx, params.carrierNote);
     carrier.output.connect(vocoder.carrierInput);
@@ -311,7 +343,6 @@ export async function renderVocalToWav(
   deess.node.connect(fx.input);
   fx.output.connect(ctx.destination);
 
-  src.start(0);
   if (carrierStop) carrierStop(vocals.duration + 0.1);
 
   const rendered = await ctx.startRendering();

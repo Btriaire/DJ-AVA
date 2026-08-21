@@ -18,6 +18,34 @@ interface YTTrack {
 type SourceTab = "search" | "upload";
 type Phase = "idle" | "fetching" | "separating" | "decoding" | "ready" | "error";
 
+interface LyricSegment {
+  start: number;
+  end: number;
+  text: string;
+}
+
+function srtTime(t: number): string {
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const s = Math.floor(t % 60);
+  const ms = Math.round((t - Math.floor(t)) * 1000);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")},${String(ms).padStart(3, "0")}`;
+}
+
+function segmentsToSrt(segments: LyricSegment[]): string {
+  return segments.map((s, i) => `${i + 1}\n${srtTime(s.start)} --> ${srtTime(s.end)}\n${s.text}\n`).join("\n");
+}
+
+function downloadText(name: string, content: string) {
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 const MODEL_LABEL: Record<string, string> = {
   htdemucs_ft: "Précision max (htdemucs_ft, plus lent)",
   htdemucs: "Rapide (htdemucs)",
@@ -105,7 +133,12 @@ export function VoiceExtractor() {
   });
 
   const [vocalsBlobUrl, setVocalsBlobUrl] = useState<string | null>(null);
+  const vocalsBlobRef = useRef<Blob | null>(null);
   const [rendering, setRendering] = useState(false);
+
+  const [lyrics, setLyrics] = useState<LyricSegment[] | null>(null);
+  const [lyricsLoading, setLyricsLoading] = useState(false);
+  const [lyricsError, setLyricsError] = useState<string | null>(null);
 
   function setParam<K extends keyof VocalParams>(key: K, value: VocalParams[K]) {
     setParamsState((p) => ({ ...p, [key]: value }));
@@ -245,7 +278,11 @@ export function VoiceExtractor() {
       setDuration(vocals.duration);
       setPeaks(computePeaks(vocals));
       setPosition(0);
-      setVocalsBlobUrl(URL.createObjectURL(new Blob([vocalsBuf], { type: lossless ? "audio/wav" : "audio/mpeg" })));
+      const vBlob = new Blob([vocalsBuf], { type: lossless ? "audio/wav" : "audio/mpeg" });
+      vocalsBlobRef.current = vBlob;
+      setVocalsBlobUrl(URL.createObjectURL(vBlob));
+      setLyrics(null);
+      setLyricsError(null);
       setPhase("ready");
       setMsg(`« ${name} » — voix isolée, prête.`);
     } catch (e) {
@@ -309,6 +346,36 @@ export function VoiceExtractor() {
     } finally {
       setRendering(false);
     }
+  }
+
+  // AI lyrics transcription (Groq Whisper) — transcribes the isolated vocal
+  // stem, both as a lyrics feature and a quick sanity check of isolation
+  // quality (garbled text usually means residual instrumental bleed).
+  async function transcribeLyrics() {
+    const blob = vocalsBlobRef.current;
+    if (!blob) return;
+    setLyricsLoading(true);
+    setLyricsError(null);
+    try {
+      const bytes = await blob.arrayBuffer();
+      const r = await fetch("/api/voice/transcribe", {
+        method: "POST",
+        headers: { "x-audio-type": blob.type || "audio/mpeg" },
+        body: bytes,
+      });
+      const j = await r.json();
+      if (j.error) throw new Error(j.error);
+      setLyrics(j.segments ?? []);
+    } catch (e) {
+      setLyricsError((e as Error).message || "Échec de la transcription");
+    } finally {
+      setLyricsLoading(false);
+    }
+  }
+
+  function seekTo(sec: number) {
+    getEngine().seek(sec);
+    setPosition(sec);
   }
 
   const carrierOptions: { v: CarrierType; label: string }[] = [
@@ -501,6 +568,14 @@ export function VoiceExtractor() {
               >
                 Robot (quantifié)
               </button>
+              <button
+                onClick={() => setParam("formantLock", !params.formantLock)}
+                title="Approximatif : passe par un vocodeur interne pour garder le grain de voix d'origine — pas une correction de formants studio."
+                className={`hw-btn w-full px-2 py-1 text-[10px] ${params.formantLock ? "hw-btn-on" : ""}`}
+                style={{ ["--led" as string]: "#facc15" }}
+              >
+                Formant Lock (approx.)
+              </button>
               <select
                 value={params.harmonize}
                 onChange={(e) => setParam("harmonize", e.target.value as HarmonizeMode)}
@@ -586,6 +661,59 @@ export function VoiceExtractor() {
                 ))}
               </div>
             </div>
+          </div>
+
+          {/* ---------- lyrics (AI transcription) ---------- */}
+          <div className="rounded-lg bg-black/30 p-3 ring-1 ring-white/10">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-fuchsia-300">
+                🤖 Paroles (IA — Groq Whisper)
+              </span>
+              <button
+                onClick={transcribeLyrics}
+                disabled={lyricsLoading}
+                className="hw-btn px-3 py-1.5 text-[10px] disabled:opacity-50"
+                style={{ ["--led" as string]: "#e879f9" }}
+              >
+                {lyricsLoading ? "Transcription…" : lyrics ? "↻ Retranscrire" : "▶ Transcrire les paroles"}
+              </button>
+            </div>
+            {lyricsError && <p className="text-[10px] text-red-400">{lyricsError}</p>}
+            {lyrics && lyrics.length > 0 && (
+              <>
+                <div className="flex max-h-56 flex-col gap-0.5 overflow-y-auto rounded bg-neutral-900/60 p-2">
+                  {lyrics.map((seg, i) => (
+                    <button
+                      key={i}
+                      onClick={() => seekTo(seg.start)}
+                      className={`flex gap-2 rounded px-1.5 py-1 text-left text-[11px] hover:bg-neutral-800 ${
+                        position >= seg.start && position < seg.end ? "bg-fuchsia-500/20 text-fuchsia-200" : "text-neutral-300"
+                      }`}
+                    >
+                      <span className="shrink-0 text-neutral-500">{fmtTime(seg.start)}</span>
+                      <span className="truncate">{seg.text}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    onClick={() => downloadText(`${trackName || "paroles"}.srt`, segmentsToSrt(lyrics))}
+                    className="hw-btn px-3 py-1.5 text-[10px]"
+                  >
+                    ⤓ .srt
+                  </button>
+                  <button
+                    onClick={() => downloadText(`${trackName || "paroles"}.txt`, lyrics.map((s) => s.text).join("\n"))}
+                    className="hw-btn px-3 py-1.5 text-[10px]"
+                  >
+                    ⤓ .txt
+                  </button>
+                </div>
+              </>
+            )}
+            {lyrics && lyrics.length === 0 && !lyricsLoading && (
+              <p className="text-[10px] text-neutral-500">Aucune parole détectée (voix trop faible/instrumentale ?).</p>
+            )}
           </div>
         </>
       )}

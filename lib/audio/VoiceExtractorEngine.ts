@@ -258,25 +258,61 @@ export class VoiceExtractorEngine {
     const stopFns: Array<(w: number) => void> = [];
     const nodes: Partial<LiveNodes> = {};
 
-    const src = ctx.createBufferSource();
-    src.buffer = b.vocals;
-    sources.push(src);
-    stopFns.push((w) => src.stop(w));
+    const semisEffective = p.robotOn ? Math.round(p.pitchSemis) : p.pitchSemis;
+    let pitchedOutput: AudioNode;
 
-    const pitch = new PitchShifter(ctx);
-    pitch.start(when);
-    pitch.setSemitones(p.robotOn ? Math.round(p.pitchSemis) : p.pitchSemis);
-    src.connect(pitch.input);
-    nodes.pitch = pitch;
+    if (p.formantLock && semisEffective !== 0) {
+      // formant-locked pitch: vocode a pitch-shifted carrier through the
+      // ORIGINAL (unshifted) vocal's envelope, via a dedicated internal
+      // Vocoder — see the comment on VocalParams.formantLock for caveats.
+      const unshiftedSrc = ctx.createBufferSource();
+      unshiftedSrc.buffer = b.vocals;
+      sources.push(unshiftedSrc);
+      stopFns.push((w) => unshiftedSrc.stop(w));
+
+      const pitchedSrc = ctx.createBufferSource();
+      pitchedSrc.buffer = b.vocals;
+      sources.push(pitchedSrc);
+      stopFns.push((w) => pitchedSrc.stop(w));
+
+      const pitch = new PitchShifter(ctx);
+      pitch.start(when);
+      pitch.setSemitones(semisEffective);
+      pitchedSrc.connect(pitch.input);
+      nodes.pitch = pitch;
+
+      const formantVocoder = new Vocoder(ctx);
+      unshiftedSrc.connect(formantVocoder.input);
+      pitch.output.connect(formantVocoder.carrierInput);
+      nodes.formantVocoder = formantVocoder;
+
+      unshiftedSrc.start(when, offset);
+      pitchedSrc.start(when, offset);
+      pitchedOutput = formantVocoder.output;
+    } else {
+      const src = ctx.createBufferSource();
+      src.buffer = b.vocals;
+      sources.push(src);
+      stopFns.push((w) => src.stop(w));
+
+      const pitch = new PitchShifter(ctx);
+      pitch.start(when);
+      pitch.setSemitones(semisEffective);
+      src.connect(pitch.input);
+      nodes.pitch = pitch;
+
+      src.start(when, offset);
+      pitchedOutput = pitch.output;
+    }
 
     const dryGain = ctx.createGain();
     dryGain.gain.value = p.vocoderOn ? 1 - p.vocoderMix : 1;
-    pitch.output.connect(dryGain);
+    pitchedOutput.connect(dryGain);
     nodes.dryGain = dryGain;
 
     if (p.vocoderOn) {
       const vocoder = new Vocoder(ctx);
-      pitch.output.connect(vocoder.input);
+      pitchedOutput.connect(vocoder.input);
       const carrier = makeCarrier(ctx, p.carrier, p.carrierNote, () => this.instrumentalTap(ctx));
       carrier.output.connect(vocoder.carrierInput);
       carrier.start(when);
@@ -323,8 +359,6 @@ export class VoiceExtractorEngine {
     fx.output.connect(this.masterGain);
     nodes.fx = fx;
 
-    src.start(when, offset);
-
     return { sources, stopFns, nodes };
   }
 
@@ -358,6 +392,7 @@ export class VoiceExtractorEngine {
 
 interface LiveNodes {
   pitch: PitchShifter;
+  formantVocoder: Vocoder;
   harmonizerPitch: PitchShifter;
   dryGain: GainNode;
   vocoderWetGain: GainNode;
