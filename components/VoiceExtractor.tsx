@@ -127,6 +127,57 @@ function moduleLabel(text: string, color = "#f3b6fb") {
   );
 }
 
+// ---------- mini keyboard: plays the vocoder's synth-carrier pitch live —
+// the classic vocoder move (Kraftwerk/Daft Punk-style) is to talk/sing into
+// the modulator while playing a melody on the carrier, not just set a static
+// note. One octave, C2..C3, matching the middle of the existing Note knob's
+// range. Dragging across keys (glissando) changes the note too. ----------
+const MINI_KB_START = 36; // C2
+const MINI_KB_KEYS = Array.from({ length: 13 }, (_, i) => MINI_KB_START + i); // C2..C3
+const MINI_KB_BLACK_PC = new Set([1, 3, 6, 8, 10]);
+const MINI_KB_WHITE = MINI_KB_KEYS.filter((m) => !MINI_KB_BLACK_PC.has(m % 12));
+
+function MiniKeyboard({ value, onChange }: { value: number; onChange: (note: number) => void }) {
+  const whiteW = 100 / MINI_KB_WHITE.length;
+  const blackW = whiteW * 0.6;
+  return (
+    <div className="relative h-11 w-full select-none rounded-sm" style={{ background: "#0d0e10", border: "1px solid #000" }}>
+      {MINI_KB_WHITE.map((m, i) => (
+        <button
+          key={m}
+          onPointerDown={() => onChange(m)}
+          onPointerEnter={(e) => e.buttons === 1 && onChange(m)}
+          className="absolute top-0 h-full rounded-b-sm"
+          style={{
+            left: `${i * whiteW}%`,
+            width: `${whiteW}%`,
+            background: value === m ? "linear-gradient(180deg,#f3b6fb,#e879f9)" : "linear-gradient(180deg,#efeae8,#d8d2ce)",
+            border: "1px solid #000",
+            boxShadow: value === m ? "inset 0 0 8px rgba(255,255,255,.6)" : "inset 0 -2px 3px rgba(0,0,0,.15)",
+          }}
+        />
+      ))}
+      {MINI_KB_KEYS.filter((m) => MINI_KB_BLACK_PC.has(m % 12)).map((m) => {
+        const whiteBefore = MINI_KB_WHITE.filter((w) => w < m).length;
+        return (
+          <button
+            key={m}
+            onPointerDown={() => onChange(m)}
+            onPointerEnter={(e) => e.buttons === 1 && onChange(m)}
+            className="absolute top-0 z-10 h-[60%] rounded-b-sm"
+            style={{
+              left: `${whiteBefore * whiteW - blackW / 2}%`,
+              width: `${blackW}%`,
+              background: value === m ? "linear-gradient(180deg,#e879f9,#9d3fb0)" : "linear-gradient(180deg,#3a3a3d,#0d0d0e)",
+              border: "1px solid #000",
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 export function VoiceExtractor() {
   const engineRef = useRef<VoiceExtractorEngine | null>(null);
   const getEngine = () => {
@@ -716,16 +767,19 @@ export function VoiceExtractor() {
                       ))}
                     </select>
                     {params.carrier === "synth" && (
-                      <Knob
-                        label="Note"
-                        value={params.carrierNote}
-                        min={24}
-                        max={72}
-                        defaultValue={45}
-                        onChange={(v) => setParam("carrierNote", Math.round(v))}
-                        color="#e879f9"
-                        format={(v) => v.toFixed(0)}
-                      />
+                      <>
+                        <Knob
+                          label="Note"
+                          value={params.carrierNote}
+                          min={24}
+                          max={72}
+                          defaultValue={45}
+                          onChange={(v) => setParam("carrierNote", Math.round(v))}
+                          color="#e879f9"
+                          format={(v) => v.toFixed(0)}
+                        />
+                        <MiniKeyboard value={params.carrierNote} onChange={(n) => setParam("carrierNote", n)} />
+                      </>
                     )}
                   </div>
                 </div>
