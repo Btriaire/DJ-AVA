@@ -640,9 +640,12 @@ export function VoiceExtractor() {
                   </button>
                 </div>
               </div>
+            </>
+          )}
 
-              {/* ---------- vocoder rack ---------- */}
-              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+          {/* ---------- vocoder rack — always open, even before separation, so ---------- */}
+          {/* settings can be dialed in ahead of time (params apply once a track loads) */}
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
                 {/* PITCH / ROBOT */}
                 <div className="rounded-md p-2.5" style={moduleStyle}>
                   {moduleLabel("Pitch", "#facc15")}
@@ -769,6 +772,8 @@ export function VoiceExtractor() {
                 </div>
               </div>
 
+          {phase === "ready" && (
+            <>
               {/* ---------- lyrics (AI transcription) — teleprompter LCD ---------- */}
               <div className="rounded-md p-2.5" style={moduleStyle}>
                 <div className="mb-1.5 flex items-center justify-between">
