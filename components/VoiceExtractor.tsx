@@ -92,6 +92,41 @@ function probeDuration(file: File | Blob): Promise<number> {
   });
 }
 
+// ---------- photoreal gunmetal-chassis styling helpers (matches the look of
+// DX7Synth/Solar42F, the other "VST plugin" modules in this project) ----------
+const moduleStyle: React.CSSProperties = {
+  background: "linear-gradient(180deg,#232427,#17181a)",
+  border: "1px solid #000",
+  boxShadow: "inset 0 2px 6px rgba(0,0,0,.65), inset 0 -1px 0 rgba(255,255,255,.04)",
+};
+const lcdStyle: React.CSSProperties = {
+  background: "linear-gradient(180deg,#1a0518,#10020f)",
+  border: "2px solid #05010a",
+  boxShadow: "inset 0 0 14px rgba(232,121,249,.35)",
+};
+function membraneBtn(active: boolean, tint = "#e879f9"): React.CSSProperties {
+  return {
+    background: active
+      ? `linear-gradient(180deg, color-mix(in srgb, ${tint} 88%, #fff) 0%, ${tint} 55%, color-mix(in srgb, ${tint} 55%, #000) 100%)`
+      : "linear-gradient(180deg,#3a3c40,#232427)",
+    color: active ? "#1a0518" : "#e9e5f0",
+    border: "1px solid #000",
+    boxShadow: active
+      ? `inset 0 0 8px rgba(255,255,255,.35), 0 0 10px color-mix(in srgb, ${tint} 60%, transparent)`
+      : "inset 0 1px 0 rgba(255,255,255,.08), 0 1px 2px rgba(0,0,0,.5)",
+  };
+}
+function moduleLabel(text: string, color = "#f3b6fb") {
+  return (
+    <div className="mb-1.5 flex items-center gap-1.5">
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: color, boxShadow: `0 0 5px ${color}` }} />
+      <span className="text-[9px] font-bold uppercase tracking-[.15em]" style={{ color }}>
+        {text}
+      </span>
+    </div>
+  );
+}
+
 export function VoiceExtractor() {
   const engineRef = useRef<VoiceExtractorEngine | null>(null);
   const getEngine = () => {
@@ -390,333 +425,408 @@ export function VoiceExtractor() {
     { v: "octave", label: "+ Octave" },
   ];
 
+  const busy = phase === "fetching" || phase === "separating" || phase === "decoding";
+  const lcdMessage = trackName || (phase === "idle" ? "PRÊT — CHOISIR UNE SOURCE" : msg || "…");
+
   return (
-    <div className="mx-auto flex min-h-screen max-w-5xl flex-col gap-4 bg-neutral-950 p-4 text-neutral-200">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-bold uppercase tracking-wide text-fuchsia-300">Voice Extractor</h1>
-          <p className="text-[11px] text-neutral-500">Isolation vocale + rack vocodeur</p>
-        </div>
-        <Link href="/" className="hw-btn px-3 py-1.5 text-xs">
-          ← DJSynth
-        </Link>
-      </div>
-
-      {/* ---------- source ---------- */}
-      <div className="rounded-lg bg-black/30 p-3 ring-1 ring-white/10">
-        <div className="mb-2 flex gap-2">
-          <button
-            className={`hw-btn px-3 py-1.5 text-xs ${tab === "search" ? "hw-btn-on" : ""}`}
-            style={{ ["--led" as string]: "#e879f9" }}
-            onClick={() => setTab("search")}
-          >
-            ▶ Recherche YouTube
-          </button>
-          <button
-            className={`hw-btn px-3 py-1.5 text-xs ${tab === "upload" ? "hw-btn-on" : ""}`}
-            style={{ ["--led" as string]: "#e879f9" }}
-            onClick={() => setTab("upload")}
-          >
-            ⤒ Importer MP3
-          </button>
-        </div>
-
-        {tab === "search" ? (
-          <div className="flex flex-col gap-2">
-            <div className="flex gap-2">
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && doSearch()}
-                placeholder="Titre, artiste…"
-                className="flex-1 rounded bg-neutral-800 px-2 py-1.5 text-xs outline-none ring-1 ring-neutral-700 focus:ring-fuchsia-500"
-              />
-              <button onClick={doSearch} disabled={searching} className="hw-btn px-3 py-1.5 text-xs disabled:opacity-50">
-                {searching ? "…" : "Chercher"}
-              </button>
-            </div>
-            {results.length > 0 && (
-              <div className="flex max-h-56 flex-col gap-1 overflow-y-auto">
-                {results.map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() => pickTrack(t)}
-                    disabled={phase === "fetching" || phase === "separating" || phase === "decoding"}
-                    className="flex items-center gap-2 rounded bg-neutral-900 px-2 py-1.5 text-left text-xs hover:bg-neutral-800 disabled:opacity-50"
-                  >
-                    {t.artwork && <img src={t.artwork} alt="" className="h-8 w-8 rounded object-cover" />}
-                    <span className="flex-1 truncate">{t.title}</span>
-                    <span className="text-neutral-500">{fmtTime(t.duration)}</span>
-                  </button>
-                ))}
+    <div className="flex min-h-screen w-full items-center justify-center p-3" style={{ background: "radial-gradient(circle at 50% -10%, #2a2c30, #0a0a0b)" }}>
+      <div
+        className="w-full max-w-5xl overflow-hidden"
+        style={{
+          borderRadius: "10px",
+          background: "linear-gradient(180deg,#5a5d62 0%,#4a4d52 3%,#333538 8%,#1c1d1f 100%)",
+          boxShadow: "0 24px 50px rgba(0,0,0,.75), inset 0 2px 0 rgba(220,220,230,.25), inset 0 -2px 6px rgba(0,0,0,.6)",
+          border: "1px solid #0a0a0b",
+        }}
+      >
+        {/* ============ CONTROL SURFACE (gunmetal) ============ */}
+        <div className="px-3 pb-4 pt-3" style={{ background: "linear-gradient(180deg,#3c3e42 0%,#2c2e31 40%,#1c1d1f 100%)", borderBottom: "4px solid #050506" }}>
+          {/* header: brand + LCD readout + link */}
+          <div className="mb-3 flex flex-wrap items-center gap-3">
+            <div className="flex items-baseline gap-3">
+              <div className="flex flex-col leading-none">
+                <span className="text-[9px] tracking-[.4em]" style={{ color: "#d7cfe0" }}>VX-16</span>
+                <span className="text-2xl font-black italic tracking-tight" style={{ color: "#f3eef8", textShadow: "0 2px 3px rgba(0,0,0,.7)" }}>
+                  VOCALIZER
+                </span>
               </div>
-            )}
-          </div>
-        ) : (
-          <div>
-            <button
-              onClick={() => fileRef.current?.click()}
-              disabled={phase === "fetching" || phase === "separating" || phase === "decoding"}
-              className="hw-btn hw-btn-on px-3 py-1.5 text-xs disabled:opacity-50"
-              style={{ ["--led" as string]: "#e879f9" }}
-            >
-              ♪ Choisir un fichier audio
-            </button>
-            <input ref={fileRef} type="file" accept="audio/*" className="hidden" onChange={onFile} />
-          </div>
-        )}
-
-        {/* separation quality options */}
-        <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-white/10 pt-2 text-[10px]">
-          <select
-            value={model}
-            onChange={(e) => setModel(e.target.value as "htdemucs_ft" | "htdemucs")}
-            disabled={phase === "separating" || phase === "decoding"}
-            className="rounded bg-neutral-800 px-2 py-1 text-[10px] outline-none ring-1 ring-neutral-700 disabled:opacity-50"
-          >
-            {Object.entries(MODEL_LABEL).map(([v, l]) => (
-              <option key={v} value={v}>
-                {l}
-              </option>
-            ))}
-          </select>
-          <label className="flex items-center gap-1">
-            <input type="checkbox" checked={denoise} onChange={(e) => setDenoise(e.target.checked)} /> Débruitage voix
-          </label>
-          <label className="flex items-center gap-1">
-            <input type="checkbox" checked={ultra} onChange={(e) => setUltra(e.target.checked)} /> Ultra (plus lent, plus précis)
-          </label>
-          <label className="flex items-center gap-1">
-            <input type="checkbox" checked={lossless} onChange={(e) => setLossless(e.target.checked)} /> WAV sans perte
-          </label>
-        </div>
-
-        {phase !== "idle" && (
-          <div className="mt-2 flex flex-col gap-1">
-            <p className="text-[10px] text-neutral-400">{msg}</p>
-            {(phase === "separating" || phase === "fetching") && (
-              <div className="h-1.5 w-full overflow-hidden rounded bg-neutral-800">
-                <div
-                  className="h-full bg-fuchsia-500 transition-all"
-                  style={{ width: `${phase === "fetching" ? 100 : Math.max(4, progress ?? 4)}%`, opacity: phase === "fetching" ? 0.4 : 1 }}
-                />
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* ---------- transport ---------- */}
-      {phase === "ready" && (
-        <>
-          <div className="rounded-lg bg-black/30 p-3 ring-1 ring-white/10">
-            <p className="mb-1 truncate text-xs font-semibold text-neutral-300">{trackName}</p>
-            <Waveform peaks={peaks} progress={duration ? position / duration : 0} cue={0} color="#e879f9" onSeek={onSeek} />
-            <div className="mt-2 flex items-center gap-3">
-              <button onClick={togglePlay} className="hw-btn hw-btn-on px-4 py-1.5 text-xs" style={{ ["--led" as string]: "#22c55e" }}>
-                {playing ? "❚❚ Pause" : "▶ Lecture"}
-              </button>
-              <span className="text-[10px] text-neutral-400">
-                {fmtTime(position)} / {fmtTime(duration)}
+              <span className="hidden max-w-[130px] text-[7px] leading-tight tracking-[.15em] sm:block" style={{ color: "#b8aec7" }}>
+                AI VOCAL ISOLATION · VOCODER PROCESSOR
               </span>
-              <div className="flex flex-1 justify-end gap-1">
-                {(["vocals", "instrumental", "mix", "original"] as OutputMode[]).map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => changeOutputMode(m)}
-                    className={`hw-btn px-2.5 py-1 text-[10px] ${outputMode === m ? "hw-btn-on" : ""}`}
-                    style={{ ["--led" as string]: "#38bdf8" }}
-                  >
-                    {m === "vocals" ? "Voix" : m === "instrumental" ? "Instru" : m === "mix" ? "Mix" : "Original"}
-                  </button>
-                ))}
-              </div>
-              <Knob label="MASTER" value={masterVol} min={0} max={1} defaultValue={0.9} onChange={changeMasterVol} size={40} color="#38bdf8" />
             </div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {vocalsBlobUrl && (
-                <a href={vocalsBlobUrl} download={`${trackName || "voix"}.${lossless ? "wav" : "mp3"}`} className="hw-btn px-3 py-1.5 text-[10px]">
-                  ⤓ Télécharger la voix isolée
-                </a>
-              )}
-              <button onClick={exportProcessedVocal} disabled={rendering} className="hw-btn px-3 py-1.5 text-[10px] disabled:opacity-50">
-                {rendering ? "Rendu…" : "⤓ Exporter la voix + effets (WAV)"}
-              </button>
+
+            {/* fluorescent LCD status readout */}
+            <div className="flex min-w-[180px] flex-1 items-center gap-2 rounded px-3 py-1.5 font-mono" style={lcdStyle}>
+              <span className="shrink-0 text-[9px]" style={{ color: playing || busy ? "#e879f9" : "#5a3d55" }}>●</span>
+              <span className="truncate text-[11px] font-bold tracking-wide" style={{ color: "#f3b6fb", textShadow: "0 0 6px rgba(232,121,249,.8)" }}>
+                {lcdMessage}
+              </span>
             </div>
+
+            <Link
+              href="/"
+              className="shrink-0 rounded px-3 py-1.5 text-[10px] font-bold"
+              style={{ background: "linear-gradient(180deg,#4a4d52,#2c2e31)", color: "#e9e5f0", border: "1px solid #000" }}
+            >
+              ← DJSynth
+            </Link>
           </div>
 
-          {/* ---------- vocoder rack ---------- */}
-          <div className="grid grid-cols-1 gap-3 rounded-lg bg-black/30 p-3 ring-1 ring-white/10 sm:grid-cols-2 lg:grid-cols-4">
-            {/* PITCH / ROBOT */}
-            <div className="flex flex-col items-center gap-2 rounded bg-neutral-900/60 p-2">
-              <span className="text-[10px] font-bold uppercase text-fuchsia-300">Pitch</span>
-              <Knob
-                label="Semitones"
-                value={params.pitchSemis}
-                min={-12}
-                max={12}
-                defaultValue={0}
-                onChange={(v) => setParam("pitchSemis", v)}
-                color="#facc15"
-                format={(v) => v.toFixed(0)}
-                led
-              />
-              <button
-                onClick={() => setParam("robotOn", !params.robotOn)}
-                className={`hw-btn w-full px-2 py-1 text-[10px] ${params.robotOn ? "hw-btn-on" : ""}`}
-                style={{ ["--led" as string]: "#facc15" }}
-              >
-                Robot (quantifié)
+          {/* ---------- source module ---------- */}
+          <div className="rounded-md p-2.5" style={moduleStyle}>
+            <div className="mb-2 flex gap-1.5">
+              <button className="flex-1 rounded-sm py-1.5 text-[10px] font-bold tracking-wide" onClick={() => setTab("search")} style={membraneBtn(tab === "search")}>
+                ▶ RECHERCHE YOUTUBE
               </button>
-              <button
-                onClick={() => setParam("formantLock", !params.formantLock)}
-                title="Approximatif : passe par un vocodeur interne pour garder le grain de voix d'origine — pas une correction de formants studio."
-                className={`hw-btn w-full px-2 py-1 text-[10px] ${params.formantLock ? "hw-btn-on" : ""}`}
-                style={{ ["--led" as string]: "#facc15" }}
-              >
-                Formant Lock (approx.)
+              <button className="flex-1 rounded-sm py-1.5 text-[10px] font-bold tracking-wide" onClick={() => setTab("upload")} style={membraneBtn(tab === "upload")}>
+                ⤒ IMPORTER MP3
               </button>
+            </div>
+
+            {tab === "search" ? (
+              <div className="flex flex-col gap-2">
+                <div className="flex gap-1.5">
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && doSearch()}
+                    placeholder="Titre, artiste…"
+                    className="flex-1 rounded-sm px-2 py-1.5 font-mono text-xs outline-none"
+                    style={{ background: "#0d0e10", color: "#e9e5f0", border: "1px solid #000", boxShadow: "inset 0 2px 4px rgba(0,0,0,.6)" }}
+                  />
+                  <button onClick={doSearch} disabled={searching} className="rounded-sm px-3 py-1.5 text-[10px] font-bold disabled:opacity-50" style={membraneBtn(false)}>
+                    {searching ? "…" : "CHERCHER"}
+                  </button>
+                </div>
+                {results.length > 0 && (
+                  <div className="flex max-h-56 flex-col gap-1 overflow-y-auto rounded-sm p-1" style={{ background: "#0d0e10", border: "1px solid #000" }}>
+                    {results.map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => pickTrack(t)}
+                        disabled={busy}
+                        className="flex items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs hover:brightness-125 disabled:opacity-50"
+                        style={{ background: "linear-gradient(180deg,#232427,#17181a)", border: "1px solid #000", color: "#e9e5f0" }}
+                      >
+                        {t.artwork && <img src={t.artwork} alt="" className="h-8 w-8 rounded-sm object-cover" />}
+                        <span className="flex-1 truncate">{t.title}</span>
+                        <span style={{ color: "#8d8697" }}>{fmtTime(t.duration)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div>
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  disabled={busy}
+                  className="rounded-sm px-3 py-1.5 text-[10px] font-bold disabled:opacity-50"
+                  style={membraneBtn(true)}
+                >
+                  ♪ CHOISIR UN FICHIER AUDIO
+                </button>
+                <input ref={fileRef} type="file" accept="audio/*" className="hidden" onChange={onFile} />
+              </div>
+            )}
+
+            {/* separation quality toggles */}
+            <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t pt-2" style={{ borderColor: "rgba(255,255,255,.08)" }}>
               <select
-                value={params.harmonize}
-                onChange={(e) => setParam("harmonize", e.target.value as HarmonizeMode)}
-                className="w-full rounded bg-neutral-800 px-2 py-1 text-[10px] outline-none ring-1 ring-neutral-700"
+                value={model}
+                onChange={(e) => setModel(e.target.value as "htdemucs_ft" | "htdemucs")}
+                disabled={phase === "separating" || phase === "decoding"}
+                className="rounded-sm px-2 py-1 font-mono text-[10px] outline-none disabled:opacity-50"
+                style={{ background: "#0d0e10", color: "#e9e5f0", border: "1px solid #000" }}
               >
-                {harmonizeOptions.map((o) => (
-                  <option key={o.v} value={o.v}>
-                    Harmonie : {o.label}
+                {Object.entries(MODEL_LABEL).map(([v, l]) => (
+                  <option key={v} value={v}>
+                    {l}
                   </option>
                 ))}
               </select>
+              {[
+                { label: "DÉBRUITAGE", checked: denoise, set: setDenoise },
+                { label: "ULTRA", checked: ultra, set: setUltra },
+                { label: "WAV", checked: lossless, set: setLossless },
+              ].map((t) => (
+                <button
+                  key={t.label}
+                  onClick={() => t.set((v: boolean) => !v)}
+                  className="rounded-sm px-2 py-1 text-[9px] font-bold tracking-wide"
+                  style={membraneBtn(t.checked, "#38bdf8")}
+                >
+                  {t.label}
+                </button>
+              ))}
             </div>
 
-            {/* VOCODER */}
-            <div className="flex flex-col items-center gap-2 rounded bg-neutral-900/60 p-2">
-              <span className="text-[10px] font-bold uppercase text-fuchsia-300">Vocodeur</span>
-              <button
-                onClick={() => setParam("vocoderOn", !params.vocoderOn)}
-                className={`hw-btn w-full px-2 py-1 text-[10px] ${params.vocoderOn ? "hw-btn-on" : ""}`}
-                style={{ ["--led" as string]: "#e879f9" }}
-              >
-                {params.vocoderOn ? "ON" : "OFF"}
-              </button>
-              <Knob label="Mix" value={params.vocoderMix} min={0} max={1} defaultValue={1} onChange={(v) => setParam("vocoderMix", v)} color="#e879f9" led />
-              <select
-                value={params.carrier}
-                onChange={(e) => setParam("carrier", e.target.value as CarrierType)}
-                className="w-full rounded bg-neutral-800 px-2 py-1 text-[10px] outline-none ring-1 ring-neutral-700"
-              >
-                {carrierOptions.map((o) => (
-                  <option key={o.v} value={o.v}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-              {params.carrier === "synth" && (
-                <Knob
-                  label="Note"
-                  value={params.carrierNote}
-                  min={24}
-                  max={72}
-                  defaultValue={45}
-                  onChange={(v) => setParam("carrierNote", Math.round(v))}
-                  color="#e879f9"
-                  format={(v) => v.toFixed(0)}
-                />
-              )}
-            </div>
-
-            {/* EQ / DE-ESS */}
-            <div className="flex flex-col items-center gap-2 rounded bg-neutral-900/60 p-2">
-              <span className="text-[10px] font-bold uppercase text-fuchsia-300">EQ · De-ess</span>
-              <div className="flex gap-2">
-                <Knob label="Low" value={params.eqLow} min={-12} max={12} defaultValue={0} onChange={(v) => setParam("eqLow", v)} size={40} color="#34d399" led />
-                <Knob label="Mid" value={params.eqMid} min={-12} max={12} defaultValue={0} onChange={(v) => setParam("eqMid", v)} size={40} color="#34d399" led />
-                <Knob label="High" value={params.eqHigh} min={-12} max={12} defaultValue={0} onChange={(v) => setParam("eqHigh", v)} size={40} color="#34d399" led />
+            {phase !== "idle" && (
+              <div className="mt-2 flex flex-col gap-1">
+                <p className="text-[10px]" style={{ color: "#8d8697" }}>{msg}</p>
+                {(phase === "separating" || phase === "fetching") && (
+                  <div className="flex h-2 w-full gap-[2px] overflow-hidden rounded-sm p-[2px]" style={{ background: "#0d0e10", border: "1px solid #000" }}>
+                    {Array.from({ length: 24 }).map((_, i) => {
+                      const pct = phase === "fetching" ? 40 : Math.max(4, progress ?? 4);
+                      const lit = i / 24 < pct / 100;
+                      return (
+                        <div
+                          key={i}
+                          className="flex-1 rounded-[1px]"
+                          style={{
+                            background: lit ? "#e879f9" : "#2a2b2e",
+                            boxShadow: lit ? "0 0 4px rgba(232,121,249,.8)" : "none",
+                            opacity: phase === "fetching" ? 0.5 : 1,
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-              <Knob label="De-ess" value={params.deess} min={0} max={18} defaultValue={0} onChange={(v) => setParam("deess", v)} color="#34d399" led />
-            </div>
+            )}
+          </div>
+        </div>
 
-            {/* REVERB / DELAY + bonus FX */}
-            <div className="flex flex-col items-center gap-2 rounded bg-neutral-900/60 p-2">
-              <span className="text-[10px] font-bold uppercase text-fuchsia-300">Espace</span>
-              <div className="flex gap-2">
-                <Knob label="Reverb" value={params.reverbWet} min={0} max={1} defaultValue={0} onChange={(v) => setParam("reverbWet", v)} size={40} color="#38bdf8" led />
-                <Knob label="Delay" value={params.delayWet} min={0} max={1} defaultValue={0} onChange={(v) => setParam("delayWet", v)} size={40} color="#38bdf8" led />
+        {/* ============ LOWER BAY (dark) ============ */}
+        <div className="flex flex-col gap-3 p-3" style={{ background: "linear-gradient(180deg,#16171a,#0e0f11)" }}>
+          {phase === "ready" && (
+            <>
+              {/* ---------- transport module ---------- */}
+              <div className="rounded-md p-2.5" style={moduleStyle}>
+                {moduleLabel("Transport")}
+                <div className="rounded-sm p-1.5" style={{ background: "#0d0e10", border: "1px solid #000", boxShadow: "inset 0 2px 4px rgba(0,0,0,.6)" }}>
+                  <Waveform peaks={peaks} progress={duration ? position / duration : 0} cue={0} color="#e879f9" onSeek={onSeek} />
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  <button onClick={togglePlay} className="rounded-sm px-4 py-1.5 text-xs font-bold" style={membraneBtn(playing, "#22c55e")}>
+                    {playing ? "❚❚ PAUSE" : "▶ LECTURE"}
+                  </button>
+                  <span className="font-mono text-[10px]" style={{ color: "#c9c2d4" }}>
+                    {fmtTime(position)} / {fmtTime(duration)}
+                  </span>
+                  <div className="flex flex-1 flex-wrap justify-end gap-1">
+                    {(["vocals", "instrumental", "mix", "original"] as OutputMode[]).map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => changeOutputMode(m)}
+                        className="rounded-sm px-2.5 py-1 text-[10px] font-bold"
+                        style={membraneBtn(outputMode === m, "#38bdf8")}
+                      >
+                        {m === "vocals" ? "VOIX" : m === "instrumental" ? "INSTRU" : m === "mix" ? "MIX" : "ORIGINAL"}
+                      </button>
+                    ))}
+                  </div>
+                  <Knob label="MASTER" value={masterVol} min={0} max={1} defaultValue={0.9} onChange={changeMasterVol} size={40} color="#38bdf8" />
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {vocalsBlobUrl && (
+                    <a
+                      href={vocalsBlobUrl}
+                      download={`${trackName || "voix"}.${lossless ? "wav" : "mp3"}`}
+                      className="rounded-sm px-3 py-1.5 text-[10px] font-bold"
+                      style={membraneBtn(false)}
+                    >
+                      ⤓ TÉLÉCHARGER LA VOIX ISOLÉE
+                    </a>
+                  )}
+                  <button
+                    onClick={exportProcessedVocal}
+                    disabled={rendering}
+                    className="rounded-sm px-3 py-1.5 text-[10px] font-bold disabled:opacity-50"
+                    style={membraneBtn(false)}
+                  >
+                    {rendering ? "RENDU…" : "⤓ EXPORTER LA VOIX + EFFETS (WAV)"}
+                  </button>
+                </div>
               </div>
-              <div className="grid w-full grid-cols-2 gap-1">
-                {FX_LIST.filter((f) => f.id !== "reverb" && f.id !== "echo").map((f) => (
-                  <div key={f.id} className="flex flex-col items-center gap-1">
+
+              {/* ---------- vocoder rack ---------- */}
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+                {/* PITCH / ROBOT */}
+                <div className="rounded-md p-2.5" style={moduleStyle}>
+                  {moduleLabel("Pitch", "#facc15")}
+                  <div className="flex flex-col items-center gap-2">
                     <Knob
-                      label={f.label}
-                      value={bonusFx[f.id]}
-                      min={0}
-                      max={1}
+                      label="Semitones"
+                      value={params.pitchSemis}
+                      min={-12}
+                      max={12}
                       defaultValue={0}
-                      onChange={(v) => setBonusWet(f.id, v)}
-                      size={34}
-                      color={f.color}
+                      onChange={(v) => setParam("pitchSemis", v)}
+                      color="#facc15"
+                      format={(v) => v.toFixed(0)}
                       led
                     />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* ---------- lyrics (AI transcription) ---------- */}
-          <div className="rounded-lg bg-black/30 p-3 ring-1 ring-white/10">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wide text-fuchsia-300">
-                🤖 Paroles (IA — Groq Whisper)
-              </span>
-              <button
-                onClick={transcribeLyrics}
-                disabled={lyricsLoading}
-                className="hw-btn px-3 py-1.5 text-[10px] disabled:opacity-50"
-                style={{ ["--led" as string]: "#e879f9" }}
-              >
-                {lyricsLoading ? "Transcription…" : lyrics ? "↻ Retranscrire" : "▶ Transcrire les paroles"}
-              </button>
-            </div>
-            {lyricsError && <p className="text-[10px] text-red-400">{lyricsError}</p>}
-            {lyrics && lyrics.length > 0 && (
-              <>
-                <div className="flex max-h-56 flex-col gap-0.5 overflow-y-auto rounded bg-neutral-900/60 p-2">
-                  {lyrics.map((seg, i) => (
                     <button
-                      key={i}
-                      onClick={() => seekTo(seg.start)}
-                      className={`flex gap-2 rounded px-1.5 py-1 text-left text-[11px] hover:bg-neutral-800 ${
-                        position >= seg.start && position < seg.end ? "bg-fuchsia-500/20 text-fuchsia-200" : "text-neutral-300"
-                      }`}
+                      onClick={() => setParam("robotOn", !params.robotOn)}
+                      className="w-full rounded-sm px-2 py-1 text-[10px] font-bold"
+                      style={membraneBtn(params.robotOn, "#facc15")}
                     >
-                      <span className="shrink-0 text-neutral-500">{fmtTime(seg.start)}</span>
-                      <span className="truncate">{seg.text}</span>
+                      ROBOT (QUANTIFIÉ)
                     </button>
-                  ))}
+                    <button
+                      onClick={() => setParam("formantLock", !params.formantLock)}
+                      title="Approximatif : passe par un vocodeur interne pour garder le grain de voix d'origine — pas une correction de formants studio."
+                      className="w-full rounded-sm px-2 py-1 text-[10px] font-bold"
+                      style={membraneBtn(params.formantLock, "#facc15")}
+                    >
+                      FORMANT LOCK (APPROX.)
+                    </button>
+                    <select
+                      value={params.harmonize}
+                      onChange={(e) => setParam("harmonize", e.target.value as HarmonizeMode)}
+                      className="w-full rounded-sm px-2 py-1 font-mono text-[10px] outline-none"
+                      style={{ background: "#0d0e10", color: "#e9e5f0", border: "1px solid #000" }}
+                    >
+                      {harmonizeOptions.map((o) => (
+                        <option key={o.v} value={o.v}>
+                          Harmonie : {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-                <div className="mt-2 flex gap-2">
+
+                {/* VOCODER */}
+                <div className="rounded-md p-2.5" style={moduleStyle}>
+                  {moduleLabel("Vocodeur")}
+                  <div className="flex flex-col items-center gap-2">
+                    <button
+                      onClick={() => setParam("vocoderOn", !params.vocoderOn)}
+                      className="w-full rounded-sm px-2 py-1 text-[10px] font-bold"
+                      style={membraneBtn(params.vocoderOn)}
+                    >
+                      {params.vocoderOn ? "ON" : "OFF"}
+                    </button>
+                    <Knob label="Mix" value={params.vocoderMix} min={0} max={1} defaultValue={1} onChange={(v) => setParam("vocoderMix", v)} color="#e879f9" led />
+                    <select
+                      value={params.carrier}
+                      onChange={(e) => setParam("carrier", e.target.value as CarrierType)}
+                      className="w-full rounded-sm px-2 py-1 font-mono text-[10px] outline-none"
+                      style={{ background: "#0d0e10", color: "#e9e5f0", border: "1px solid #000" }}
+                    >
+                      {carrierOptions.map((o) => (
+                        <option key={o.v} value={o.v}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                    {params.carrier === "synth" && (
+                      <Knob
+                        label="Note"
+                        value={params.carrierNote}
+                        min={24}
+                        max={72}
+                        defaultValue={45}
+                        onChange={(v) => setParam("carrierNote", Math.round(v))}
+                        color="#e879f9"
+                        format={(v) => v.toFixed(0)}
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {/* EQ / DE-ESS */}
+                <div className="rounded-md p-2.5" style={moduleStyle}>
+                  {moduleLabel("EQ · De-ess", "#34d399")}
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="flex gap-2">
+                      <Knob label="Low" value={params.eqLow} min={-12} max={12} defaultValue={0} onChange={(v) => setParam("eqLow", v)} size={40} color="#34d399" led />
+                      <Knob label="Mid" value={params.eqMid} min={-12} max={12} defaultValue={0} onChange={(v) => setParam("eqMid", v)} size={40} color="#34d399" led />
+                      <Knob label="High" value={params.eqHigh} min={-12} max={12} defaultValue={0} onChange={(v) => setParam("eqHigh", v)} size={40} color="#34d399" led />
+                    </div>
+                    <Knob label="De-ess" value={params.deess} min={0} max={18} defaultValue={0} onChange={(v) => setParam("deess", v)} color="#34d399" led />
+                  </div>
+                </div>
+
+                {/* REVERB / DELAY + bonus FX */}
+                <div className="rounded-md p-2.5" style={moduleStyle}>
+                  {moduleLabel("Espace", "#38bdf8")}
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="flex gap-2">
+                      <Knob label="Reverb" value={params.reverbWet} min={0} max={1} defaultValue={0} onChange={(v) => setParam("reverbWet", v)} size={40} color="#38bdf8" led />
+                      <Knob label="Delay" value={params.delayWet} min={0} max={1} defaultValue={0} onChange={(v) => setParam("delayWet", v)} size={40} color="#38bdf8" led />
+                    </div>
+                    <div className="grid w-full grid-cols-2 gap-1">
+                      {FX_LIST.filter((f) => f.id !== "reverb" && f.id !== "echo").map((f) => (
+                        <div key={f.id} className="flex flex-col items-center gap-1">
+                          <Knob
+                            label={f.label}
+                            value={bonusFx[f.id]}
+                            min={0}
+                            max={1}
+                            defaultValue={0}
+                            onChange={(v) => setBonusWet(f.id, v)}
+                            size={34}
+                            color={f.color}
+                            led
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ---------- lyrics (AI transcription) — teleprompter LCD ---------- */}
+              <div className="rounded-md p-2.5" style={moduleStyle}>
+                <div className="mb-1.5 flex items-center justify-between">
+                  {moduleLabel("🤖 Paroles (IA — Groq Whisper)")}
                   <button
-                    onClick={() => downloadText(`${trackName || "paroles"}.srt`, segmentsToSrt(lyrics))}
-                    className="hw-btn px-3 py-1.5 text-[10px]"
+                    onClick={transcribeLyrics}
+                    disabled={lyricsLoading}
+                    className="rounded-sm px-3 py-1.5 text-[10px] font-bold disabled:opacity-50"
+                    style={membraneBtn(false)}
                   >
-                    ⤓ .srt
-                  </button>
-                  <button
-                    onClick={() => downloadText(`${trackName || "paroles"}.txt`, lyrics.map((s) => s.text).join("\n"))}
-                    className="hw-btn px-3 py-1.5 text-[10px]"
-                  >
-                    ⤓ .txt
+                    {lyricsLoading ? "TRANSCRIPTION…" : lyrics ? "↻ RETRANSCRIRE" : "▶ TRANSCRIRE LES PAROLES"}
                   </button>
                 </div>
-              </>
-            )}
-            {lyrics && lyrics.length === 0 && !lyricsLoading && (
-              <p className="text-[10px] text-neutral-500">Aucune parole détectée (voix trop faible/instrumentale ?).</p>
-            )}
-          </div>
-        </>
-      )}
+                {lyricsError && <p className="text-[10px] text-red-400">{lyricsError}</p>}
+                {lyrics && lyrics.length > 0 && (
+                  <>
+                    <div className="flex max-h-56 flex-col gap-0.5 overflow-y-auto rounded-sm p-2 font-mono" style={lcdStyle}>
+                      {lyrics.map((seg, i) => (
+                        <button
+                          key={i}
+                          onClick={() => seekTo(seg.start)}
+                          className="flex gap-2 rounded-sm px-1.5 py-1 text-left text-[11px] hover:brightness-125"
+                          style={{
+                            background: position >= seg.start && position < seg.end ? "rgba(232,121,249,.25)" : "transparent",
+                            color: position >= seg.start && position < seg.end ? "#fbe4fe" : "#c98ee0",
+                          }}
+                        >
+                          <span className="shrink-0" style={{ color: "#8d5799" }}>{fmtTime(seg.start)}</span>
+                          <span className="truncate">{seg.text}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        onClick={() => downloadText(`${trackName || "paroles"}.srt`, segmentsToSrt(lyrics))}
+                        className="rounded-sm px-3 py-1.5 text-[10px] font-bold"
+                        style={membraneBtn(false)}
+                      >
+                        ⤓ .SRT
+                      </button>
+                      <button
+                        onClick={() => downloadText(`${trackName || "paroles"}.txt`, lyrics.map((s) => s.text).join("\n"))}
+                        className="rounded-sm px-3 py-1.5 text-[10px] font-bold"
+                        style={membraneBtn(false)}
+                      >
+                        ⤓ .TXT
+                      </button>
+                    </div>
+                  </>
+                )}
+                {lyrics && lyrics.length === 0 && !lyricsLoading && (
+                  <p className="text-[10px]" style={{ color: "#8d8697" }}>Aucune parole détectée (voix trop faible/instrumentale ?).</p>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
