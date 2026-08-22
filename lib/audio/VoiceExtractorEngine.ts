@@ -7,6 +7,7 @@ import {
   Chorus,
   Deess,
   Eq3,
+  Saturate,
   VocalParams,
   Vocoder,
   buildHarmonyVoices,
@@ -126,6 +127,9 @@ export class VoiceExtractorEngine {
         break;
       case "chorusWet":
         live.chorus?.setWet(this.params.chorusWet);
+        break;
+      case "saturation":
+        live.saturate?.setWet(this.params.saturation);
         break;
       case "vocoderMix":
         if (live.dryGain && live.vocoderWetGain) {
@@ -390,9 +394,14 @@ export class VoiceExtractorEngine {
     eq.output.connect(deess.node);
     nodes.deess = deess;
 
+    const saturate = new Saturate(ctx);
+    saturate.setWet(p.saturation);
+    deess.node.connect(saturate.input);
+    nodes.saturate = saturate;
+
     const chorus = new Chorus(ctx);
     chorus.setWet(p.chorusWet);
-    deess.node.connect(chorus.input);
+    saturate.output.connect(chorus.input);
     nodes.chorus = chorus;
 
     const fx = new FXRack(ctx);
@@ -442,6 +451,7 @@ interface LiveNodes {
   vocoderWetGain: GainNode;
   eq: Eq3;
   deess: Deess;
+  saturate: Saturate;
   chorus: Chorus;
   fx: FXRack;
 }

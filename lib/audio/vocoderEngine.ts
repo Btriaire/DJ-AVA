@@ -55,6 +55,7 @@ export interface VocalParams {
   reverbWet: number; // 0..1 (fed into FXRack "reverb")
   delayWet: number; // 0..1 (fed into FXRack "echo")
   chorusWet: number; // 0..1, virtual chorus (subtle multi-voice detune/delay)
+  saturation: number; // 0..1, analog-style warmth/drive (soft waveshaper)
 }
 
 export const defaultVocalParams: VocalParams = {
@@ -74,6 +75,7 @@ export const defaultVocalParams: VocalParams = {
   reverbWet: 0,
   delayWet: 0,
   chorusWet: 0,
+  saturation: 0,
 };
 
 // One-click "Female Voice" conversion: a moderate pitch-up plus an
@@ -111,6 +113,39 @@ export const CELESTIAL_CHOIR_PRESET: Partial<VocalParams> = {
   reverbWet: 0.55,
   delayWet: 0.2,
   chorusWet: 0.45,
+};
+
+// Symmetric counterpart to FEMALE_VOICE_PRESET: moderate pitch-down plus an
+// independent formant-down shift (longer effective vocal tract).
+export const MALE_VOICE_PRESET: Partial<VocalParams> = {
+  pitchSemis: -4,
+  robotOn: false,
+  formantLock: false,
+  formantShift: -3,
+};
+
+// Deep, growling pitch/formant drop with added grit (saturation) and a dark
+// EQ tilt (bass up, highs down) plus a touch of reverb for menace.
+export const DEMON_VOICE_PRESET: Partial<VocalParams> = {
+  pitchSemis: -7,
+  robotOn: false,
+  formantLock: false,
+  formantShift: -6,
+  harmonize: "off",
+  eqLow: 4,
+  eqHigh: -5,
+  saturation: 0.6,
+  reverbWet: 0.3,
+};
+
+// Playful high pitch/formant with robot quantize on for that classic
+// "sped-up" sound (robot rounds the shift to whole semitones).
+export const CHIPMUNK_VOICE_PRESET: Partial<VocalParams> = {
+  pitchSemis: 7,
+  robotOn: true,
+  formantLock: false,
+  formantShift: 6,
+  harmonize: "off",
 };
 
 const NUM_BANDS = 16;
@@ -386,6 +421,60 @@ export class Chorus {
   }
 }
 
+function saturationCurve(): Float32Array<ArrayBuffer> {
+  const n = 1024;
+  const curve = new Float32Array(n);
+  const drive = 6; // fixed drive amount; the wet/dry mix controls overall intensity
+  const norm = Math.tanh(drive);
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    curve[i] = Math.tanh(drive * x) / norm;
+  }
+  return curve;
+}
+
+// Analog-style warmth/drive: a soft tanh waveshaper blended with the dry
+// signal via a wet/dry mix rather than a hard on/off drive, so low settings
+// add subtle harmonic warmth and high settings push into an overdriven grit
+// without ever fully replacing the dry tone.
+export class Saturate {
+  readonly input: GainNode;
+  readonly output: GainNode;
+  private dry: GainNode;
+  private wet: GainNode;
+  private shaper: WaveShaperNode;
+
+  constructor(ctx: BaseAudioContext) {
+    this.input = ctx.createGain();
+    this.output = ctx.createGain();
+    this.dry = ctx.createGain();
+    this.wet = ctx.createGain();
+    this.wet.gain.value = 0;
+    this.shaper = ctx.createWaveShaper();
+    this.shaper.curve = saturationCurve();
+    this.shaper.oversample = "4x";
+
+    this.input.connect(this.dry);
+    this.dry.connect(this.output);
+    this.input.connect(this.shaper);
+    this.shaper.connect(this.wet);
+    this.wet.connect(this.output);
+  }
+
+  setWet(v: number) {
+    const c = Math.max(0, Math.min(1, v));
+    this.wet.gain.value = c;
+  }
+
+  disconnect() {
+    this.input.disconnect();
+    this.output.disconnect();
+    this.dry.disconnect();
+    this.wet.disconnect();
+    this.shaper.disconnect();
+  }
+}
+
 export const formantRatio = (semis: number) => Math.pow(2, semis / 12);
 
 // Builds one or more extra pitched copies of `vocals` (per HARMONIZE_INTERVALS)
@@ -525,9 +614,13 @@ export async function renderVocalToWav(
   deess.setCutDb(params.deess);
   eq.output.connect(deess.node);
 
+  const saturate = new Saturate(ctx);
+  saturate.setWet(params.saturation);
+  deess.node.connect(saturate.input);
+
   const chorus = new Chorus(ctx);
   chorus.setWet(params.chorusWet);
-  deess.node.connect(chorus.input);
+  saturate.output.connect(chorus.input);
 
   const fx = new FXRack(ctx);
   fx.setWet("reverb", params.reverbWet);

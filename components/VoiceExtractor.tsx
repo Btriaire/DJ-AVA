@@ -7,8 +7,11 @@ import { VoiceExtractorEngine, OutputMode, StemBuffers } from "@/lib/audio/Voice
 import {
   CarrierType,
   CELESTIAL_CHOIR_PRESET,
+  CHIPMUNK_VOICE_PRESET,
+  DEMON_VOICE_PRESET,
   FEMALE_VOICE_PRESET,
   HarmonizeMode,
+  MALE_VOICE_PRESET,
   VocalParams,
   defaultVocalParams,
   renderVocalToWav,
@@ -756,22 +759,48 @@ export function VoiceExtractor() {
                     >
                       FORMANT LOCK (APPROX.)
                     </button>
-                    <button
-                      onClick={() => applyPreset(FEMALE_VOICE_PRESET)}
-                      title="Pitch +4, Formant +3 — timbre voix féminine, garde le pitch juste (pas de robot/quantification)"
-                      className="w-full rounded-sm px-2 py-1 text-[10px] font-bold"
-                      style={membraneBtn(false, "#f472b6")}
-                    >
-                      ♀ VOIX FÉMININE
-                    </button>
-                    <button
-                      onClick={() => applyPreset(CELESTIAL_CHOIR_PRESET)}
-                      title="Chœur virtuel + drone synthé en fond (mix partiel), reverb/delay/chorus grand ouverts — pitch et formants intacts, la voix reste juste."
-                      className="w-full rounded-sm px-2 py-1 text-[10px] font-bold"
-                      style={membraneBtn(false, "#93c5fd")}
-                    >
-                      ☁ CHŒUR CÉLESTE
-                    </button>
+                    <div className="grid w-full grid-cols-2 gap-1">
+                      <button
+                        onClick={() => applyPreset(FEMALE_VOICE_PRESET)}
+                        title="Pitch +4, Formant +3 — timbre voix féminine, garde le pitch juste (pas de robot/quantification)"
+                        className="rounded-sm px-1.5 py-1 text-[10px] font-bold"
+                        style={membraneBtn(false, "#f472b6")}
+                      >
+                        ♀ FÉMININE
+                      </button>
+                      <button
+                        onClick={() => applyPreset(MALE_VOICE_PRESET)}
+                        title="Pitch -4, Formant -3 — timbre voix masculine, garde le pitch juste (pas de robot/quantification)"
+                        className="rounded-sm px-1.5 py-1 text-[10px] font-bold"
+                        style={membraneBtn(false, "#60a5fa")}
+                      >
+                        ♂ MASCULINE
+                      </button>
+                      <button
+                        onClick={() => applyPreset(CELESTIAL_CHOIR_PRESET)}
+                        title="Chœur virtuel + drone synthé en fond (mix partiel), reverb/delay/chorus grand ouverts — pitch et formants intacts, la voix reste juste."
+                        className="rounded-sm px-1.5 py-1 text-[10px] font-bold"
+                        style={membraneBtn(false, "#93c5fd")}
+                      >
+                        ☁ CÉLESTE
+                      </button>
+                      <button
+                        onClick={() => applyPreset(DEMON_VOICE_PRESET)}
+                        title="Pitch -7, Formant -6, saturation + EQ sombre + reverb — voix grave et rauque"
+                        className="rounded-sm px-1.5 py-1 text-[10px] font-bold"
+                        style={membraneBtn(false, "#f87171")}
+                      >
+                        😈 DÉMONIAQUE
+                      </button>
+                      <button
+                        onClick={() => applyPreset(CHIPMUNK_VOICE_PRESET)}
+                        title="Pitch +7, Formant +6, robot quantifié — voix aiguë façon 'tamia'"
+                        className="col-span-2 rounded-sm px-1.5 py-1 text-[10px] font-bold"
+                        style={membraneBtn(false, "#fbbf24")}
+                      >
+                        🐿 CHIPMUNK
+                      </button>
+                    </div>
                     <select
                       value={params.harmonize}
                       onChange={(e) => setParam("harmonize", e.target.value as HarmonizeMode)}
@@ -837,7 +866,20 @@ export function VoiceExtractor() {
                       <Knob label="Mid" value={params.eqMid} min={-12} max={12} defaultValue={0} onChange={(v) => setParam("eqMid", v)} size={40} color="#34d399" led />
                       <Knob label="High" value={params.eqHigh} min={-12} max={12} defaultValue={0} onChange={(v) => setParam("eqHigh", v)} size={40} color="#34d399" led />
                     </div>
-                    <Knob label="De-ess" value={params.deess} min={0} max={18} defaultValue={0} onChange={(v) => setParam("deess", v)} color="#34d399" led />
+                    <div className="flex gap-2">
+                      <Knob label="De-ess" value={params.deess} min={0} max={18} defaultValue={0} onChange={(v) => setParam("deess", v)} color="#34d399" led />
+                      <Knob
+                        label="Sature"
+                        value={params.saturation}
+                        min={0}
+                        max={1}
+                        defaultValue={0}
+                        onChange={(v) => setParam("saturation", v)}
+                        color="#34d399"
+                        format={(v) => Math.round(v * 100).toString()}
+                        led
+                      />
+                    </div>
                   </div>
                 </div>
 
