@@ -144,11 +144,11 @@ const MINI_KB_KEYS = Array.from({ length: 13 }, (_, i) => MINI_KB_START + i); //
 const MINI_KB_BLACK_PC = new Set([1, 3, 6, 8, 10]);
 const MINI_KB_WHITE = MINI_KB_KEYS.filter((m) => !MINI_KB_BLACK_PC.has(m % 12));
 
-function MiniKeyboard({ value, onChange }: { value: number; onChange: (note: number) => void }) {
+function MiniKeyboard({ value, onChange, heightClass = "h-11" }: { value: number; onChange: (note: number) => void; heightClass?: string }) {
   const whiteW = 100 / MINI_KB_WHITE.length;
   const blackW = whiteW * 0.6;
   return (
-    <div className="relative h-11 w-full select-none rounded-sm" style={{ background: "#0d0e10", border: "1px solid #000" }}>
+    <div className={`relative ${heightClass} w-full select-none rounded-sm`} style={{ background: "#0d0e10", border: "1px solid #000" }}>
       {MINI_KB_WHITE.map((m, i) => (
         <button
           key={m}
@@ -815,7 +815,6 @@ export function VoiceExtractor() {
                           color="#e879f9"
                           format={(v) => v.toFixed(0)}
                         />
-                        <MiniKeyboard value={params.carrierNote} onChange={(n) => setParam("carrierNote", n)} />
                       </>
                     )}
                   </div>
@@ -863,6 +862,13 @@ export function VoiceExtractor() {
                   </div>
                 </div>
               </div>
+
+          {params.carrier === "synth" && (
+            <div className="rounded-md p-2.5" style={moduleStyle}>
+              {moduleLabel("Clavier — note du carrier", "#e879f9")}
+              <MiniKeyboard value={params.carrierNote} onChange={(n) => setParam("carrierNote", n)} heightClass="h-24 sm:h-32" />
+            </div>
+          )}
 
           {phase === "ready" && (
             <>
