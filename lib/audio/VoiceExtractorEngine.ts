@@ -91,9 +91,12 @@ export class VoiceExtractorEngine {
     if (this.playing) this.play(this.getPosition());
   }
 
-  setParam<K extends keyof VocalParams>(key: K, value: VocalParams[K]) {
-    this.params = { ...this.params, [key]: value };
-    if (!this.session) return;
+  // keys that change the graph topology (carrier node, vocoder in/out of the
+  // signal path, number of harmony voices) and so need a full rebuild rather
+  // than an AudioParam tweak
+  private static readonly TOPOLOGY_KEYS = new Set<keyof VocalParams>(["vocoderOn", "carrier", "carrierNote", "formantLock", "harmonize"]);
+
+  private applyLiveUpdate(key: keyof VocalParams) {
     const live = this.liveNodes;
     switch (key) {
       case "pitchSemis":
@@ -130,10 +133,33 @@ export class VoiceExtractorEngine {
           live.vocoderWetGain.gain.value = this.params.vocoderOn ? this.params.vocoderMix : 0;
         }
         break;
-      default:
-        // vocoderOn, carrier, carrierNote, formantLock, harmonize: topology change, needs a rebuild
-        if (this.playing) this.play(this.getPosition());
     }
+  }
+
+  setParam<K extends keyof VocalParams>(key: K, value: VocalParams[K]) {
+    this.params = { ...this.params, [key]: value };
+    if (!this.session) return;
+    if (VoiceExtractorEngine.TOPOLOGY_KEYS.has(key)) {
+      if (this.playing) this.play(this.getPosition());
+    } else {
+      this.applyLiveUpdate(key);
+    }
+  }
+
+  // batched version of setParam for applying a multi-key preset in one go —
+  // merges every key into this.params first, then triggers at most ONE
+  // rebuild (if any topology key is in the patch) instead of one rebuild per
+  // topology key, which would otherwise glitch/retrigger playback repeatedly.
+  setParams(patch: Partial<VocalParams>) {
+    this.params = { ...this.params, ...patch };
+    if (!this.session) return;
+    const keys = Object.keys(patch) as (keyof VocalParams)[];
+    const needsRebuild = keys.some((k) => VoiceExtractorEngine.TOPOLOGY_KEYS.has(k));
+    if (needsRebuild) {
+      if (this.playing) this.play(this.getPosition());
+      return;
+    }
+    keys.forEach((k) => this.applyLiveUpdate(k));
   }
 
   getPosition(): number {

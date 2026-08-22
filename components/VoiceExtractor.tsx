@@ -6,6 +6,7 @@ import { Waveform } from "@/components/Waveform";
 import { VoiceExtractorEngine, OutputMode, StemBuffers } from "@/lib/audio/VoiceExtractorEngine";
 import {
   CarrierType,
+  CELESTIAL_CHOIR_PRESET,
   FEMALE_VOICE_PRESET,
   HarmonizeMode,
   VocalParams,
@@ -240,8 +241,7 @@ export function VoiceExtractor() {
 
   function applyPreset(patch: Partial<VocalParams>) {
     setParamsState((p) => ({ ...p, ...patch }));
-    const engine = getEngine();
-    (Object.keys(patch) as (keyof VocalParams)[]).forEach((k) => engine.setParam(k, patch[k]!));
+    getEngine().setParams(patch);
   }
 
   const stemUrl = useCallback(
@@ -763,6 +763,14 @@ export function VoiceExtractor() {
                       style={membraneBtn(false, "#f472b6")}
                     >
                       ♀ VOIX FÉMININE
+                    </button>
+                    <button
+                      onClick={() => applyPreset(CELESTIAL_CHOIR_PRESET)}
+                      title="Chœur virtuel + drone synthé en fond (mix partiel), reverb/delay/chorus grand ouverts — pitch et formants intacts, la voix reste juste."
+                      className="w-full rounded-sm px-2 py-1 text-[10px] font-bold"
+                      style={membraneBtn(false, "#93c5fd")}
+                    >
+                      ☁ CHŒUR CÉLESTE
                     </button>
                     <select
                       value={params.harmonize}

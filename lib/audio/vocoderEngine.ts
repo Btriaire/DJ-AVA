@@ -88,6 +88,31 @@ export const FEMALE_VOICE_PRESET: Partial<VocalParams> = {
   formantShift: 3,
 };
 
+// One-click "Celestial Choir": stacks the choir harmony under a low synth
+// drone (soft pad texture, not a robotic vocode — vocoderMix stays partial
+// so the dry voice leads) and opens up reverb/delay/chorus for an airy,
+// ensemble-cathedral space. Pitch/formant are left untouched (0, robot and
+// formant-lock off) so the lead voice stays perfectly in tune — only the
+// harmony stack and the space around it are "celestial", not the voice itself.
+export const CELESTIAL_CHOIR_PRESET: Partial<VocalParams> = {
+  harmonize: "choir",
+  vocoderOn: true,
+  vocoderMix: 0.35,
+  carrier: "synth",
+  carrierNote: 52, // E3 drone — open, airy root under the choir stack
+  pitchSemis: 0,
+  robotOn: false,
+  formantLock: false,
+  formantShift: 0,
+  eqLow: -3,
+  eqMid: 0,
+  eqHigh: 4,
+  deess: 5,
+  reverbWet: 0.55,
+  delayWet: 0.2,
+  chorusWet: 0.45,
+};
+
 const NUM_BANDS = 16;
 const MIN_FREQ = 110;
 const MAX_FREQ = 7000;
