@@ -4,12 +4,14 @@
 // each time playback starts, since most Web Audio source nodes are one-shot.
 import {
   CarrierType,
+  Chorus,
   Deess,
   Eq3,
-  HarmonizeMode,
   VocalParams,
   Vocoder,
+  buildHarmonyVoices,
   defaultVocalParams,
+  formantRatio,
   makeNoiseCarrier,
   makeSynthCarrier,
 } from "./vocoderEngine";
@@ -99,9 +101,12 @@ export class VoiceExtractorEngine {
         if (!live.pitch) break;
         const semis = this.params.robotOn ? Math.round(this.params.pitchSemis) : this.params.pitchSemis;
         live.pitch.setSemitones(semis);
-        live.harmonizerPitch?.setSemitones(semis + (HARMONIZE_SEMIS[this.params.harmonize] ?? 0));
+        live.harmonizerPitches?.forEach(({ shifter, offset }) => shifter.setSemitones(semis + offset));
         break;
       }
+      case "formantShift":
+        live.formantShiftVocoder?.setModFreqScale(formantRatio(this.params.formantShift));
+        break;
       case "eqLow":
       case "eqMid":
       case "eqHigh":
@@ -116,6 +121,9 @@ export class VoiceExtractorEngine {
       case "delayWet":
         live.fx?.setWet("echo", this.params.delayWet);
         break;
+      case "chorusWet":
+        live.chorus?.setWet(this.params.chorusWet);
+        break;
       case "vocoderMix":
         if (live.dryGain && live.vocoderWetGain) {
           live.dryGain.gain.value = this.params.vocoderOn ? 1 - this.params.vocoderMix : 1;
@@ -123,7 +131,7 @@ export class VoiceExtractorEngine {
         }
         break;
       default:
-        // vocoderOn, carrier, carrierNote, harmonize: topology change, needs a rebuild
+        // vocoderOn, carrier, carrierNote, formantLock, harmonize: topology change, needs a rebuild
         if (this.playing) this.play(this.getPosition());
     }
   }
@@ -305,6 +313,20 @@ export class VoiceExtractorEngine {
       pitchedOutput = pitch.output;
     }
 
+    // independent formant shift (voice-conversion stage) — always built (like
+    // EQ/de-ess/chorus below) so the knob stays live-adjustable without a
+    // rebuild; scale=1 when formantShift is 0 is a transparent no-op.
+    const formantSrc = ctx.createBufferSource();
+    formantSrc.buffer = b.vocals;
+    sources.push(formantSrc);
+    stopFns.push((w) => formantSrc.stop(w));
+    const formantShiftVocoder = new Vocoder(ctx, formantRatio(p.formantShift));
+    formantSrc.connect(formantShiftVocoder.input);
+    pitchedOutput.connect(formantShiftVocoder.carrierInput);
+    formantSrc.start(when, offset);
+    nodes.formantShiftVocoder = formantShiftVocoder;
+    pitchedOutput = formantShiftVocoder.output;
+
     const dryGain = ctx.createGain();
     dryGain.gain.value = p.vocoderOn ? 1 - p.vocoderMix : 1;
     pitchedOutput.connect(dryGain);
@@ -324,23 +346,13 @@ export class VoiceExtractorEngine {
       nodes.vocoderWetGain = vocoderWetGain;
     }
 
-    const semis = HARMONIZE_SEMIS[p.harmonize];
-    if (semis !== undefined) {
-      const hSrc = ctx.createBufferSource();
-      hSrc.buffer = b.vocals;
-      sources.push(hSrc);
-      stopFns.push((w) => hSrc.stop(w));
-      const hPitch = new PitchShifter(ctx);
-      hPitch.start(when);
-      hPitch.setSemitones((p.robotOn ? Math.round(p.pitchSemis) : p.pitchSemis) + semis);
-      hSrc.connect(hPitch.input);
-      const hGain = ctx.createGain();
-      hGain.gain.value = 0.55;
-      hPitch.output.connect(hGain);
-      hGain.connect(dryGain);
-      hSrc.start(when, offset);
-      nodes.harmonizerPitch = hPitch;
+    // harmonizer / virtual choir: extra pitched copies mixed in underneath
+    const harmony = buildHarmonyVoices(ctx, b.vocals, p.pitchSemis, p.harmonize, dryGain, when, offset);
+    for (const s of harmony.sources) {
+      sources.push(s);
+      stopFns.push((w) => s.stop(w));
     }
+    nodes.harmonizerPitches = harmony.shifters;
 
     const eq = new Eq3(ctx);
     eq.setGains(p.eqLow, p.eqMid, p.eqHigh);
@@ -352,10 +364,15 @@ export class VoiceExtractorEngine {
     eq.output.connect(deess.node);
     nodes.deess = deess;
 
+    const chorus = new Chorus(ctx);
+    chorus.setWet(p.chorusWet);
+    deess.node.connect(chorus.input);
+    nodes.chorus = chorus;
+
     const fx = new FXRack(ctx);
     fx.setWet("reverb", p.reverbWet);
     fx.setWet("echo", p.delayWet);
-    deess.node.connect(fx.input);
+    chorus.output.connect(fx.input);
     fx.output.connect(this.masterGain);
     nodes.fx = fx;
 
@@ -392,21 +409,16 @@ export class VoiceExtractorEngine {
 
 interface LiveNodes {
   pitch: PitchShifter;
-  formantVocoder: Vocoder;
-  harmonizerPitch: PitchShifter;
+  formantVocoder: Vocoder; // formant-LOCK stage (approx. formant preservation while pitch shifts)
+  formantShiftVocoder: Vocoder; // independent formant-SHIFT stage (voice conversion, e.g. Female Voice preset)
+  harmonizerPitches: { shifter: PitchShifter; offset: number }[];
   dryGain: GainNode;
   vocoderWetGain: GainNode;
   eq: Eq3;
   deess: Deess;
+  chorus: Chorus;
   fx: FXRack;
 }
-
-const HARMONIZE_SEMIS: Record<HarmonizeMode, number | undefined> = {
-  off: undefined,
-  third: 4,
-  fifth: 7,
-  octave: 12,
-};
 
 function makeCarrier(
   ctx: AudioContext,

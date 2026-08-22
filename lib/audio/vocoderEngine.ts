@@ -10,7 +10,19 @@ import { FXRack } from "./FXRack";
 import { PitchShifter } from "./PitchShifter";
 
 export type CarrierType = "synth" | "noise" | "instrumental";
-export type HarmonizeMode = "off" | "third" | "fifth" | "octave";
+export type HarmonizeMode = "off" | "third" | "fifth" | "octave" | "choir";
+
+// which extra pitched copies get mixed in under the main vocal for each
+// harmonize mode — "choir" stacks several at once (with slight per-voice
+// detune/pan humanize applied in buildHarmonyVoices) for a group/ensemble
+// sound rather than a single clean doubled interval.
+export const HARMONIZE_INTERVALS: Record<HarmonizeMode, number[]> = {
+  off: [],
+  third: [4],
+  fifth: [7],
+  octave: [12],
+  choir: [0, 4, 7, 12],
+};
 
 export interface VocalParams {
   vocoderOn: boolean;
@@ -27,6 +39,14 @@ export interface VocalParams {
   // it imparts some of the vocoder's own character. Off = plain pitch shift
   // (pitch and formants move together, the classic chipmunk/demon sound).
   formantLock: boolean;
+  // independent formant shift, in "semitone-equivalent" units (-12..12) —
+  // separate from pitchSemis so timbre and pitch can move independently,
+  // the way real voice-conversion tools split them. Implemented by giving
+  // the internal formant-shift Vocoder's modulator bands a different center
+  // frequency than its carrier bands (see Vocoder's modFreqScale param):
+  // reading the SAME unshifted vocal's envelope from a scaled frequency
+  // warps the reconstructed spectral envelope without touching pitch.
+  formantShift: number;
   harmonize: HarmonizeMode;
   eqLow: number; // dB, -12..12
   eqMid: number;
@@ -34,6 +54,7 @@ export interface VocalParams {
   deess: number; // dB cut, 0..18 (applied as negative gain at ~6.5kHz)
   reverbWet: number; // 0..1 (fed into FXRack "reverb")
   delayWet: number; // 0..1 (fed into FXRack "echo")
+  chorusWet: number; // 0..1, virtual chorus (subtle multi-voice detune/delay)
 }
 
 export const defaultVocalParams: VocalParams = {
@@ -44,6 +65,7 @@ export const defaultVocalParams: VocalParams = {
   pitchSemis: 0,
   robotOn: false,
   formantLock: false,
+  formantShift: 0,
   harmonize: "off",
   eqLow: 0,
   eqMid: 0,
@@ -51,6 +73,19 @@ export const defaultVocalParams: VocalParams = {
   deess: 0,
   reverbWet: 0,
   delayWet: 0,
+  chorusWet: 0,
+};
+
+// One-click "Female Voice" conversion: a moderate pitch-up plus an
+// independent formant-up shift (shorter effective vocal tract), without
+// touching harmonize/vocoder/space so it composes with whatever else is
+// dialed in. Kept as a named preset since "pitch +4, formant +3" isn't a
+// combination someone would otherwise land on by trial and error.
+export const FEMALE_VOICE_PRESET: Partial<VocalParams> = {
+  pitchSemis: 4,
+  robotOn: false,
+  formantLock: false,
+  formantShift: 3,
 };
 
 const NUM_BANDS = 16;
@@ -86,8 +121,16 @@ export class Vocoder {
   readonly output: GainNode;
   readonly carrierInput: GainNode;
   private bands: Band[] = [];
+  private bandFreqs: number[] = [];
 
-  constructor(ctx: BaseAudioContext) {
+  // modFreqScale > 1 shifts the RECONSTRUCTED formant envelope up by that
+  // ratio (reads each band's envelope from a proportionally lower frequency
+  // in the modulator, so the carrier's own — unshifted — pitch/frequency
+  // content at each band gets shaped by an envelope sampled from lower down,
+  // stretching the overall spectral envelope upward). 1 = normal vocoder
+  // (mod and carrier bands aligned, used everywhere except the dedicated
+  // formant-shift stage).
+  constructor(ctx: BaseAudioContext, modFreqScale = 1) {
     this.input = ctx.createGain();
     this.output = ctx.createGain();
     this.output.gain.value = 1 / Math.sqrt(NUM_BANDS / 4); // tame the N-band sum
@@ -96,10 +139,11 @@ export class Vocoder {
     for (let i = 0; i < NUM_BANDS; i++) {
       const t = i / (NUM_BANDS - 1);
       const freq = MIN_FREQ * Math.pow(MAX_FREQ / MIN_FREQ, t);
+      this.bandFreqs.push(freq);
 
       const modBP = ctx.createBiquadFilter();
       modBP.type = "bandpass";
-      modBP.frequency.value = freq;
+      modBP.frequency.value = freq / modFreqScale;
       modBP.Q.value = BAND_Q;
 
       const rectify = ctx.createWaveShaper();
@@ -132,6 +176,13 @@ export class Vocoder {
       bandGain.connect(this.output);
 
       this.bands.push({ modBP, rectify, env, envMakeup, carrierBP, bandGain });
+    }
+  }
+
+  // live-update the formant-shift ratio without rebuilding the graph
+  setModFreqScale(scale: number) {
+    for (let i = 0; i < this.bands.length; i++) {
+      this.bands[i].modBP.frequency.value = this.bandFreqs[i] / scale;
     }
   }
 
@@ -247,6 +298,125 @@ export class Deess {
   }
 }
 
+// Virtual chorus: several short modulated delay lines (no feedback, unlike
+// the flanger) spread across the stereo field, each drifting at a slightly
+// different slow LFO rate — the classic "multiple voices singing together
+// just slightly out of sync" thickening effect. Depth is kept small (a few
+// milliseconds / cents-scale) on purpose: enough to sound like doubled
+// voices, not enough to sound out of tune.
+export class Chorus {
+  readonly input: GainNode;
+  readonly output: GainNode;
+  private dry: GainNode;
+  private wet: GainNode;
+  private lfos: OscillatorNode[] = [];
+
+  constructor(ctx: BaseAudioContext, voices = 3) {
+    this.input = ctx.createGain();
+    this.output = ctx.createGain();
+    this.dry = ctx.createGain();
+    this.wet = ctx.createGain();
+    this.wet.gain.value = 0;
+
+    this.input.connect(this.dry);
+    this.dry.connect(this.output);
+
+    for (let i = 0; i < voices; i++) {
+      const delay = ctx.createDelay(0.05);
+      delay.delayTime.value = 0.016 + i * 0.007;
+
+      const lfo = ctx.createOscillator();
+      lfo.type = "sine";
+      lfo.frequency.value = 0.5 + i * 0.17; // detuned rates so voices drift independently
+      const depth = ctx.createGain();
+      depth.gain.value = 0.0025;
+      lfo.connect(depth);
+      depth.connect(delay.delayTime);
+      lfo.start();
+      this.lfos.push(lfo);
+
+      this.input.connect(delay);
+      if (typeof ctx.createStereoPanner === "function") {
+        const pan = ctx.createStereoPanner();
+        pan.pan.value = ((i - (voices - 1) / 2) / voices) * 1.4;
+        delay.connect(pan);
+        pan.connect(this.wet);
+      } else {
+        delay.connect(this.wet);
+      }
+    }
+    this.wet.connect(this.output);
+  }
+
+  setWet(v: number) {
+    this.wet.gain.value = Math.max(0, Math.min(1, v));
+  }
+
+  disconnect() {
+    this.input.disconnect();
+    this.output.disconnect();
+    this.dry.disconnect();
+    this.wet.disconnect();
+    this.lfos.forEach((l) => { try { l.stop(); } catch { /* already stopped */ } });
+  }
+}
+
+export const formantRatio = (semis: number) => Math.pow(2, semis / 12);
+
+// Builds one or more extra pitched copies of `vocals` (per HARMONIZE_INTERVALS)
+// and mixes them into `dest`. "choir" humanizes each voice slightly (a few
+// cents of detune, a touch of stereo spread) so the stack reads as a group
+// rather than a single clean doubled interval; single-interval modes (third/
+// fifth/octave) stay clean. `startFn` lets callers control the start time
+// (0 for offline render, `when`/`offset` for live playback).
+export interface HarmonyVoices {
+  sources: AudioScheduledSourceNode[];
+  // each shifter paired with the interval+detune offset (in semitones) it was
+  // built with, so a live pitchSemis change can recompute `newBase + offset`
+  // per voice without losing choir mode's per-voice humanize detune.
+  shifters: { shifter: PitchShifter; offset: number }[];
+}
+
+export function buildHarmonyVoices(
+  ctx: BaseAudioContext,
+  vocals: AudioBuffer,
+  baseSemis: number,
+  mode: HarmonizeMode,
+  dest: AudioNode,
+  startWhen: number,
+  startOffset = 0
+): HarmonyVoices {
+  const intervals = HARMONIZE_INTERVALS[mode];
+  const isChoir = mode === "choir";
+  const sources: AudioScheduledSourceNode[] = [];
+  const shifters: { shifter: PitchShifter; offset: number }[] = [];
+  intervals.forEach((interval, i) => {
+    const src = ctx.createBufferSource();
+    src.buffer = vocals;
+    const detuneCents = isChoir ? (i % 2 === 0 ? 6 : -6) + (Math.random() * 4 - 2) : 0;
+    const offset = interval + detuneCents / 100;
+    const pitch = new PitchShifter(ctx);
+    pitch.start(startWhen);
+    pitch.setSemitones(baseSemis + offset);
+    src.connect(pitch.input);
+    const gain = ctx.createGain();
+    gain.gain.value = isChoir ? 0.32 : 0.55;
+    if (typeof ctx.createStereoPanner === "function" && isChoir) {
+      const pan = ctx.createStereoPanner();
+      pan.pan.value = ((i - (intervals.length - 1) / 2) / intervals.length) * 0.7;
+      pitch.output.connect(pan);
+      pan.connect(gain);
+    } else {
+      pitch.output.connect(gain);
+    }
+    gain.connect(dest);
+    src.start(startWhen, startOffset);
+    sources.push(src);
+    shifters.push({ shifter: pitch, offset });
+  });
+  return { sources, shifters };
+}
+
 // Bounces an AudioBuffer through the full vocal processing chain (pitch shift
 // → vocoder → harmonizer → EQ → de-ess → reverb/delay) and returns the result
 // as a 16-bit PCM WAV Blob, ready to download. Runs on an OfflineAudioContext
@@ -288,6 +458,18 @@ export async function renderVocalToWav(
     pitchedOutput = pitch.output;
   }
 
+  // independent formant shift (voice-conversion stage) — separate from the
+  // pitch/formant-lock stage above, so timbre and pitch can move on their own
+  if (params.formantShift !== 0) {
+    const formantSrc = ctx.createBufferSource();
+    formantSrc.buffer = vocals;
+    const formantVocoder = new Vocoder(ctx, formantRatio(params.formantShift));
+    formantSrc.connect(formantVocoder.input);
+    pitchedOutput.connect(formantVocoder.carrierInput);
+    formantSrc.start(0);
+    pitchedOutput = formantVocoder.output;
+  }
+
   const dry = ctx.createGain();
   dry.gain.value = params.vocoderOn ? 1 - params.vocoderMix : 1;
   pitchedOutput.connect(dry);
@@ -307,27 +489,8 @@ export async function renderVocalToWav(
     wet.connect(dry); // reuse `dry` node as the summing bus from here down
   }
 
-  // harmonizer: extra detuned copies mixed in underneath
-  const harmonizeSemis: Record<HarmonizeMode, number | null> = {
-    off: null,
-    third: 4,
-    fifth: 7,
-    octave: 12,
-  };
-  const semis = harmonizeSemis[params.harmonize];
-  if (semis !== null) {
-    const hSrc = ctx.createBufferSource();
-    hSrc.buffer = vocals;
-    const hPitch = new PitchShifter(ctx);
-    hPitch.start(0);
-    hPitch.setSemitones(params.pitchSemis + semis);
-    hSrc.connect(hPitch.input);
-    const hGain = ctx.createGain();
-    hGain.gain.value = 0.55;
-    hPitch.output.connect(hGain);
-    hGain.connect(dry);
-    hSrc.start(0);
-  }
+  // harmonizer / virtual choir: extra pitched copies mixed in underneath
+  buildHarmonyVoices(ctx, vocals, params.pitchSemis, params.harmonize, dry, 0);
 
   const eq = new Eq3(ctx);
   eq.setGains(params.eqLow, params.eqMid, params.eqHigh);
@@ -337,10 +500,14 @@ export async function renderVocalToWav(
   deess.setCutDb(params.deess);
   eq.output.connect(deess.node);
 
+  const chorus = new Chorus(ctx);
+  chorus.setWet(params.chorusWet);
+  deess.node.connect(chorus.input);
+
   const fx = new FXRack(ctx);
   fx.setWet("reverb", params.reverbWet);
   fx.setWet("echo", params.delayWet);
-  deess.node.connect(fx.input);
+  chorus.output.connect(fx.input);
   fx.output.connect(ctx.destination);
 
   if (carrierStop) carrierStop(vocals.duration + 0.1);

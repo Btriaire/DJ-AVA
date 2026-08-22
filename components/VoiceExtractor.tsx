@@ -4,7 +4,14 @@ import Link from "next/link";
 import { Knob } from "@/components/Knob";
 import { Waveform } from "@/components/Waveform";
 import { VoiceExtractorEngine, OutputMode, StemBuffers } from "@/lib/audio/VoiceExtractorEngine";
-import { CarrierType, HarmonizeMode, VocalParams, defaultVocalParams, renderVocalToWav } from "@/lib/audio/vocoderEngine";
+import {
+  CarrierType,
+  FEMALE_VOICE_PRESET,
+  HarmonizeMode,
+  VocalParams,
+  defaultVocalParams,
+  renderVocalToWav,
+} from "@/lib/audio/vocoderEngine";
 import { FxName, FX_LIST } from "@/lib/audio/FXRack";
 
 interface YTTrack {
@@ -229,6 +236,12 @@ export function VoiceExtractor() {
   function setParam<K extends keyof VocalParams>(key: K, value: VocalParams[K]) {
     setParamsState((p) => ({ ...p, [key]: value }));
     getEngine().setParam(key, value);
+  }
+
+  function applyPreset(patch: Partial<VocalParams>) {
+    setParamsState((p) => ({ ...p, ...patch }));
+    const engine = getEngine();
+    (Object.keys(patch) as (keyof VocalParams)[]).forEach((k) => engine.setParam(k, patch[k]!));
   }
 
   const stemUrl = useCallback(
@@ -474,6 +487,7 @@ export function VoiceExtractor() {
     { v: "third", label: "+ Tierce" },
     { v: "fifth", label: "+ Quinte" },
     { v: "octave", label: "+ Octave" },
+    { v: "choir", label: "Chœur virtuel" },
   ];
 
   const busy = phase === "fetching" || phase === "separating" || phase === "decoding";
@@ -701,17 +715,32 @@ export function VoiceExtractor() {
                 <div className="rounded-md p-2.5" style={moduleStyle}>
                   {moduleLabel("Pitch", "#facc15")}
                   <div className="flex flex-col items-center gap-2">
-                    <Knob
-                      label="Semitones"
-                      value={params.pitchSemis}
-                      min={-12}
-                      max={12}
-                      defaultValue={0}
-                      onChange={(v) => setParam("pitchSemis", v)}
-                      color="#facc15"
-                      format={(v) => v.toFixed(0)}
-                      led
-                    />
+                    <div className="flex gap-2">
+                      <Knob
+                        label="Semitones"
+                        value={params.pitchSemis}
+                        min={-12}
+                        max={12}
+                        defaultValue={0}
+                        onChange={(v) => setParam("pitchSemis", v)}
+                        color="#facc15"
+                        format={(v) => v.toFixed(0)}
+                        led
+                      />
+                      <div title="Décale le timbre (formants) indépendamment du pitch — utilisé pour la conversion de voix.">
+                        <Knob
+                          label="Formant"
+                          value={params.formantShift}
+                          min={-12}
+                          max={12}
+                          defaultValue={0}
+                          onChange={(v) => setParam("formantShift", Math.round(v))}
+                          color="#facc15"
+                          format={(v) => v.toFixed(0)}
+                          led
+                        />
+                      </div>
+                    </div>
                     <button
                       onClick={() => setParam("robotOn", !params.robotOn)}
                       className="w-full rounded-sm px-2 py-1 text-[10px] font-bold"
@@ -726,6 +755,14 @@ export function VoiceExtractor() {
                       style={membraneBtn(params.formantLock, "#facc15")}
                     >
                       FORMANT LOCK (APPROX.)
+                    </button>
+                    <button
+                      onClick={() => applyPreset(FEMALE_VOICE_PRESET)}
+                      title="Pitch +4, Formant +3 — timbre voix féminine, garde le pitch juste (pas de robot/quantification)"
+                      className="w-full rounded-sm px-2 py-1 text-[10px] font-bold"
+                      style={membraneBtn(false, "#f472b6")}
+                    >
+                      ♀ VOIX FÉMININE
                     </button>
                     <select
                       value={params.harmonize}
@@ -804,6 +841,7 @@ export function VoiceExtractor() {
                     <div className="flex gap-2">
                       <Knob label="Reverb" value={params.reverbWet} min={0} max={1} defaultValue={0} onChange={(v) => setParam("reverbWet", v)} size={40} color="#38bdf8" led />
                       <Knob label="Delay" value={params.delayWet} min={0} max={1} defaultValue={0} onChange={(v) => setParam("delayWet", v)} size={40} color="#38bdf8" led />
+                      <Knob label="Chorus" value={params.chorusWet} min={0} max={1} defaultValue={0} onChange={(v) => setParam("chorusWet", v)} size={40} color="#38bdf8" led />
                     </div>
                     <div className="grid w-full grid-cols-2 gap-1">
                       {FX_LIST.filter((f) => f.id !== "reverb" && f.id !== "echo").map((f) => (
