@@ -26,7 +26,7 @@ interface YTTrack {
   artwork: string | null;
 }
 
-type SourceTab = "search" | "upload";
+type SourceTab = "search" | "upload" | "vocals";
 type Phase = "idle" | "fetching" | "separating" | "decoding" | "ready" | "error";
 
 interface LyricSegment {
@@ -202,11 +202,13 @@ export function VoiceExtractor() {
   const [results, setResults] = useState<YTTrack[]>([]);
   const [searching, setSearching] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const vocalsFileRef = useRef<HTMLInputElement | null>(null);
 
   const [trackName, setTrackName] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [msg, setMsg] = useState("");
   const [progress, setProgress] = useState<number | null>(null);
+  const [vocalsOnly, setVocalsOnly] = useState(false);
 
   const [model, setModel] = useState<"htdemucs_ft" | "htdemucs">("htdemucs_ft");
   const [ultra, setUltra] = useState(false);
@@ -306,8 +308,49 @@ export function VoiceExtractor() {
     await beginSeparation(bytes, file.name.replace(/\.[^.]+$/, ""));
   }
 
+  // --- direct import of an already-isolated vocal (no Demucs separation —
+  // just decode straight into the rack). "instrumental"/"mix"/"original"
+  // output modes have no meaning here since there's no other stem, so the
+  // transport is locked to "vocals" and the toggle row is hidden for it.
+  async function onVocalsFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setTrackName(file.name.replace(/\.[^.]+$/, ""));
+    setPhase("decoding");
+    setMsg("Décodage de la voix…");
+    try {
+      const engine = getEngine();
+      const bytes = await file.arrayBuffer();
+      const vocals = await engine.ctx.decodeAudioData(bytes.slice(0));
+      const silence = engine.ctx.createBuffer(vocals.numberOfChannels, vocals.length, vocals.sampleRate);
+      const buffers: StemBuffers = { vocals, drums: silence, bass: silence, other: silence, original: vocals };
+      engine.setBuffers(buffers);
+      engine.onEnded = () => setPlaying(false);
+      engine.onPositionTick = (sec) => setPosition(sec);
+      setDuration(vocals.duration);
+      setPeaks(computePeaks(vocals));
+      setPosition(0);
+      setVocalsOnly(true);
+      setOutputMode("vocals");
+      engine.setOutputMode("vocals");
+      const vBlob = new Blob([bytes], { type: file.type || "audio/wav" });
+      vocalsBlobRef.current = vBlob;
+      setVocalsBlobUrl(URL.createObjectURL(vBlob));
+      setLyrics(null);
+      setLyricsError(null);
+      setPhase("ready");
+      setMsg(`« ${file.name} » — voix importée, prête.`);
+    } catch (err) {
+      setPhase("error");
+      setMsg((err as Error).message || "Échec de l'import — format audio non reconnu");
+    } finally {
+      e.target.value = "";
+    }
+  }
+
   // --- separation pipeline (prefetch → poll cache + poll progress) ----
   async function beginSeparation(bytes: ArrayBuffer, name: string) {
+    setVocalsOnly(false);
     bytesRef.current = bytes;
     setPhase("separating");
     setProgress(0);
@@ -549,6 +592,9 @@ export function VoiceExtractor() {
               <button className="flex-1 rounded-sm py-1.5 text-[10px] font-bold tracking-wide" onClick={() => setTab("upload")} style={membraneBtn(tab === "upload")}>
                 ⤒ IMPORTER MP3
               </button>
+              <button className="flex-1 rounded-sm py-1.5 text-[10px] font-bold tracking-wide" onClick={() => setTab("vocals")} style={membraneBtn(tab === "vocals", "#34d399")}>
+                🎤 VOIX DÉJÀ ISOLÉE
+              </button>
             </div>
 
             {tab === "search" ? (
@@ -584,7 +630,7 @@ export function VoiceExtractor() {
                   </div>
                 )}
               </div>
-            ) : (
+            ) : tab === "upload" ? (
               <div>
                 <button
                   onClick={() => fileRef.current?.click()}
@@ -596,9 +642,25 @@ export function VoiceExtractor() {
                 </button>
                 <input ref={fileRef} type="file" accept="audio/*" className="hidden" onChange={onFile} />
               </div>
+            ) : (
+              <div>
+                <button
+                  onClick={() => vocalsFileRef.current?.click()}
+                  disabled={busy}
+                  className="rounded-sm px-3 py-1.5 text-[10px] font-bold disabled:opacity-50"
+                  style={membraneBtn(true, "#34d399")}
+                >
+                  🎤 CHOISIR UN FICHIER VOIX
+                </button>
+                <input ref={vocalsFileRef} type="file" accept="audio/*" className="hidden" onChange={onVocalsFile} />
+                <p className="mt-1.5 text-[10px]" style={{ color: "#8d8697" }}>
+                  Passe directement au rack — pas de séparation Demucs, ni de limite de durée. Les modes INSTRU/MIX/ORIGINAL ne s&apos;appliquent pas.
+                </p>
+              </div>
             )}
 
-            {/* separation quality toggles */}
+            {/* separation quality toggles (n/a for a direct vocal import) */}
+            {tab !== "vocals" && (
             <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t pt-2" style={{ borderColor: "rgba(255,255,255,.08)" }}>
               <select
                 value={model}
@@ -628,6 +690,7 @@ export function VoiceExtractor() {
                 </button>
               ))}
             </div>
+            )}
 
             {phase !== "idle" && (
               <div className="mt-2 flex flex-col gap-1">
@@ -674,7 +737,7 @@ export function VoiceExtractor() {
                     {fmtTime(position)} / {fmtTime(duration)}
                   </span>
                   <div className="flex flex-1 flex-wrap justify-end gap-1">
-                    {(["vocals", "instrumental", "mix", "original"] as OutputMode[]).map((m) => (
+                    {(vocalsOnly ? (["vocals"] as OutputMode[]) : (["vocals", "instrumental", "mix", "original"] as OutputMode[])).map((m) => (
                       <button
                         key={m}
                         onClick={() => changeOutputMode(m)}
