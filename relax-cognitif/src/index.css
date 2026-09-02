@@ -1186,6 +1186,43 @@ a {
   50%       { background: linear-gradient(160deg, #fff4c0 0%, #fde080 100%); border-color: #d4a020; box-shadow: 2px 3px 0 #a07010, 0 0 0 3px rgba(212,160,32,0.4); }
 }
 
+/* ── Tuile PIÈGE (danger, quel que soit son état) ── */
+.mj-tile.piege {
+  border-color: #d9534f;
+}
+.mj-tile.free.piege {
+  box-shadow: 2px 3px 0 #a33a2f, 0 0 0 2px rgba(217,83,79,0.32), 0 2px 8px rgba(217,83,79,0.22);
+}
+.mj-tile.blocked.piege {
+  border-color: #c98a86;
+}
+
+/* ── Voile déclenché par le piège brume ── */
+.mj-board.foggy .mj-tile .mj-glyph {
+  opacity: 0.08;
+}
+.mj-tile .mj-glyph {
+  transition: opacity 0.25s ease;
+}
+
+/* ── Bandeau d'alerte piège ── */
+.mj-banner {
+  margin: 4px auto 6px;
+  max-width: 420px;
+  text-align: center;
+  font-weight: 700;
+  color: #a33a2f;
+  background: #fdeceb;
+  border: 1.5px solid #e8a29c;
+  border-radius: 12px;
+  padding: 8px 14px;
+  animation: mj-banner-in 0.2s ease;
+}
+@keyframes mj-banner-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+
 /* ---------- Les bons signes (calcul) ---------- */
 .calc-eq {
   display: flex;

@@ -1,18 +1,20 @@
 import { useMemo, useRef, useState } from "react";
-import Icon from "../components/Icon";
+import MahjongGlyph, { isPiege } from "../components/MahjongTiles";
 import WinReward from "../components/WinReward";
 import Chrono from "../components/Chrono";
 import { freeIds, newGame, reshuffle, type Tile } from "../lib/mahjong";
 import { useGameSession } from "../lib/useGameSession";
 import { useEffect } from "react";
 
-const CW = 38;
-const CH = 46;
-const TW = 36;
-const TH = 44;
-const OX = 7;
-const OY = 9;
-const PAD = 12;
+const CW = 42;
+const CH = 50;
+const TW = 40;
+const TH = 48;
+const OX = 8;
+const OY = 10;
+const PAD = 14;
+const FOG_MS = 1600;
+const BANNER_MS = 2600;
 
 export default function Mahjong() {
   const [seed, setSeed] = useState(0);
@@ -21,7 +23,15 @@ export default function Mahjong() {
   const [sel, setSel] = useState<number | null>(null);
   const [hint, setHint] = useState<number[]>([]);
   const [history, setHistory] = useState<[number, number][]>([]);
+  const [banner, setBanner] = useState<string | null>(null);
+  const [foggy, setFoggy] = useState(false);
   const session = useGameSession("mahjong", "");
+  const timers = useRef<number[]>([]);
+
+  function after(ms: number, fn: () => void) {
+    const id = window.setTimeout(fn, ms);
+    timers.current.push(id);
+  }
 
   const key = String(seed);
   const [rk, setRk] = useState(key);
@@ -32,8 +42,16 @@ export default function Mahjong() {
     setSel(null);
     setHint([]);
     setHistory([]);
+    setBanner(null);
+    setFoggy(false);
+    timers.current.forEach((id) => window.clearTimeout(id));
+    timers.current = [];
     session.reset();
   }
+
+  useEffect(() => {
+    return () => timers.current.forEach((id) => window.clearTimeout(id));
+  }, []);
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
@@ -58,7 +76,7 @@ export default function Mahjong() {
   }, [free, tiles, won]);
 
   function click(id: number) {
-    if (won || gone.includes(id) || !free.has(id)) return;
+    if (won || foggy || gone.includes(id) || !free.has(id)) return;
     setHint([]);
     if (sel == null) {
       setSel(id);
@@ -69,9 +87,22 @@ export default function Mahjong() {
       return;
     }
     if (tiles[sel].sym === tiles[id].sym) {
-      setGone((g) => [...g, sel, id]);
+      const matchedSym = tiles[sel].sym;
+      const newGone = [...gone, sel, id];
+      setGone(newGone);
       setHistory((h) => [...h, [sel, id]]);
       setSel(null);
+      if (matchedSym === "piege-tornade") {
+        const goneSet = new Set(newGone);
+        setTiles((t) => reshuffle(t, goneSet));
+        setBanner("Piège tornade ! Le plateau a été mélangé.");
+        after(BANNER_MS, () => setBanner(null));
+      } else if (matchedSym === "piege-brume") {
+        setFoggy(true);
+        setBanner("Piège brume ! Les symboles se voilent un instant.");
+        after(FOG_MS, () => setFoggy(false));
+        after(BANNER_MS, () => setBanner(null));
+      }
     } else {
       setSel(id);
     }
@@ -83,7 +114,9 @@ export default function Mahjong() {
       const s = tiles[id].sym;
       (bySym[s] ||= []).push(id);
     }
-    const pair = Object.values(bySym).find((ids) => ids.length >= 2);
+    const pairs = Object.values(bySym).filter((ids) => ids.length >= 2);
+    const safe = pairs.find((ids) => !isPiege(tiles[ids[0]].sym));
+    const pair = safe ?? pairs[0];
     if (pair) setHint([pair[0], pair[1]]);
   }
 
@@ -146,6 +179,8 @@ export default function Mahjong() {
           : `Tuiles restantes : ${remaining}`}
       </p>
 
+      {banner && <p className="mj-banner">{banner}</p>}
+
       <div className="chrono-row">
         <Chrono running={!won} resetKey={key} />
       </div>
@@ -154,7 +189,7 @@ export default function Mahjong() {
 
       <div ref={wrapRef} className="mj-wrap" style={{ height: height * scale }}>
       <div
-        className="mj-board"
+        className={`mj-board${foggy ? " foggy" : ""}`}
         style={{ width, height, transform: `scale(${scale})`, transformOrigin: "top center" }}
         role="grid"
         aria-label="Plateau de mahjong"
@@ -164,12 +199,14 @@ export default function Mahjong() {
           const left = t.x * CW - t.z * OX + PAD;
           const top = t.y * CH - t.z * OY + PAD;
           const isFree = free.has(t.id);
+          const piege = isPiege(t.sym);
           const cls = [
             "mj-tile",
             isFree ? "free" : "blocked",
             sel === t.id ? "sel" : "",
             hint.includes(t.id) ? "hint" : "",
             t.z > 0 ? "up" : "",
+            piege ? "piege" : "",
           ].join(" ");
           return (
             <button
@@ -177,9 +214,9 @@ export default function Mahjong() {
               className={cls}
               style={{ left, top, width: TW, height: TH, zIndex: t.z * 100 + t.y }}
               onClick={() => click(t.id)}
-              aria-label={isFree ? t.sym : "tuile bloquée"}
+              aria-label={isFree ? (piege ? `tuile piège ${t.sym}` : t.sym) : "tuile bloquée"}
             >
-              <Icon name={t.sym} size={24} />
+              <MahjongGlyph className="mj-glyph" sym={t.sym} size={30} />
             </button>
           );
         })}

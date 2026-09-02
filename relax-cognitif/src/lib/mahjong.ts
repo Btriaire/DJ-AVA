@@ -1,20 +1,29 @@
-import { MEMORY_SYMBOLS } from "../components/Icon";
+import { MJ_SYMBOLS, MJ_PIEGE_SYMBOLS, isPiege } from "../components/MahjongTiles";
 
 export type Pos = { x: number; y: number; z: number };
 export type Tile = Pos & { id: number; sym: string };
 
 export const CELL = 2; // unité de demi-cases pour un rendu façon mahjong
 
-// Disposition en pyramide à deux niveaux, étroite (6 colonnes) pour de
-// grandes tuiles confortables sur écran de téléphone.
+// Nombre de symboles (parmi ceux tirés dans la partie) transformés en tuiles
+// piège. Chaque symbole choisi peut donner plusieurs paires piège si le sort
+// l'a réutilisé plusieurs fois — c'est voulu, sans risque pour la solvabilité
+// (voir applyPieges).
+const PIEGE_SYMBOL_COUNT = 2;
+
+// Disposition en pyramide à trois niveaux, large, pour un plateau plus
+// spectaculaire avec beaucoup plus de tuiles.
 export function buildLayout(): Pos[] {
   const pos: Pos[] = [];
-  // niveau 0 : 6 colonnes × 4 rangées
+  // niveau 0 : 8 colonnes × 5 rangées
+  for (let y = 0; y < 5; y++)
+    for (let x = 0; x < 8; x++) pos.push({ x, y, z: 0 });
+  // niveau 1 : bloc 6 × 4, posé sur le niveau 0
   for (let y = 0; y < 4; y++)
-    for (let x = 0; x < 6; x++) pos.push({ x, y, z: 0 });
-  // niveau 1 : bloc central 4 × 3, posé sur le niveau 0
-  for (let y = 0; y < 3; y++)
-    for (let x = 1; x < 5; x++) pos.push({ x, y, z: 1 });
+    for (let x = 1; x < 7; x++) pos.push({ x, y, z: 1 });
+  // niveau 2 : petit sommet 2 × 2
+  for (let y = 1; y < 3; y++)
+    for (let x = 3; x < 5; x++) pos.push({ x, y, z: 2 });
   return pos;
 }
 
@@ -44,7 +53,7 @@ export function assignSolvable(positions: Pos[]): string[] {
   const syms = new Array<string>(positions.length).fill("");
   const gone = new Set<number>();
   let symPtr = 0;
-  const pool = MEMORY_SYMBOLS;
+  const pool = MJ_SYMBOLS;
 
   while (gone.size < positions.length) {
     const present = presentSet(positions, gone);
@@ -75,11 +84,29 @@ export function assignSolvable(positions: Pos[]): string[] {
   return syms;
 }
 
+// Convertit quelques symboles tirés au sort en tuiles piège. Comme la
+// solvabilité ne dépend que des POSITIONS appariées (pas du texte du
+// symbole), remplacer tous les tirages d'un même symbole par un symbole
+// piège identique ne casse jamais la garantie de résolution — au pire ça la
+// renforce (plus de tuiles partagent le même symbole).
+function applyPieges(syms: string[]): string[] {
+  const distinct = Array.from(new Set(syms));
+  for (let i = distinct.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [distinct[i], distinct[j]] = [distinct[j], distinct[i]];
+  }
+  const toConvert = distinct.slice(0, Math.min(PIEGE_SYMBOL_COUNT, distinct.length));
+  const map = new Map(toConvert.map((s, i) => [s, MJ_PIEGE_SYMBOLS[i % MJ_PIEGE_SYMBOLS.length]]));
+  return syms.map((s) => map.get(s) ?? s);
+}
+
 export function newGame(): Tile[] {
   const positions = buildLayout();
-  const syms = assignSolvable(positions);
+  const syms = applyPieges(assignSolvable(positions));
   return positions.map((p, i) => ({ ...p, id: i, sym: syms[i] }));
 }
+
+export { isPiege };
 
 // Réaffecte des symboles aux tuiles encore présentes en gardant la solvabilité.
 export function reshuffle(tiles: Tile[], gone: Set<number>): Tile[] {
