@@ -1,4 +1,11 @@
-import { MJ_SYMBOLS, MJ_PIEGE_SYMBOLS, isPiege } from "../components/MahjongTiles";
+import {
+  MJ_FAMILIES,
+  MJ_PIEGE_SYMBOLS,
+  MJ_BONUS_SYMBOLS,
+  isPiege,
+  isBonus,
+  type MjFamilyId,
+} from "../components/MahjongTiles";
 
 export type Pos = { x: number; y: number; z: number };
 export type Tile = Pos & { id: number; sym: string };
@@ -6,10 +13,11 @@ export type Tile = Pos & { id: number; sym: string };
 export const CELL = 2; // unité de demi-cases pour un rendu façon mahjong
 
 // Nombre de symboles (parmi ceux tirés dans la partie) transformés en tuiles
-// piège. Chaque symbole choisi peut donner plusieurs paires piège si le sort
-// l'a réutilisé plusieurs fois — c'est voulu, sans risque pour la solvabilité
-// (voir applyPieges).
+// piège / bonus. Chaque symbole choisi peut donner plusieurs paires si le
+// sort l'a réutilisé plusieurs fois — c'est voulu, sans risque pour la
+// solvabilité (voir applySpecials).
 const PIEGE_SYMBOL_COUNT = 2;
+const BONUS_SYMBOL_COUNT = 2;
 
 // Disposition en pyramide à trois niveaux, large, pour un plateau plus
 // spectaculaire avec beaucoup plus de tuiles.
@@ -48,12 +56,12 @@ function presentSet(positions: Pos[], gone: Set<number>): Set<string> {
 
 // Affecte des symboles en simulant le retrait de paires libres : on garantit
 // ainsi qu'au moins une solution existe.
-export function assignSolvable(positions: Pos[]): string[] {
+export function assignSolvable(positions: Pos[], family: MjFamilyId = "nature"): string[] {
   const maxZ = positions.reduce((m, p) => Math.max(m, p.z), 0);
   const syms = new Array<string>(positions.length).fill("");
   const gone = new Set<number>();
   let symPtr = 0;
-  const pool = MJ_SYMBOLS;
+  const pool = MJ_FAMILIES[family].symbols;
 
   while (gone.size < positions.length) {
     const present = presentSet(positions, gone);
@@ -84,35 +92,40 @@ export function assignSolvable(positions: Pos[]): string[] {
   return syms;
 }
 
-// Convertit quelques symboles tirés au sort en tuiles piège. Comme la
-// solvabilité ne dépend que des POSITIONS appariées (pas du texte du
+// Convertit quelques symboles tirés au sort en tuiles piège ou bonus. Comme
+// la solvabilité ne dépend que des POSITIONS appariées (pas du texte du
 // symbole), remplacer tous les tirages d'un même symbole par un symbole
-// piège identique ne casse jamais la garantie de résolution — au pire ça la
-// renforce (plus de tuiles partagent le même symbole).
-function applyPieges(syms: string[]): string[] {
+// spécial identique ne casse jamais la garantie de résolution — au pire ça
+// la renforce (plus de tuiles partagent le même symbole).
+function applySpecials(syms: string[]): string[] {
   const distinct = Array.from(new Set(syms));
   for (let i = distinct.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [distinct[i], distinct[j]] = [distinct[j], distinct[i]];
   }
-  const toConvert = distinct.slice(0, Math.min(PIEGE_SYMBOL_COUNT, distinct.length));
-  const map = new Map(toConvert.map((s, i) => [s, MJ_PIEGE_SYMBOLS[i % MJ_PIEGE_SYMBOLS.length]]));
+  const pieges = distinct.slice(0, PIEGE_SYMBOL_COUNT);
+  const bonuses = distinct.slice(PIEGE_SYMBOL_COUNT, PIEGE_SYMBOL_COUNT + BONUS_SYMBOL_COUNT);
+  const map = new Map<string, string>();
+  pieges.forEach((s, i) => map.set(s, MJ_PIEGE_SYMBOLS[i % MJ_PIEGE_SYMBOLS.length]));
+  bonuses.forEach((s, i) => map.set(s, MJ_BONUS_SYMBOLS[i % MJ_BONUS_SYMBOLS.length]));
   return syms.map((s) => map.get(s) ?? s);
 }
 
-export function newGame(): Tile[] {
+export function newGame(family: MjFamilyId = "nature"): Tile[] {
   const positions = buildLayout();
-  const syms = applyPieges(assignSolvable(positions));
+  const syms = applySpecials(assignSolvable(positions, family));
   return positions.map((p, i) => ({ ...p, id: i, sym: syms[i] }));
 }
 
-export { isPiege };
+export { isPiege, isBonus };
 
-// Réaffecte des symboles aux tuiles encore présentes en gardant la solvabilité.
-export function reshuffle(tiles: Tile[], gone: Set<number>): Tile[] {
+// Réaffecte des symboles aux tuiles encore présentes en gardant la
+// solvabilité, dans le même thème (les tuiles piège/bonus restantes sont
+// alors neutralisées, redevenant des tuiles normales).
+export function reshuffle(tiles: Tile[], gone: Set<number>, family: MjFamilyId = "nature"): Tile[] {
   const remaining = tiles.filter((t) => !gone.has(t.id));
   const positions = remaining.map((t) => ({ x: t.x, y: t.y, z: t.z }));
-  const syms = assignSolvable(positions);
+  const syms = assignSolvable(positions, family);
   const byId = new Map(remaining.map((t, i) => [t.id, syms[i]]));
   return tiles.map((t) => (byId.has(t.id) ? { ...t, sym: byId.get(t.id)! } : t));
 }

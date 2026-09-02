@@ -1197,6 +1197,17 @@ a {
   border-color: #c98a86;
 }
 
+/* ── Tuile BONUS (récompense, quel que soit son état) ── */
+.mj-tile.bonus {
+  border-color: #d4a020;
+}
+.mj-tile.free.bonus {
+  box-shadow: 2px 3px 0 #a07010, 0 0 0 2px rgba(212,160,32,0.32), 0 2px 8px rgba(212,160,32,0.24);
+}
+.mj-tile.blocked.bonus {
+  border-color: #d9c896;
+}
+
 /* ── Voile déclenché par le piège brume ── */
 .mj-board.foggy .mj-tile .mj-glyph {
   opacity: 0.08;
