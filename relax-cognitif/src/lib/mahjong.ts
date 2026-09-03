@@ -19,19 +19,19 @@ export const CELL = 2; // unité de demi-cases pour un rendu façon mahjong
 const PIEGE_SYMBOL_COUNT = 2;
 const BONUS_SYMBOL_COUNT = 2;
 
-// Disposition en pyramide à trois niveaux, large, pour un plateau plus
-// spectaculaire avec beaucoup plus de tuiles.
+// Disposition en pyramide à trois niveaux, large et basse (plus de colonnes,
+// moins de rangées) : plus spectaculaire et moins de défilement vertical sur
+// téléphone, à nombre de tuiles égal.
 export function buildLayout(): Pos[] {
   const pos: Pos[] = [];
-  // niveau 0 : 8 colonnes × 5 rangées
-  for (let y = 0; y < 5; y++)
-    for (let x = 0; x < 8; x++) pos.push({ x, y, z: 0 });
-  // niveau 1 : bloc 6 × 4, posé sur le niveau 0
+  // niveau 0 : 10 colonnes × 4 rangées
   for (let y = 0; y < 4; y++)
-    for (let x = 1; x < 7; x++) pos.push({ x, y, z: 1 });
-  // niveau 2 : petit sommet 2 × 2
-  for (let y = 1; y < 3; y++)
-    for (let x = 3; x < 5; x++) pos.push({ x, y, z: 2 });
+    for (let x = 0; x < 10; x++) pos.push({ x, y, z: 0 });
+  // niveau 1 : bloc 8 × 3, posé sur le niveau 0
+  for (let y = 0; y < 3; y++)
+    for (let x = 1; x < 9; x++) pos.push({ x, y, z: 1 });
+  // niveau 2 : petit sommet 4 × 1
+  for (const x of [3, 4, 5, 6]) pos.push({ x, y: 1, z: 2 });
   return pos;
 }
 

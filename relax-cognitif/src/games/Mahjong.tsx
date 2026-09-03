@@ -32,6 +32,7 @@ export default function Mahjong() {
   const [hintsCount, setHintsCount] = useState(0);
   const [piegesCount, setPiegesCount] = useState(0);
   const [bonusCount, setBonusCount] = useState(0);
+  const [mismatch, setMismatch] = useState<number[]>([]);
   const [scoreState, setScoreState] = useState<{ score: number; isRecord: boolean } | null>(null);
   const session = useGameSession("mahjong", family);
   const timers = useRef<number[]>([]);
@@ -59,6 +60,7 @@ export default function Mahjong() {
     setHintsCount(0);
     setPiegesCount(0);
     setBonusCount(0);
+    setMismatch([]);
     setScoreState(null);
     timers.current.forEach((id) => window.clearTimeout(id));
     timers.current = [];
@@ -163,6 +165,8 @@ export default function Mahjong() {
         setGone(newGone);
       }
     } else {
+      setMismatch([sel, id]);
+      after(350, () => setMismatch([]));
       setSel(id);
     }
   }
@@ -274,6 +278,7 @@ export default function Mahjong() {
         <Chrono running={!won} resetKey={key} />
       </div>
 
+      <div className="mj-felt">
       <div ref={wrapRef} className="mj-wrap" style={{ height: height * scale }}>
       <div
         className={`mj-board${foggy ? " foggy" : ""}`}
@@ -293,7 +298,8 @@ export default function Mahjong() {
             isFree ? "free" : "blocked",
             sel === t.id ? "sel" : "",
             hint.includes(t.id) ? "hint" : "",
-            t.z > 0 ? "up" : "",
+            mismatch.includes(t.id) ? "mismatch" : "",
+            t.z === 1 ? "z1" : t.z === 2 ? "z2" : "",
             piege ? "piege" : "",
             bonus ? "bonus" : "",
           ].join(" ");
@@ -310,6 +316,7 @@ export default function Mahjong() {
             </button>
           );
         })}
+      </div>
       </div>
       </div>
     </div>
