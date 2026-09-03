@@ -1111,6 +1111,8 @@ a {
 }
 /* Tapis de jeu : fond feutré derrière le plateau, pour un rendu plus riche */
 .mj-felt {
+  position: relative;
+  overflow: hidden;
   background: radial-gradient(ellipse at 50% 20%, #dcece3 0%, #c7e0d1 70%, #b8d6c3 100%);
   border: 1.5px solid #9dc4ab;
   border-radius: 20px;
@@ -1120,12 +1122,60 @@ a {
 }
 .mj-wrap {
   position: relative;
+  z-index: 1;
   width: 100%;
   margin: 0 auto;
 }
 .mj-board {
   position: relative;
   margin: 0 auto;
+}
+
+/* ── Décor flottant, zen et discret (pétales/feuilles à la dérive) ── */
+.mj-ambient {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: inherit;
+}
+.mj-mote {
+  position: absolute;
+  bottom: -24px;
+  opacity: 0;
+  animation-name: mj-float;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+@keyframes mj-float {
+  0%   { transform: translate(0, 0) rotate(0deg); opacity: 0; }
+  8%   { opacity: 0.55; }
+  50%  { transform: translate(var(--mj-drift), -140px) rotate(calc(var(--mj-spin) * 0.5)); opacity: 0.55; }
+  92%  { opacity: 0; }
+  100% { transform: translate(calc(var(--mj-drift) * 2), -280px) rotate(var(--mj-spin)); opacity: 0; }
+}
+
+/* ── Tremblement de terre : secousse du plateau + tuiles redistribuées ── */
+.mj-felt.quake {
+  animation: mj-quake 0.6s ease;
+}
+@keyframes mj-quake {
+  0%, 100% { transform: translate(0, 0) rotate(0); }
+  10% { transform: translate(-6px, 2px) rotate(-0.6deg); }
+  20% { transform: translate(5px, -3px) rotate(0.5deg); }
+  30% { transform: translate(-4px, 3px) rotate(-0.4deg); }
+  40% { transform: translate(6px, -2px) rotate(0.6deg); }
+  50% { transform: translate(-5px, 2px) rotate(-0.5deg); }
+  60% { transform: translate(4px, -3px) rotate(0.4deg); }
+  70% { transform: translate(-3px, 2px) rotate(-0.3deg); }
+  80% { transform: translate(3px, -1px) rotate(0.2deg); }
+  90% { transform: translate(-2px, 1px) rotate(-0.1deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mj-mote { animation: none; opacity: 0; }
+  .mj-felt.quake { animation: none; }
 }
 
 /* ── Tuile de base (niveau 0, au sol) ── */

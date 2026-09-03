@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import MahjongGlyph, { isPiege, isBonus, MJ_FAMILIES, MJ_FAMILY_IDS, type MjFamilyId } from "../components/MahjongTiles";
+import MahjongAmbient from "../components/MahjongAmbient";
 import QuizResult from "../components/QuizResult";
 import Chrono from "../components/Chrono";
 import { freeIds, newGame, reshuffle, type Tile } from "../lib/mahjong";
@@ -17,6 +18,9 @@ const OY = 10;
 const PAD = 14;
 const FOG_MS = 1600;
 const BANNER_MS = 2600;
+const QUAKE_MS = 650;
+const QUAKE_MIN_MS = 45000; // « de temps en temps » : entre 45 s et 80 s
+const QUAKE_MAX_MS = 80000;
 const MAX_SCORE = 20; // barème /20, comme les autres jeux de l'appli
 
 export default function Mahjong() {
@@ -33,6 +37,7 @@ export default function Mahjong() {
   const [piegesCount, setPiegesCount] = useState(0);
   const [bonusCount, setBonusCount] = useState(0);
   const [mismatch, setMismatch] = useState<number[]>([]);
+  const [quaking, setQuaking] = useState(false);
   const [scoreState, setScoreState] = useState<{ score: number; isRecord: boolean } | null>(null);
   const session = useGameSession("mahjong", family);
   const timers = useRef<number[]>([]);
@@ -61,6 +66,7 @@ export default function Mahjong() {
     setPiegesCount(0);
     setBonusCount(0);
     setMismatch([]);
+    setQuaking(false);
     setScoreState(null);
     timers.current.forEach((id) => window.clearTimeout(id));
     timers.current = [];
@@ -97,6 +103,48 @@ export default function Mahjong() {
     });
     return !Object.values(counts).some((c) => c >= 2);
   }, [free, tiles, won]);
+
+  // Toujours à jour pour le minuteur de tremblement de terre (voir plus bas),
+  // qui vit dans un effet de longue durée et ne doit jamais lire un état figé.
+  const tilesRef = useRef(tiles);
+  tilesRef.current = tiles;
+  const goneSetRef = useRef(goneSet);
+  goneSetRef.current = goneSet;
+  const foggyRef = useRef(foggy);
+  foggyRef.current = foggy;
+  const wonRef = useRef(won);
+  wonRef.current = won;
+
+  function quake() {
+    if (wonRef.current || foggyRef.current) return;
+    const gs = goneSetRef.current;
+    if (tilesRef.current.length - gs.size < 6) return; // presque fini, inutile de secouer
+    setQuaking(true);
+    after(QUAKE_MS, () => setQuaking(false));
+    setTiles((t) => reshuffle(t, gs, family));
+    setBanner("Tremblement de terre ! Les tuiles ont été redistribuées.");
+    after(BANNER_MS, () => setBanner(null));
+  }
+
+  // « De temps en temps » : un tremblement de terre redistribue les tuiles
+  // encore en jeu. Intervalle aléatoire, reprogrammé après chaque partie.
+  useEffect(() => {
+    let cancelled = false;
+    function schedule() {
+      const delay = QUAKE_MIN_MS + Math.random() * (QUAKE_MAX_MS - QUAKE_MIN_MS);
+      const id = window.setTimeout(() => {
+        if (cancelled) return;
+        quake();
+        schedule();
+      }, delay);
+      timers.current.push(id);
+    }
+    schedule();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
 
   function click(id: number) {
     if (won || foggy || gone.includes(id) || !free.has(id)) return;
@@ -278,7 +326,8 @@ export default function Mahjong() {
         <Chrono running={!won} resetKey={key} />
       </div>
 
-      <div className="mj-felt">
+      <div className={`mj-felt${quaking ? " quake" : ""}`}>
+      <MahjongAmbient />
       <div ref={wrapRef} className="mj-wrap" style={{ height: height * scale }}>
       <div
         className={`mj-board${foggy ? " foggy" : ""}`}
