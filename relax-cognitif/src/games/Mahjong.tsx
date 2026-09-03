@@ -1,9 +1,11 @@
 import { useMemo, useRef, useState } from "react";
 import MahjongGlyph, { isPiege, isBonus, MJ_FAMILIES, MJ_FAMILY_IDS, type MjFamilyId } from "../components/MahjongTiles";
-import WinReward from "../components/WinReward";
+import QuizResult from "../components/QuizResult";
 import Chrono from "../components/Chrono";
 import { freeIds, newGame, reshuffle, type Tile } from "../lib/mahjong";
 import { useGameSession } from "../lib/useGameSession";
+import { getSessions } from "../lib/store";
+import { bestRatio } from "../lib/score";
 import { useEffect } from "react";
 
 const CW = 42;
@@ -15,6 +17,7 @@ const OY = 10;
 const PAD = 14;
 const FOG_MS = 1600;
 const BANNER_MS = 2600;
+const MAX_SCORE = 20; // barème /20, comme les autres jeux de l'appli
 
 export default function Mahjong() {
   const [family, setFamily] = useState<MjFamilyId>("nature");
@@ -26,12 +29,20 @@ export default function Mahjong() {
   const [history, setHistory] = useState<[number, number][]>([]);
   const [banner, setBanner] = useState<string | null>(null);
   const [foggy, setFoggy] = useState(false);
+  const [hintsCount, setHintsCount] = useState(0);
+  const [piegesCount, setPiegesCount] = useState(0);
+  const [bonusCount, setBonusCount] = useState(0);
+  const [scoreState, setScoreState] = useState<{ score: number; isRecord: boolean } | null>(null);
   const session = useGameSession("mahjong", family);
   const timers = useRef<number[]>([]);
 
   function after(ms: number, fn: () => void) {
     const id = window.setTimeout(fn, ms);
     timers.current.push(id);
+  }
+
+  function restart() {
+    setSeed((s) => s + 1);
   }
 
   const key = `${family}-${seed}`;
@@ -45,6 +56,10 @@ export default function Mahjong() {
     setHistory([]);
     setBanner(null);
     setFoggy(false);
+    setHintsCount(0);
+    setPiegesCount(0);
+    setBonusCount(0);
+    setScoreState(null);
     timers.current.forEach((id) => window.clearTimeout(id));
     timers.current = [];
     session.reset();
@@ -62,8 +77,13 @@ export default function Mahjong() {
   const won = gone.length === tiles.length;
 
   useEffect(() => {
-    if (won) session.record("success");
-  }, [won, session]);
+    if (!won || scoreState) return;
+    const raw = MAX_SCORE - hintsCount - piegesCount * 2 + bonusCount;
+    const score = Math.max(0, Math.min(MAX_SCORE, raw));
+    const prevBest = bestRatio("mahjong", getSessions());
+    session.record("success", score, MAX_SCORE);
+    setScoreState({ score, isRecord: score / MAX_SCORE > prevBest });
+  }, [won, scoreState, hintsCount, piegesCount, bonusCount, session]);
 
   // tuiles libres restantes qui n'ont plus de partenaire jouable -> blocage
   const stuck = useMemo(() => {
@@ -95,12 +115,14 @@ export default function Mahjong() {
 
       if (matchedSym === "piege-tornade") {
         setGone(newGone);
+        setPiegesCount((c) => c + 1);
         const goneSet = new Set(newGone);
         setTiles((t) => reshuffle(t, goneSet, family));
         setBanner("Piège tornade ! Le plateau a été mélangé.");
         after(BANNER_MS, () => setBanner(null));
       } else if (matchedSym === "piege-brume") {
         setGone(newGone);
+        setPiegesCount((c) => c + 1);
         setFoggy(true);
         setBanner("Piège brume ! Les symboles se voilent un instant.");
         after(FOG_MS, () => setFoggy(false));
@@ -121,9 +143,11 @@ export default function Mahjong() {
           setBanner("Cadeau trouvé !");
         }
         setGone(newGone);
+        setBonusCount((c) => c + 1);
         after(BANNER_MS, () => setBanner(null));
       } else if (matchedSym === "bonus-etoile-filante") {
         setGone(newGone);
+        setBonusCount((c) => c + 1);
         const freshFree = freeIds(tiles, new Set(newGone));
         const bySym: Record<string, number[]> = {};
         freshFree.forEach((fid) => {
@@ -152,7 +176,10 @@ export default function Mahjong() {
     const pairs = Object.values(bySym).filter((ids) => ids.length >= 2);
     const safe = pairs.find((ids) => !isPiege(tiles[ids[0]].sym) && !isBonus(tiles[ids[0]].sym));
     const pair = safe ?? pairs[0];
-    if (pair) setHint([pair[0], pair[1]]);
+    if (pair) {
+      setHint([pair[0], pair[1]]);
+      setHintsCount((c) => c + 1);
+    }
   }
 
   function undo() {
@@ -189,6 +216,19 @@ export default function Mahjong() {
     return () => ro.disconnect();
   }, [width]);
 
+  if (won && scoreState) {
+    return (
+      <QuizResult
+        game="mahjong"
+        won
+        score={scoreState.score}
+        total={MAX_SCORE}
+        isRecord={scoreState.isRecord}
+        onReplay={restart}
+      />
+    );
+  }
+
   return (
     <div>
       <div className="controls">
@@ -206,7 +246,7 @@ export default function Mahjong() {
       </div>
 
       <div className="controls mj-controls">
-        <button className="btn btn-ghost" onClick={() => setSeed((s) => s + 1)}>
+        <button className="btn btn-ghost" onClick={restart}>
           Nouvelle partie
         </button>
         <button className="btn btn-ghost" onClick={undo} disabled={!history.length}>
@@ -233,8 +273,6 @@ export default function Mahjong() {
       <div className="chrono-row">
         <Chrono running={!won} resetKey={key} />
       </div>
-
-      <WinReward game="mahjong" show={session.won} />
 
       <div ref={wrapRef} className="mj-wrap" style={{ height: height * scale }}>
       <div
