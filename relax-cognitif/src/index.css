@@ -1105,17 +1105,28 @@ a {
 }
 
 /* ---------- Mahjong ---------- */
-/* Espace vertical resserré : le plateau, plus large, a besoin de la place
-   gagnée sur les marges au lieu de rester compact malgré lui. */
+/* Espace vertical resserré au maximum : tout ce qui est au-dessus du tapis
+   est repoussé en haut et compressé, pour laisser le plateau dominer
+   l'écran (il est maintenant bien plus grand et vertical). */
 .mj-page .controls {
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 .mj-page .status {
-  margin-bottom: 8px;
+  margin: 0;
 }
 .mj-controls {
   flex-wrap: wrap;
   gap: 6px;
+}
+.mj-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.mj-status-row .chrono {
+  flex: none;
 }
 /* Tapis de jeu : fond feutré derrière le plateau, pour un rendu plus riche */
 .mj-felt {

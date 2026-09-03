@@ -318,19 +318,18 @@ export default function Mahjong() {
         </button>
       </div>
 
-      <p className={won ? "status win" : "status"}>
-        {won
-          ? "Bravo, tablier vidé !"
-          : stuck
-          ? "Plus de paire jouable — touchez « Mélanger »."
-          : `Tuiles restantes : ${remaining}`}
-      </p>
-
-      {banner && <p className="mj-banner">{banner}</p>}
-
-      <div className="chrono-row">
+      <div className="mj-status-row">
+        <p className={won ? "status win" : "status"}>
+          {won
+            ? "Bravo, tablier vidé !"
+            : stuck
+            ? "Plus de paire jouable — touchez « Mélanger »."
+            : `Tuiles restantes : ${remaining}`}
+        </p>
         <Chrono running={!won} resetKey={key} />
       </div>
+
+      {banner && <p className="mj-banner">{banner}</p>}
 
       <div className={`mj-felt${quaking ? " quake" : ""}`}>
       <MahjongAmbient />

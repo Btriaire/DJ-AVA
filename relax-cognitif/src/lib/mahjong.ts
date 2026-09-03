@@ -16,23 +16,34 @@ export const CELL = 2; // unité de demi-cases pour un rendu façon mahjong
 // piège / bonus. Chaque symbole choisi peut donner plusieurs paires si le
 // sort l'a réutilisé plusieurs fois — c'est voulu, sans risque pour la
 // solvabilité (voir applySpecials).
-const PIEGE_SYMBOL_COUNT = 2;
-const BONUS_SYMBOL_COUNT = 2;
+const PIEGE_SYMBOL_COUNT = 3;
+const BONUS_SYMBOL_COUNT = 3;
 
-// Disposition en pyramide à trois niveaux, large et basse (plus de colonnes,
-// moins de rangées) : plus spectaculaire et moins de défilement vertical sur
-// téléphone, à nombre de tuiles égal.
+// Disposition en grande croix verticale façon mahjong classique (colonne
+// centrale haute, barre horizontale, quatre blocs d'angle), bien plus haute
+// que large — pour un plateau spectaculaire qui domine l'écran, comme les
+// vrais jeux de mahjong solitaire.
 export function buildLayout(): Pos[] {
-  const pos: Pos[] = [];
-  // niveau 0 : 10 colonnes × 4 rangées
-  for (let y = 0; y < 4; y++)
-    for (let x = 0; x < 10; x++) pos.push({ x, y, z: 0 });
-  // niveau 1 : bloc 8 × 3, posé sur le niveau 0
-  for (let y = 0; y < 3; y++)
-    for (let x = 1; x < 9; x++) pos.push({ x, y, z: 1 });
-  // niveau 2 : petit sommet 4 × 1
-  for (const x of [3, 4, 5, 6]) pos.push({ x, y: 1, z: 2 });
-  return pos;
+  const cells = new Map<string, Pos>();
+  function rect(x0: number, x1: number, y0: number, y1: number, z: number) {
+    for (let y = y0; y < y1; y++)
+      for (let x = x0; x < x1; x++) {
+        const k = `${x},${y},${z}`;
+        if (!cells.has(k)) cells.set(k, { x, y, z });
+      }
+  }
+  // niveau 0 : la croix
+  rect(3, 6, 0, 14, 0); // colonne centrale, sur toute la hauteur
+  rect(0, 9, 5, 9, 0); // barre horizontale
+  rect(0, 3, 1, 4, 0); // bloc d'angle haut-gauche
+  rect(6, 9, 1, 4, 0); // bloc d'angle haut-droit
+  rect(0, 3, 10, 13, 0); // bloc d'angle bas-gauche
+  rect(6, 9, 10, 13, 0); // bloc d'angle bas-droit
+  // niveau 1 : croix réduite, empilée au centre
+  rect(3, 6, 4, 10, 1);
+  // niveau 2 : petit sommet
+  rect(3, 6, 6, 8, 2);
+  return [...cells.values()];
 }
 
 const key = (p: Pos) => `${p.x},${p.y},${p.z}`;
