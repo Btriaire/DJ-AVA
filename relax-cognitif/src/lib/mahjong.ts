@@ -16,34 +16,75 @@ export const CELL = 2; // unité de demi-cases pour un rendu façon mahjong
 // piège / bonus. Chaque symbole choisi peut donner plusieurs paires si le
 // sort l'a réutilisé plusieurs fois — c'est voulu, sans risque pour la
 // solvabilité (voir applySpecials).
-const PIEGE_SYMBOL_COUNT = 3;
-const BONUS_SYMBOL_COUNT = 3;
+const PIEGE_SYMBOL_COUNT = 2;
+const BONUS_SYMBOL_COUNT = 2;
 
-// Disposition en grande croix verticale façon mahjong classique (colonne
-// centrale haute, barre horizontale, quatre blocs d'angle), bien plus haute
-// que large — pour un plateau spectaculaire qui domine l'écran, comme les
-// vrais jeux de mahjong solitaire.
-export function buildLayout(): Pos[] {
+// Grille de référence (portrait) : ses dimensions, combinées à la taille des
+// tuiles choisie dans Mahjong.tsx, donnent le format du plateau. On la garde
+// fixe d'une forme à l'autre pour que « la taille du plateau » ne bouge pas,
+// seul le contour dessiné dedans change.
+const GRID_W = 7;
+const GRID_H = 11;
+const CX = (GRID_W - 1) / 2;
+const CY = (GRID_H - 1) / 2;
+
+// Quatre silhouettes possibles, tirées au sort à chaque nouvelle partie.
+// Chacune est une simple fonction « cette case fait-elle partie du plateau
+// ? », ce qui permet des contours qui ne sont pas de simples rectangles.
+function croix(x: number, y: number): boolean {
+  return (
+    (x >= 2 && x <= 4) ||
+    (y >= 4 && y <= 6) ||
+    (x <= 1 && y <= 1) ||
+    (x >= 5 && y <= 1) ||
+    (x <= 1 && y >= 9) ||
+    (x >= 5 && y >= 9)
+  );
+}
+function losange(x: number, y: number): boolean {
+  const dx = Math.abs(x - CX) / (CX + 0.5);
+  const dy = Math.abs(y - CY) / (CY + 0.5);
+  return dx + dy <= 1.05;
+}
+function sablier(x: number, y: number): boolean {
+  const t = Math.abs(y - CY) / CY; // 0 au centre, 1 en haut/bas
+  const halfW = 0.6 + t * (CX - 0.6); // pincé au centre, évasé aux extrémités
+  return Math.abs(x - CX) <= halfW;
+}
+function pyramideEscalier(x: number, y: number): boolean {
+  const band = Math.min(4, Math.floor((y / GRID_H) * 5)); // 0 en haut -> 4 en bas
+  const half = [0.5, 1.5, 2.2, 2.8, 3.4][band];
+  return Math.abs(x - CX) <= half;
+}
+
+const SHAPES: ((x: number, y: number) => boolean)[] = [croix, losange, sablier, pyramideEscalier];
+
+function buildFromMask(mask: (x: number, y: number) => boolean): Pos[] {
   const cells = new Map<string, Pos>();
-  function rect(x0: number, x1: number, y0: number, y1: number, z: number) {
-    for (let y = y0; y < y1; y++)
-      for (let x = x0; x < x1; x++) {
-        const k = `${x},${y},${z}`;
-        if (!cells.has(k)) cells.set(k, { x, y, z });
-      }
-  }
-  // niveau 0 : la croix
-  rect(3, 6, 0, 14, 0); // colonne centrale, sur toute la hauteur
-  rect(0, 9, 5, 9, 0); // barre horizontale
-  rect(0, 3, 1, 4, 0); // bloc d'angle haut-gauche
-  rect(6, 9, 1, 4, 0); // bloc d'angle haut-droit
-  rect(0, 3, 10, 13, 0); // bloc d'angle bas-gauche
-  rect(6, 9, 10, 13, 0); // bloc d'angle bas-droit
-  // niveau 1 : croix réduite, empilée au centre
-  rect(3, 6, 4, 10, 1);
-  // niveau 2 : petit sommet
-  rect(3, 6, 6, 8, 2);
-  return [...cells.values()];
+  for (let y = 0; y < GRID_H; y++)
+    for (let x = 0; x < GRID_W; x++)
+      if (mask(x, y)) cells.set(`${x},${y},0`, { x, y, z: 0 });
+  // niveau 1 : même silhouette, resserrée vers le centre
+  for (let y = 0; y < GRID_H; y++)
+    for (let x = 0; x < GRID_W; x++)
+      if (mask(x, y) && Math.abs(x - CX) <= GRID_W * 0.24 && Math.abs(y - CY) <= GRID_H * 0.3)
+        cells.set(`${x},${y},1`, { x, y, z: 1 });
+  // niveau 2 : petit sommet, encore plus central
+  for (let y = 0; y < GRID_H; y++)
+    for (let x = 0; x < GRID_W; x++)
+      if (mask(x, y) && Math.abs(x - CX) <= GRID_W * 0.12 && Math.abs(y - CY) <= GRID_H * 0.14)
+        cells.set(`${x},${y},2`, { x, y, z: 2 });
+  const list = [...cells.values()];
+  if (list.length % 2 === 1) list.pop(); // garantit un nombre pair de tuiles
+  return list;
+}
+
+// Disposition façon mahjong classique : une silhouette tirée au sort parmi
+// plusieurs (croix, losange, sablier, pyramide en escalier), dans un gabarit
+// de taille constante — seul le contour change d'une partie à l'autre.
+export function buildLayout(): Pos[] {
+  const mask = SHAPES[Math.floor(Math.random() * SHAPES.length)];
+  return buildFromMask(mask);
 }
 
 const key = (p: Pos) => `${p.x},${p.y},${p.z}`;

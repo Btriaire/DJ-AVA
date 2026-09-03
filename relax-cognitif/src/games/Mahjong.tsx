@@ -9,12 +9,14 @@ import { getSessions } from "../lib/store";
 import { bestRatio } from "../lib/score";
 import { useEffect } from "react";
 
-const CW = 42;
-const CH = 50;
-const TW = 40;
-const TH = 48;
-const OX = 8;
-const OY = 10;
+// Tuiles plus grosses, grille de référence plus petite (voir buildLayout) :
+// le plateau garde le même encombrement global, avec moins de tuiles.
+const CW = 54;
+const CH = 64;
+const TW = 52;
+const TH = 62;
+const OX = 10;
+const OY = 12;
 const PAD = 14;
 const FOG_MS = 1600;
 const BANNER_MS = 2600;
@@ -372,7 +374,7 @@ export default function Mahjong() {
               onClick={() => click(t.id)}
               aria-label={isFree ? label : "tuile bloquée"}
             >
-              <MahjongGlyph className="mj-glyph" sym={t.sym} size={30} />
+              <MahjongGlyph className="mj-glyph" sym={t.sym} size={38} />
             </button>
           );
         })}
