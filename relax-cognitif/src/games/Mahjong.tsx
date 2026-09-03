@@ -79,6 +79,7 @@ export default function Mahjong() {
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
+  const [avail, setAvail] = useState(0);
 
   const goneSet = useMemo(() => new Set(gone), [gone]);
   const free = useMemo(() => freeIds(tiles, goneSet), [tiles, goneSet]);
@@ -259,8 +260,13 @@ export default function Mahjong() {
     const el = wrapRef.current;
     if (!el) return;
     const fit = () => {
-      const avail = el.clientWidth;
-      setScale(Math.min(1.7, Math.max(0.6, avail / width)));
+      const w = el.clientWidth;
+      if (w <= 0) return;
+      setAvail(w);
+      // Toujours calé sur la largeur réellement disponible : jamais de
+      // plancher qui forcerait le plateau à dépasser les bords latéraux.
+      // Le plafond laisse le plateau grandir davantage sur les écrans larges.
+      setScale(Math.min(1.9, w / width));
     };
     fit();
     const ro = new ResizeObserver(fit);
@@ -282,7 +288,7 @@ export default function Mahjong() {
   }
 
   return (
-    <div>
+    <div className="mj-page">
       <div className="controls">
         <div className="seg">
           {MJ_FAMILY_IDS.map((id) => (
@@ -331,7 +337,13 @@ export default function Mahjong() {
       <div ref={wrapRef} className="mj-wrap" style={{ height: height * scale }}>
       <div
         className={`mj-board${foggy ? " foggy" : ""}`}
-        style={{ width, height, transform: `scale(${scale})`, transformOrigin: "top center" }}
+        style={{
+          width,
+          height,
+          transform: `scale(${scale})`,
+          transformOrigin: "top left",
+          marginLeft: Math.max(0, (avail - width * scale) / 2),
+        }}
         role="grid"
         aria-label="Plateau de mahjong"
       >

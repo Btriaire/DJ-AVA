@@ -1105,6 +1105,14 @@ a {
 }
 
 /* ---------- Mahjong ---------- */
+/* Espace vertical resserré : le plateau, plus large, a besoin de la place
+   gagnée sur les marges au lieu de rester compact malgré lui. */
+.mj-page .controls {
+  margin-bottom: 10px;
+}
+.mj-page .status {
+  margin-bottom: 8px;
+}
 .mj-controls {
   flex-wrap: wrap;
   gap: 6px;
@@ -1117,13 +1125,15 @@ a {
   border: 1.5px solid #9dc4ab;
   border-radius: 20px;
   padding: 14px 6px;
-  margin: 4px 0 8px;
+  margin: 4px 0 4px;
   box-shadow: inset 0 2px 10px rgba(37,55,47,0.12);
 }
 .mj-wrap {
   position: relative;
   z-index: 1;
   width: 100%;
+  max-width: 100%;
+  overflow: hidden;
   margin: 0 auto;
 }
 .mj-board {
