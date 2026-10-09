@@ -95,10 +95,85 @@ export interface YTSearchOpts {
   maxDur?: number; // seconds, exclusive upper bound (0 / undefined = no cap)
 }
 
+// Helper to parse human duration like '5:22' or '1:24:07' into seconds
+function parseDurationSec(str?: string): number {
+  if (!str) return 0;
+  const parts = str.split(":").map(Number);
+  if (parts.some(isNaN)) return 0;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return parts[0] || 0;
+}
+
+// Direct YouTube InnerTube search: 0 tokens, 0 external binaries, fast worldwide
+export async function searchYouTubeInner(q: string, opts: YTSearchOpts = {}): Promise<YTTrack[]> {
+  const url = "https://www.youtube.com/youtubei/v1/search?prettyPrint=false";
+  const body = {
+    context: {
+      client: {
+        clientName: "WEB",
+        clientVersion: "2.20240410.01.00",
+        hl: "fr",
+        gl: "FR",
+      },
+    },
+    query: q,
+  };
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(6000),
+  });
+
+  if (!res.ok) throw new Error(`YouTube InnerTube HTTP ${res.status}`);
+  const data = await res.json();
+  const sections = data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+  const tracks: YTTrack[] = [];
+  const min = opts.minDur && opts.minDur > 0 ? opts.minDur : 0;
+  const max = opts.maxDur && opts.maxDur > 0 ? opts.maxDur : Infinity;
+  const limit = Math.min(Math.max(Math.round(opts.limit ?? 30), 1), 50);
+
+  for (const s of sections) {
+    const items = s?.itemSectionRenderer?.contents || [];
+    for (const item of items) {
+      const v = item.videoRenderer;
+      if (v && v.videoId) {
+        const dur = parseDurationSec(v.lengthText?.simpleText);
+        if (dur >= min && dur < max) {
+          tracks.push({
+            id: v.videoId,
+            title: v.title?.runs?.[0]?.text || "—",
+            artist: v.ownerText?.runs?.[0]?.text || "YouTube",
+            duration: dur,
+            artwork: v.thumbnail?.thumbnails?.slice(-1)[0]?.url || null,
+          });
+          if (tracks.length >= limit) break;
+        }
+      }
+    }
+    if (tracks.length >= limit) break;
+  }
+  return tracks;
+}
+
 // `--flat-playlist` keeps this fast (no per-video extraction) so we can ask for a
 // much bigger pool than before. Duration bounds are applied here so the caller's
 // "< 3 min" / "> 15 min" filters force a wider, more relevant set of choices.
 export async function searchYouTube(q: string, opts: YTSearchOpts = {}): Promise<YTTrack[]> {
+  // 1. Try fast InnerTube directly (zero dependencies, works on Vercel Edge/Serverless)
+  try {
+    const innerTracks = await searchYouTubeInner(q, opts);
+    if (innerTracks.length > 0) return innerTracks;
+  } catch (err) {
+    console.warn("[youtube search] InnerTube failed, trying yt-dlp:", (err as Error).message);
+  }
+
+  // 2. Fallback to yt-dlp if installed
   const limit = Math.min(Math.max(Math.round(opts.limit ?? 30), 1), 50);
   const raw = await ytdlpJson([
     `ytsearch${limit}:${q}`,

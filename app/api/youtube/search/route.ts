@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
 
       const vpsRes = await fetch(vpsUrl.toString(), {
         headers: { "User-Agent": "Mozilla/5.0 (Vercel-Proxy)" },
-        signal: AbortSignal.timeout(10000),
+        signal: AbortSignal.timeout(2500),
       });
 
       if (vpsRes.ok) {
@@ -33,8 +33,8 @@ export async function GET(req: NextRequest) {
           return NextResponse.json(data);
         }
       }
-    } catch (err) {
-      console.warn("[youtube search proxy] VPS error, trying local:", (err as Error).message);
+    } catch {
+      // Fallback seamlessly to direct search
     }
   }
 
