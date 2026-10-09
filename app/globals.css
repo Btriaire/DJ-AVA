@@ -1130,3 +1130,33 @@ body.has-zoom::before {
   background: radial-gradient(circle at 50% 35%, #2e2e34, #18181c 70%, #0d0d0f);
   box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.12), inset 0 -2px 4px rgba(0, 0, 0, 0.8);
 }
+
+/* ---- skins: surfaces + accent only, layout untouched (selected via <html data-skin>) ---- */
+[data-skin="vinyl"] body { background: #1a120b; }
+[data-skin="vinyl"] .hw-body {
+  background-color: #1a120b;
+  background-image: radial-gradient(1200px 500px at 50% -10%, #3a2614 0%, transparent 60%), linear-gradient(180deg, #22170d 0%, #120b06 100%);
+}
+[data-skin="vinyl"] .hw-panel {
+  background-color: #2a1c10;
+  background-image: linear-gradient(180deg, rgba(74, 48, 26, 0.92) 0%, rgba(42, 28, 16, 0.92) 60%, rgba(26, 17, 9, 0.95) 100%);
+  border-color: #5a3c20;
+}
+[data-skin="vinyl"] .hw-recess { background: linear-gradient(180deg, #120b06, #1c120a); border-color: #3a2614; }
+[data-skin="vinyl"] .hw-btn { --led: #e8a04a; }
+[data-skin="vinyl"] .hw-transport { --led: #e8a04a; }
+
+[data-skin="neon"] body { background: #05010a; }
+[data-skin="neon"] .hw-body {
+  background-color: #05010a;
+  background-image: radial-gradient(1200px 500px at 50% -10%, #2a0838 0%, transparent 60%), linear-gradient(180deg, #0a0214 0%, #05010a 100%);
+}
+[data-skin="neon"] .hw-panel {
+  background-color: #0d0716;
+  background-image: linear-gradient(180deg, rgba(30, 12, 44, 0.92) 0%, rgba(13, 7, 22, 0.92) 60%, rgba(8, 4, 14, 0.95) 100%);
+  border-color: #4a1466;
+  box-shadow: inset 0 1px 0 rgba(255, 43, 214, 0.12), 0 0 18px rgba(255, 43, 214, 0.12), 0 6px 18px rgba(0, 0, 0, 0.55);
+}
+[data-skin="neon"] .hw-recess { background: linear-gradient(180deg, #05010a, #0c0416); border-color: #2a0a38; }
+[data-skin="neon"] .hw-btn { --led: #ff2bd6; }
+[data-skin="neon"] .hw-transport { --led: #ff2bd6; }

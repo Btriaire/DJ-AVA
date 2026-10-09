@@ -129,6 +129,30 @@ export default function Home() {
       /* ignore */
     }
   }
+  const [skin, setSkin] = useState<"carbon" | "vinyl" | "neon">("carbon");
+  useEffect(() => {
+    let saved: string | null = null;
+    try {
+      saved = localStorage.getItem("djsynth.skin");
+    } catch {
+      /* ignore */
+    }
+    if (saved === "vinyl" || saved === "neon") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- deliberate client-only init, same pattern as deviceMode
+      setSkin(saved);
+      document.documentElement.setAttribute("data-skin", saved);
+    }
+  }, []);
+  function chooseSkin(next: "carbon" | "vinyl" | "neon") {
+    setSkin(next);
+    if (next === "carbon") document.documentElement.removeAttribute("data-skin");
+    else document.documentElement.setAttribute("data-skin", next);
+    try {
+      localStorage.setItem("djsynth.skin", next);
+    } catch {
+      /* ignore */
+    }
+  }
   const [autoDur, setAutoDur] = useState(8); // seconds-before-end trigger + fade length
   const [autoArmed, setAutoArmed] = useState(false); // "Auto-fade" toggle — watches for track-end
   const [autoRunning, setAutoRunning] = useState(false); // a sweep is actively animating right now
@@ -686,6 +710,25 @@ export default function Home() {
         )}
         <div className="flex flex-wrap items-center gap-2">
           <LcdClock />
+          <div className="flex overflow-hidden rounded-lg ring-1 ring-white/10">
+            {(
+              [
+                ["carbon", "Carbone"],
+                ["vinyl", "Vinyle"],
+                ["neon", "Néon"],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => chooseSkin(key)}
+                className={`px-2.5 py-1.5 text-xs font-bold ${skin === key ? "hw-btn-on" : "text-neutral-400"}`}
+                style={{ ["--led" as string]: "#ffcc00" }}
+                title={`Skin ${label}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           {ready && engine && (
             <DeckTimers deckA={engine.deckA} deckB={engine.deckB} colorA="#ffcc00" colorB="#ffcc00" />
           )}
