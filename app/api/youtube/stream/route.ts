@@ -30,17 +30,18 @@ export async function GET(req: NextRequest) {
       signal: AbortSignal.timeout(30000),
     });
 
-    if (vpsRes.ok && vpsRes.body) {
-      const headers = new Headers();
-      headers.set("Content-Type", vpsRes.headers.get("Content-Type") || "audio/mpeg");
-      headers.set("Cache-Control", "no-store");
-      headers.set("Access-Control-Allow-Origin", "*");
-      if (vpsRes.headers.get("Content-Disposition")) {
-        headers.set("Content-Disposition", vpsRes.headers.get("Content-Disposition")!);
-      } else if (dl) {
-        headers.set("Content-Disposition", `attachment; filename="youtube-audio.mp3"`);
+      if (vpsRes.ok && vpsRes.body) {
+        const headers = new Headers();
+        headers.set("Content-Type", vpsRes.headers.get("Content-Type") || "audio/mpeg");
+        headers.set("Cache-Control", "no-store");
+        headers.set("Access-Control-Allow-Origin", "*");
+        if (vpsRes.headers.get("Content-Disposition")) {
+          headers.set("Content-Disposition", vpsRes.headers.get("Content-Disposition")!);
+        } else if (dl) {
+          headers.set("Content-Disposition", `attachment; filename="youtube-audio.mp3"`);
+        }
+        return new NextResponse(vpsRes.body, { headers });
       }
-      return new NextResponse(vpsRes.body, { headers });
     } catch (err) {
       console.warn("[youtube stream proxy] VPS error, trying local:", (err as Error).message);
     }
