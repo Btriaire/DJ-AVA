@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const VPS_BACKEND = "https://dj.46.202.131.240.nip.io";
+const IS_VPS = process.env.STEMS_CACHE_DIR != null || process.env.YT_DLP_COOKIES != null;
 
 export async function GET(req: NextRequest) {
   const id = req.nextUrl.searchParams.get("id");
@@ -15,9 +16,10 @@ export async function GET(req: NextRequest) {
 
   const dl = req.nextUrl.searchParams.get("dl") === "1";
 
-  // 1. Try forwarding to VPS backend (Option B: full Docker container with yt-dlp & cookies)
-  try {
-    const vpsUrl = new URL("/api/youtube/stream", VPS_BACKEND);
+  // 1. Try forwarding to VPS backend (if running on Vercel/external, forward to Option B VPS)
+  if (!IS_VPS) {
+    try {
+      const vpsUrl = new URL("/api/youtube/stream", VPS_BACKEND);
     req.nextUrl.searchParams.forEach((val, key) => vpsUrl.searchParams.set(key, val));
 
     const vpsRes = await fetch(vpsUrl.toString(), {
@@ -39,9 +41,9 @@ export async function GET(req: NextRequest) {
         headers.set("Content-Disposition", `attachment; filename="youtube-audio.mp3"`);
       }
       return new NextResponse(vpsRes.body, { headers });
+    } catch (err) {
+      console.warn("[youtube stream proxy] VPS error, trying local:", (err as Error).message);
     }
-  } catch (err) {
-    console.warn("[youtube stream proxy] VPS error, trying local:", (err as Error).message);
   }
 
   // 2. Local fallback if yt-dlp & ffmpeg are installed on the host
