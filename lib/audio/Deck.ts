@@ -634,34 +634,75 @@ export class Deck {
   }
 
   loadStreamingUrl(url: string, name: string) {
-    const el = new Audio();
-    el.crossOrigin = "anonymous";
-    el.src = url;
-    const onEnded = () => {
-      if (this.mediaEl === el) {
-        this._playing = false;
-        this.pausedAt = 0;
-        if (this.repeat && this.buffer) this.play();
-      }
-    };
-    this._streamSetup(el, name, onEnded);
+    this.cleanupMediaEl();
+    this.stopSources();
+    this._playing = false;
+    this.buffer = null;
+    this.name = name;
+    this.peaks = new Float32Array(0);
+    this.bpm = 0;
+    this.key = null;
+    this.duration = 0;
+    this.pausedAt = 0;
+    this.cuePoint = 0;
+    this.clearStems();
+    this.loadGen++;
+    this._bufferLoading = true;
+    this.loading = true;
 
-    // Phase 2: fetch the same URL again for decode (browser may cache it)
-    const capturedEl = el;
-    fetch(url).then((r) => r.arrayBuffer()).then((raw) => {
-      if (capturedEl !== this.mediaEl) return null;
-      this.rawData = raw.slice(0);
-      if (this.stemsWanted) void this.prefetchStems(); // prep in the background — this deck was using stems
-      return this.ctx.decodeAudioData(raw);
-    }).then((buf) => {
-      if (!buf || capturedEl !== this.mediaEl) return;
-      const pos = this.mediaEl?.currentTime ?? 0;
-      const wasPlaying = this._playing;
-      this._streamSwap(buf, pos, wasPlaying);
-    }).catch((e) => {
-      console.error("[deck] background decode failed", (e as Error).message);
-      if (capturedEl === this.mediaEl) this._bufferLoading = false;
-    });
+    const currentGen = this.loadGen;
+    fetch(url)
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.blob();
+      })
+      .then(async (blob) => {
+        if (currentGen !== this.loadGen) return;
+        // Launch streaming element playback immediately from Blob
+        const blobUrl = URL.createObjectURL(blob);
+        const el = new Audio();
+        el.crossOrigin = "anonymous";
+        el.src = blobUrl;
+        el.preload = "auto";
+        el.addEventListener("loadedmetadata", () => {
+          if (currentGen === this.loadGen && el.duration) {
+            this.duration = el.duration;
+          }
+        }, { once: true });
+        el.addEventListener("ended", () => {
+          if (this.mediaEl === el) {
+            this._playing = false;
+            this.pausedAt = 0;
+            if (this.repeat && this.buffer) this.play();
+          }
+        }, { once: true });
+
+        const elSrc = this.ctx.createMediaElementSource(el);
+        elSrc.connect(this.trim);
+        this.mediaEl = el;
+        this.mediaElSrc = elSrc;
+
+        // Decode audio data to extract waveform peaks, BPM, musical Key & AudioBuffer
+        const raw = await blob.arrayBuffer();
+        if (currentGen !== this.loadGen) return;
+        this.rawData = raw.slice(0);
+        if (this.stemsWanted) void this.prefetchStems();
+
+        const buf = await this.ctx.decodeAudioData(raw);
+        if (currentGen !== this.loadGen) return;
+        const pos = this.mediaEl?.currentTime ?? 0;
+        const wasPlaying = this._playing;
+        this._streamSwap(buf, pos, wasPlaying);
+        this.loading = false;
+        this._bufferLoading = false;
+      })
+      .catch((e) => {
+        console.error("[deck] loadStreamingUrl failed:", (e as Error).message);
+        if (currentGen === this.loadGen) {
+          this._bufferLoading = false;
+          this.loading = false;
+        }
+      });
   }
 
   // pristine bytes of the loaded track (for re-storing the audio when saving a
