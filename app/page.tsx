@@ -28,6 +28,23 @@ import { CpuMeter } from "@/components/CpuMeter";
 import { StudioView } from "@/components/StudioView";
 import { PlatineView } from "@/components/PlatineView";
 import { Splash } from "@/components/Splash";
+import {
+  IconMixer,
+  IconHeadphones,
+  IconDisc,
+  IconPlaylist,
+  IconMusic,
+  IconRefresh,
+  IconSave,
+  IconDownload,
+  IconUpload,
+  IconLayers,
+  IconSettings,
+  IconAlertTriangle,
+  IconPower,
+  IconMonitor,
+  IconSmartphone,
+} from "@/components/Icons";
 
 export default function Home() {
   const engineRef = useRef<DJEngine | null>(null);
@@ -248,38 +265,42 @@ export default function Home() {
       return next;
     });
   }
-  const MODULE_DEFS: { key: keyof Modules; label: string; scope: string; group?: string }[] = [
-    { key: "synth", label: "Synthé", scope: "global" },
-    { key: "dx7", label: "DX7 · Synthé + Sampler", scope: "global" },
-    { key: "solar42", label: "Solar 42F · Drone Machine", scope: "global" },
-    { key: "sampler", label: "Sculpteur de son", scope: "global" },
-    { key: "soundfx", label: "FX Sonores", scope: "global" },
-    { key: "boss", label: "Boss FX", scope: "mixer" },
-    { key: "eq", label: "EQ 15 bandes", scope: "deck" },
-    { key: "fxpad", label: "FX · Intensité", scope: "deck" },
-    // DSP Modules
-    { key: "isolator", label: "ISO VOIX", scope: "deck", group: "DSP" },
-    { key: "autotune", label: "AUTO-TUNE", scope: "deck", group: "DSP" },
-    { key: "comp", label: "COMP", scope: "deck", group: "DSP" },
-    { key: "drive", label: "DRIVE", scope: "deck", group: "DSP" },
-    { key: "wavefold", label: "WAVEFOLD", scope: "deck", group: "DSP" },
-    { key: "crush", label: "CRUSH", scope: "deck", group: "DSP" },
-    { key: "robot", label: "ROBOT", scope: "deck", group: "DSP" },
-    { key: "ringmod", label: "RINGMOD", scope: "deck", group: "DSP" },
-    { key: "voyelle", label: "VOYELLE", scope: "deck", group: "DSP" },
-    { key: "autowah", label: "AUTO-WAH", scope: "deck", group: "DSP" },
-    { key: "resonator", label: "RESONATOR", scope: "deck", group: "DSP" },
-    { key: "gate", label: "GATE", scope: "deck", group: "DSP" },
-    { key: "glitch", label: "GLITCH", scope: "deck", group: "DSP" },
-    { key: "shimmer", label: "SHIMMER", scope: "deck", group: "DSP" },
-    { key: "delay", label: "DELAY", scope: "deck", group: "DSP" },
-    { key: "reverb", label: "REVERB", scope: "deck", group: "DSP" },
-    { key: "limiter", label: "LIMITER", scope: "deck", group: "DSP" },
-    { key: "loudness", label: "LOUDNESS", scope: "deck", group: "DSP" },
-    { key: "surround", label: "SURROUND", scope: "deck", group: "DSP" },
-    { key: "exciter", label: "EXCITER", scope: "deck", group: "DSP" },
-    { key: "transient", label: "TRANSIENT", scope: "deck", group: "DSP" },
-    { key: "multiband", label: "MULTI-BAND", scope: "deck", group: "DSP" },
+  const MODULE_DEFS: { key: keyof Modules; label: string; scope: string; category: "Instruments & Sources" | "Mixer & EQ" | "Dynamique & Filtrage" | "Distorsion & Caractère" | "Espace & Modulation" }[] = [
+    // Instruments & Sources
+    { key: "synth", label: "Synthé", scope: "global", category: "Instruments & Sources" },
+    { key: "dx7", label: "DX7 · Synthé + Sampler", scope: "global", category: "Instruments & Sources" },
+    { key: "solar42", label: "Solar 42F · Drone", scope: "global", category: "Instruments & Sources" },
+    { key: "sampler", label: "Sculpteur de son", scope: "global", category: "Instruments & Sources" },
+    { key: "soundfx", label: "FX Sonores", scope: "global", category: "Instruments & Sources" },
+    // Mixer & EQ
+    { key: "boss", label: "Boss Master FX", scope: "mixer", category: "Mixer & EQ" },
+    { key: "eq", label: "EQ 15 bandes", scope: "deck", category: "Mixer & EQ" },
+    { key: "fxpad", label: "FX Pad Intensité", scope: "deck", category: "Mixer & EQ" },
+    { key: "isolator", label: "Isolateur Voix", scope: "deck", category: "Mixer & EQ" },
+    // Dynamique & Filtrage
+    { key: "comp", label: "Compresseur", scope: "deck", category: "Dynamique & Filtrage" },
+    { key: "gate", label: "Noise Gate", scope: "deck", category: "Dynamique & Filtrage" },
+    { key: "limiter", label: "Limiter", scope: "deck", category: "Dynamique & Filtrage" },
+    { key: "loudness", label: "Loudness Maximizer", scope: "deck", category: "Dynamique & Filtrage" },
+    { key: "multiband", label: "Comp Multi-bandes", scope: "deck", category: "Dynamique & Filtrage" },
+    { key: "transient", label: "Transient Shaper", scope: "deck", category: "Dynamique & Filtrage" },
+    // Distorsion & Caractère
+    { key: "drive", label: "Overdrive", scope: "deck", category: "Distorsion & Caractère" },
+    { key: "wavefold", label: "Wavefolder", scope: "deck", category: "Distorsion & Caractère" },
+    { key: "crush", label: "Bitcrusher", scope: "deck", category: "Distorsion & Caractère" },
+    { key: "robot", label: "Robot Vocoder", scope: "deck", category: "Distorsion & Caractère" },
+    { key: "ringmod", label: "Ring Modulator", scope: "deck", category: "Distorsion & Caractère" },
+    { key: "exciter", label: "Exciter Harmonique", scope: "deck", category: "Distorsion & Caractère" },
+    // Espace & Modulation
+    { key: "delay", label: "Delay Stéréo", scope: "deck", category: "Espace & Modulation" },
+    { key: "reverb", label: "Reverb Hall", scope: "deck", category: "Espace & Modulation" },
+    { key: "shimmer", label: "Shimmer Reverb", scope: "deck", category: "Espace & Modulation" },
+    { key: "surround", label: "Surround Panner", scope: "deck", category: "Espace & Modulation" },
+    { key: "glitch", label: "Glitch Repeater", scope: "deck", category: "Espace & Modulation" },
+    { key: "autowah", label: "Auto-Wah", scope: "deck", category: "Espace & Modulation" },
+    { key: "resonator", label: "Resonateur", scope: "deck", category: "Espace & Modulation" },
+    { key: "voyelle", label: "Filtre Formants Voyelle", scope: "deck", category: "Espace & Modulation" },
+    { key: "autotune", label: "Auto-Tune Pitch", scope: "deck", category: "Espace & Modulation" },
   ];
 
   // Stable callback so the memoized MediaLibrary isn't re-rendered (and its rows
@@ -661,53 +682,64 @@ export default function Home() {
           playback in the background, see attachBackgroundAudio() above */}
       <audio ref={bgAudioRef} playsInline muted className="hidden" />
       {splash && <Splash onDone={dismissSplash} />}
-      <header className="hw-screwed hw-panel mb-4 flex flex-wrap items-center justify-between gap-2 px-4 py-2">
-        <h1 className="text-xl font-black tracking-tight">
-          <span className="hw-led text-[#ffcc00]">DJ</span>
-          <span className="hw-led text-[#ffcc00]">Synth</span>
-          <span className="ml-2 text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-500">
-            performance controller
-          </span>
-        </h1>
+      <header className="hw-screwed hw-panel mb-4 flex flex-wrap items-center justify-between gap-3 px-4 py-2.5">
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-black tracking-tight">
+            <span className="hw-led text-[#38bdf8]">DJ</span>
+            <span className="hw-led text-[#ffcc00]">-AVA</span>
+            <span className="ml-2 text-[10px] font-bold uppercase tracking-[0.25em] text-neutral-400">
+              Pro Console
+            </span>
+          </h1>
+          {ready && (
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-950/60 border border-emerald-500/30 text-[10px] font-mono text-emerald-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              LIVE
+            </div>
+          )}
+        </div>
+
         {ready && (
-          // horizontal scroll instead of overflow-hidden: on an iPhone-width
-          // screen the 4 view buttons don't all fit, and clipping them would
-          // make some views unreachable — swipe to see the rest instead.
-          <div className="flex max-w-full overflow-x-auto rounded-lg ring-1 ring-white/10">
+          <div className="flex max-w-full overflow-x-auto rounded-lg ring-1 ring-white/10 bg-neutral-900/60 p-0.5 gap-0.5">
             <button
               onClick={() => setView("console")}
-              className={`shrink-0 whitespace-nowrap px-4 py-2 text-sm font-bold ${view === "console" ? "hw-btn-on" : "text-neutral-400"}`}
-              style={{ ["--led" as string]: "#ffcc00" }}
+              className={`inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${view === "console" ? "hw-btn-on shadow-sm" : "text-neutral-400 hover:text-neutral-200"}`}
+              style={{ ["--led" as string]: "#38bdf8" }}
               title="Le contrôleur DJ complet (decks, mixer, synthé, pads)"
             >
-              🎛 Console
+              <IconMixer className="w-3.5 h-3.5" />
+              <span>Console</span>
             </button>
             <button
               onClick={() => setView("studio")}
-              className={`shrink-0 whitespace-nowrap px-4 py-2 text-sm font-bold ${view === "studio" ? "hw-btn-on" : "text-neutral-400"}`}
+              className={`inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${view === "studio" ? "hw-btn-on shadow-sm" : "text-neutral-400 hover:text-neutral-200"}`}
               style={{ ["--led" as string]: "#e879f9" }}
               title="Écoute, analyse (BPM/beats/fréquences), playlists, base de données et Auto-IA"
             >
-              🎧 Écoute
+              <IconHeadphones className="w-3.5 h-3.5" />
+              <span>Écoute</span>
             </button>
             <button
               onClick={() => { setView("platine"); setShowLibrary(false); }}
-              className={`shrink-0 whitespace-nowrap px-4 py-2 text-sm font-bold ${view === "platine" ? "hw-btn-on" : "text-neutral-400"}`}
+              className={`inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${view === "platine" ? "hw-btn-on shadow-sm" : "text-neutral-400 hover:text-neutral-200"}`}
               style={{ ["--led" as string]: "#ffcc00" }}
               title="Deux platines vinyles qui tournent : crossfade, Autofade et Autoplay pour un mix live simple"
             >
-              💿 Platine
+              <IconDisc className="w-3.5 h-3.5" />
+              <span>Platines</span>
             </button>
             <button
               onClick={() => setView("playlist")}
-              className={`shrink-0 whitespace-nowrap px-4 py-2 text-sm font-bold ${view === "playlist" ? "hw-btn-on" : "text-neutral-400"}`}
+              className={`inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${view === "playlist" ? "hw-btn-on shadow-sm" : "text-neutral-400 hover:text-neutral-200"}`}
               style={{ ["--led" as string]: "#a78bfa" }}
               title="Crée et enchaîne des playlists : recherche à gauche, set à droite, choix du deck, BPM"
             >
-              🎚 Playlist
+              <IconPlaylist className="w-3.5 h-3.5" />
+              <span>Playlist</span>
             </button>
           </div>
         )}
+
         <div className="flex flex-wrap items-center gap-2">
           <LcdClock />
           <div className="flex overflow-hidden rounded-lg ring-1 ring-white/10">
@@ -721,7 +753,7 @@ export default function Home() {
               <button
                 key={key}
                 onClick={() => chooseSkin(key)}
-                className={`px-2.5 py-1.5 text-xs font-bold ${skin === key ? "hw-btn-on" : "text-neutral-400"}`}
+                className={`px-2 py-1 text-[11px] font-bold ${skin === key ? "hw-btn-on" : "text-neutral-400"}`}
                 style={{ ["--led" as string]: "#ffcc00" }}
                 title={`Skin ${label}`}
               >
@@ -729,40 +761,46 @@ export default function Home() {
               </button>
             ))}
           </div>
+
           {ready && engine && (
-            <DeckTimers deckA={engine.deckA} deckB={engine.deckB} colorA="#ffcc00" colorB="#ffcc00" />
+            <DeckTimers deckA={engine.deckA} deckB={engine.deckB} colorA="#38bdf8" colorB="#f59e0b" />
           )}
+
           {ready && (
             <button
               onClick={recoverSound}
               disabled={recovering}
-              className="hw-btn px-3 py-2 text-sm disabled:opacity-50"
+              className="hw-btn inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold disabled:opacity-50"
               style={{ ["--led" as string]: "#38bdf8", color: "#38bdf8" }}
-              title="Le son a coupé et rien ne le rétablit ? Recrée le moteur audio (nouveau contexte) en gardant tes morceaux — l'équivalent d'un redémarrage, sans recharger la page"
+              title="Le son a coupé ? Recrée le moteur audio en gardant tes morceaux"
             >
-              {recovering ? "SON…" : "↻ SON"}
+              <IconRefresh className={`w-3.5 h-3.5 ${recovering ? "animate-spin" : ""}`} />
+              <span>{recovering ? "Audio…" : "Audio Reset"}</span>
             </button>
           )}
+
           {ready && (
             <div className="flex items-center gap-1">
               <button
                 onClick={saveState}
                 disabled={!!stateBusy}
-                className="hw-btn px-3 py-2 text-sm disabled:opacity-50"
+                className="hw-btn inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold disabled:opacity-50"
                 style={{ ["--led" as string]: "#facc15", color: "#facc15" }}
-                title="Sauvegarder l'état complet (decks A & B, réglages, crossfader, master) pour le retrouver à la prochaine session"
+                title="Sauvegarder l'état complet du mix"
               >
-                {stateBusy === "save" ? "SAVE…" : "↧ SAVE"}
+                <IconSave className="w-3.5 h-3.5" />
+                <span>{stateBusy === "save" ? "Save…" : "Sauver"}</span>
               </button>
               {savedExists && (
                 <button
                   onClick={restoreState}
                   disabled={!!stateBusy}
-                  className="hw-btn px-3 py-2 text-sm disabled:opacity-50"
+                  className="hw-btn inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold disabled:opacity-50"
                   style={{ ["--led" as string]: "#facc15", color: "#facc15" }}
-                  title="Restaurer le dernier état sauvegardé (recharge les morceaux et tous les réglages)"
+                  title="Restaurer le dernier état sauvegardé"
                 >
-                  {stateBusy === "load" ? "ÉTAT…" : "↥ ÉTAT"}
+                  <IconDownload className="w-3.5 h-3.5" />
+                  <span>{stateBusy === "load" ? "Charger…" : "Charger"}</span>
                 </button>
               )}
               {stateFlash && (
@@ -770,76 +808,123 @@ export default function Home() {
               )}
             </div>
           )}
+
           {ready && (
             <button
               onClick={panic}
-              className="hw-panic"
+              className="hw-panic inline-flex items-center gap-1 px-2.5 py-1 text-xs"
               title="Tout remettre à zéro (garde les morceaux chargés)"
             >
-              PANIC
+              <IconAlertTriangle className="w-3.5 h-3.5" />
+              <span>PANIC</span>
             </button>
           )}
+
           {ready && view !== "platine" && (
             <button
               onClick={() => setShowLibrary(true)}
-              className="hw-btn hw-btn-on px-4 py-2 text-sm"
+              className="hw-btn hw-btn-on inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold"
               style={{ ["--led" as string]: "#ffcc00" }}
             >
-              ♫ Bibliothèque
+              <IconMusic className="w-3.5 h-3.5" />
+              <span>Bibliothèque</span>
             </button>
           )}
+
           {ready && (
             <div className="relative">
               <button
                 onClick={() => setShowModulePicker((v) => !v)}
-                className={`hw-btn px-3 py-2 text-sm ${showModulePicker ? "hw-btn-on" : "text-neutral-300"}`}
-                style={{ ["--led" as string]: "#ffcc00" }}
+                className={`hw-btn inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold ${showModulePicker ? "hw-btn-on" : "text-neutral-300"}`}
+                style={{ ["--led" as string]: "#38bdf8" }}
                 title="Ajouter / retirer des modules"
               >
-                ⊕ Modules
+                <IconLayers className="w-3.5 h-3.5" />
+                <span>Modules</span>
               </button>
               {showModulePicker && (
-                <div className="hw-panel absolute right-0 top-full z-50 mt-2 w-56 p-3 text-sm">
-                  <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500">Modules optionnels</div>
-                  {MODULE_DEFS.map(({ key, label, scope }) => (
-                    <label key={key} className="flex cursor-pointer items-center justify-between gap-2 py-1">
-                      <span className="text-[11px] text-neutral-300">{label}</span>
-                      <span className="text-[8px] text-neutral-600 capitalize">{scope}</span>
-                      <button
-                        onClick={() => toggleModule(key)}
-                        className={`hw-btn px-2 py-0.5 text-[10px] ${modules[key] ? "hw-btn-on" : "text-neutral-500"}`}
-                        style={{ ["--led" as string]: "#ffcc00" }}
-                      >
-                        {modules[key] ? "ON" : "OFF"}
-                      </button>
-                    </label>
-                  ))}
+                <div className="hw-panel absolute right-0 top-full z-50 mt-2 w-80 max-h-[80vh] overflow-y-auto p-4 text-xs shadow-2xl border border-neutral-700/80">
+                  <div className="mb-3 flex items-center justify-between pb-2 border-b border-neutral-800">
+                    <span className="text-[11px] font-black uppercase tracking-[0.2em] text-[#38bdf8]">
+                      Processeurs & Modules
+                    </span>
+                    <button
+                      onClick={() => setShowModulePicker(false)}
+                      className="text-neutral-500 hover:text-white px-1 text-sm font-bold"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {(
+                    [
+                      "Instruments & Sources",
+                      "Mixer & EQ",
+                      "Dynamique & Filtrage",
+                      "Distorsion & Caractère",
+                      "Espace & Modulation",
+                    ] as const
+                  ).map((cat) => {
+                    const items = MODULE_DEFS.filter((m) => m.category === cat);
+                    if (items.length === 0) return null;
+                    return (
+                      <div key={cat} className="mb-3.5">
+                        <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                          {cat}
+                        </div>
+                        <div className="space-y-1">
+                          {items.map(({ key, label, scope }) => (
+                            <div
+                              key={key}
+                              className="flex items-center justify-between py-1 px-1.5 rounded bg-neutral-900/40 hover:bg-neutral-800/50"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] text-neutral-200">{label}</span>
+                                <span className="text-[9px] uppercase px-1 py-0.2 rounded bg-neutral-800 text-neutral-400 font-mono">
+                                  {scope}
+                                </span>
+                              </div>
+                              <button
+                                onClick={() => toggleModule(key)}
+                                className={`hw-btn px-2 py-0.5 text-[10px] font-bold ${modules[key] ? "hw-btn-on" : "text-neutral-500"}`}
+                                style={{ ["--led" as string]: "#38bdf8" }}
+                              >
+                                {modules[key] ? "ON" : "OFF"}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
           )}
+
           {ready && (
             <div className="relative">
               <button
                 onClick={() => setShowConfig((c) => !c)}
-                className={`hw-btn px-3 py-2 text-sm ${showConfig ? "hw-btn-on" : "text-neutral-300"}`}
+                className={`hw-btn inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold ${showConfig ? "hw-btn-on" : "text-neutral-300"}`}
                 style={{ ["--led" as string]: "#a78bfa" }}
                 title="Configuration"
               >
-                ⚙ Config
+                <IconSettings className="w-3.5 h-3.5" />
+                <span>Config</span>
               </button>
               {showConfig && (
                 <div className="hw-panel absolute right-0 top-full z-50 mt-2 w-64 p-3 text-sm">
-                  <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500">
-                    Configuration
+                  <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">
+                    Configuration Console
                   </div>
-                  <label className="flex cursor-pointer items-center justify-between gap-3">
-                    <span className="text-neutral-200">
-                      Outil YouTube (vidéos) en bas
+                  <label className="flex cursor-pointer items-center justify-between gap-3 py-1">
+                    <span className="text-xs text-neutral-200">
+                      Outil Vidéo YouTube
                     </span>
                     <button
                       onClick={toggleYouTube}
-                      className={`hw-btn px-2 py-1 text-xs ${showYouTube ? "hw-btn-on" : "text-neutral-400"}`}
+                      className={`hw-btn px-2 py-1 text-xs font-bold ${showYouTube ? "hw-btn-on" : "text-neutral-400"}`}
                       style={{ ["--led" as string]: "#ef4444" }}
                     >
                       {showYouTube ? "ON" : "OFF"}
@@ -849,32 +934,36 @@ export default function Home() {
               )}
             </div>
           )}
+
           {!ready && (
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex overflow-hidden rounded-lg ring-1 ring-white/10">
                 <button
                   onClick={() => chooseDeviceMode("desktop")}
-                  className={`px-3 py-1.5 text-xs font-bold ${deviceMode === "desktop" ? "hw-btn-on" : "text-neutral-400"}`}
-                  style={{ ["--led" as string]: "#ffcc00" }}
+                  className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold ${deviceMode === "desktop" ? "hw-btn-on" : "text-neutral-400"}`}
+                  style={{ ["--led" as string]: "#38bdf8" }}
                   title="Console complète, les deux decks côte à côte"
                 >
-                  💻 PC / iPad
+                  <IconMonitor className="w-3.5 h-3.5" />
+                  <span>PC / iPad</span>
                 </button>
                 <button
                   onClick={() => chooseDeviceMode("iphone")}
-                  className={`px-3 py-1.5 text-xs font-bold ${deviceMode === "iphone" ? "hw-btn-on" : "text-neutral-400"}`}
-                  style={{ ["--led" as string]: "#ffcc00" }}
-                  title="Démarre avec un seul deck affiché — tient sans défilement horizontal sur iPhone"
+                  className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold ${deviceMode === "iphone" ? "hw-btn-on" : "text-neutral-400"}`}
+                  style={{ ["--led" as string]: "#38bdf8" }}
+                  title="Démarre avec un seul deck affiché pour mobile"
                 >
-                  📱 iPhone
+                  <IconSmartphone className="w-3.5 h-3.5" />
+                  <span>Mobile</span>
                 </button>
               </div>
               <button
                 onClick={init}
-                className="hw-btn hw-btn-on px-4 py-2 text-sm"
-                style={{ ["--led" as string]: "#ffcc00" }}
+                className="hw-btn hw-btn-on inline-flex items-center gap-1.5 px-4 py-2 text-sm font-bold"
+                style={{ ["--led" as string]: "#38bdf8" }}
               >
-                ⏻ Démarrer l&apos;audio
+                <IconPower className="w-4 h-4" />
+                <span>Démarrer l&apos;audio</span>
               </button>
             </div>
           )}
@@ -933,8 +1022,8 @@ export default function Home() {
                 <MixScope
                   deckA={engine.deckA}
                   deckB={engine.deckB}
-                  colorA="#ffcc00"
-                  colorB="#ffcc00"
+                  colorA="#38bdf8"
+                  colorB="#f59e0b"
                   crossfade={crossfade}
                   onCrossfade={(v) => {
                     stopAuto();
@@ -951,7 +1040,7 @@ export default function Home() {
               key={`A-${resetKey}`}
               deck={engine.deckA}
               side="A"
-              color="#ffcc00"
+              color="#38bdf8"
               tick={tick}
               onClose={() => toggleDeckClosed("A")}
               onLoaded={() => setTick((t) => t + 1)}
@@ -1062,8 +1151,8 @@ export default function Home() {
                   className="dj-fader w-full"
                 />
                 <div className="flex w-full justify-between text-xs font-black">
-                  <span className="hw-led text-[#ffcc00]">A</span>
-                  <span className="hw-led text-[#ffcc00]">B</span>
+                  <span className="hw-led text-[#38bdf8]">A</span>
+                  <span className="hw-led text-[#f59e0b]">B</span>
                 </div>
 
                 {/* automatic progressive crossfade */}
@@ -1075,7 +1164,7 @@ export default function Home() {
                     style={{ ["--led" as string]: "#ffcc00" }}
                     title={`Bascule automatiquement vers l'autre platine ${autoDur}s avant la fin du morceau en cours — double-clic pour forcer maintenant`}
                   >
-                    {autoRunning ? "⇄ Transition…" : autoArmed ? "⏳ Auto-fade armé" : "⇄ Auto-fade"}
+                    {autoRunning ? "⇄ Transition…" : autoArmed ? "Auto-fade ON" : "⇄ Auto-fade"}
                   </button>
                   <button
                     onClick={() => setAutoFadeSync((s) => !s)}
@@ -1083,11 +1172,11 @@ export default function Home() {
                     style={{ ["--led" as string]: "#ffcc00" }}
                     title="Aligner aussi le tempo : la platine entrante glisse progressivement sur le BPM de l'autre pendant le fondu"
                   >
-                    ♪ BPM
+                    SYNC BPM
                   </button>
                   <button
                     onClick={() => setAutoDur((d) => (d >= 16 ? 4 : d * 2))}
-                    className="hw-btn px-2 py-1 text-[11px] text-neutral-300"
+                    className="hw-btn px-2 py-1 text-[11px] text-neutral-300 font-mono"
                     title="Déclenche le fondu N secondes avant la fin du morceau (aussi la durée du fondu)"
                   >
                     {autoDur}s
@@ -1110,7 +1199,7 @@ export default function Home() {
               key={`B-${resetKey}`}
               deck={engine.deckB}
               side="B"
-              color="#ffcc00"
+              color="#f59e0b"
               tick={tick}
               onClose={() => toggleDeckClosed("B")}
               onLoaded={() => setTick((t) => t + 1)}
