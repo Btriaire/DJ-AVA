@@ -98,7 +98,7 @@ function saveStore(s: Record<string, RackPreset>) {
 function Lcd({ text, color }: { text: string; color: string }) {
   return (
     <span
-      className="hw-recess inline-flex items-center rounded px-2 py-0.5 font-mono text-[9px] font-bold tracking-wider"
+      className="hw-recess inline-flex items-center rounded px-2 py-0.5 font-mono text-[10px] font-bold tracking-wider"
       style={{
         color,
         background: "#0a0d0a",
@@ -420,7 +420,7 @@ export function RackPanel({
         <Lcd text={lcdText} color={color} />
         <button
           onClick={toggleAll}
-          className="hw-btn px-1.5 py-0.5 text-[8px] font-bold"
+          className="hw-btn px-1.5 py-0.5 text-[9px] font-bold"
           style={{ ["--led" as string]: color, color }}
           title="Tout replier / déplier"
         >
@@ -428,7 +428,7 @@ export function RackPanel({
         </button>
         <button
           onClick={allOff}
-          className="hw-btn px-1.5 py-0.5 text-[8px] font-bold text-red-400"
+          className="hw-btn px-1.5 py-0.5 text-[9px] font-bold text-red-400"
           style={{ ["--led" as string]: "#ef4444" }}
           title="Coupe tous les effets d'un coup (l'EQ reste actif — toujours inline comme du vrai matériel)"
         >
@@ -443,7 +443,7 @@ export function RackPanel({
                 setPresetName(f.name);
                 rerender();
               }}
-              className="hw-btn px-1.5 py-0.5 text-[8px] font-bold"
+              className="hw-btn px-1.5 py-0.5 text-[9px] font-bold"
               style={{ ["--led" as string]: color, color }}
               title={`Preset d'usine : ${f.name}`}
             >
@@ -458,14 +458,14 @@ export function RackPanel({
                   setPresetName(n);
                   rerender();
                 }}
-                className="px-1.5 py-0.5 text-[8px] font-bold text-neutral-200"
+                className="px-1.5 py-0.5 text-[9px] font-bold text-neutral-200"
                 title={`Charger le preset « ${n} »`}
               >
                 {n}
               </button>
               <button
                 onClick={() => deletePreset(n)}
-                className="px-1 py-0.5 text-[8px] text-neutral-500 hover:text-red-400"
+                className="px-1 py-0.5 text-[9px] text-neutral-500 hover:text-red-400"
                 title="Supprimer ce preset"
               >
                 ✕
@@ -474,7 +474,7 @@ export function RackPanel({
           ))}
           <button
             onClick={savePreset}
-            className="hw-btn px-1.5 py-0.5 text-[8px] font-bold"
+            className="hw-btn px-1.5 py-0.5 text-[9px] font-bold"
             style={{ ["--led" as string]: color, color }}
             title="Sauvegarder l'état du rack comme preset"
           >
@@ -488,7 +488,7 @@ export function RackPanel({
 
       {/* macros */}
       <div className="flex items-center gap-3 rounded bg-black/20 p-2">
-        <span className="text-[8px] uppercase text-neutral-500">Macros</span>
+        <span className="text-[9px] uppercase text-neutral-500">Macros</span>
         {rack.macros.map((m, i) => (
           <div key={i} className="flex flex-col items-center">
             <Knob
@@ -507,7 +507,7 @@ export function RackPanel({
             />
             <button
               onClick={() => setArmed(armed === i ? null : i)}
-              className="text-[7px] font-bold uppercase"
+              className="text-[9px] font-bold uppercase"
               style={{ color: armed === i ? "#0a0a0a" : color, background: armed === i ? color : "transparent", borderRadius: 3, padding: "0 3px" }}
               title="Mode assignation : clique ensuite un paramètre pour le lier/délier à cette macro"
             >
@@ -516,7 +516,7 @@ export function RackPanel({
           </div>
         ))}
         {armed !== null && (
-          <span className="text-[8px] text-amber-300">
+          <span className="text-[9px] text-amber-300">
             Assignation M{armed + 1} : clique un paramètre ci-dessous
           </span>
         )}
@@ -562,7 +562,7 @@ export function RackPanel({
                 {def.label}
               </button>
               <SlotVU rack={rack} on={on} color={color} />
-              <span className="text-[9px] leading-none text-neutral-600">{isCollapsed ? "▸" : "▾"}</span>
+              <span className="text-[10px] leading-none text-neutral-600">{isCollapsed ? "▸" : "▾"}</span>
             </div>
           );
 
@@ -599,7 +599,7 @@ export function RackPanel({
                 <div className="flex flex-col items-center gap-1">
                   <DigitalVU level={rack.getMix(id)} vertical />
                   <span
-                    className="rounded px-0.5 py-0.5 text-center font-mono text-[8px] font-bold tracking-tight"
+                    className="rounded px-0.5 py-0.5 text-center font-mono text-[9px] font-bold tracking-tight"
                     style={{ width: 36, color, background: "#0a0d0a", textShadow: `0 0 5px ${color}`, boxShadow: "inset 0 0 0 1px #1a1a1a" }}
                   >
                     {Math.round(rack.getMix(id) * 100)}%
@@ -617,7 +617,7 @@ export function RackPanel({
                     }}
                     className={isXyMatrix ? "!h-[260px]" : "!h-[160px]"}
                   />
-                  <span className="text-[8px] font-bold uppercase leading-none" style={{ color: on ? color : "#6b6b6b" }}>INT</span>
+                  <span className="text-[9px] font-bold uppercase leading-none" style={{ color: on ? color : "#6b6b6b" }}>INT</span>
                 </div>
                 {isXyMatrix && (() => {
                   const xFilterType = Math.round(rack.getParam(id, "xFilterType"));
@@ -628,7 +628,7 @@ export function RackPanel({
                       {/* Y-axis target picker, stacked so it reads top→bottom next to the pad */}
                       <div className="flex items-center gap-2">
                         <div className="flex flex-col gap-1">
-                          <span className="text-[8px] font-bold uppercase text-neutral-500">Effet Y</span>
+                          <span className="text-[9px] font-bold uppercase text-neutral-500">Effet Y</span>
                           {XY_TARGETS.map((t, i) => (
                             <button
                               key={t}
@@ -649,7 +649,7 @@ export function RackPanel({
                           ))}
                           {/* filter type for Y — only meaningful while Effet Y = Filtre */}
                           <span
-                            className="mt-1 text-[8px] font-bold uppercase"
+                            className="mt-1 text-[9px] font-bold uppercase"
                             style={{ color: yTarget === 0 ? "#9a9a9a" : "#4a4a4a" }}
                           >
                             Type Y
@@ -665,7 +665,7 @@ export function RackPanel({
                                   flashLcd(`XY MATRIX — Filtre Y = ${t}`);
                                   rerender();
                                 }}
-                                className="flex-1 rounded px-1 py-0.5 text-[9px] font-bold transition-colors disabled:opacity-30"
+                                className="flex-1 rounded px-1 py-0.5 text-[10px] font-bold transition-colors disabled:opacity-30"
                                 style={
                                   yFilterType === i
                                     ? { background: color, color: "#0a0a0a" }
@@ -696,7 +696,7 @@ export function RackPanel({
                       <div className="flex items-center justify-end gap-3 pr-1">
                         <div className="flex items-center gap-1">
                           <span
-                            className="text-[8px] font-bold uppercase"
+                            className="text-[9px] font-bold uppercase"
                             style={{ color: xTarget === 0 ? "#9a9a9a" : "#4a4a4a" }}
                           >
                             Type X
@@ -711,7 +711,7 @@ export function RackPanel({
                                 flashLcd(`XY MATRIX — Filtre X = ${t}`);
                                 rerender();
                               }}
-                              className="rounded px-1.5 py-1 text-[9px] font-bold transition-colors disabled:opacity-30"
+                              className="rounded px-1.5 py-1 text-[10px] font-bold transition-colors disabled:opacity-30"
                               style={
                                 xFilterType === i
                                   ? { background: color, color: "#0a0a0a" }
@@ -723,7 +723,7 @@ export function RackPanel({
                           ))}
                         </div>
                         <div className="flex items-center gap-1">
-                          <span className="mr-1 text-[8px] font-bold uppercase text-neutral-500">Effet X</span>
+                          <span className="mr-1 text-[9px] font-bold uppercase text-neutral-500">Effet X</span>
                           {XY_TARGETS.map((t, i) => (
                             <button
                               key={t}
@@ -797,7 +797,7 @@ export function RackPanel({
                         rack.setFlag(id, f.key, !rack.getFlag(id, f.key));
                         rerender();
                       }}
-                      className="hw-btn px-1.5 py-1 text-[8px] font-bold"
+                      className="hw-btn px-1.5 py-1 text-[9px] font-bold"
                       style={{
                         ["--led" as string]: color,
                         color: rack.getFlag(id, f.key) ? "#0a0a0a" : color,
@@ -826,7 +826,7 @@ export function RackPanel({
                         flashLcd(`${def.label} SYNC ${lbl}`);
                         rerender();
                       }}
-                      className="rounded px-1 py-0.5 text-[8px] font-bold ring-1 ring-neutral-700"
+                      className="rounded px-1 py-0.5 text-[9px] font-bold ring-1 ring-neutral-700"
                       style={{ color }}
                       title={`Cale sur ${lbl} de noire (${deck.bpm.toFixed(0)} BPM)`}
                     >
@@ -849,7 +849,7 @@ export function RackPanel({
                 >
                   ◀
                 </button>
-                <span className="text-[7px] text-neutral-600">{pos + 1}</span>
+                <span className="text-[9px] text-neutral-600">{pos + 1}</span>
                 <button
                   className="text-[10px] leading-none text-neutral-500 hover:text-neutral-200 disabled:opacity-30"
                   onClick={() => {
@@ -866,7 +866,7 @@ export function RackPanel({
           );
         })}
       </div>
-      <span className="text-[8px] leading-tight text-neutral-600">
+      <span className="text-[9px] leading-tight text-neutral-600">
         Pédalier série gauche→droite. Clic titre = replier · pastille = bypass · ◀▶ = réordonner · MIX = dosage. Sauvé par morceau.
       </span>
       </div>

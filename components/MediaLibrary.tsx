@@ -1251,7 +1251,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
               <button
                 onClick={() => moveInPlaylist(plId!, t.id, -1)}
                 disabled={idx === 0}
-                className="px-1 text-[9px] leading-none text-neutral-400 disabled:opacity-20"
+                className="px-1 text-[10px] leading-none text-neutral-400 disabled:opacity-20"
                 title="Monter dans la file"
               >
                 ▲
@@ -1259,7 +1259,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
               <button
                 onClick={() => moveInPlaylist(plId!, t.id, 1)}
                 disabled={idx === count! - 1}
-                className="px-1 text-[9px] leading-none text-neutral-400 disabled:opacity-20"
+                className="px-1 text-[10px] leading-none text-neutral-400 disabled:opacity-20"
                 title="Descendre dans la file"
               >
                 ▼
@@ -1293,7 +1293,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
             the order below already says everything about how it plays. */}
         {!inPl && (
           <div className="flex shrink-0 flex-col items-center gap-0.5">
-            <span className="text-[7px] uppercase leading-none text-neutral-600">Classer</span>
+            <span className="text-[9px] uppercase leading-none text-neutral-600">Classer</span>
             <div className="flex overflow-hidden rounded ring-1 ring-neutral-700">
               {(["A", "B"] as const).map((d) => (
                 <button
@@ -1316,7 +1316,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
         {/* name + meta */}
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm text-neutral-100">{t.name}</div>
-          <div className="flex items-center gap-1.5 text-[9px]">
+          <div className="flex items-center gap-1.5 text-[10px]">
             {typeof t.durationSec === "number" && (
               <span className="font-mono text-neutral-400">{fmt(t.durationSec)}</span>
             )}
@@ -1370,7 +1370,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
             set: use the set's own ▶ Deck A/B/Relais controls instead. */}
         {!inPl && (
         <div className="flex basis-full flex-col items-center gap-0.5 sm:basis-auto sm:shrink-0">
-          <span className="text-[7px] uppercase leading-none text-neutral-600">Charger</span>
+          <span className="text-[9px] uppercase leading-none text-neutral-600">Charger</span>
           <div className="flex gap-1">
         <button
           onClick={() => loadToDeck(t, "A")}
@@ -1395,7 +1395,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
         {/* FX capture / apply — hidden inside a set for the same reason */}
         {!inPl && (
         <div className="flex items-center gap-0.5 rounded bg-neutral-900/60 px-1 py-0.5">
-          <span className="text-[8px] font-bold uppercase text-neutral-500">FX</span>
+          <span className="text-[9px] font-bold uppercase text-neutral-500">FX</span>
           <button
             onClick={() => captureFx(t, "A")}
             className="px-1 text-[11px]"
@@ -1886,7 +1886,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
                       title={`À suivre sur le Deck ${side} : ${nextT.name}`}
                     >
                       <div className="flex flex-col items-end leading-tight">
-                        <span className="text-[8px] font-black uppercase" style={{ color }}>
+                        <span className="text-[9px] font-black uppercase" style={{ color }}>
                           ⏭ À suivre
                         </span>
                         <span className="max-w-[7rem] truncate text-[10px] text-neutral-300">
@@ -2218,7 +2218,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
                     <div className="truncate text-[11px] text-neutral-400">Mots-clés</div>
                   </div>
                   <span
-                    className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-black"
+                    className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-black"
                     style={{ color: "#0a0a0a", background: autoUsedAI ? "#e879f9" : "#6b7280" }}
                     title={autoUsedAI ? "Mots-clés interprétés par l'IA (Groq) — sources Audius + YouTube" : "IA non configurée — recherche directe des mots-clés, Audius + YouTube"}
                   >
@@ -2249,7 +2249,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
                       {autoSeed.bpm ? ` · ${Math.round(autoSeed.bpm)} BPM` : ""}
                     </div>
                   </div>
-                  <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-black"
+                  <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-black"
                     style={{ color: "#0a0a0a", background: sameArtist ? "#e879f9" : autoUsedAI ? "#e879f9" : "#6b7280" }}
                     title={sameArtist ? "Restreint au même artiste — Audius + YouTube" : autoUsedAI ? "Suggestions élargies par l'IA (Groq) — sources Audius + YouTube" : "IA non configurée — similarité Audius + YouTube (tendances + liés + BPM)"}>
                     {sameArtist ? "🎤 MÊME ARTISTE" : autoUsedAI ? "IA · AUDIUS+YT" : "AUDIUS+YT"}
@@ -2294,7 +2294,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
                             <span
-                              className="shrink-0 rounded-sm px-1 text-[8px] font-black"
+                              className="shrink-0 rounded-sm px-1 text-[9px] font-black"
                               style={
                                 t.source === "youtube"
                                   ? { color: "#fff", background: "#ef4444" }
