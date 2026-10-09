@@ -3,7 +3,7 @@ import { hashBytes, isCached, isModel, MODEL_STEMS, prefetch, separate, StemMode
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 600; // Demucs on CPU is slow (minutes per track)
+export const maxDuration = 300; // Vercel hobby maximum limit
 
 function optsFrom(req: NextRequest): StemOpts {
   const q = req.nextUrl.searchParams;

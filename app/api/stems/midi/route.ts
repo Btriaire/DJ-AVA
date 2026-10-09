@@ -4,7 +4,7 @@ import { ensureMidi, isMidiCached, prefetchMidi, readMidi } from "@/lib/stemsMid
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 600; // demucs + transcription on CPU is slow
+export const maxDuration = 300; // Vercel hobby maximum limit
 
 // GET /api/stems/midi?hash=<>&model=<> → download the combined multi-track MIDI.
 export async function GET(req: NextRequest) {
