@@ -29,7 +29,10 @@ interface Props {
   // renders search (left) and the playlist workspace (right) as two permanent
   // columns instead of one tab-switched list — used by the dedicated Playlist view.
   splitLayout?: boolean;
+  // whether the panel starts expanded (true) instead of collapsed (false)
+  defaultExpanded?: boolean;
 }
+
 
 // a "seed" single the AI auto-playlist builds a similar set around
 type Seed = { id?: string; title: string; artist?: string; genre?: string; bpm?: number | null };
@@ -124,7 +127,7 @@ function loadSearchState(): SearchState | null {
   }
 }
 
-function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayout }: Props) {
+function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayout, defaultExpanded }: Props) {
   const [data, setData] = useState<LibraryData>({ tracks: [], playlists: [] });
   // memoized once via useState's lazy initializer, not a ref — reading a ref's
   // .current during render is flagged (and rightly so, it's not meant for that)
@@ -160,7 +163,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [activePl, setActivePl] = useState<string | null>(null);
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(!defaultExpanded);
   const [liveA, setLiveA] = useState(false);
   const [liveB, setLiveB] = useState(false);
   const [relay, setRelay] = useState(false); // A→B→A automix relay

@@ -44,6 +44,9 @@ import {
   IconPower,
   IconMonitor,
   IconSmartphone,
+  IconSidebar,
+  IconChevronLeft,
+  IconChevronRight,
 } from "@/components/Icons";
 
 export default function Home() {
@@ -90,6 +93,25 @@ export default function Home() {
   const [master, setMaster] = useState(0.9);
   const [view, setView] = useState<"console" | "studio" | "platine" | "playlist">("console"); // top-level workspace
   const [showLibrary, setShowLibrary] = useState(false);
+  const [sidebarLibrary, setSidebarLibrary] = useState(() => {
+    try {
+      const saved = localStorage.getItem("djsynth.sidebarLibrary");
+      return saved !== null ? saved === "1" : true; // default open on left
+    } catch {
+      return true;
+    }
+  });
+  function toggleSidebarLibrary() {
+    setSidebarLibrary((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem("djsynth.sidebarLibrary", next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
   const [showConfig, setShowConfig] = useState(false);
   const [showYouTube, setShowYouTube] = useState(false); // bottom YouTube video tool (optional)
   const [resetKey, setResetKey] = useState(0);
@@ -820,14 +842,27 @@ export default function Home() {
             </button>
           )}
 
+          {ready && view === "console" && (
+            <button
+              onClick={toggleSidebarLibrary}
+              className={`hw-btn inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold transition-all ${sidebarLibrary ? "hw-btn-on text-amber-300" : "text-neutral-400"}`}
+              style={{ ["--led" as string]: "#ffcc00" }}
+              title="Afficher / masquer la bibliothèque à gauche de la console"
+            >
+              <IconSidebar className="w-3.5 h-3.5" />
+              <span>{sidebarLibrary ? "Bibliothèque Gauche ◀" : "Bibliothèque Gauche ▶"}</span>
+            </button>
+          )}
+
           {ready && view !== "platine" && (
             <button
               onClick={() => setShowLibrary(true)}
-              className="hw-btn hw-btn-on inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold"
-              style={{ ["--led" as string]: "#ffcc00" }}
+              className="hw-btn inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-neutral-300"
+              style={{ ["--led" as string]: "#38bdf8" }}
+              title="Ouvrir la bibliothèque popup complète"
             >
               <IconMusic className="w-3.5 h-3.5" />
-              <span>Bibliothèque</span>
+              <span>Recherche Pop-up</span>
             </button>
           )}
 
@@ -1007,12 +1042,58 @@ export default function Home() {
             splitLayout
           />
         ) : (
-          <div
-            className={`grid grid-cols-1 gap-4 ${
-              deckClosed.A ? "lg:grid-cols-[auto_1fr]" : deckClosed.B ? "lg:grid-cols-[1fr_auto]" : "lg:grid-cols-[1fr_auto_1fr]"
-            }`}
-          >
-            {/* Edjay-style master screen: both tracks' spectra blended live */}
+          <div className="flex flex-col lg:flex-row items-start gap-4">
+            {/* Left Sidebar Library Dock (Option 3) */}
+            {sidebarLibrary && (
+              <aside className="w-full lg:w-80 xl:w-96 shrink-0 flex flex-col gap-2">
+                <div className="flex items-center justify-between px-2 py-1 rounded bg-neutral-900/80 border border-neutral-800 text-xs">
+                  <span className="font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                    <IconSidebar className="w-3.5 h-3.5" />
+                    Bibliothèque DJ (Gauche)
+                  </span>
+                  <button
+                    onClick={toggleSidebarLibrary}
+                    className="p-1 hover:text-white text-neutral-400 rounded hover:bg-neutral-800"
+                    title="Replier la bibliothèque gauche"
+                  >
+                    <IconChevronLeft className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="max-h-[calc(100vh-140px)] overflow-y-auto">
+                  <MediaLibrary
+                    engine={engine}
+                    onLoaded={bumpTick}
+                    stemRefresh={stemRefresh}
+                    libRefresh={libRefresh}
+                    defaultExpanded={true}
+                  />
+                </div>
+              </aside>
+            )}
+
+            {!sidebarLibrary && (
+              <div className="hidden lg:flex flex-col shrink-0">
+                <button
+                  onClick={toggleSidebarLibrary}
+                  className="hw-btn p-2 flex flex-col items-center gap-2 text-xs font-bold text-amber-300"
+                  style={{ ["--led" as string]: "#ffcc00" }}
+                  title="Déplier la bibliothèque sur la gauche"
+                >
+                  <IconChevronRight className="w-4 h-4" />
+                  <span className="[writing-mode:vertical-lr] tracking-widest uppercase text-[10px]">
+                    BIBLIOTHÈQUE
+                  </span>
+                </button>
+              </div>
+            )}
+
+            {/* Right main area: Decks & Mixer */}
+            <div
+              className={`flex-1 min-w-0 w-full grid grid-cols-1 gap-4 ${
+                deckClosed.A ? "lg:grid-cols-[auto_1fr]" : deckClosed.B ? "lg:grid-cols-[1fr_auto]" : "lg:grid-cols-[1fr_auto_1fr]"
+              }`}
+            >
+              {/* Edjay-style master screen: both tracks' spectra blended live */}
             <div
               className={`zoom-zone hw-screwed hw-panel flex items-stretch gap-3 p-3 ${
                 deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"
@@ -1281,6 +1362,7 @@ export default function Home() {
 
             {/* optional video tool — toggled in Config (⚙) */}
             {showYouTube && <YouTubeDeck />}
+            </div>
           </div>
         ))
       )}
