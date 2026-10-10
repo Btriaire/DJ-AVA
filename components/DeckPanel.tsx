@@ -250,11 +250,13 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
 
   // progressive auto-sync: ramp this deck's tempo toward the other deck's BPM
   const [autoSync, setAutoSync] = useState(false);
+  const [autoReset, setAutoReset] = useState(false);
   const syncRaf = useRef<number | null>(null);
   const stopAutoSync = () => {
     if (syncRaf.current !== null) cancelAnimationFrame(syncRaf.current);
     syncRaf.current = null;
     setAutoSync(false);
+    setAutoReset(false);
   };
   const startAutoSync = () => {
     const other = otherBpm();
@@ -276,6 +278,31 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
       } else {
         syncRaf.current = null;
         setAutoSync(false);
+      }
+    };
+    syncRaf.current = requestAnimationFrame(step);
+  };
+
+  // glide pitch smoothly back to normal (0%) over 5s
+  const startPitchReset = () => {
+    if (Math.abs(deck.pitchPct) < 0.05) return;
+    stopAutoSync();
+    const fromPct = deck.pitchPct;
+    const toPct = 0;
+    const ms = 5000;
+    const t0 = performance.now();
+    setAutoReset(true);
+    const step = (now: number) => {
+      const p = Math.min(1, (now - t0) / ms);
+      const e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+      const v = fromPct + (toPct - fromPct) * e;
+      setPitch(v);
+      deck.setPitch(v);
+      if (p < 1) {
+        syncRaf.current = requestAnimationFrame(step);
+      } else {
+        syncRaf.current = null;
+        setAutoReset(false);
       }
     };
     syncRaf.current = requestAnimationFrame(step);
@@ -917,6 +944,15 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
           title="Glisser progressivement vers le tempo de l'autre deck (6 s)"
         >
           {autoSync ? "■ Sync…" : "⇄ Auto-sync"}
+        </button>
+        <button
+          className={`hw-btn px-2.5 py-2 text-xs font-semibold ${autoReset ? "hw-btn-on" : ""}`}
+          style={{ ["--led" as string]: color, color: autoReset ? undefined : Math.abs(pitch) > 0.05 ? color : "#888" }}
+          disabled={Math.abs(pitch) <= 0.05 && !autoReset}
+          onClick={() => (autoReset ? stopAutoSync() : startPitchReset())}
+          title="Glisser progressivement le pitch pour revenir au tempo naturel 0% (5 s)"
+        >
+          {autoReset ? "■ Reset…" : "↺ 0% Pitch"}
         </button>
       </div>
 
