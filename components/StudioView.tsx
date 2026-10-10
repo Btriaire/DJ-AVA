@@ -3,17 +3,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { DJEngine } from "@/lib/audio/engine";
 import { AudiusTrack } from "@/lib/audius";
 import { LibTrack, TrackSource, loadLibrary, saveLibrary, uid, idbGetBlob } from "@/lib/library";
-import { MediaLibrary } from "./MediaLibrary";
+import { detectKey, KeyResult } from "@/lib/audio/key";
 
-// A "single" the listening view can preview + analyse, from any catalogue.
+// A single loaded in the Preview & Crate Digger station
 type Sel = {
-  id: string; // audius track id, youtube video id, or local library id
+  id: string;
   title: string;
   artist?: string;
   art?: string | null;
   source: TrackSource;
   genre?: string;
   bpm?: number | null;
+  key?: KeyResult | null;
 };
 
 interface Props {
@@ -24,626 +25,662 @@ interface Props {
 }
 
 const SRC = {
-  local: { label: "FICHIER", color: "#9ca3af" },
+  local: { label: "LOCAL", color: "#9ca3af" },
   audius: { label: "AUDIUS", color: "#ffcc00" },
-  youtube: { label: "YT", color: "#ef4444" },
-  soundcloud: { label: "SC", color: "#ff7700" },
+  youtube: { label: "YOUTUBE", color: "#ef4444" },
+  soundcloud: { label: "SOUNDCLOUD", color: "#ff7700" },
   deezer: { label: "DEEZER", color: "#a238ff" },
 } as const;
 
 const fmt = (s: number) =>
   `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
 
-// YouTube duration filters — forcing a bound makes yt-dlp surface a wider, more
-// targeted set of results than the default mixed bag.
-const DUR_FILTERS: { key: string; label: string; min?: number; max?: number }[] = [
+const DUR_FILTERS = [
   { key: "all", label: "Toutes durées" },
-  { key: "1", label: "< 1 min", max: 60 },
   { key: "3", label: "< 3 min", max: 180 },
   { key: "5", label: "< 5 min", max: 300 },
   { key: "8", label: "< 8 min", max: 480 },
-  { key: "15", label: "< 15 min", max: 900 },
   { key: "15+", label: "> 15 min", min: 900 },
 ];
 
-// EQ-solo + rough "stem" modes applied to the isolated preview signal.
-// Band modes solo a frequency range; the two stem modes use mid/side maths:
-//   • Voix      → keep the center (L+R), where lead vocals usually sit
-//   • Sans voix → keep the sides (L−R), cancelling center vocals (karaoke)
-// It's crude (no ML) but instant and good enough to audition parts.
-type FilterMode = "full" | "bass" | "mid" | "high" | "vocals" | "karaoke";
-const FILTER_MODES: { key: FilterMode; label: string; color: string; stem?: boolean }[] = [
-  { key: "full", label: "Plein", color: "#9ca3af" },
-  { key: "bass", label: "Basse", color: "#ffcc00" },
-  { key: "mid", label: "Médium", color: "#facc15" },
-  { key: "high", label: "Aigu", color: "#ffcc00" },
-  { key: "vocals", label: "Voix", color: "#e879f9", stem: true },
-  { key: "karaoke", label: "Sans voix", color: "#38bdf8", stem: true },
+type FilterMode = "full" | "low_cut" | "high_cut" | "vocals" | "karaoke";
+const FILTER_MODES: { key: FilterMode; label: string; desc: string }[] = [
+  { key: "full", label: "Master", desc: "Écoute intégrale à plat" },
+  { key: "low_cut", label: "Coupe-Basse", desc: "Supprime le kick pour tester le vocal/mélodie" },
+  { key: "high_cut", label: "Sub Only", desc: "Isole les basses et le beat" },
+  { key: "vocals", label: "Vocal Focus", desc: "Isole le centre (voix principale)" },
+  { key: "karaoke", label: "Instrumental", desc: "Supprime le centre (karaoké)" },
 ];
 
-// --- quick offline tempo estimate -----------------------------------------
-// Energy-flux autocorrelation over the first slice of a track. Cheap and good
-// enough for a "± BPM" readout when the catalogue doesn't already give us one.
-function estimateBPM(buf: AudioBuffer): number {
-  const sr = buf.sampleRate;
-  const ch = buf.getChannelData(0);
-  const maxSamples = Math.min(ch.length, sr * 30); // analyse ≤ 30 s — keep it snappy
-  const hop = Math.floor(sr / 100); // ~10 ms frames → 100 fps envelope
-  const frames = Math.floor(maxSamples / hop);
-  if (frames < 8) return 0;
-  const env = new Float32Array(frames);
-  for (let i = 0; i < frames; i++) {
-    let s = 0;
-    for (let j = 0; j < hop; j++) {
-      const v = ch[i * hop + j];
-      s += v * v;
-    }
-    env[i] = Math.sqrt(s / hop);
+// Helper to determine Camelot Harmonic Match compatibility
+function getCamelotMatch(
+  keyA: string | null | undefined,
+  keyB: string | null | undefined
+): { match: "perfect" | "compatible" | "clash"; text: string; color: string } {
+  if (!keyA || !keyB) return { match: "clash", text: "Inconnu", color: "#71717a" };
+  if (keyA === keyB) return { match: "perfect", text: "Harmonique Parfait (Même clé)", color: "#10b981" };
+
+  const numA = parseInt(keyA);
+  const letA = keyA.slice(-1);
+  const numB = parseInt(keyB);
+  const letB = keyB.slice(-1);
+
+  if (isNaN(numA) || isNaN(numB)) return { match: "clash", text: "Clé non standard", color: "#71717a" };
+
+  // Relative Major/Minor (same number, different letter: e.g. 8A <-> 8B)
+  if (numA === numB && letA !== letB) {
+    return { match: "perfect", text: "Majeur/Mineur Relatif", color: "#10b981" };
   }
-  const flux = new Float32Array(frames);
-  for (let i = 1; i < frames; i++) flux[i] = Math.max(0, env[i] - env[i - 1]);
-  const fps = sr / hop;
-  let bestBpm = 0;
-  let bestScore = -1;
-  for (let bpm = 70; bpm <= 180; bpm++) {
-    const lag = Math.round((fps * 60) / bpm);
-    if (lag < 1 || lag >= frames) continue;
-    let sum = 0;
-    for (let i = lag; i < frames; i++) sum += flux[i] * flux[i - lag];
-    if (sum > bestScore) {
-      bestScore = sum;
-      bestBpm = bpm;
-    }
+
+  // Energy boost / drop (+1 / -1 on Camelot wheel)
+  const diff = Math.abs(numA - numB);
+  if ((diff === 1 || diff === 11) && letA === letB) {
+    return { match: "compatible", text: "Énergie +1 / -1 (Mix fluide)", color: "#38bdf8" };
   }
-  return bestBpm;
+
+  return { match: "clash", text: "Écart tonal (Mixer avec prudence)", color: "#ef4444" };
 }
 
 export function StudioView({ engine, onLoaded, stemRefresh, libRefresh }: Props) {
-  const [src, setSrc] = useState<"audius" | "youtube" | "soundcloud" | "deezer">("audius");
-  const [durKey, setDurKey] = useState("all"); // YouTube duration filter
+  const [src, setSrc] = useState<"youtube" | "audius" | "soundcloud" | "local">("youtube");
+  const [durKey, setDurKey] = useState("all");
   const [q, setQ] = useState("");
   const [results, setResults] = useState<AudiusTrack[]>([]);
+  const [localTracks, setLocalTracks] = useState<LibTrack[]>([]);
   const [searching, setSearching] = useState(false);
   const [sel, setSel] = useState<Sel | null>(null);
   const [playing, setPlaying] = useState(false);
   const [pos, setPos] = useState(0);
   const [dur, setDur] = useState(0);
   const [bpm, setBpm] = useState<number | null>(null);
-  const [bpmEstimated, setBpmEstimated] = useState(false);
+  const [keyResult, setKeyResult] = useState<KeyResult | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
-  const [bands, setBands] = useState<number[]>([0, 0, 0]); // Lo / Mid / Hi
-  const [beat, setBeat] = useState(0); // 0..1 bass pulse
-  const [mode, setMode] = useState<FilterMode>("full"); // EQ / rough-stem solo
+  const [mode, setMode] = useState<FilterMode>("full");
   const [msg, setMsg] = useState("");
+  const [peaks, setPeaks] = useState<Float32Array>(new Float32Array(0));
+  const [cueVol, setCueVol] = useState(85);
 
-  // preview audio graph — kept fully separate from the DJ mix so it never leaks
-  // into the master / recording. element → analyser → its own destination.
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
-  const freqRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
-  const blobUrlRef = useRef<string | null>(null);
-  const lastAbRef = useRef<ArrayBuffer | null>(null); // for → Deck (raw bytes)
-  const lastBufRef = useRef<AudioBuffer | null>(null); // for → Synth / Pad (decoded)
-  const cascadeRef = useRef<HTMLCanvasElement | null>(null);
-  // EQ / stem chain: direct stereo path + mid/side + a shared biquad. Modes blend
-  // mid (center = vocals) vs side (L−R = instrumental) and EQ to "rough-separate".
+  const lastAbRef = useRef<ArrayBuffer | null>(null);
+  const lastBufRef = useRef<AudioBuffer | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Audio filtering nodes for Cue auditioning
   const directGainRef = useRef<GainNode | null>(null);
   const procGainRef = useRef<GainNode | null>(null);
   const midBusRef = useRef<GainNode | null>(null);
   const sideBusRef = useRef<GainNode | null>(null);
-  const bandRef = useRef<BiquadFilterNode | null>(null);
+  const filterNodeRef = useRef<BiquadFilterNode | null>(null);
 
   const flash = (m: string) => {
     setMsg(m);
-    setTimeout(() => setMsg((c) => (c === m ? "" : c)), 2200);
+    setTimeout(() => setMsg((c) => (c === m ? "" : c)), 2400);
   };
 
-  // push the current EQ/stem mode onto the live preview graph
-  const applyMode = useCallback((m: FilterMode) => {
-    const ctx = ctxRef.current;
-    const direct = directGainRef.current;
-    const proc = procGainRef.current;
-    const midB = midBusRef.current;
-    const sideB = sideBusRef.current;
-    const band = bandRef.current;
-    if (!ctx || !direct || !proc || !midB || !sideB || !band) return;
-    const t = ctx.currentTime;
-    const set = (p: AudioParam, v: number) => p.setTargetAtTime(v, t, 0.02);
-    if (m === "full") {
-      set(direct.gain, 1);
-      set(proc.gain, 0);
-      return;
-    }
-    set(direct.gain, 0);
-    set(proc.gain, 1);
-    switch (m) {
-      case "bass": // mono downmix → lowpass
-        set(midB.gain, 1); set(sideB.gain, 0);
-        band.type = "lowpass"; band.frequency.value = 250; band.Q.value = 0.7;
-        break;
-      case "mid":
-        set(midB.gain, 1); set(sideB.gain, 0);
-        band.type = "bandpass"; band.frequency.value = 1000; band.Q.value = 0.6;
-        break;
-      case "high":
-        set(midB.gain, 1); set(sideB.gain, 0);
-        band.type = "highpass"; band.frequency.value = 3500; band.Q.value = 0.7;
-        break;
-      case "vocals": // keep center, band-limit to the vocal range
-        set(midB.gain, 1.5); set(sideB.gain, 0);
-        band.type = "bandpass"; band.frequency.value = 1200; band.Q.value = 0.5;
-        break;
-      case "karaoke": // keep sides only → cancels center vocals
-        set(midB.gain, 0); set(sideB.gain, 1.8);
-        band.type = "allpass"; band.frequency.value = 1000; band.Q.value = 0.7;
-        break;
-    }
+  // Load local library tracks when selecting 'local'
+  const refreshLocal = useCallback(() => {
+    const lib = loadLibrary();
+    setLocalTracks(lib.tracks.filter((t) => t.source === "local"));
   }, []);
 
-  // lazily build the isolated preview context the first time we play something
+  useEffect(() => {
+    if (src === "local") refreshLocal();
+  }, [src, refreshLocal, libRefresh]);
+
+  // Audio nodes initialization
   const ensureCtx = useCallback(() => {
     if (!audioRef.current) return;
     if (!ctxRef.current) {
       const ctx = new AudioContext();
       const an = ctx.createAnalyser();
-      an.fftSize = 1024;
-      an.smoothingTimeConstant = 0.7;
+      an.fftSize = 512;
       const node = ctx.createMediaElementSource(audioRef.current);
-
-      // everything sums into mix → analyser → speakers
       const mix = ctx.createGain();
+      mix.gain.value = cueVol / 100;
+
       mix.connect(an);
       an.connect(ctx.destination);
 
-      // (1) clean stereo path for "Plein"
+      // Path 1: Flat direct
       const direct = ctx.createGain();
       direct.gain.value = 1;
       node.connect(direct);
       direct.connect(mix);
 
-      // (2) processed path: split → mid(L+R)/side(L−R) → busses → biquad → proc
+      // Path 2: Mid/Side & Filtering
       const split = ctx.createChannelSplitter(2);
       node.connect(split);
+
       const lMid = ctx.createGain(); lMid.gain.value = 0.5;
       const rMid = ctx.createGain(); rMid.gain.value = 0.5;
       split.connect(lMid, 0); split.connect(rMid, 1);
       const midSum = ctx.createGain();
       lMid.connect(midSum); rMid.connect(midSum);
+
       const lSide = ctx.createGain(); lSide.gain.value = 0.5;
       const rSide = ctx.createGain(); rSide.gain.value = -0.5;
       split.connect(lSide, 0); split.connect(rSide, 1);
       const sideSum = ctx.createGain();
       lSide.connect(sideSum); rSide.connect(sideSum);
+
       const midBus = ctx.createGain(); midBus.gain.value = 0;
       const sideBus = ctx.createGain(); sideBus.gain.value = 0;
       midSum.connect(midBus); sideSum.connect(sideBus);
-      const band = ctx.createBiquadFilter();
-      band.type = "allpass";
-      midBus.connect(band); sideBus.connect(band);
+
+      const filt = ctx.createBiquadFilter();
+      midBus.connect(filt); sideBus.connect(filt);
+
       const proc = ctx.createGain(); proc.gain.value = 0;
-      band.connect(proc); proc.connect(mix);
+      filt.connect(proc); proc.connect(mix);
 
       ctxRef.current = ctx;
       analyserRef.current = an;
-      freqRef.current = new Uint8Array(an.frequencyBinCount);
       directGainRef.current = direct;
       procGainRef.current = proc;
       midBusRef.current = midBus;
       sideBusRef.current = sideBus;
-      bandRef.current = band;
-      applyMode(mode);
+      filterNodeRef.current = filt;
     }
     if (ctxRef.current.state !== "running") ctxRef.current.resume().catch(() => {});
-  }, [applyMode, mode]);
+  }, [cueVol]);
 
+  // Apply preview filter mode
+  const applyFilter = useCallback((m: FilterMode) => {
+    const ctx = ctxRef.current;
+    const direct = directGainRef.current;
+    const proc = procGainRef.current;
+    const midB = midBusRef.current;
+    const sideB = sideBusRef.current;
+    const filt = filterNodeRef.current;
+    if (!ctx || !direct || !proc || !midB || !sideB || !filt) return;
+
+    const t = ctx.currentTime;
+    const set = (p: AudioParam, v: number) => p.setTargetAtTime(v, t, 0.02);
+
+    if (m === "full") {
+      set(direct.gain, 1);
+      set(proc.gain, 0);
+      return;
+    }
+
+    set(direct.gain, 0);
+    set(proc.gain, 1);
+
+    switch (m) {
+      case "low_cut": // Remove bass/kick
+        set(midB.gain, 1); set(sideB.gain, 1);
+        filt.type = "highpass"; filt.frequency.value = 350; filt.Q.value = 0.8;
+        break;
+      case "high_cut": // Sub only
+        set(midB.gain, 1); set(sideB.gain, 0);
+        filt.type = "lowpass"; filt.frequency.value = 220; filt.Q.value = 0.8;
+        break;
+      case "vocals": // Mid-solo center
+        set(midB.gain, 1.6); set(sideB.gain, 0);
+        filt.type = "bandpass"; filt.frequency.value = 1200; filt.Q.value = 0.6;
+        break;
+      case "karaoke": // Sides only
+        set(midB.gain, 0); set(sideB.gain, 1.8);
+        filt.type = "allpass"; filt.frequency.value = 1000; filt.Q.value = 0.7;
+        break;
+    }
+  }, []);
+
+  useEffect(() => {
+    applyFilter(mode);
+  }, [mode, applyFilter]);
+
+  // Search execution
   async function search(durOverride?: string) {
-    if (!q.trim()) return;
+    if (!q.trim() || src === "local") return;
     setSearching(true);
     try {
       let url = `/api/${src}/search?q=${encodeURIComponent(q)}`;
       if (src === "youtube" || src === "soundcloud") {
         const f = DUR_FILTERS.find((d) => d.key === (durOverride ?? durKey));
-        url += "&n=40"; // force a much wider pool than the old default of 15
+        url += "&n=30";
         if (f?.min) url += `&min=${f.min}`;
         if (f?.max) url += `&max=${f.max}`;
       }
       const r = await fetch(url);
       const j = await r.json();
-      setResults((j.tracks ?? []).map((t: AudiusTrack) => ({ ...t, source: t.source ?? src })));
-      if ((j.tracks ?? []).length === 0) flash("Aucun résultat");
-    } catch {
-      flash("Recherche indisponible");
+      setResults(j.tracks ?? []);
+    } catch (e) {
+      flash((e as Error).message);
     } finally {
       setSearching(false);
     }
   }
 
-  // fetch the audio once: stream it to the <audio> for instant listening AND
-  // decode it for the BPM/frequency analysis + deck/synth/pad routing.
-  const select = useCallback(
-    async (s: Sel) => {
-      setSel(s);
-      setPlaying(false);
-      setPos(0);
-      setDur(0);
-      setBpm(s.bpm ?? null);
-      setBpmEstimated(false);
-      setBands([0, 0, 0]);
-      setBeat(0);
-      lastAbRef.current = null;
-      lastBufRef.current = null;
-      setAnalyzing(true);
-      try {
-        let ab: ArrayBuffer;
-        if (s.source === "local") {
-          const blob = await idbGetBlob(s.id);
-          if (!blob) throw new Error("Fichier introuvable");
-          ab = await blob.arrayBuffer();
-        } else {
-          const res = await fetch(`/api/${s.source}/stream?id=${encodeURIComponent(s.id)}`);
-          if (!res.ok) throw new Error("Flux indisponible");
-          ab = await res.arrayBuffer();
-        }
-        lastAbRef.current = ab;
+  // Load track into Preview Dock
+  async function select(s: Sel) {
+    setSel(s);
+    setBpm(s.bpm ?? null);
+    setKeyResult(s.key ?? null);
+    setPos(0);
+    setDur(0);
+    setPeaks(new Float32Array(0));
+    setAnalyzing(true);
 
-        // stream to the <audio> element from the bytes we already have
-        if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
-        const url = URL.createObjectURL(new Blob([ab]));
-        blobUrlRef.current = url;
-        if (audioRef.current) {
-          audioRef.current.src = url;
-          ensureCtx();
-          audioRef.current.play().then(() => setPlaying(true)).catch(() => {});
-        }
+    try {
+      let ab: ArrayBuffer;
+      let streamUrl: string;
 
-        // decode a copy for analysis + routing (decode detaches its input)
-        ensureCtx();
-        const ctx = ctxRef.current;
-        if (ctx) {
-          const buf = await ctx.decodeAudioData(ab.slice(0));
-          lastBufRef.current = buf;
-          if (s.bpm == null) {
-            const est = estimateBPM(buf);
-            if (est) {
-              setBpm(est);
-              setBpmEstimated(true);
+      if (s.source === "local") {
+        const blob = await idbGetBlob(s.id);
+        if (!blob) throw new Error("Fichier local introuvable");
+        ab = await blob.arrayBuffer();
+        streamUrl = URL.createObjectURL(blob);
+      } else {
+        streamUrl = `/api/${s.source}/stream?id=${encodeURIComponent(s.id)}`;
+        const r = await fetch(streamUrl);
+        if (!r.ok) throw new Error(`Erreur flux: HTTP ${r.status}`);
+        ab = await r.arrayBuffer();
+      }
+
+      lastAbRef.current = ab;
+      ensureCtx();
+
+      if (audioRef.current) {
+        audioRef.current.src = streamUrl;
+        audioRef.current.currentTime = 0;
+        audioRef.current.play().then(() => setPlaying(true)).catch(() => {});
+      }
+
+      const ctx = ctxRef.current;
+      if (ctx) {
+        const buf = await ctx.decodeAudioData(ab.slice(0));
+        lastBufRef.current = buf;
+        setDur(buf.duration);
+
+        // Compute Waveform Peaks
+        const pLen = 300;
+        const pArr = new Float32Array(pLen);
+        const ch = buf.getChannelData(0);
+        const step = Math.floor(ch.length / pLen);
+        for (let i = 0; i < pLen; i++) {
+          let max = 0;
+          for (let j = 0; j < step; j++) {
+            const v = Math.abs(ch[i * step + j]);
+            if (v > max) max = v;
+          }
+          pArr[i] = max;
+        }
+        setPeaks(pArr);
+
+        // Detect Harmonic Key & BPM if missing
+        const detectedKey = detectKey(buf);
+        setKeyResult(detectedKey);
+
+        if (!s.bpm) {
+          // Rough offline tempo estimate
+          const sr = buf.sampleRate;
+          const maxSamples = Math.min(ch.length, sr * 30);
+          const hop = Math.floor(sr / 100);
+          const frames = Math.floor(maxSamples / hop);
+          if (frames >= 8) {
+            const env = new Float32Array(frames);
+            for (let i = 0; i < frames; i++) {
+              let sm = 0;
+              for (let j = 0; j < hop; j++) {
+                const v = ch[i * hop + j];
+                sm += v * v;
+              }
+              env[i] = Math.sqrt(sm / hop);
             }
+            const flux = new Float32Array(frames);
+            for (let i = 1; i < frames; i++) flux[i] = Math.max(0, env[i] - env[i - 1]);
+            const fps = sr / hop;
+            let bestBpm = 0, bestScore = -1;
+            for (let bp = 75; bp <= 175; bp++) {
+              const lag = Math.round((fps * 60) / bp);
+              if (lag < 1 || lag >= frames) continue;
+              let sm = 0;
+              for (let i = lag; i < frames; i++) sm += flux[i] * flux[i - lag];
+              if (sm > bestScore) {
+                bestScore = sm;
+                bestBpm = bp;
+              }
+            }
+            if (bestBpm > 0) setBpm(bestBpm);
           }
         }
-      } catch (e) {
-        flash((e as Error).message);
-      } finally {
-        setAnalyzing(false);
       }
-    },
-    [ensureCtx]
-  );
-
-  // re-apply EQ/stem mode whenever it changes
-  useEffect(() => {
-    applyMode(mode);
-  }, [mode, applyMode]);
-
-  // transport
-  const toggle = () => {
-    const a = audioRef.current;
-    if (!a || !sel) return;
-    ensureCtx();
-    if (a.paused) {
-      a.play().then(() => setPlaying(true)).catch(() => {});
-    } else {
-      a.pause();
-      setPlaying(false);
+    } catch (e) {
+      flash((e as Error).message);
+    } finally {
+      setAnalyzing(false);
     }
-  };
+  }
 
-  // keep position + live spectrum / band meters going
+  // Playhead update
   useEffect(() => {
     let raf = 0;
-    const loop = () => {
+    const tick = () => {
       const a = audioRef.current;
       if (a) {
         setPos(a.currentTime || 0);
         if (a.duration && isFinite(a.duration)) setDur(a.duration);
       }
-      const an = analyserRef.current;
-      const fr = freqRef.current;
-      if (an && fr && !a?.paused) {
-        an.getByteFrequencyData(fr);
-        const n = fr.length;
-        // 3 broad bands: lows / mids / highs
-        const edge = [0, Math.floor(n * 0.12), Math.floor(n * 0.45), n];
-        const out = [0, 0, 0];
-        for (let b = 0; b < 3; b++) {
-          let s = 0;
-          for (let i = edge[b]; i < edge[b + 1]; i++) s += fr[i];
-          out[b] = s / Math.max(1, edge[b + 1] - edge[b]) / 255;
-        }
-        setBands(out);
-        setBeat(out[0]);
-        drawCascade(fr);
-      }
-      raf = requestAnimationFrame(loop);
+      raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(loop);
+    raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // simple scrolling spectrogram (waterfall) — copy the canvas onto itself
-  // shifted 1px left, then paint the newest column on the right edge.
-  function drawCascade(fr: Uint8Array<ArrayBuffer>) {
-    const cv = cascadeRef.current;
+  // Draw interactive Waveform
+  useEffect(() => {
+    const cv = canvasRef.current;
     if (!cv) return;
     const ctx = cv.getContext("2d");
     if (!ctx) return;
-    const w = cv.width;
-    const h = cv.height;
-    ctx.drawImage(cv, -1, 0);
-    const bins = Math.min(fr.length, 256); // low/mid range is the musical part
-    for (let y = 0; y < h; y++) {
-      const bin = Math.floor((1 - y / h) * (bins - 1)); // low freq at the bottom
-      const v = fr[bin] / 255;
-      ctx.fillStyle = heat(v);
-      ctx.fillRect(w - 1, y, 1, 1);
-    }
-  }
-  // dark → violet → orange → white heat ramp (matches the app palette)
-  function heat(v: number): string {
-    if (v < 0.02) return "#0a0a0f";
-    if (v < 0.35) return `rgba(168,85,247,${0.25 + v})`; // violet
-    if (v < 0.7) return `rgba(255,204,0,${v})`; // orange
-    return `rgba(255,255,255,${v})`; // white peaks
-  }
 
-  // --- routing the previewed single onward ---
-  function toDeck(side: "A" | "B") {
+    const w = cv.clientWidth;
+    const h = cv.clientHeight;
+    cv.width = w * 2;
+    cv.height = h * 2;
+    ctx.scale(2, 2);
+    ctx.clearRect(0, 0, w, h);
+
+    const n = peaks.length;
+    const progressX = dur > 0 ? (pos / dur) * w : 0;
+    const mid = h / 2;
+
+    for (let i = 0; i < n; i++) {
+      const x = (i / n) * w;
+      const amp = peaks[i] * (h / 2) * 0.95;
+      ctx.fillStyle = x <= progressX ? "#f59e0b" : "#3f3f46";
+      ctx.fillRect(x, mid - amp, Math.max(1, w / n - 0.5), amp * 2);
+    }
+
+    // Playhead line
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(progressX - 1, 0, 2, h);
+  }, [peaks, pos, dur]);
+
+  // Jump helpers (e.g. +30s drop jump)
+  const jump = (delta: number) => {
+    if (!audioRef.current || !dur) return;
+    const next = Math.max(0, Math.min(dur, (audioRef.current.currentTime || 0) + delta));
+    audioRef.current.currentTime = next;
+    setPos(next);
+  };
+
+  // Route track to Deck A or Deck B
+  const sendToDeck = async (side: "A" | "B") => {
     const ab = lastAbRef.current;
-    if (!ab || !sel) return flash("Analyse en cours…");
+    if (!ab || !sel) return flash("Audio en cours de chargement…");
     const deck = side === "A" ? engine.deckA : engine.deckB;
     deck.loading = true;
-    deck.load(ab.slice(0), `${sel.title}${sel.artist ? ` — ${sel.artist}` : ""}`)
-      .then(() => {
-        deck.coverArt = sel.art ?? "";
-        deck.origin = { id: sel.id, source: sel.source, url: sel.id, art: sel.art ?? undefined };
-        onLoaded?.();
-        flash(`→ Deck ${side}`);
-      })
-      .catch((e) => flash(`Deck ${side}: ${(e as Error).message}`))
-      .finally(() => (deck.loading = false));
-  }
-  function toSynth() {
-    const buf = lastBufRef.current;
-    if (!buf || !sel) return flash("Analyse en cours…");
-    engine.synth.setSample(buf, sel.title);
-    flash("→ Synthé (sample jouable au clavier)");
-  }
-  function toPad() {
-    const buf = lastBufRef.current;
-    if (!buf || !sel) return flash("Analyse en cours…");
-    const slot = engine.sampler.nextGrabSlot();
-    engine.sampler.setBuffer(slot, buf, sel.title);
-    flash(`→ Pad ${slot + 1}`);
-  }
-  function toLibrary() {
-    if (!sel) return;
-    const lt: LibTrack = {
-      id: sel.source === "local" ? sel.id : uid(),
-      name: `${sel.title}${sel.artist ? ` — ${sel.artist}` : ""}`,
-      source: sel.source,
-      url: sel.source === "local" ? undefined : sel.id,
-      deck: null,
-      art: sel.art ?? undefined,
-      addedAt: Date.now(),
-    };
-    const lib = loadLibrary();
-    saveLibrary({ ...lib, tracks: [lt, ...lib.tracks.filter((t) => t.id !== lt.id)] });
-    onLoaded?.();
-    flash("≣ Ajouté à la bibliothèque");
-  }
+    try {
+      await deck.load(ab.slice(0), `${sel.title}${sel.artist ? ` — ${sel.artist}` : ""}`);
+      deck.coverArt = sel.art ?? "";
+      deck.origin = { id: sel.id, source: sel.source, url: sel.id, art: sel.art ?? undefined };
+      deck.cuePoint = pos; // Set CUE where user previewed!
+      onLoaded?.();
+      flash(`« ${sel.title} » → Deck ${side} (CUE posé à ${fmt(pos)})`);
+    } catch (e) {
+      flash(`Erreur Deck ${side}: ${(e as Error).message}`);
+    } finally {
+      deck.loading = false;
+    }
+  };
 
-  // cleanup
-  useEffect(() => {
-    return () => {
-      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
-      ctxRef.current?.close().catch(() => {});
-    };
-  }, []);
-
-  const styleText = sel
-    ? [
-        sel.genre || null,
-        bands[0] > 0.55 ? "énergique" : bands[0] > 0.3 ? "groovy" : "posé",
-        bands[2] > 0.4 ? "brillant" : "chaud",
-      ]
-        .filter(Boolean)
-        .join(" · ")
-    : "—";
+  // Deck A / Deck B Live stats for Harmonic Comparison
+  const deckA = engine.deckA;
+  const deckB = engine.deckB;
+  const matchA = getCamelotMatch(keyResult?.camelot, deckA.key?.camelot);
+  const matchB = getCamelotMatch(keyResult?.camelot, deckB.key?.camelot);
 
   return (
     <div className="flex flex-col gap-4">
-      {/* ===== NOW PLAYING + ANALYSIS ===== */}
-      <div className="hw-screwed hw-panel grid grid-cols-1 gap-4 p-4 lg:grid-cols-[320px_1fr]">
-        {/* big cover + transport */}
-        <div className="flex flex-col gap-3">
-          <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-neutral-900 ring-1 ring-white/10">
-            {sel?.art ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={sel.art} alt="" className="h-full w-full object-cover" />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center text-6xl text-neutral-700">
-                ♪
-              </div>
-            )}
-            {analyzing && (
-              <div className="absolute inset-x-0 bottom-0 bg-fuchsia-600/80 py-1 text-center text-[11px] font-bold">
-                Analyse…
-              </div>
-            )}
-            {/* live beat pulse */}
-            <div
-              className="absolute right-2 top-2 h-4 w-4 rounded-full"
-              style={{
-                background: "#ffcc00",
-                opacity: 0.25 + beat * 0.75,
-                boxShadow: `0 0 ${4 + beat * 16}px rgba(255,204,0,${beat})`,
-              }}
-            />
-          </div>
-          <div className="min-h-[2.5rem]">
-            <div className="truncate text-lg font-bold text-neutral-100">{sel?.title ?? "—"}</div>
-            <div className="truncate text-sm text-neutral-400">{sel?.artist ?? ""}</div>
-          </div>
+      {/* 1. SMART CUE DOCK (Régie de Pré-Écoute Pro) */}
+      <div className="hw-screwed hw-panel relative flex flex-col gap-4 p-4 border border-amber-500/20 bg-neutral-950/90 shadow-2xl">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
           <div className="flex items-center gap-2">
-            <button
-              onClick={toggle}
-              disabled={!sel}
-              className="hw-btn hw-btn-on px-4 py-2 text-lg disabled:opacity-40"
-              style={{ ["--led" as string]: "#e879f9" }}
-            >
-              {playing ? "❚❚" : "►"}
-            </button>
+            <span className="flex h-3 w-3 items-center justify-center rounded-full bg-amber-400 shadow-[0_0_8px_#f59e0b]" />
+            <h2 className="text-sm font-black tracking-wider uppercase text-neutral-100">
+              Station de Pré-Écoute & Crate Digger
+            </h2>
+            <span className="rounded bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-400">
+              PFL MONITOR / CASQUE
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] uppercase font-bold text-neutral-400">Volume Cue</span>
             <input
               type="range"
               min={0}
-              max={dur || 1}
-              step={0.1}
-              value={pos}
+              max={100}
+              value={cueVol}
               onChange={(e) => {
-                const v = parseFloat(e.target.value);
-                if (audioRef.current) audioRef.current.currentTime = v;
-                setPos(v);
+                const v = parseInt(e.target.value);
+                setCueVol(v);
+                if (directGainRef.current?.context) {
+                  // Direct gain slider
+                }
               }}
-              className="dj-fader flex-1"
+              className="dj-fader w-24"
             />
-            <span className="w-20 text-right font-mono text-xs text-neutral-400">
-              {fmt(pos)} / {fmt(dur)}
-            </span>
+            {msg && <span className="text-xs font-bold text-amber-300 animate-pulse">{msg}</span>}
           </div>
         </div>
 
-        {/* cascade + analysis readout */}
-        <div className="flex flex-col gap-3">
-          <div className="hw-recess overflow-hidden rounded-md p-1">
-            <canvas
-              ref={cascadeRef}
-              width={760}
-              height={150}
-              className="h-[150px] w-full rounded"
-              style={{ imageRendering: "pixelated" }}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Stat
-              label="BPM"
-              value={bpm ? Math.round(bpm).toString() : "—"}
-              sub={bpm ? (bpmEstimated ? "estimé" : "catalogue") : ""}
-              color="#ffcc00"
-            />
-            <Stat label="Durée" value={dur ? fmt(dur) : "—"} color="#ffcc00" />
-            <Stat
-              label="Énergie"
-              value={`${Math.round(((bands[0] + bands[1] + bands[2]) / 3) * 100)}%`}
-              color="#facc15"
-            />
-            <Stat label="Style" value={styleText} small color="#e879f9" />
-          </div>
-          {/* EQ-solo + rough stem buttons — audition just one band / part */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="mr-0.5 text-[10px] font-bold uppercase tracking-wider text-neutral-500">
-              Filtre / Stems
-            </span>
-            {FILTER_MODES.map((m) => (
-              <button
-                key={m.key}
-                onClick={() => setMode(m.key)}
-                disabled={!sel}
-                className={`rounded px-2 py-1 text-xs font-semibold disabled:opacity-30 ${
-                  mode === m.key ? "hw-btn-on" : "text-neutral-400 ring-1 ring-white/10"
-                } ${m.stem ? "italic" : ""}`}
-                style={{ ["--led" as string]: m.color, color: mode === m.key ? undefined : m.color }}
-                title={
-                  m.stem
-                    ? m.key === "vocals"
-                      ? "Isole le centre (voix) — séparation rapide approximative"
-                      : "Annule le centre (karaoké / instrumental) — approximatif"
-                    : `Isole les ${m.label.toLowerCase()}s`
-                }
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-          {/* 3-band frequency meters */}
-          <div className="flex items-end gap-3">
-            {(["Basses", "Médiums", "Aigus"] as const).map((lbl, i) => (
-              <div key={lbl} className="flex flex-1 flex-col items-center gap-1">
-                <div className="hw-recess flex h-20 w-full items-end overflow-hidden rounded">
-                  <div
-                    className="w-full transition-[height] duration-75"
-                    style={{
-                      height: `${Math.min(100, bands[i] * 130)}%`,
-                      background:
-                        i === 0 ? "#ffcc00" : i === 1 ? "#facc15" : "#ffcc00",
-                    }}
-                  />
+        {/* Selected Track Player Deck */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[240px_1fr_260px] items-center">
+          {/* Cover & metadata */}
+          <div className="flex items-center gap-3">
+            <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md bg-neutral-900 ring-1 ring-white/10">
+              {sel?.art ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={sel.art} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-3xl text-neutral-700">♪</div>
+              )}
+              {analyzing && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/75 text-[10px] font-bold text-amber-400">
+                  Scan…
                 </div>
-                <span className="text-[10px] uppercase tracking-wide text-neutral-500">{lbl}</span>
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-black text-neutral-100">{sel?.title || "Sélectionne un morceau"}</div>
+              <div className="truncate text-xs text-neutral-400">{sel?.artist || "—"}</div>
+              <div className="mt-1 flex items-center gap-2">
+                <span className="rounded bg-amber-400/20 px-1.5 py-0.5 font-mono text-[11px] font-bold text-amber-300">
+                  {bpm ? `${Math.round(bpm)} BPM` : "— BPM"}
+                </span>
+                <span className="rounded bg-fuchsia-400/20 px-1.5 py-0.5 font-mono text-[11px] font-bold text-fuchsia-300">
+                  {keyResult?.camelot ? `${keyResult.camelot} (${keyResult.name})` : "— Key"}
+                </span>
               </div>
-            ))}
+            </div>
           </div>
-          {/* destination routing */}
-          <div className="flex flex-wrap gap-2">
-            <RouteBtn onClick={() => toDeck("A")} color="#ffcc00" label="→ Deck A" disabled={!sel} />
-            <RouteBtn onClick={() => toDeck("B")} color="#ffcc00" label="→ Deck B" disabled={!sel} />
-            <RouteBtn onClick={toSynth} color="#a78bfa" label="→ Synthé" disabled={!sel} />
-            <RouteBtn onClick={toPad} color="#facc15" label="→ Pad" disabled={!sel} />
-            <RouteBtn onClick={toLibrary} color="#ffcc00" label="≣ Bibliothèque" disabled={!sel} />
+
+          {/* Waveform & Scrubber */}
+          <div className="flex flex-col gap-2">
+            <div className="relative h-16 w-full cursor-pointer overflow-hidden rounded bg-black/60 ring-1 ring-white/5">
+              <canvas
+                ref={canvasRef}
+                className="h-full w-full"
+                onClick={(e) => {
+                  if (!audioRef.current || !dur) return;
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const pct = (e.clientX - rect.left) / rect.width;
+                  audioRef.current.currentTime = pct * dur;
+                  setPos(pct * dur);
+                }}
+              />
+              <div className="absolute bottom-1 left-2 font-mono text-[10px] text-neutral-400">
+                {fmt(pos)}
+              </div>
+              <div className="absolute bottom-1 right-2 font-mono text-[10px] text-neutral-400">
+                {fmt(dur)}
+              </div>
+            </div>
+
+            {/* Jump Buttons & Audition Filter Modes */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => {
+                    const a = audioRef.current;
+                    if (!a || !sel) return;
+                    ensureCtx();
+                    if (a.paused) a.play().then(() => setPlaying(true));
+                    else { a.pause(); setPlaying(false); }
+                  }}
+                  disabled={!sel}
+                  className="hw-btn hw-btn-on px-4 py-1.5 text-xs font-bold"
+                  style={{ ["--led" as string]: "#f59e0b", color: "#f59e0b" }}
+                >
+                  {playing ? "❚❚ PAUSE" : "► PLAY"}
+                </button>
+                <button
+                  onClick={() => jump(-15)}
+                  disabled={!sel}
+                  className="hw-btn px-2 py-1.5 text-xs text-neutral-300"
+                  title="Reculer de 15 secondes"
+                >
+                  -15s
+                </button>
+                <button
+                  onClick={() => jump(30)}
+                  disabled={!sel}
+                  className="hw-btn px-2 py-1.5 text-xs text-amber-300 font-bold"
+                  title="Avancer de 30 secondes (Drop Jump)"
+                >
+                  +30s DROP
+                </button>
+                <button
+                  onClick={() => jump(60)}
+                  disabled={!sel}
+                  className="hw-btn px-2 py-1.5 text-xs text-neutral-300"
+                  title="Avancer de 60 secondes"
+                >
+                  +60s
+                </button>
+              </div>
+
+              {/* Isolation Filters */}
+              <div className="flex items-center gap-1">
+                {FILTER_MODES.map((m) => (
+                  <button
+                    key={m.key}
+                    onClick={() => setMode(m.key)}
+                    disabled={!sel}
+                    className={`rounded px-2 py-1 text-[10px] font-bold transition-all ${
+                      mode === m.key
+                        ? "bg-amber-400 text-black shadow-sm"
+                        : "bg-neutral-800 text-neutral-400 hover:text-neutral-200"
+                    }`}
+                    title={m.desc}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* 2. HARMONIC MATCH & ONE-CLICK LOAD TO DECKS */}
+          <div className="flex flex-col gap-2 rounded-lg bg-neutral-900/60 p-3 ring-1 ring-white/10">
+            <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400">
+              Harmonic Match & Routing
+            </span>
+
+            {/* Deck A Match */}
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-sky-400">Deck A ({deckA.bpm ? `${Math.round(deckA.effectiveBPM)} BPM` : "vide"})</span>
+              <span className="text-[10px] font-bold" style={{ color: matchA.color }}>
+                {matchA.text}
+              </span>
+            </div>
+            <button
+              onClick={() => sendToDeck("A")}
+              disabled={!sel}
+              className="hw-btn flex items-center justify-center gap-1.5 py-1.5 text-xs font-bold text-sky-400 disabled:opacity-40"
+              style={{ ["--led" as string]: "#38bdf8" }}
+            >
+              → Charger Deck A
+            </button>
+
+            {/* Deck B Match */}
+            <div className="flex items-center justify-between text-xs mt-1">
+              <span className="font-bold text-amber-400">Deck B ({deckB.bpm ? `${Math.round(deckB.effectiveBPM)} BPM` : "vide"})</span>
+              <span className="text-[10px] font-bold" style={{ color: matchB.color }}>
+                {matchB.text}
+              </span>
+            </div>
+            <button
+              onClick={() => sendToDeck("B")}
+              disabled={!sel}
+              className="hw-btn flex items-center justify-center gap-1.5 py-1.5 text-xs font-bold text-amber-400 disabled:opacity-40"
+              style={{ ["--led" as string]: "#f59e0b" }}
+            >
+              → Charger Deck B
+            </button>
           </div>
         </div>
       </div>
 
-      {/* ===== SEARCH + BIG-COVER RESULTS ===== */}
-      <div className="hw-screwed hw-panel p-4">
-        <div className="mb-3 flex items-center gap-2">
-          <div className="flex overflow-hidden rounded">
+      {/* 3. CRATE DIGGER (Catalogue & Recherche Efficace) */}
+      <div className="hw-screwed hw-panel flex flex-col gap-3 p-4">
+        {/* Source switchers & Search Bar */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex overflow-hidden rounded bg-neutral-900 p-0.5 ring-1 ring-white/10">
             {(
               [
-                ["audius", "♫ Audius"],
-                ["youtube", "▶ YouTube"],
-                ["soundcloud", "☁ SoundCloud"],
-                ["deezer", "◆ Deezer"],
+                ["youtube", "YouTube"],
+                ["audius", "Audius"],
+                ["soundcloud", "SoundCloud"],
+                ["local", "Fichiers Locaux"],
               ] as const
             ).map(([s, label]) => (
               <button
                 key={s}
                 onClick={() => setSrc(s)}
-                className={`px-3 py-1.5 text-xs font-bold ${src === s ? "hw-btn-on" : "text-neutral-400"}`}
-                style={{ ["--led" as string]: SRC[s].color }}
+                className={`rounded px-3 py-1.5 text-xs font-bold transition-all ${
+                  src === s ? "bg-amber-400 text-black shadow-sm" : "text-neutral-400 hover:text-neutral-200"
+                }`}
               >
                 {label}
               </button>
             ))}
           </div>
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && search()}
-            placeholder="Cherche un single à écouter / analyser…"
-            className="flex-1 rounded bg-neutral-900 px-3 py-1.5 text-sm text-neutral-100 ring-1 ring-white/10 outline-none focus:ring-fuchsia-500/40"
-          />
-          <button onClick={() => search()} className="hw-btn px-3 py-1.5 text-sm" style={{ ["--led" as string]: "#e879f9", color: "#e879f9" }}>
-            {searching ? "…" : "Chercher"}
-          </button>
-          {msg && <span className="text-xs text-fuchsia-300">{msg}</span>}
+
+          {src !== "local" ? (
+            <div className="flex flex-1 items-center gap-2">
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && search()}
+                placeholder="Rechercher un artiste, titre, remix, genre…"
+                className="flex-1 rounded bg-neutral-900 px-3 py-1.5 text-sm text-neutral-100 ring-1 ring-white/10 outline-none focus:ring-amber-500/40"
+              />
+              <button
+                onClick={() => search()}
+                disabled={searching}
+                className="hw-btn px-4 py-1.5 text-sm font-bold text-amber-400"
+                style={{ ["--led" as string]: "#f59e0b" }}
+              >
+                {searching ? "…" : "Rechercher"}
+              </button>
+            </div>
+          ) : (
+            <span className="text-xs text-neutral-400">
+              {localTracks.length} morceau(x) enregistrés dans votre bibliothèque locale
+            </span>
+          )}
         </div>
 
-        {/* YouTube / SoundCloud duration filter — forces a wider / more targeted result set */}
+        {/* Duration filters for YouTube / SoundCloud */}
         {(src === "youtube" || src === "soundcloud") && (
-          <div className="mb-3 flex flex-wrap items-center gap-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
-              Durée
-            </span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[10px] font-bold uppercase text-neutral-500">Durée :</span>
             {DUR_FILTERS.map((f) => (
               <button
                 key={f.key}
@@ -651,126 +688,162 @@ export function StudioView({ engine, onLoaded, stemRefresh, libRefresh }: Props)
                   setDurKey(f.key);
                   if (q.trim()) search(f.key);
                 }}
-                className={`rounded px-2 py-1 text-xs font-semibold ${
-                  durKey === f.key ? "hw-btn-on" : "text-neutral-400 ring-1 ring-white/10"
+                className={`rounded px-2 py-0.5 text-xs font-medium ${
+                  durKey === f.key ? "bg-neutral-700 text-amber-300" : "text-neutral-400 hover:bg-neutral-800"
                 }`}
-                style={{ ["--led" as string]: "#ef4444" }}
               >
                 {f.label}
               </button>
             ))}
           </div>
         )}
-        {results.length > 0 ? (
-          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            {results.map((t) => {
-              const active = sel?.id === t.id;
-              return (
-                <li key={`${t.source}-${t.id}`}>
-                  <button
-                    onClick={() =>
-                      select({
-                        id: t.id,
-                        title: t.title,
-                        artist: t.artist,
-                        art: t.artwork,
-                        source: (t.source ?? src) as TrackSource,
-                        genre: t.genre,
-                        bpm: t.bpm,
-                      })
-                    }
-                    className={`group w-full overflow-hidden rounded-lg text-left ring-1 transition ${
-                      active ? "ring-fuchsia-500" : "ring-white/10 hover:ring-white/30"
-                    }`}
-                  >
-                    <div className="relative aspect-square w-full bg-neutral-900">
-                      {t.artwork ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={t.artwork} alt="" className="h-full w-full object-cover transition group-hover:scale-105" />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-3xl text-neutral-700">♪</div>
-                      )}
-                      <span
-                        className="absolute left-1 top-1 rounded px-1 py-0.5 text-[8px] font-black"
-                        style={{ background: SRC[(t.source ?? src) as TrackSource].color, color: "#0a0a0a" }}
+
+        {/* Track Table / Results List */}
+        <div className="overflow-x-auto rounded-lg border border-white/5 bg-neutral-900/40">
+          <table className="w-full text-left text-xs">
+            <thead className="border-b border-white/10 bg-neutral-900/80 uppercase text-[10px] font-bold text-neutral-400">
+              <tr>
+                <th className="py-2.5 px-3">Morceau</th>
+                <th className="py-2.5 px-3">Durée</th>
+                <th className="py-2.5 px-3">BPM</th>
+                <th className="py-2.5 px-3">Actions Directes</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {src === "local" ? (
+                localTracks.length > 0 ? (
+                  localTracks.map((t) => {
+                    const isCurrent = sel?.id === t.id;
+                    return (
+                      <tr
+                        key={t.id}
+                        onClick={() =>
+                          select({
+                            id: t.id,
+                            title: t.name,
+                            source: "local",
+                            art: t.art,
+                            bpm: t.bpm,
+                          })
+                        }
+                        className={`cursor-pointer transition-colors hover:bg-white/5 ${
+                          isCurrent ? "bg-amber-500/10" : ""
+                        }`}
                       >
-                        {SRC[(t.source ?? src) as TrackSource].label}
-                      </span>
-                      {t.bpm ? (
-                        <span className="absolute right-1 top-1 rounded bg-black/70 px-1 py-0.5 text-[9px] font-bold text-orange-300">
-                          {Math.round(t.bpm)}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="p-1.5">
-                      <div className="truncate text-xs font-semibold text-neutral-100">{t.title}</div>
-                      <div className="truncate text-[10px] text-neutral-400">{t.artist}</div>
-                    </div>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <p className="py-8 text-center text-sm text-neutral-600">
-            Cherche un single ci-dessus, clique une pochette pour l&apos;écouter et l&apos;analyser
-            (BPM, beats, fréquences), puis envoie-le vers un Deck, le Synthé ou un Pad.
-          </p>
-        )}
+                        <td className="py-2.5 px-3 flex items-center gap-3">
+                          <div className="h-10 w-10 shrink-0 overflow-hidden rounded bg-neutral-800">
+                            {t.art ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={t.art} alt="" className="h-full w-full object-cover" />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-neutral-600 font-bold">♪</div>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-bold text-neutral-100 truncate">{t.name}</div>
+                            <div className="text-[10px] text-neutral-400">Stockage local</div>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-neutral-400">
+                          {t.durationSec ? fmt(t.durationSec) : "—"}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-amber-400 font-bold">
+                          {t.bpm ? Math.round(t.bpm) : "—"}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              select({ id: t.id, title: t.name, source: "local", art: t.art, bpm: t.bpm });
+                            }}
+                            className="rounded bg-amber-400/20 px-2.5 py-1 text-xs font-bold text-amber-300 hover:bg-amber-400/30"
+                          >
+                            🎧 Pré-écouter
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="py-8 text-center text-neutral-500">
+                      Aucun fichier local dans la bibliothèque. Importez des MP3/WAV depuis l&apos;onglet Console.
+                    </td>
+                  </tr>
+                )
+              ) : results.length > 0 ? (
+                results.map((t) => {
+                  const isCurrent = sel?.id === t.id;
+                  return (
+                    <tr
+                      key={`${t.source}-${t.id}`}
+                      onClick={() =>
+                        select({
+                          id: t.id,
+                          title: t.title,
+                          artist: t.artist,
+                          art: t.artwork,
+                          source: (t.source ?? src) as TrackSource,
+                          bpm: t.bpm,
+                        })
+                      }
+                      className={`cursor-pointer transition-colors hover:bg-white/5 ${
+                        isCurrent ? "bg-amber-500/10" : ""
+                      }`}
+                    >
+                      <td className="py-2.5 px-3 flex items-center gap-3">
+                        <div className="h-10 w-10 shrink-0 overflow-hidden rounded bg-neutral-800">
+                          {t.artwork ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={t.artwork} alt="" className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-neutral-600 font-bold">♪</div>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-bold text-neutral-100 truncate">{t.title}</div>
+                          <div className="text-[10px] text-neutral-400 truncate">{t.artist}</div>
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-3 font-mono text-neutral-400">{fmt(t.duration)}</td>
+                      <td className="py-2.5 px-3 font-mono text-amber-400 font-bold">
+                        {t.bpm ? Math.round(t.bpm) : "—"}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            select({
+                              id: t.id,
+                              title: t.title,
+                              artist: t.artist,
+                              art: t.artwork,
+                              source: (t.source ?? src) as TrackSource,
+                              bpm: t.bpm,
+                            });
+                          }}
+                          className="rounded bg-amber-400/20 px-2.5 py-1 text-xs font-bold text-amber-300 hover:bg-amber-400/30"
+                        >
+                          🎧 Pré-écouter
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={4} className="py-8 text-center text-neutral-500">
+                    Tapez un mot-clé ci-dessus pour rechercher et auditionner des singles.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {/* ===== full toolset (playlists, base de données, Auto-IA) preserved ===== */}
-      <MediaLibrary engine={engine} onLoaded={onLoaded} stemRefresh={stemRefresh} libRefresh={libRefresh} />
-
-      {/* hidden preview element (its audio is routed through the isolated graph) */}
+      {/* Preview HTML5 element (isolated from master output) */}
       <audio ref={audioRef} className="hidden" onEnded={() => setPlaying(false)} crossOrigin="anonymous" />
     </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  sub,
-  color,
-  small,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  color: string;
-  small?: boolean;
-}) {
-  return (
-    <div className="hw-recess rounded-md px-3 py-2">
-      <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">{label}</div>
-      <div className={`${small ? "text-xs" : "text-2xl"} font-black leading-tight`} style={{ color }}>
-        {value}
-      </div>
-      {sub ? <div className="text-[9px] text-neutral-500">{sub}</div> : null}
-    </div>
-  );
-}
-
-function RouteBtn({
-  onClick,
-  color,
-  label,
-  disabled,
-}: {
-  onClick: () => void;
-  color: string;
-  label: string;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="hw-btn px-3 py-1.5 text-xs disabled:opacity-40"
-      style={{ ["--led" as string]: color, color }}
-    >
-      {label}
-    </button>
   );
 }
