@@ -20,7 +20,12 @@ export interface YTTrack {
 function bin(name: string, envKey: string): string {
   const fromEnv = process.env[envKey];
   if (fromEnv && existsSync(fromEnv)) return fromEnv;
-  for (const p of [`/opt/homebrew/bin/${name}`, `/usr/local/bin/${name}`, `/usr/bin/${name}`]) {
+  for (const p of [
+    `/Library/Frameworks/Python.framework/Versions/3.14/bin/${name}`,
+    `/opt/homebrew/bin/${name}`,
+    `/usr/local/bin/${name}`,
+    `/usr/bin/${name}`,
+  ]) {
     if (existsSync(p)) return p;
   }
   return name; // fall back to PATH lookup
@@ -243,13 +248,34 @@ export function createMp3Stream(idOrUrl: string): ReadableStream<Uint8Array> {
 
   return new ReadableStream<Uint8Array>({
     start(controller) {
+      let isClosed = false;
       ff.stdout.on("data", (chunk: Buffer) => {
-        controller.enqueue(new Uint8Array(chunk));
-        if ((controller.desiredSize ?? 1) <= 0) ff.stdout.pause();
+        if (isClosed) return;
+        try {
+          controller.enqueue(new Uint8Array(chunk));
+          if ((controller.desiredSize ?? 1) <= 0) ff.stdout.pause();
+        } catch {
+          isClosed = true;
+          kill();
+        }
       });
-      ff.stdout.on("end", () => { try { controller.close(); } catch {} });
-      ff.stdout.on("error", (e) => { try { controller.error(e); } catch {} kill(); });
-      dl.on("error", (e) => { try { controller.error(e); } catch {} kill(); });
+      ff.stdout.on("end", () => {
+        if (isClosed) return;
+        isClosed = true;
+        try { controller.close(); } catch {}
+      });
+      ff.stdout.on("error", (e) => {
+        if (isClosed) return;
+        isClosed = true;
+        try { controller.error(e); } catch {}
+        kill();
+      });
+      dl.on("error", (e) => {
+        if (isClosed) return;
+        isClosed = true;
+        try { controller.error(e); } catch {}
+        kill();
+      });
     },
     pull() {
       ff.stdout.resume();
