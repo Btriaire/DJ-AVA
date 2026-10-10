@@ -40,7 +40,9 @@ function bin(name: string, envKey: string, extra: string[] = []): string {
 }
 
 const FFMPEG = bin("ffmpeg", "FFMPEG_PATH");
-const DEMUCS = bin("demucs", "DEMUCS_PATH", [join(process.cwd(), ".venv-stems/bin/demucs")]);
+const DEMUCS = bin("demucs", "DEMUCS_PATH", [
+  "/Users/bruno/dj-app/.venv-stems/bin/demucs",
+]);
 
 // ffmpeg path, reused by the stems→MIDI transcription pipeline
 export function ffmpegPath(): string {
@@ -271,7 +273,8 @@ async function doSeparate(
     const out = join(work, "out");
     const overlap = opts.ultra ? "0.25" : process.env.STEMS_OVERLAP || "0.1";
     const ext = stemExt(opts);
-    const args = ["-n", model, "-d", "cpu", "--overlap", overlap];
+    const device = process.env.DEMUCS_DEVICE || "cpu";
+    const args = ["-n", model, "-d", device, "--overlap", overlap];
     if (ext === "mp3") args.push("--mp3", "--mp3-bitrate", "256");
     if (process.env.STEMS_SEGMENT) args.push("--segment", process.env.STEMS_SEGMENT);
     const shiftsEff = opts.ultra ? Math.max(shifts, 2) : shifts;
