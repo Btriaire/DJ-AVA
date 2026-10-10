@@ -1238,6 +1238,16 @@ export default function Home() {
             />
             )}
 
+            {/* Media Database / Crates: positioned directly under the decks & mixer for pro DJ workflow */}
+            <div className={deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}>
+              <MediaLibrary
+                engine={engine}
+                onLoaded={bumpTick}
+                stemRefresh={stemRefresh}
+                libRefresh={libRefresh}
+              />
+            </div>
+
             {/* DX7 synth + sampler — full-width connectable module */}
             {modules.dx7 && (
               <div className={deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}>
@@ -1252,25 +1262,22 @@ export default function Home() {
               </div>
             )}
 
-            <div className={`grid grid-cols-1 gap-4 lg:grid-cols-2 ${deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}`}>
-              {/* left column: Synth on top, media database docked beneath it */}
-              <div className="flex flex-col gap-4">
-                {modules.synth && <SynthPanel key={`synth-${resetKey}`} engine={engine} />}
-                <MediaLibrary
-                  engine={engine}
-                  onLoaded={bumpTick}
-                  stemRefresh={stemRefresh}
-                  libRefresh={libRefresh}
-                />
+            {/* Auxiliary instruments & creative FX rack */}
+            {(modules.synth || modules.sampler || modules.soundfx) && (
+              <div className={`grid grid-cols-1 gap-4 lg:grid-cols-2 ${deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}`}>
+                {modules.synth && (
+                  <div className="flex flex-col gap-4">
+                    <SynthPanel key={`synth-${resetKey}`} engine={engine} />
+                  </div>
+                )}
+                {(modules.sampler || modules.soundfx) && (
+                  <div className="flex flex-col gap-4">
+                    {modules.sampler && <SamplerPanel engine={engine} />}
+                    {modules.soundfx && <SoundFxPanel engine={engine} />}
+                  </div>
+                )}
               </div>
-              {/* right column: optional Pads + sound-effects bank */}
-              {(modules.sampler || modules.soundfx) && (
-                <div className="flex flex-col gap-4">
-                  {modules.sampler && <SamplerPanel engine={engine} />}
-                  {modules.soundfx && <SoundFxPanel engine={engine} />}
-                </div>
-              )}
-            </div>
+            )}
 
             {/* optional video tool — toggled in Config (⚙) */}
             {showYouTube && <YouTubeDeck />}

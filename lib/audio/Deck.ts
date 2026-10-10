@@ -688,25 +688,47 @@ export class Deck {
     this.clearStems();
     this.loadGen++;
     this._bufferLoading = true;
-    this.loading = true;
+    this.loading = false; // Immediately allow user interaction / PLAY while streaming
 
+    // Mount native progressive audio element immediately with stream URL
+    const el = new Audio();
+    el.crossOrigin = "anonymous";
+    el.src = url;
+    const onEnded = () => {
+      if (this.mediaEl === el) {
+        this._playing = false;
+        this.pausedAt = 0;
+        if (this.repeat && this.buffer) this.play();
+      }
+    };
+    this._streamSetup(el, name, onEnded);
+
+    // Asynchronously fetch full stream data for Phase 2 (AudioBuffer decode + waveform + stems)
     const currentGen = this.loadGen;
+    const capturedEl = el;
+
     return fetch(url)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.blob();
+        return r.arrayBuffer();
       })
-      .then(async (blob) => {
-        if (currentGen !== this.loadGen) return false;
-        return this.loadStreaming(blob, name);
+      .then(async (raw) => {
+        if (currentGen !== this.loadGen || capturedEl !== this.mediaEl) return false;
+        this.rawData = raw.slice(0);
+        if (this.stemsWanted) void this.prefetchStems();
+        const buf = await this.ctx.decodeAudioData(raw);
+        if (!buf || currentGen !== this.loadGen || capturedEl !== this.mediaEl) return false;
+
+        const pos = this.mediaEl?.currentTime ?? 0;
+        const wasPlaying = this._playing;
+        this._streamSwap(buf, pos, wasPlaying);
+        this._bufferLoading = false;
+        return true;
       })
       .catch((e) => {
-        console.error("[deck] loadStreamingUrl failed:", (e as Error).message);
-        if (currentGen === this.loadGen) {
-          this._bufferLoading = false;
-          this.loading = false;
-        }
-        return false;
+        console.error("[deck] background stream decode notice:", (e as Error).message);
+        // Do not break playback: mediaEl can keep streaming audio
+        return true;
       });
   }
 
