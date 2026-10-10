@@ -845,6 +845,23 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
           </button>
         ))}
         <button
+          className={`hw-btn px-2.5 py-2 text-xs font-bold ${deck.quantize ? "hw-btn-on" : ""}`}
+          style={{ ["--led" as string]: color, color: deck.quantize ? undefined : color }}
+          onClick={() => {
+            deck.toggleQuantize();
+            rerender();
+          }}
+          title={deck.quantize ? "QUANTIZE ON : calage automatique des départs, repères et boucles sur la grille rythmique" : "QUANTIZE OFF : déclenchement libre"}
+        >
+          <span className="flex items-center gap-1">
+            <svg className="h-3 w-3 stroke-current fill-none" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
+            </svg>
+            Q
+          </span>
+        </button>
+        <button
           className="hw-btn px-3 py-2 text-sm text-neutral-200"
           onClick={onSync}
           title="Caler le tempo sur l'autre deck (immédiat)"
@@ -865,6 +882,17 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
       <div className="flex flex-wrap items-stretch gap-3">
         {/* left half: pitch / tempo */}
         <div className="flex min-w-[140px] flex-1 items-center gap-2">
+          <button
+            onClick={() => {
+              deck.toggleKeyLock();
+              rerender();
+            }}
+            className={`hw-btn px-1.5 py-1 text-[9px] font-black uppercase ${deck.keyLock ? "hw-btn-on" : ""}`}
+            style={{ ["--led" as string]: color, color: deck.keyLock ? undefined : color }}
+            title={deck.keyLock ? "MASTER TEMPO (Key Lock) ACTIF : la tonalité musicale reste verrouillée malgré la variation de tempo" : "MASTER TEMPO INACTIF : variation de tonalité naturelle"}
+          >
+            MT
+          </button>
           <span className="shrink-0 text-[10px] uppercase text-neutral-500">
             Pitch {pitch > 0 ? "+" : ""}
             {pitch.toFixed(1)}%

@@ -3,6 +3,8 @@ import { detectKey, KeyResult } from "./key";
 import { FXRack, FxName } from "./FXRack";
 import { Rack, RackPreset } from "./Rack";
 import { sha1Hex16 } from "./stemHash";
+import { PitchShifter } from "./PitchShifter";
+import { guess as guessBeat } from "web-audio-beat-detector";
 
 // synthesized white-noise impulse response for the shared per-stem reverb
 // send bus — same technique as the Rack's own "reverb" module.
@@ -200,6 +202,17 @@ export class Deck {
   private scratchMult = 1; // momentary scratch/pitch-bend, springs back to 1
   private _playing = false;
 
+  // Master Tempo (Key Lock) & Quantize (Beatgrid)
+  keyLock = false; // preserves track pitch when pitch fader / tempo changes
+  private keyShifter: PitchShifter | null = null;
+  private keyShifterIn!: GainNode;
+  private keyShifterOut!: GainNode;
+  private keyShifterBypass!: GainNode;
+  private keyShifterWet!: GainNode;
+
+  quantize = true; // snaps play, cue and loop points to the nearest beat boundary
+  beatGridOffset = 0; // phase offset in seconds to first beat
+
   // metadata
   name = "";
   duration = 0;
@@ -395,9 +408,20 @@ export class Deck {
     this.autotuneIn.connect(this.autotuneBypass);
     this.autotuneBypass.connect(this.autotuneOut);
 
-    // signal chain: trim -> autotune -> EQ -> filter -> FX -> volume -> crowd -> analyser -> out
+    // Key Lock (Master Tempo) insert — compensates pitch shift when rate changes
+    this.keyShifterIn = C();
+    this.keyShifterOut = C();
+    this.keyShifterBypass = C();
+    this.keyShifterWet = C();
+    this.keyShifterBypass.gain.value = 1;
+    this.keyShifterWet.gain.value = 0;
+    this.keyShifterIn.connect(this.keyShifterBypass);
+    this.keyShifterBypass.connect(this.keyShifterOut);
+
+    // signal chain: trim -> autotune -> keyLock -> EQ -> filter -> FX -> volume -> crowd -> analyser -> out
     this.trim.connect(this.autotuneIn);
-    this.autotuneOut.connect(this.low);
+    this.autotuneOut.connect(this.keyShifterIn);
+    this.keyShifterOut.connect(this.low);
     this.low.connect(this.mid);
     this.mid.connect(this.high);
     this.high.connect(this.filter);
@@ -594,6 +618,21 @@ export class Deck {
     this.key = detectKey(buf);
     this.pausedAt = Math.min(Math.max(0, pos), buf.duration - 0.05);
     this._playing = false;
+
+    // Asynchronous fine-tuned beat detection (BPM + phase offset beatgrid)
+    const currentGen = this.loadGen;
+    guessBeat(buf)
+      .then((res) => {
+        if (this.loadGen !== currentGen) return;
+        if (res && res.bpm > 0) {
+          this.bpm = Math.round(res.bpm * 10) / 10;
+          this.beatGridOffset = Math.max(0, res.offset || 0);
+        }
+      })
+      .catch(() => {
+        /* fallback to detectBPM already set */
+      });
+
     if (wasPlaying) this.play();
   }
 
@@ -721,6 +760,21 @@ export class Deck {
     return [this.buildSource(this.buffer, this.trim, true)];
   }
 
+  // Quantize helper: snaps timestamp `t` to the closest beatgrid boundary
+  snapToBeat(t: number): number {
+    if (!this.quantize || !this.bpm) return t;
+    const secPerBeat = 60 / this.bpm;
+    const offset = this.beatGridOffset % secPerBeat;
+    const beatIndex = Math.round((t - offset) / secPerBeat);
+    const snapped = Math.max(0, beatIndex * secPerBeat + offset);
+    return Math.min(snapped, this.duration);
+  }
+
+  toggleQuantize(): boolean {
+    this.quantize = !this.quantize;
+    return this.quantize;
+  }
+
   play() {
     // phase 1: streaming via MediaElement (buffer not yet decoded)
     if (this._bufferLoading && this.mediaEl) {
@@ -733,7 +787,11 @@ export class Deck {
     this.stopSources(); // clear any orphans left by a previous natural end
     const srcs = this.makeSources();
     if (!srcs.length) return;
-    const offset = Math.min(this.pausedAt, this.duration - 0.01);
+
+    // When quantize is active and deck was paused, snap launch point to nearest beat
+    const rawOffset = Math.min(this.pausedAt, this.duration - 0.01);
+    const offset = this.quantize ? this.snapToBeat(rawOffset) : rawOffset;
+
     const when = this.ctx.currentTime; // start every stem at the exact same instant
     for (const s of srcs) s.start(when, offset);
     this.activeSources = srcs;
@@ -812,7 +870,8 @@ export class Deck {
   }
 
   setCue() {
-    this.cuePoint = this.position();
+    const pos = this.position();
+    this.cuePoint = this.quantize ? this.snapToBeat(pos) : pos;
   }
 
   gotoCue() {
@@ -873,6 +932,38 @@ export class Deck {
     } else {
       this.rate = newRate;
     }
+    this.updateKeyLockShifter();
+  }
+
+  toggleKeyLock(): boolean {
+    this.keyLock = !this.keyLock;
+    this.updateKeyLockShifter();
+    return this.keyLock;
+  }
+
+  private updateKeyLockShifter() {
+    if (!this.keyLock || Math.abs(this.rate - 1) < 0.0005) {
+      // Key lock off or at neutral rate: route through pure clean bypass
+      this.keyShifterBypass.gain.setTargetAtTime(1, this.ctx.currentTime, 0.01);
+      this.keyShifterWet.gain.setTargetAtTime(0, this.ctx.currentTime, 0.01);
+      return;
+    }
+
+    if (!this.keyShifter) {
+      this.keyShifter = new PitchShifter(this.ctx);
+      this.keyShifter.start(this.ctx.currentTime + 0.01);
+      this.keyShifterIn.connect(this.keyShifter.input);
+      this.keyShifter.output.connect(this.keyShifterWet);
+      this.keyShifterWet.connect(this.keyShifterOut);
+    }
+
+    // Changing rate by factor R transposes pitch by 12 * log2(R) semitones.
+    // To preserve the original musical key, we shift pitch in reverse: -12 * log2(rate).
+    const semitonesToCompensate = -12 * (Math.log(this.rate) / Math.LN2);
+    this.keyShifter.setSemitones(semitonesToCompensate);
+
+    this.keyShifterBypass.gain.setTargetAtTime(0, this.ctx.currentTime, 0.01);
+    this.keyShifterWet.gain.setTargetAtTime(1, this.ctx.currentTime, 0.01);
   }
 
   // momentary scratch / pitch-bend. amount in -1..+1, 0 = neutral.
@@ -1282,7 +1373,8 @@ export class Deck {
   setBeatLoop(beats: number) {
     if (!this.buffer || !this.bpm) return;
     const secPerBeat = 60 / this.bpm;
-    const start = this.position();
+    const rawStart = this.position();
+    const start = this.quantize ? this.snapToBeat(rawStart) : rawStart;
     this.loopStart = start;
     this.loopEnd = Math.min(start + secPerBeat * beats, this.duration);
     this.loopActive = true;
