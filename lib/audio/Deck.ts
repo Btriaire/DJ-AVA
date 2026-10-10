@@ -1479,6 +1479,45 @@ export class Deck {
     this.stemLoopRollAt[i] = repeats;
   }
 
+  // Snapshot the current loop configuration of stem `i` so it can be saved in presets/library
+  getStemLoopState(i: number): { active: boolean; beats: number | null; start: number; end: number; smoothMs: number; rollAt: number | null } | null {
+    if (i < 0 || i >= Deck.STEM_MAX) return null;
+    return {
+      active: !!this.stemLoopActive[i],
+      beats: this.stemLoopBeatsVal[i] ?? null,
+      start: this.stemLoopStart[i] ?? 0,
+      end: this.stemLoopEnd[i] ?? 0,
+      smoothMs: this.stemLoopSmoothMs[i] ?? 10,
+      rollAt: this.stemLoopRollAt[i] ?? null,
+    };
+  }
+
+  // Recall and engage a saved loop for stem `i`
+  recallStemLoop(i: number, saved: { beats?: number | null; start?: number; end?: number; smoothMs?: number; rollAt?: number | null }): boolean {
+    if (!this.stemsActive || !this.stemReady || i < 0 || i >= this.stemGains.length) return false;
+    if (saved.smoothMs !== undefined) this.stemLoopSmoothMs[i] = saved.smoothMs;
+    if (saved.rollAt !== undefined) this.stemLoopRollAt[i] = saved.rollAt;
+
+    if (saved.beats != null && this.bpm) {
+      return this.setStemBeatLoop(i, saved.beats);
+    } else if (saved.start !== undefined && saved.end !== undefined && saved.end > saved.start) {
+      this.stemLoopActive[i] = true;
+      this.stemLoopStart[i] = saved.start;
+      this.stemLoopEnd[i] = saved.end;
+      this.stemLoopBeatsVal[i] = saved.beats ?? null;
+      this.stemLoopWrapCount[i] = 0;
+      const src = this.activeSources[i];
+      if (src) {
+        src.loopStart = saved.start;
+        src.loopEnd = saved.end;
+        src.loop = true;
+      }
+      this.scheduleStemLoopWrap(i);
+      return true;
+    }
+    return false;
+  }
+
   private clearStemLoopTimer(i: number) {
     const t = this.stemLoopWrapTimer[i];
     if (t) {
@@ -1531,6 +1570,38 @@ export class Deck {
   toggleRepeat(): boolean {
     this.repeat = !this.repeat;
     return this.repeat;
+  }
+
+  // copy a slice of ONE isolated stem from the current position (or active loop)
+  // into an AudioBuffer — lets the sampler or exporter grab isolated stems
+  captureStemSlice(stemIdx: number, beats = 4): AudioBuffer | null {
+    if (!this.stemReady || stemIdx < 0 || stemIdx >= this.stemBuffers.length) return null;
+    const stemBuf = this.stemBuffers[stemIdx];
+    if (!stemBuf) return null;
+
+    const secPerBeat = this.bpm ? 60 / this.bpm : 0.5;
+    let startSec = this.position();
+    let durSec = secPerBeat * beats;
+
+    // If this stem is actively looping, grab the exact active loop window
+    if (this.stemLoopActive[stemIdx]) {
+      startSec = this.stemLoopStart[stemIdx];
+      durSec = Math.max(0.05, this.stemLoopEnd[stemIdx] - startSec);
+    }
+
+    const sr = stemBuf.sampleRate;
+    const startSample = Math.max(0, Math.floor(startSec * sr));
+    const len = Math.min(Math.floor(durSec * sr), stemBuf.length - startSample);
+    if (len <= 0) return null;
+
+    const ch = stemBuf.numberOfChannels;
+    const out = this.ctx.createBuffer(ch, len, sr);
+    for (let c = 0; c < ch; c++) {
+      const src = stemBuf.getChannelData(c);
+      const dst = out.getChannelData(c);
+      for (let i = 0; i < len; i++) dst[i] = src[startSample + i] || 0;
+    }
+    return out;
   }
 
   // copy a slice of the loaded track from the current position into a new

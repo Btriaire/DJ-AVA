@@ -9,6 +9,7 @@ import { Spectrum } from "./Spectrum";
 import { RackPanel } from "./RackPanel";
 import { EqRackStrip } from "./EqRackStrip";
 import { loadLibrary, saveLibrary, idbPutBlob, idbGetBlob, uid, LibTrack } from "@/lib/library";
+import { encodeWav } from "@/lib/audio/engine";
 
 interface Props {
   deck: Deck;
@@ -80,11 +81,17 @@ const STEM_PREVIEW: Record<string, string[]> = {
   htdemucs_6s: ["drums", "bass", "other", "vocals", "guitar", "piano"],
 };
 
-// ---- global STEM templates (numbered 1-5): per-stem volumes + FOULE + makeup,
+// ---- global STEM templates (numbered 1-5): per-stem volumes + loops + FOULE + makeup,
 // reusable across any track. Applied by index up to the current model's stem
 // count, so a 4-stem template still works on a 6-stem split (extra stems left).
 const STEM_LS_KEY = "djsynth.stemtemplates.v1";
-type StemTpl = { name?: string; vol: number[]; crowd: number; makeup: boolean };
+type StemTpl = {
+  name?: string;
+  vol: number[];
+  crowd: number;
+  makeup: boolean;
+  loops?: ({ active: boolean; beats: number | null; start: number; end: number; smoothMs: number; rollAt: number | null } | null)[];
+};
 const STEM_SLOTS = 5;
 function loadStemTpls(): (StemTpl | null)[] {
   const empty: (StemTpl | null)[] = Array(STEM_SLOTS).fill(null);
@@ -505,7 +512,13 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
   const [stemActiveTpl, setStemActiveTpl] = useState<number | null>(null);
   useEffect(() => setStemTpls(loadStemTpls()), []);
   function saveStemSlot(n: number) {
-    const tpl: StemTpl = { vol: deck.stemVol.slice(), crowd: deck.crowd, makeup: deck.stemMakeup };
+    const loops = deck.stemNames.map((_, i) => deck.getStemLoopState(i));
+    const tpl: StemTpl = {
+      vol: deck.stemVol.slice(),
+      crowd: deck.crowd,
+      makeup: deck.stemMakeup,
+      loops,
+    };
     const next = stemTpls.slice();
     next[n] = tpl;
     setStemTpls(next);
@@ -521,8 +534,37 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
     }
     deck.setStemMakeup(tpl.makeup);
     deck.setCrowd(tpl.crowd);
+    if (tpl.loops && Array.isArray(tpl.loops)) {
+      tpl.loops.forEach((lp, i) => {
+        if (!lp || !lp.active) {
+          deck.clearStemLoop(i);
+        } else {
+          deck.recallStemLoop(i, lp);
+        }
+      });
+    }
     setStemActiveTpl(n);
     rerender();
+  }
+
+  // Export the active loop of stem `i` as a downloadable WAV sample file
+  function exportStemLoopWav(stemIdx: number) {
+    const name = deck.stemNames[stemIdx] || `stem_${stemIdx + 1}`;
+    const beats = deck.stemLoopBeatsVal[stemIdx] || 4;
+    const buf = deck.captureStemSlice(stemIdx, beats);
+    if (!buf) {
+      alert(`Impossible d'exporter la boucle du stem ${name} : assure-toi que le stem est chargé et en lecture.`);
+      return;
+    }
+    const blob = encodeWav(buf);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${deck.name ? deck.name.replace(/[^a-zA-Z0-9_-]/g, "_") : "loop"}_${name}_${beats}b.wav`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
   }
 
   // --- save the track loaded on this deck into a playlist ------------------
@@ -1449,13 +1491,23 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                               </span>
                             </div>
 
-                            <button
-                              onClick={() => setStemLoop(i, null)}
-                              className="rounded px-2 py-1 text-[10px] font-black uppercase tracking-wide text-red-400"
-                              style={{ background: "rgba(255,60,60,0.14)" }}
-                            >
-                              ✕ Off
-                            </button>
+                            <div className="flex items-center gap-1 border-t border-white/10 pt-1.5">
+                              <button
+                                onClick={() => exportStemLoopWav(i)}
+                                className="flex-1 rounded px-2 py-1 text-[10px] font-bold text-amber-300"
+                                style={{ background: "rgba(255,190,0,0.12)" }}
+                                title="Télécharger la boucle de ce stem au format WAV haute qualité"
+                              >
+                                💾 Export WAV
+                              </button>
+                              <button
+                                onClick={() => setStemLoop(i, null)}
+                                className="rounded px-2 py-1 text-[10px] font-black uppercase tracking-wide text-red-400"
+                                style={{ background: "rgba(255,60,60,0.14)" }}
+                              >
+                                ✕ Off
+                              </button>
+                            </div>
                           </div>
                         </>
                       )}
