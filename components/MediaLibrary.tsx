@@ -507,11 +507,11 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
         prefetchedIds.current.delete(t.id);
         if (!blob) throw new Error("Fichier introuvable (effacé du navigateur)");
         // streaming: audio starts within ~200 ms; waveform/BPM decode in background
-        deck.loadStreaming(blob, t.name);
+        await deck.loadStreaming(blob, t.name);
         deck.sourceLink = "";
       } else {
         const streamUrl = `/api/${t.source}/stream?id=${encodeURIComponent(t.url ?? "")}`;
-        deck.loadStreamingUrl(streamUrl, t.name);
+        await deck.loadStreamingUrl(streamUrl, t.name);
         deck.sourceLink =
           t.source === "youtube"
             ? `https://www.youtube.com/watch?v=${t.url}`

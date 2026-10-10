@@ -351,11 +351,11 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
         const blob = await idbGetBlob(t.id);
         if (!blob) throw new Error("Fichier introuvable");
         // streaming: audio starts immediately; waveform/BPM arrive in the background
-        deck.loadStreaming(blob, t.name);
+        await deck.loadStreaming(blob, t.name);
         deck.sourceLink = "";
       } else {
         const streamUrl = `/api/${t.source}/stream?id=${encodeURIComponent(t.url ?? "")}`;
-        deck.loadStreamingUrl(streamUrl, t.name);
+        await deck.loadStreamingUrl(streamUrl, t.name);
         deck.sourceLink =
           t.source === "youtube"
             ? `https://www.youtube.com/watch?v=${t.url}`

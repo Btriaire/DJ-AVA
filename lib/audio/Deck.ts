@@ -597,7 +597,7 @@ export class Deck {
     if (wasPlaying) this.play();
   }
 
-  loadStreaming(blob: Blob, name: string) {
+  loadStreaming(blob: Blob, name: string): Promise<boolean> {
     const el = new Audio();
     el.src = URL.createObjectURL(blob);
     const onEnded = () => {
@@ -610,30 +610,31 @@ export class Deck {
     this._streamSetup(el, name, onEnded);
 
     // Phase 2 in background: decode + analysis → hot-swap.
-    // We need rawData (for stems) AND an ArrayBuffer for decodeAudioData.
-    // decodeAudioData *transfers* (detaches) the buffer it receives, so we keep
-    // a slice for rawData and give a second slice to the decoder — but for very
-    // large files two full copies fit easily since the blob was already in RAM.
-    // The capture guard (el === this.mediaEl) drops the result if a new track was
-    // loaded before decoding finished, preventing a stale swap.
     const capturedEl = el;
-    blob.arrayBuffer().then((raw) => {
-      if (capturedEl !== this.mediaEl) return null; // superseded load, drop it
-      this.rawData = raw.slice(0); // keep a copy; decodeAudioData detaches its arg
-      if (this.stemsWanted) void this.prefetchStems(); // prep in the background — this deck was using stems
+    return blob.arrayBuffer().then((raw) => {
+      if (capturedEl !== this.mediaEl) return null;
+      this.rawData = raw.slice(0);
+      if (this.stemsWanted) void this.prefetchStems();
       return this.ctx.decodeAudioData(raw);
     }).then((buf) => {
-      if (!buf || capturedEl !== this.mediaEl) return; // superseded
+      if (!buf || capturedEl !== this.mediaEl) return false;
       const pos = this.mediaEl?.currentTime ?? 0;
       const wasPlaying = this._playing;
       this._streamSwap(buf, pos, wasPlaying);
+      this._bufferLoading = false;
+      this.loading = false;
+      return true;
     }).catch((e) => {
       console.error("[deck] background decode failed", (e as Error).message);
-      if (capturedEl === this.mediaEl) this._bufferLoading = false;
+      if (capturedEl === this.mediaEl) {
+        this._bufferLoading = false;
+        this.loading = false;
+      }
+      return false;
     });
   }
 
-  loadStreamingUrl(url: string, name: string) {
+  loadStreamingUrl(url: string, name: string): Promise<boolean> {
     this.cleanupMediaEl();
     this.stopSources();
     this._playing = false;
@@ -651,50 +652,14 @@ export class Deck {
     this.loading = true;
 
     const currentGen = this.loadGen;
-    fetch(url)
+    return fetch(url)
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.blob();
       })
       .then(async (blob) => {
-        if (currentGen !== this.loadGen) return;
-        // Launch streaming element playback immediately from Blob
-        const blobUrl = URL.createObjectURL(blob);
-        const el = new Audio();
-        el.crossOrigin = "anonymous";
-        el.src = blobUrl;
-        el.preload = "auto";
-        el.addEventListener("loadedmetadata", () => {
-          if (currentGen === this.loadGen && el.duration) {
-            this.duration = el.duration;
-          }
-        }, { once: true });
-        el.addEventListener("ended", () => {
-          if (this.mediaEl === el) {
-            this._playing = false;
-            this.pausedAt = 0;
-            if (this.repeat && this.buffer) this.play();
-          }
-        }, { once: true });
-
-        const elSrc = this.ctx.createMediaElementSource(el);
-        elSrc.connect(this.trim);
-        this.mediaEl = el;
-        this.mediaElSrc = elSrc;
-
-        // Decode audio data to extract waveform peaks, BPM, musical Key & AudioBuffer
-        const raw = await blob.arrayBuffer();
-        if (currentGen !== this.loadGen) return;
-        this.rawData = raw.slice(0);
-        if (this.stemsWanted) void this.prefetchStems();
-
-        const buf = await this.ctx.decodeAudioData(raw);
-        if (currentGen !== this.loadGen) return;
-        const pos = this.mediaEl?.currentTime ?? 0;
-        const wasPlaying = this._playing;
-        this._streamSwap(buf, pos, wasPlaying);
-        this.loading = false;
-        this._bufferLoading = false;
+        if (currentGen !== this.loadGen) return false;
+        return this.loadStreaming(blob, name);
       })
       .catch((e) => {
         console.error("[deck] loadStreamingUrl failed:", (e as Error).message);
@@ -702,6 +667,7 @@ export class Deck {
           this._bufferLoading = false;
           this.loading = false;
         }
+        return false;
       });
   }
 
