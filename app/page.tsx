@@ -22,6 +22,7 @@ import { YouTubeDeck } from "@/components/YouTubeDeck";
 import { Mp3Converter } from "@/components/Mp3Converter";
 import { StemsMidiConverter } from "@/components/StemsMidiConverter";
 import { LcdClock } from "@/components/LcdClock";
+import { MasterRecorder } from "@/components/MasterRecorder";
 import { DeckTimers } from "@/components/DeckTimers";
 import { MixScope } from "@/components/MixScope";
 import { CpuMeter } from "@/components/CpuMeter";
@@ -828,6 +829,7 @@ export default function Home() {
               {stateFlash && (
                 <span className="text-[10px] font-bold text-[#facc15]">{stateFlash}</span>
               )}
+              {engine && <MasterRecorder engine={engine} />}
             </div>
           )}
 
