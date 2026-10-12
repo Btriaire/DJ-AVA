@@ -421,6 +421,10 @@ export class DrumMachine {
   start(): void { this.clock.start("bar"); }
   stop(): void { this.clock.stop(); }
   toggle(): void { if (this.running) this.stop(); else this.start(); }
+  setFill(on: boolean): void { this.fill = on; }
+  setBreak(on: boolean): void { this.breakMode = on; }
+  setQuantize(on: boolean): void { this.quantizeHits = on; }
+  listen(cb: ((step: number) => void) | null): void { this.onStep = cb; }
 
   cycleStep(v: DrumVoice, step: number): void {
     const current = this.rows[v][step];

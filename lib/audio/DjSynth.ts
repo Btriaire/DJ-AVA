@@ -215,6 +215,7 @@ export class DjSynth {
     this.chord = c;
   }
 
+  setQuantize(on: boolean): void { this.quantize = on; }
   setLatch(on: boolean): void {
     if (!on && this.latch) {
       this.releaseAll();

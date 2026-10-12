@@ -189,6 +189,7 @@ export class Slicer {
   }
 
   get engaged(): boolean { return this.engagedFlag; }
+  listen(cb: ((slot: number) => void) | null): void { this.onSlot = cb; }
   get holding(): number | null { return this.holdIdx; }
 
   cycleStep(slot: number, dir: 1 | -1 = 1): void {

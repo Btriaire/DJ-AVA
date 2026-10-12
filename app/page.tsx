@@ -15,6 +15,10 @@ import { SamplerPanel } from "@/components/SamplerPanel";
 import DX7Synth from "@/components/DX7Synth";
 import Solar42F from "@/components/Solar42F";
 import { SoundFxPanel } from "@/components/SoundFxPanel";
+import { DrumMachinePanel } from "@/components/DrumMachinePanel";
+import { DjSynthPanel } from "@/components/DjSynthPanel";
+import { SlicerPanel } from "@/components/SlicerPanel";
+import { HarmonyPanel } from "@/components/HarmonyPanel";
 import { MediaLibrary } from "@/components/MediaLibrary";
 import { BossFxPanel } from "@/components/BossFxPanel";
 import { LibraryPanel } from "@/components/LibraryPanel";
@@ -217,6 +221,10 @@ export default function Home() {
     boss: boolean;
     eq: boolean;
     fxpad: boolean;
+    djsynth: boolean;
+    drums: boolean;
+    slicer: boolean;
+    harmony: boolean;
     // DSP modules (individual)
     loudness: boolean;
     surround: boolean;
@@ -250,6 +258,10 @@ export default function Home() {
     boss: false,
     eq: false,
     fxpad: true,
+    djsynth: false,
+    drums: false,
+    slicer: false,
+    harmony: false,
     loudness: false,
     surround: false,
     exciter: false,
@@ -296,13 +308,15 @@ export default function Home() {
       return next;
     });
   }
-  const MODULE_DEFS: { key: keyof Modules; label: string; scope: string; category: "Instruments & Sources" | "Mixer & EQ" | "Dynamique & Filtrage" | "Distorsion & Caractère" | "Espace & Modulation" }[] = [
+  const MODULE_DEFS: { key: keyof Modules; label: string; scope: string; category: "Instruments & Sources" | "Performance DJ" | "Mixer & EQ" | "Dynamique & Filtrage" | "Distorsion & Caractère" | "Espace & Modulation" }[] = [
     // Instruments & Sources
     { key: "synth", label: "Synthé", scope: "global", category: "Instruments & Sources" },
     { key: "dx7", label: "DX7 · Synthé + Sampler", scope: "global", category: "Instruments & Sources" },
     { key: "solar42", label: "Solar 42F · Drone", scope: "global", category: "Instruments & Sources" },
     { key: "sampler", label: "Sculpteur de son", scope: "global", category: "Instruments & Sources" },
     { key: "soundfx", label: "FX Sonores", scope: "global", category: "Instruments & Sources" },
+    { key: "djsynth", label: "Synthé DJ · Basse & Stab", scope: "global", category: "Instruments & Sources" },
+    { key: "drums", label: "Boîte à rythmes", scope: "global", category: "Instruments & Sources" },
     // Mixer & EQ
     { key: "boss", label: "Boss Master FX", scope: "mixer", category: "Mixer & EQ" },
     { key: "eq", label: "EQ 15 bandes", scope: "deck", category: "Mixer & EQ" },
@@ -332,6 +346,9 @@ export default function Home() {
     { key: "resonator", label: "Resonateur", scope: "deck", category: "Espace & Modulation" },
     { key: "voyelle", label: "Filtre Formants Voyelle", scope: "deck", category: "Espace & Modulation" },
     { key: "autotune", label: "Auto-Tune Pitch", scope: "deck", category: "Espace & Modulation" },
+    // Performance DJ
+    { key: "slicer", label: "Slicer · Remix de mesure", scope: "deck", category: "Performance DJ" },
+    { key: "harmony", label: "Harmonie · Tonalité & Key", scope: "deck", category: "Performance DJ" },
   ];
 
   // Stable callback so the memoized MediaLibrary isn't re-rendered (and its rows
@@ -940,6 +957,7 @@ export default function Home() {
                   {(
                     [
                       "Instruments & Sources",
+                      "Performance DJ",
                       "Mixer & EQ",
                       "Dynamique & Filtrage",
                       "Distorsion & Caractère",
@@ -1386,6 +1404,22 @@ export default function Home() {
             {modules.solar42 && (
               <div className={deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}>
                 <Solar42F key={`solar42-${resetKey}`} engine={engine} embedded />
+              </div>
+            )}
+
+            {/* DJ instruments: beat-synced drum machine + key-locked DJ synth */}
+            {(modules.drums || modules.djsynth) && (
+              <div className={`grid grid-cols-1 gap-4 lg:grid-cols-2 ${deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}`}>
+                {modules.drums && <DrumMachinePanel engine={engine} />}
+                {modules.djsynth && <DjSynthPanel engine={engine} />}
+              </div>
+            )}
+
+            {/* DJ performance modifiers: bar slicer + harmonic key tools */}
+            {(modules.slicer || modules.harmony) && (
+              <div className={`grid grid-cols-1 gap-4 lg:grid-cols-2 ${deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}`}>
+                {modules.slicer && <SlicerPanel engine={engine} />}
+                {modules.harmony && <HarmonyPanel engine={engine} />}
               </div>
             )}
 
