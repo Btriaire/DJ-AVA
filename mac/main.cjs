@@ -1,19 +1,62 @@
 const { app, BrowserWindow, dialog } = require("electron");
-const { spawn } = require("node:child_process");
+const { spawn, execFileSync } = require("node:child_process");
 const path = require("node:path");
 const http = require("node:http");
+const net = require("node:net");
+const fs = require("node:fs");
 
 const PROJECT = process.env.DJSYNTH_HOME || "/Users/bruno/dj-app";
-const PORT = 3217;
-const URL_LOCAL = `http://localhost:${PORT}`;
 
 let server = null;
+let pidFile = "";
 
-function waitForServer(timeoutMs) {
+// A server left behind by a crash / force-quit would keep serving an old build, so the previous one is killed first.
+function killStaleServer() {
+  try {
+    const pid = parseInt(fs.readFileSync(pidFile, "utf8"), 10);
+    if (pid > 0) {
+      const cmd = execFileSync("ps", ["-p", String(pid), "-o", "command="], { encoding: "utf8" });
+      if (/next/.test(cmd)) process.kill(pid, "SIGKILL");
+    }
+  } catch {
+    /* no pid file, process already gone, or ps found nothing */
+  }
+  try {
+    fs.unlinkSync(pidFile);
+  } catch {
+    /* nothing to remove */
+  }
+}
+
+function stopServer() {
+  if (server) {
+    try {
+      server.kill("SIGKILL");
+    } catch {
+      /* already dead */
+    }
+    server = null;
+  }
+  try {
+    fs.unlinkSync(pidFile);
+  } catch {
+    /* nothing to remove */
+  }
+}
+
+function freePort(start) {
+  return new Promise((resolve) => {
+    const s = net.createServer();
+    s.once("error", () => resolve(freePort(start + 1)));
+    s.listen(start, () => s.close(() => resolve(start)));
+  });
+}
+
+function waitForServer(url, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve, reject) => {
     const tick = () => {
-      const req = http.get(URL_LOCAL, (res) => {
+      const req = http.get(url, (res) => {
         res.resume();
         resolve();
       });
@@ -26,9 +69,9 @@ function waitForServer(timeoutMs) {
   });
 }
 
-function startServer() {
+function startServer(port) {
   const next = path.join(PROJECT, "node_modules", "next", "dist", "bin", "next");
-  server = spawn(process.execPath, [next, "start", "-p", String(PORT)], {
+  server = spawn(process.execPath, [next, "start", "-p", String(port)], {
     cwd: PROJECT,
     env: {
       ...process.env,
@@ -40,13 +83,14 @@ function startServer() {
     },
     stdio: ["ignore", "ignore", "pipe"],
   });
+  fs.writeFileSync(pidFile, String(server.pid));
   server.stderr.on("data", (d) => process.stderr.write(d));
   server.on("exit", () => {
     server = null;
   });
 }
 
-async function createWindow() {
+async function createWindow(url) {
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -57,14 +101,18 @@ async function createWindow() {
     titleBarStyle: "hiddenInset",
     webPreferences: { contextIsolation: true },
   });
-  await win.loadURL(URL_LOCAL);
+  await win.loadURL(url);
 }
 
 app.whenReady().then(async () => {
-  startServer();
+  pidFile = path.join(app.getPath("userData"), "server.pid");
+  killStaleServer();
+  const port = await freePort(3217);
+  startServer(port);
+  const url = `http://localhost:${port}`;
   try {
-    await waitForServer(60_000);
-    await createWindow();
+    await waitForServer(url, 60_000);
+    await createWindow(url);
   } catch (e) {
     dialog.showErrorBox("DJSynth", String(e.message));
     app.quit();
@@ -72,7 +120,5 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => app.quit());
-
-app.on("will-quit", () => {
-  if (server) server.kill("SIGTERM");
-});
+app.on("will-quit", stopServer);
+process.on("exit", stopServer);
