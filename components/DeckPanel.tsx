@@ -5,7 +5,7 @@ import { Knob } from "./Knob";
 import { Fader } from "./Fader";
 import { StemFxPanel } from "./StemFxPanel";
 import { Waveform } from "./Waveform";
-import { FXPad } from "./FXPad";
+import { DjFxPanel } from "./DjFxPanel";
 import { Spectrum } from "./Spectrum";
 import { RackPanel } from "./RackPanel";
 import { EqRackStrip } from "./EqRackStrip";
@@ -1069,7 +1069,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
 
       {/* FX pad */}
       {activeModules?.fxpad !== false && <div className="hw-recess p-3">
-        <FXPad key={fxKey} deck={deck} color={color} />
+        <DjFxPanel key={fxKey} rack={deck.fxRack} color={color} />
       </div>}
 
       {/* stem separation (Demucs) — split the track into live faders. Demucs on

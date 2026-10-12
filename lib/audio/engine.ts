@@ -66,6 +66,7 @@ export class DJEngine {
 
     // master FX bus + metering: master -> masterFx -> analyser -> destination
     this.masterFx = new FXRack(this.ctx);
+    this.masterFx.setClock(() => this.masterClock());
     this.meterAnalyser = this.ctx.createAnalyser();
     this.meterAnalyser.fftSize = 1024;
     this.meterAnalyser.smoothingTimeConstant = 0.75;
@@ -363,9 +364,7 @@ export class DJEngine {
     this.deckA.reset();
     this.deckB.reset();
     this.synth.reset();
-    (["echo", "reverb", "flanger", "phaser", "gate", "crush"] as FxName[]).forEach((fx) =>
-      this.masterFx.setWet(fx, 0)
-    );
+    this.masterFx.resetAll();
     this.sampler.resetFx();
     this.setMaster(0.9);
     this.setCrossfade(0.5);
@@ -397,6 +396,15 @@ export class DJEngine {
     const r = new Recorder(this.ctx, maxSeconds);
     this.masterFx.output.connect(r.input);
     return r;
+  }
+
+  private masterClock() {
+    // Choose playing deck with BPM (A has priority if both are playing), or any deck with BPM
+    const deck = this.deckA.playing && this.deckA.fxClock() ? this.deckA :
+                 this.deckB.playing && this.deckB.fxClock() ? this.deckB :
+                 this.deckA.fxClock() ? this.deckA :
+                 this.deckB.fxClock() ? this.deckB : null;
+    return deck?.fxClock() ?? null;
   }
 
   // --- master FX bus (affects the whole mix) ---

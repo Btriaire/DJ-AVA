@@ -249,7 +249,7 @@ export default function Home() {
     soundfx: false,
     boss: false,
     eq: false,
-    fxpad: false,
+    fxpad: true,
     loudness: false,
     surround: false,
     exciter: false,
@@ -276,7 +276,12 @@ export default function Home() {
   const [modules, setModules] = useState<Modules>(() => {
     try {
       const raw = localStorage.getItem("djsynth.modules.v1");
-      return raw ? { ...DEFAULT_MODULES, ...JSON.parse(raw) } : DEFAULT_MODULES;
+      const disposition = raw ? { ...DEFAULT_MODULES, ...JSON.parse(raw) } : DEFAULT_MODULES;
+      if (localStorage.getItem("djsynth.djfx.v1") !== "1") {
+        localStorage.setItem("djsynth.djfx.v1", "1");
+        return { ...disposition, fxpad: true }; // Show DJ FX panel once even for old saved layouts
+      }
+      return disposition;
     } catch {
       return DEFAULT_MODULES;
     }
@@ -301,7 +306,7 @@ export default function Home() {
     // Mixer & EQ
     { key: "boss", label: "Boss Master FX", scope: "mixer", category: "Mixer & EQ" },
     { key: "eq", label: "EQ 15 bandes", scope: "deck", category: "Mixer & EQ" },
-    { key: "fxpad", label: "FX Pad Intensité", scope: "deck", category: "Mixer & EQ" },
+    { key: "fxpad", label: "DJ FX (effets de performance)", scope: "deck", category: "Mixer & EQ" },
     { key: "isolator", label: "Isolateur Voix", scope: "deck", category: "Mixer & EQ" },
     // Dynamique & Filtrage
     { key: "comp", label: "Compresseur", scope: "deck", category: "Dynamique & Filtrage" },

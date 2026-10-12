@@ -1,29 +1,27 @@
-export type FxName = "echo" | "reverb" | "flanger" | "phaser" | "gate" | "crush";
+import { FxName, FxEnv, FxUnit, FX_LIST, FX_META, FxMeta } from "./fxTypes";
+import { buildUnitA } from "./fxUnitsA";
+import { buildUnitB } from "./fxUnitsB";
 
-export const FX_LIST: { id: FxName; label: string; color: string }[] = [
-  { id: "echo", label: "Echo", color: "#ffcc00" },
-  { id: "reverb", label: "Reverb", color: "#ffcc00" },
-  { id: "flanger", label: "Flanger", color: "#34d399" },
-  { id: "phaser", label: "Phaser", color: "#fbbf24" },
-  { id: "gate", label: "Gate", color: "#a3e635" },
-  { id: "crush", label: "Crush", color: "#ff6a3d" },
-];
+export * from "./fxTypes";
 
-// Parallel FX bus: the dry signal always passes through, and every effect runs
-// on its own branch with an independent wet gain. Each effect has its own
-// intensity slider, so several can be layered at once. Effects are voiced hard
-// (high feedback / deep modulation / wet boost) so they hit strong.
 export class FXRack {
   readonly input: GainNode;
   readonly output: GainNode;
   private dry: GainNode;
   private ctx: BaseAudioContext;
+  private units = new Map<FxName, FxUnit>();
   private wets = new Map<FxName, GainNode>();
-  // which effects are currently routed to the output. Web Audio is a pull
-  // graph, so an effect whose wet branch reaches the output is rendered every
-  // quantum even at wet 0. We only connect a branch while its level is > 0, so
-  // unused effects (incl. convolver reverbs) cost no CPU. 6 effects × 3 racks.
+  private levels = new Map<FxName, number>();
+  private effective = new Map<FxName, number>();
+  private engaged = new Map<FxName, boolean>();
+  private beats = new Map<FxName, number>();
+  private params = new Map<FxName, { p1: number; p2: number }>();
   private wetLive = new Set<FxName>();
+  private clock: (() => { bpm: number; toNextBeat: number } | null) | null = null;
+  private manualBpm = 120;
+  private lastBpm = 120;
+  private bpmCheckInterval: NodeJS.Timeout | null = null;
+  private releaseTimers = new Map<FxName, NodeJS.Timeout>();
 
   constructor(ctx: BaseAudioContext) {
     this.ctx = ctx;
@@ -35,145 +33,219 @@ export class FXRack {
     this.input.connect(this.dry);
     this.dry.connect(this.output);
 
-    for (const fx of FX_LIST) this.build(fx.id);
+    for (const meta of FX_LIST) {
+      const unit = this.createUnit(meta.id, {
+        ctx,
+        beat: () => {
+          const bpm = this.getBpm();
+          const clock = this.readClock();
+          return { period: 60 / bpm, toNext: clock ? clock.toNextBeat : 0 };
+        }
+      });
+      const wet = ctx.createGain();
+      wet.gain.value = 0;
+
+      this.input.connect(unit.input);
+      unit.output.connect(wet);
+      this.units.set(meta.id, unit);
+      this.wets.set(meta.id, wet);
+      this.levels.set(meta.id, 0);
+      this.effective.set(meta.id, 0);
+      this.engaged.set(meta.id, false);
+      this.beats.set(meta.id, meta.beat ?? 0);
+      this.params.set(meta.id, {
+        p1: meta.p1?.def ?? 0,
+        p2: meta.p2?.def ?? 0
+      });
+
+      if (meta.p1) unit.setParam("p1", meta.p1.def);
+      if (meta.p2) unit.setParam("p2", meta.p2.def);
+      if (meta.beat !== null) unit.setBeat(meta.beat);
+
+      if (meta.always) {
+        wet.connect(this.output);
+        this.wetLive.add(meta.id);
+      }
+    }
+
+    if (typeof window !== "undefined" && !(ctx instanceof OfflineAudioContext)) {
+      this.bpmCheckInterval = setInterval(() => {
+        const currentBpm = this.getBpm();
+        if (Math.abs(currentBpm - this.lastBpm) > 0.05) {
+          this.lastBpm = currentBpm;
+          this.units.forEach((unit, name) => {
+            if (this.levels.get(name)! > 0 || FX_META.get(name)!.always) {
+              unit.retune();
+            }
+          });
+        }
+      }, 250);
+    }
   }
 
-  // wet level 0..1 for one effect; we let it push past unity so it bites
-  setWet(name: FxName, v: number) {
-    const wet = this.wets.get(name);
-    if (!wet) return;
-    const g = Math.max(0, Math.min(1, v)) * 1.6;
-    if (g > 0) {
-      // route the branch in before raising the level (no missed signal)
-      if (!this.wetLive.has(name)) {
-        wet.connect(this.output);
-        this.wetLive.add(name);
-      }
-      wet.gain.value = g;
+  private readClock(): { bpm: number; toNextBeat: number } | null {
+    return this.clock?.() ?? null;
+  }
+
+  private createUnit(name: FxName, env: FxEnv): FxUnit {
+    if (name === "echo" || name === "reverb" || name === "flanger" || name === "phaser" ||
+        name === "gate" || name === "sweep" || name === "noise" || name === "crush") {
+      return buildUnitA(name, env);
     } else {
-      // mute first, then idle the effect by unrouting it (silent at gain 0)
-      wet.gain.value = 0;
-      if (this.wetLive.has(name)) {
-        try { wet.disconnect(this.output); } catch { /* already detached */ }
-        this.wetLive.delete(name);
+      return buildUnitB(name, env);
+    }
+  }
+
+  private applyGains() {
+    const insertEffects = FX_LIST.filter(fx => fx.insert).map(fx => this.effective.get(fx.id)!);
+    const dryGain = insertEffects.length > 0
+      ? insertEffects.reduce((acc, level) => acc * Math.cos(level * Math.PI / 2), 1)
+      : 1;
+
+    this.dry.gain.setTargetAtTime(dryGain, this.ctx.currentTime, 0.01);
+
+    FX_LIST.forEach(fx => {
+      const name = fx.id;
+      const level = this.effective.get(name)!;
+      const wet = this.wets.get(name)!;
+
+      if (fx.insert) {
+        const wetGain = Math.sin(level * Math.PI / 2);
+        wet.gain.setTargetAtTime(wetGain, this.ctx.currentTime, 0.01);
+      } else {
+        const wetGain = level * fx.sendGain;
+        wet.gain.setTargetAtTime(wetGain, this.ctx.currentTime, 0.01);
+      }
+    });
+  }
+
+  private scheduleDisconnect(name: FxName) {
+    const meta = FX_META.get(name)!;
+    if (meta.always) return;
+
+    setTimeout(() => {
+      if (this.levels.get(name) === 0 && this.effective.get(name) === 0) {
+        const wet = this.wets.get(name)!;
+        try {
+          wet.disconnect(this.output);
+          this.wetLive.delete(name);
+        } catch {
+          // Already disconnected
+        }
+      }
+    }, 60);
+  }
+
+  setWet(name: FxName, v: number) {
+    const meta = FX_META.get(name);
+    if (!meta) return;
+
+    const wet = this.wets.get(name);
+    const unit = this.units.get(name);
+    if (!wet || !unit) return;
+
+    const clamped = Math.max(0, Math.min(1, v));
+    const prevLevel = this.levels.get(name)!;
+    this.levels.set(name, clamped);
+
+    if (clamped > 0) {
+      const timer = this.releaseTimers.get(name);
+      if (timer) {
+        clearTimeout(timer);
+        this.releaseTimers.delete(name);
+      }
+
+      this.effective.set(name, clamped);
+
+      if (!this.engaged.get(name)) {
+        unit.retune();
+        if (!this.wetLive.has(name)) {
+          wet.connect(this.output);
+          this.wetLive.add(name);
+        }
+        unit.engage();
+        this.engaged.set(name, true);
+      }
+
+      this.applyGains();
+    } else if (prevLevel > 0) {
+      const tail = unit.release();
+      this.engaged.set(name, false);
+
+      if (tail > 0) {
+        const releaseTimer = setTimeout(() => {
+          this.effective.set(name, 0);
+          this.applyGains();
+          this.scheduleDisconnect(name);
+          this.releaseTimers.delete(name);
+        }, tail * 1000);
+        this.releaseTimers.set(name, releaseTimer);
+      } else {
+        this.effective.set(name, 0);
+        this.applyGains();
+        this.scheduleDisconnect(name);
       }
     }
   }
 
   getWet(name: FxName): number {
-    const wet = this.wets.get(name);
-    return wet ? Math.min(1, wet.gain.value / 1.6) : 0;
+    return this.levels.get(name) ?? 0;
   }
 
-  private build(name: FxName) {
-    const c = this.ctx;
-    const wet = c.createGain();
-    wet.gain.value = 0;
-
-    let inNode: AudioNode;
-    let outNode: AudioNode;
-
-    if (name === "echo") {
-      const delay = c.createDelay(2);
-      delay.delayTime.value = 0.38;
-      const fb = c.createGain();
-      fb.gain.value = 0.62;
-      delay.connect(fb);
-      fb.connect(delay);
-      inNode = outNode = delay;
-    } else if (name === "reverb") {
-      const conv = c.createConvolver();
-      conv.buffer = this.impulse(3.2, 2.2);
-      const boost = c.createGain();
-      boost.gain.value = 1.5;
-      conv.connect(boost);
-      inNode = conv;
-      outNode = boost;
-    } else if (name === "flanger") {
-      const delay = c.createDelay(0.05);
-      delay.delayTime.value = 0.005;
-      const fb = c.createGain();
-      fb.gain.value = 0.85;
-      const lfo = c.createOscillator();
-      const depth = c.createGain();
-      depth.gain.value = 0.004;
-      lfo.frequency.value = 0.5;
-      lfo.connect(depth);
-      depth.connect(delay.delayTime);
-      lfo.start();
-      delay.connect(fb);
-      fb.connect(delay);
-      inNode = outNode = delay;
-    } else if (name === "phaser") {
-      const stages: BiquadFilterNode[] = [];
-      for (let i = 0; i < 6; i++) {
-        const ap = c.createBiquadFilter();
-        ap.type = "allpass";
-        ap.frequency.value = 400 + i * 350;
-        ap.Q.value = 6;
-        stages.push(ap);
-      }
-      for (let i = 0; i < stages.length - 1; i++) stages[i].connect(stages[i + 1]);
-      const lfo = c.createOscillator();
-      const depth = c.createGain();
-      depth.gain.value = 1200;
-      lfo.frequency.value = 0.6;
-      lfo.connect(depth);
-      stages.forEach((s) => depth.connect(s.frequency));
-      lfo.start();
-      inNode = stages[0];
-      outNode = stages[stages.length - 1];
-    } else if (name === "gate") {
-      const g = c.createGain();
-      g.gain.value = 1;
-      const lfo = c.createOscillator();
-      lfo.type = "square";
-      lfo.frequency.value = 8;
-      const depth = c.createGain();
-      depth.gain.value = 0.5;
-      const offset = c.createConstantSource();
-      offset.offset.value = 0.5;
-      offset.start();
-      lfo.connect(depth);
-      depth.connect(g.gain);
-      offset.connect(g.gain);
-      lfo.start();
-      inNode = outNode = g;
-    } else {
-      // crush
-      const shaper = c.createWaveShaper();
-      shaper.curve = this.crushCurve(4);
-      shaper.oversample = "none";
-      inNode = outNode = shaper;
+  setBeat(name: FxName, idx: number) {
+    const unit = this.units.get(name);
+    if (unit) {
+      this.beats.set(name, idx);
+      unit.setBeat(idx);
     }
-
-    this.input.connect(inNode);
-    outNode.connect(wet);
-    // wet -> output is wired lazily by setWet(); the effect starts idle at 0.
-    this.wets.set(name, wet);
   }
 
-  private impulse(duration: number, decay: number): AudioBuffer {
-    const rate = this.ctx.sampleRate;
-    const len = rate * duration;
-    const buf = this.ctx.createBuffer(2, len, rate);
-    for (let ch = 0; ch < 2; ch++) {
-      const data = buf.getChannelData(ch);
-      for (let i = 0; i < len; i++) {
-        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
-      }
-    }
-    return buf;
+  getBeat(name: FxName): number {
+    return this.beats.get(name) ?? 0;
   }
 
-  private crushCurve(bits: number): Float32Array<ArrayBuffer> {
-    const n = 1024;
-    const curve = new Float32Array(n);
-    const step = Math.pow(2, bits);
-    for (let i = 0; i < n; i++) {
-      const x = (i / (n - 1)) * 2 - 1;
-      curve[i] = Math.round(x * step) / step;
+  setParam(name: FxName, key: "p1" | "p2", v: number) {
+    const unit = this.units.get(name);
+    const params = this.params.get(name);
+    if (unit && params) {
+      const clamped = Math.max(0, Math.min(1, v));
+      params[key] = clamped;
+      unit.setParam(key, clamped);
     }
-    return curve;
+  }
+
+  getParam(name: FxName, key: "p1" | "p2"): number {
+    const params = this.params.get(name);
+    return params ? params[key] : 0;
+  }
+
+  setClock(fn: (() => { bpm: number; toNextBeat: number } | null) | null) {
+    this.clock = fn;
+  }
+
+  setManualBpm(bpm: number) {
+    this.manualBpm = Math.max(40, Math.min(220, bpm));
+  }
+
+  getBpm(): number {
+    const clock = this.readClock();
+    return clock && clock.bpm > 0 ? clock.bpm : this.manualBpm;
+  }
+
+  resetAll() {
+    FX_LIST.forEach(fx => this.setWet(fx.id, 0));
+  }
+
+  dispose() {
+    if (this.bpmCheckInterval) {
+      clearInterval(this.bpmCheckInterval);
+      this.bpmCheckInterval = null;
+    }
+    this.releaseTimers.forEach(timer => clearTimeout(timer));
+    this.releaseTimers.clear();
+  }
+
+  static getMeta(name: FxName): FxMeta | undefined {
+    return FX_META.get(name);
   }
 }

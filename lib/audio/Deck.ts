@@ -1,6 +1,6 @@
 import { detectBPM, buildWaveformPeaks } from "./bpm";
 import { detectKey, KeyResult } from "./key";
-import { FXRack, FxName } from "./FXRack";
+import { FXRack, FX_LIST, FxName } from "./FXRack";
 import { Rack, RackPreset } from "./Rack";
 import { sha1Hex16 } from "./stemHash";
 import { PitchShifter } from "./PitchShifter";
@@ -52,6 +52,7 @@ export interface DeckSettings {
   filter: number; // bipolar -1..1
   pitch: number; // percent
   fx: Partial<Record<FxName, number>>;
+  fxp?: Partial<Record<FxName, { beat: number; p1: number; p2: number }>>; // DJ FX beat division + params; old saves lack it
   rack?: RackPreset; // serial DSP rack state (optional: old saves won't have it)
 }
 
@@ -293,6 +294,7 @@ export class Deck {
     this.filter.frequency.value = 20000;
 
     this.fx = new FXRack(ctx);
+    this.fx.setClock(() => this.fxClock());
     this.rack = new Rack(ctx);
 
     // per-stem gains (up to STEM_MAX) sum into a shared stem bus, which feeds
@@ -1383,6 +1385,15 @@ export class Deck {
     return (this.rate - 1) * 100;
   }
 
+  get fxRack(): FXRack { return this.fx; }
+
+  public fxClock(): { bpm: number; toNextBeat: number } | null {
+    if (!this.bpm || !this.rate) return null;
+    const spb = 60 / this.bpm;
+    const rel = (((this.position() - this.beatGridOffset) % spb) + spb) % spb;
+    return { bpm: this.bpm * this.rate, toNextBeat: this._playing ? (spb - rel) / this.rate : 0 };
+  }
+
   // FX rack — each effect has an independent wet level (0..1)
   setFxWet(name: FxName, v: number) {
     this.fx.setWet(name, v);
@@ -1683,16 +1694,16 @@ export class Deck {
     this.scratch(0);
     this.clearLoop();
     this.repeat = false;
-    for (const fx of ["echo", "reverb", "flanger", "phaser", "gate", "crush"] as const) {
-      this.setFxWet(fx, 0);
-    }
+    this.fx.resetAll();
   }
 
   // capture the current mixer/FX state so it can be stored with a track
   getSettings(): DeckSettings {
     const fx: Partial<Record<FxName, number>> = {};
-    for (const name of ["echo", "reverb", "flanger", "phaser", "gate", "crush"] as const) {
-      fx[name] = this.fx.getWet(name);
+    const fxp: Partial<Record<FxName, { beat: number; p1: number; p2: number }>> = {};
+    for (const m of FX_LIST) {
+      fx[m.id] = this.fx.getWet(m.id);
+      fxp[m.id] = { beat: this.fx.getBeat(m.id), p1: this.fx.getParam(m.id, "p1"), p2: this.fx.getParam(m.id, "p2") };
     }
     return {
       trim: this.trim.gain.value,
@@ -1703,6 +1714,7 @@ export class Deck {
       filter: this.filterX,
       pitch: this.pitchPct,
       fx,
+      fxp,
       rack: this.rack.export(),
     };
   }
@@ -1716,8 +1728,14 @@ export class Deck {
     this.setEQ("high", s.high);
     this.setFilter(s.filter);
     this.setPitch(s.pitch);
-    for (const name of ["echo", "reverb", "flanger", "phaser", "gate", "crush"] as const) {
-      if (typeof s.fx[name] === "number") this.setFxWet(name, s.fx[name] as number);
+    for (const m of FX_LIST) {
+      const p = s.fxp?.[m.id];
+      if (p) {
+        this.fx.setBeat(m.id, p.beat);
+        this.fx.setParam(m.id, "p1", p.p1);
+        this.fx.setParam(m.id, "p2", p.p2);
+      }
+      if (typeof s.fx[m.id] === "number") this.setFxWet(m.id, s.fx[m.id] as number);
     }
     if (s.rack) this.rack.import(s.rack);
   }

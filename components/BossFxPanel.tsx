@@ -12,18 +12,8 @@ interface Props {
 // on the BOSS master unit every effect shares one uniform accent colour
 const BOSS_FX_COLOR = "#ffcc00";
 
-// glyph + the 4 knobs that get a quick-access intensity dial
-const FX_GLYPH: Record<FxName, string> = {
-  echo: "⟲",
-  reverb: "〰",
-  flanger: "✺",
-  phaser: "◐",
-  gate: "▥",
-  crush: "▦",
-};
 const KNOB_FX: FxName[] = ["echo", "reverb", "phaser", "crush"];
 const KNOB_NUM = ["3", "4", "1", "2"]; // BOSS-style face numbering
-
 function fmtTC(sec: number) {
   const s = Math.floor(sec);
   const h = Math.floor(s / 3600);
@@ -96,13 +86,18 @@ export function BossFxPanel({ engine, tick }: Props) {
   // keep meters & clock smooth even if the parent tick stalls
   useEffect(() => {
     let raf = 0;
-    const loop = () => {
-      rerender();
+    let last = 0;
+    const loop = (now: number) => {
+      const interval = engine.anyPlaying ? 33 : 250;
+      if (now - last >= interval) {
+        rerender();
+        last = now;
+      }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [engine]);
 
   const { date, time } = fmtClock(clockRef.current);
   const SCALE = [0, -15, -30, -45, -60];
@@ -183,7 +178,7 @@ export function BossFxPanel({ engine, tick }: Props) {
                 style={on ? { color: BOSS_FX_COLOR, textShadow: `0 0 8px ${BOSS_FX_COLOR}` } : undefined}
                 title={`${fx.label} (master)`}
               >
-                <span className="text-sm leading-none">{FX_GLYPH[fx.id]}</span>
+                <span className="text-sm leading-none">{fx.glyph}</span>
                 <span className="text-[7px] uppercase tracking-wide">{fx.label}</span>
               </button>
             );

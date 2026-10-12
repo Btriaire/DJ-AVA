@@ -227,9 +227,7 @@ export function VoiceExtractor() {
 
   const [params, setParamsState] = useState<VocalParams>({ ...defaultVocalParams });
   const [masterVol, setMasterVol] = useState(0.9);
-  const [bonusFx, setBonusFx] = useState<Record<FxName, number>>({
-    echo: 0, reverb: 0, flanger: 0, phaser: 0, gate: 0, crush: 0,
-  });
+  const [bonusFx, setBonusFx] = useState<Record<FxName, number>>(Object.fromEntries(FX_LIST.map((f) => [f.id, 0])) as Record<FxName, number>);
 
   const [vocalsBlobUrl, setVocalsBlobUrl] = useState<string | null>(null);
   const vocalsBlobRef = useRef<Blob | null>(null);
@@ -956,7 +954,7 @@ export function VoiceExtractor() {
                       <Knob label="Chorus" value={params.chorusWet} min={0} max={1} defaultValue={0} onChange={(v) => setParam("chorusWet", v)} size={40} color="#38bdf8" led />
                     </div>
                     <div className="grid w-full grid-cols-2 gap-1">
-                      {FX_LIST.filter((f) => f.id !== "reverb" && f.id !== "echo").map((f) => (
+                      {FX_LIST.filter((f) => f.id !== "reverb" && f.id !== "echo" && !f.trigger).map((f) => (
                         <div key={f.id} className="flex flex-col items-center gap-1">
                           <Knob
                             label={f.label}
