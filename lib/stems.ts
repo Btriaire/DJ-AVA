@@ -17,6 +17,9 @@ import { join } from "node:path";
 
 export type StemModel = "htdemucs" | "htdemucs_ft" | "htdemucs_6s";
 
+const MLX_BIN = bin("demucs-mlx", "DEMUCS_MLX_PATH", [join(process.cwd(), ".venv-mlx", "bin", "demucs-mlx"), "/Users/bruno/dj-app/.venv-mlx/bin/demucs-mlx"]);
+const USE_MLX = process.env.STEMS_BACKEND !== "torch" && (process.env.STEMS_BACKEND === "mlx" || (process.platform === "darwin" && process.arch === "arm64")) && existsSync(MLX_BIN);
+
 // stems produced by each model, in Demucs' output order
 export const MODEL_STEMS: Record<StemModel, readonly string[]> = {
   htdemucs: ["drums", "bass", "other", "vocals"],
@@ -129,7 +132,7 @@ async function moveFile(src: string, dst: string): Promise<void> {
 // yield CPU to the live app and any on-demand separation. `onProgress`, when
 // given, is fed every stderr chunk so the caller can scrape a percentage out
 // of it (Demucs writes a tqdm bar there — see doSeparate below).
-function run(cmd: string, args: string[], niceness?: number, onProgress?: (chunk: string) => void): Promise<void> {
+function run(cmd: string, args: string[], niceness?: number, onProgress?: (chunk: string) => void, env?: Record<string, string>): Promise<void> {
   return new Promise((resolve, reject) => {
     let exe = cmd;
     let exeArgs = args;
@@ -137,7 +140,7 @@ function run(cmd: string, args: string[], niceness?: number, onProgress?: (chunk
       exe = "/usr/bin/nice";
       exeArgs = ["-n", String(niceness), cmd, ...args];
     }
-    const p = spawn(exe, exeArgs, { stdio: ["ignore", "ignore", "pipe"] });
+    const p = spawn(exe, exeArgs, { stdio: ["ignore", "ignore", "pipe"], env: { ...process.env, ...(env || {}) } });
     let err = "";
     p.stderr.on("data", (d) => {
       err += d;
@@ -172,7 +175,7 @@ export function getProgress(hash: string, model: StemModel, opts: StemOpts = {})
 
 // This box is CPU-bound (often a single core), so run at most ONE Demucs at a
 // time. On-demand jobs (priority 1) are dequeued before background prefetch jobs
-// (priority 0); a job already running can't be interrupted but won't be jumped.
+// (priority 0); a job already running can't be interrupted but won't be jumped. The GPU is also shared, so this lock remains necessary with MLX.
 const slotWaiters: { prio: number; resolve: () => void }[] = [];
 let slotBusy = false;
 function acquireSlot(prio: number): Promise<void> {
@@ -241,6 +244,70 @@ export function prefetch(
   return { hash, cached };
 }
 
+interface SepArgs {
+  model: StemModel;
+  wav: string;
+  out: string;
+  opts: SeparateOpts;
+  shifts: number;
+  niceness: number | undefined;
+  pKey: string;
+}
+
+async function separateWithTorch(a: SepArgs): Promise<string> {
+  const overlap = a.opts.ultra ? "0.25" : process.env.STEMS_OVERLAP || "0.1";
+  const ext = stemExt(a.opts);
+  const device = process.env.DEMUCS_DEVICE || "cpu";
+  const args = ["-n", a.model, "-d", device, "--overlap", overlap];
+  if (ext === "mp3") args.push("--mp3", "--mp3-bitrate", "256");
+  if (process.env.STEMS_SEGMENT) args.push("--segment", process.env.STEMS_SEGMENT);
+  const shiftsEff = a.opts.ultra ? Math.max(a.shifts, 2) : a.shifts;
+  if (shiftsEff > 0) args.push("--shifts", String(Math.min(shiftsEff, 10)));
+  args.push("-o", a.out, a.wav);
+  // Demucs prints a tqdm bar to stderr while separating ("  45%|███ |...");
+  // scrape the last percentage out of each chunk (tqdm redraws via \r, so a
+  // single chunk can contain several updates — keep only the latest).
+  await run(DEMUCS, args, a.niceness, (chunk) => {
+    const matches = chunk.match(/(\d{1,3})%\|/g);
+    if (!matches || !matches.length) return;
+    const pct = parseInt(matches[matches.length - 1], 10);
+    if (!isNaN(pct)) progress.set(a.pKey, Math.min(99, pct)); // 100 reserved for "done"
+  });
+  return join(a.out, a.model, "source");
+}
+
+async function separateWithMlx(a: SepArgs): Promise<string> {
+  const mlxOut = join(a.out, "mlx");
+  if (existsSync(mlxOut)) await rm(mlxOut, { recursive: true, force: true });
+  const overlap = a.opts.ultra ? "0.25" : process.env.STEMS_OVERLAP || "0.1";
+  const shiftsEff = String(Math.min(a.opts.ultra ? Math.max(a.shifts, 2) : a.shifts, 10));
+  const args = ["-n", a.model, "--overlap", overlap, "-b", "1", "--shifts", shiftsEff, "-v", "-o", mlxOut, a.wav];
+  await run(MLX_BIN, args, a.niceness, (chunk) => {
+    const matches = chunk.match(/segments:\s*(\d{1,3})%\|/g);
+    if (!matches || !matches.length) return;
+    const pct = parseInt(matches[matches.length - 1], 10);
+    if (!isNaN(pct)) progress.set(a.pKey, Math.min(99, pct)); // 100 reserved for "done"
+  }, { MLX_MAX_OPS_PER_BUFFER: process.env.MLX_MAX_OPS_PER_BUFFER || "8" });
+
+  const produced = join(mlxOut, "source");
+  const ext = stemExt(a.opts);
+  for (const stem of MODEL_STEMS[a.model]) {
+    if (!existsSync(join(produced, `${stem}.wav`))) {
+      throw new Error("mlx: stems manquants");
+    }
+  }
+
+  if (ext === "mp3") {
+    await Promise.all(MODEL_STEMS[a.model].map(async (stem) => {
+      const wavPath = join(produced, `${stem}.wav`);
+      const mp3Path = join(produced, `${stem}.mp3`);
+      await run(FFMPEG, ["-hide_banner", "-loglevel", "error", "-y", "-i", wavPath, "-codec:a", "libmp3lame", "-b:a", "256k", mp3Path], a.niceness);
+    }));
+  }
+
+  return produced;
+}
+
 async function doSeparate(
   hash: string,
   model: StemModel,
@@ -271,33 +338,37 @@ async function doSeparate(
     //    at several times the CPU cost. STEMS_SEGMENT caps the chunk length to
     //    bound peak RAM on memory-tight hosts. All env-tunable except ultra.
     const out = join(work, "out");
-    const overlap = opts.ultra ? "0.25" : process.env.STEMS_OVERLAP || "0.1";
     const ext = stemExt(opts);
-    const device = process.env.DEMUCS_DEVICE || "cpu";
-    const args = ["-n", model, "-d", device, "--overlap", overlap];
-    if (ext === "mp3") args.push("--mp3", "--mp3-bitrate", "256");
-    if (process.env.STEMS_SEGMENT) args.push("--segment", process.env.STEMS_SEGMENT);
-    const shiftsEff = opts.ultra ? Math.max(shifts, 2) : shifts;
-    if (shiftsEff > 0) args.push("--shifts", String(Math.min(shiftsEff, 10)));
-    args.push("-o", out, wav);
-    // Demucs prints a tqdm bar to stderr while separating ("  45%|███ |...");
-    // scrape the last percentage out of each chunk (tqdm redraws via \r, so a
-    // single chunk can contain several updates — keep only the latest).
-    await run(DEMUCS, args, niceness, (chunk) => {
-      const matches = chunk.match(/(\d{1,3})%\|/g);
-      if (!matches || !matches.length) return;
-      const pct = parseInt(matches[matches.length - 1], 10);
-      if (!isNaN(pct)) progress.set(pKey, Math.min(99, pct)); // 100 reserved for "done"
-    });
+    const sepArgs: SepArgs = {
+      model,
+      wav,
+      out,
+      opts,
+      shifts,
+      niceness,
+      pKey,
+    };
+
+    let produced: string | null = null;
+    if (USE_MLX) {
+      for (let attempt = 1; attempt <= 2 && !produced; attempt++) {
+        try {
+          produced = await separateWithMlx(sepArgs);
+        } catch (e) {
+          console.warn(`[stems] MLX tentative ${attempt}/2 échouée : ${(e as Error).message.slice(0, 200)}`);
+        }
+      }
+    }
+
+    const producedDir: string = produced ?? (await separateWithTorch(sepArgs));
 
     // 3. optional vocal cleanup: ffmpeg's afftdn adaptive noise-reduction filter
     //    on the vocals stem only (there's no true de-reverb filter in ffmpeg —
     //    this cuts hiss/bleed/background noise, framed honestly as that, not
     //    "reverb removal")
-    const produced = join(out, model, "source");
     if (opts.denoiseVocals && MODEL_STEMS[model].includes("vocals")) {
-      const vocalsIn = join(produced, `vocals.${ext}`);
-      const vocalsOut = join(produced, `vocals.dn.${ext}`);
+      const vocalsIn = join(producedDir, `vocals.${ext}`);
+      const vocalsOut = join(producedDir, `vocals.dn.${ext}`);
       const dnArgs = ["-hide_banner", "-loglevel", "error", "-y", "-i", vocalsIn, "-af", "afftdn=nr=12:nf=-25"];
       if (ext === "mp3") dnArgs.push("-b:a", "256k");
       dnArgs.push(vocalsOut);
@@ -309,7 +380,7 @@ async function doSeparate(
     const dir = modelDir(hash, model, opts);
     mkdirSync(dir, { recursive: true });
     for (const s of MODEL_STEMS[model]) {
-      await moveFile(join(produced, `${s}.${ext}`), join(dir, `${s}.${ext}`));
+      await moveFile(join(producedDir, `${s}.${ext}`), join(dir, `${s}.${ext}`));
     }
   } finally {
     releaseSlot();
