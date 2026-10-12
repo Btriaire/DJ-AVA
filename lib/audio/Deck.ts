@@ -1,6 +1,7 @@
 import { detectBPM, buildWaveformPeaks } from "./bpm";
 import { detectKey, KeyResult } from "./key";
 import { FXRack, FX_LIST, FxName } from "./FXRack";
+import { Retouch } from "./Retouch";
 import { Rack, RackPreset } from "./Rack";
 import { sha1Hex16 } from "./stemHash";
 import { PitchShifter } from "./PitchShifter";
@@ -53,6 +54,7 @@ export interface DeckSettings {
   pitch: number; // percent
   fx: Partial<Record<FxName, number>>;
   fxp?: Partial<Record<FxName, { beat: number; p1: number; p2: number }>>; // DJ FX beat division + params; old saves lack it
+  retouch?: Record<string, number>; // sound retouch settings; old saves lack it
   rack?: RackPreset; // serial DSP rack state (optional: old saves won't have it)
 }
 
@@ -164,6 +166,7 @@ export class Deck {
   private high: BiquadFilterNode;
   private filter: BiquadFilterNode;
   private fx: FXRack;
+  private retouch: Retouch;
   readonly rack: Rack; // serial studio DSP rack (compressor, drive, delay, …)
   private volume: GainNode;
   private analyser: AnalyserNode;
@@ -294,6 +297,7 @@ export class Deck {
     this.filter.frequency.value = 20000;
 
     this.fx = new FXRack(ctx);
+    this.retouch = new Retouch(ctx);
     this.fx.setClock(() => this.fxClock());
     this.rack = new Rack(ctx);
 
@@ -427,7 +431,8 @@ export class Deck {
     this.low.connect(this.mid);
     this.mid.connect(this.high);
     this.high.connect(this.filter);
-    this.filter.connect(this.fx.input);
+    this.filter.connect(this.retouch.input);
+    this.retouch.output.connect(this.fx.input);
     this.fx.output.connect(this.rack.input);
     this.rack.output.connect(this.volume);
     this.volume.connect(this.crowdIn);
@@ -1386,6 +1391,7 @@ export class Deck {
   }
 
   get fxRack(): FXRack { return this.fx; }
+  get retouchFx(): Retouch { return this.retouch; }
 
   public fxClock(): { bpm: number; toNextBeat: number } | null {
     if (!this.bpm || !this.rate) return null;
@@ -1695,6 +1701,7 @@ export class Deck {
     this.clearLoop();
     this.repeat = false;
     this.fx.resetAll();
+    this.retouch.reset();
   }
 
   // capture the current mixer/FX state so it can be stored with a track
@@ -1716,6 +1723,7 @@ export class Deck {
       fx,
       fxp,
       rack: this.rack.export(),
+      retouch: this.retouch.export(),
     };
   }
 
@@ -1738,6 +1746,7 @@ export class Deck {
       if (typeof s.fx[m.id] === "number") this.setFxWet(m.id, s.fx[m.id] as number);
     }
     if (s.rack) this.rack.import(s.rack);
+    if (s.retouch) this.retouch.import(s.retouch);
   }
 
   getLevel(): number {

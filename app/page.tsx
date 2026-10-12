@@ -306,7 +306,7 @@ export default function Home() {
     // Mixer & EQ
     { key: "boss", label: "Boss Master FX", scope: "mixer", category: "Mixer & EQ" },
     { key: "eq", label: "EQ 15 bandes", scope: "deck", category: "Mixer & EQ" },
-    { key: "fxpad", label: "DJ FX (effets de performance)", scope: "deck", category: "Mixer & EQ" },
+    { key: "fxpad", label: "DJ FX + Retouche", scope: "deck", category: "Mixer & EQ" },
     { key: "isolator", label: "Isolateur Voix", scope: "deck", category: "Mixer & EQ" },
     // Dynamique & Filtrage
     { key: "comp", label: "Compresseur", scope: "deck", category: "Dynamique & Filtrage" },
