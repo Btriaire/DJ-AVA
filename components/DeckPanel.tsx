@@ -1077,7 +1077,8 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
           is removed outright for long tracks instead of failing after a click. */}
       {/* up to 6 stem fader columns + controls don't fit an iPhone width —
           scroll horizontally instead of squishing/overflowing the panel */}
-      <div className="hw-recess flex items-stretch gap-3 overflow-x-auto p-3">
+      {/* contain: inline-size = ce scroll ne doit pas imposer sa largeur au deck (613 px -> 520 px) */}
+      <div className="hw-recess flex items-stretch gap-3 overflow-x-auto p-3 [contain:inline-size]">
         <div className="flex w-28 shrink-0 flex-col justify-center gap-1">
           <span className="text-[9px] uppercase leading-none text-neutral-500">Séparation</span>
           {stemTooLongForTrack ? (

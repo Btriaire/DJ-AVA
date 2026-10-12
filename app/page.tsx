@@ -23,6 +23,7 @@ import { Mp3Converter } from "@/components/Mp3Converter";
 import { StemsMidiConverter } from "@/components/StemsMidiConverter";
 import { LcdClock } from "@/components/LcdClock";
 import { MasterRecorder } from "@/components/MasterRecorder";
+import { useAutoFit } from "@/lib/useAutoFit";
 import { DeckTimers } from "@/components/DeckTimers";
 import { MixScope } from "@/components/MixScope";
 import { CpuMeter } from "@/components/CpuMeter";
@@ -97,7 +98,7 @@ export default function Home() {
   const [sidebarLibrary, setSidebarLibrary] = useState(() => {
     try {
       const saved = localStorage.getItem("djsynth.sidebarLibrary");
-      return saved !== null ? saved === "1" : true; // default open on left
+      return saved !== null ? saved === "1" : window.innerWidth >= 1700; // ouverte par défaut seulement si l'écran a la place : 1696 px nécessaires
     } catch {
       return true;
     }
@@ -169,6 +170,8 @@ export default function Home() {
       /* ignore */
     }
   }
+
+  useAutoFit(deviceMode === "desktop", `${view}|${sidebarLibrary}|${deckClosed.A}|${deckClosed.B}|${ready}`);
   const [skin, setSkin] = useState<"carbon" | "vinyl" | "neon">("carbon");
   useEffect(() => {
     let saved: string | null = null;
@@ -582,14 +585,50 @@ export default function Home() {
   }
 
   useEffect(() => {
+    if (!ready) return;
+
     let raf = 0;
-    const loop = () => {
-      setTick((t) => (t + 1) % 1_000_000);
+    let lastTick = 0;
+    let lastInput = 0;
+    let lastPlaying = 0;
+
+    // 60 Hz unnecessary at rest, expensive for re-rendering the entire tree
+    const loop = (now: number) => {
+      const engine = engineRef.current;
+      const isPlaying = !!engine?.deckA.playing || !!engine?.deckB.playing;
+      if (isPlaying) lastPlaying = now;
+      const isActive = isPlaying || now - lastPlaying < 1500 || now - lastInput < 2000;
+
+      const interval = isActive ? 33 : 100;
+      if (now - lastTick >= interval) {
+        setTick((t) => (t + 1) % 1_000_000);
+        lastTick = now;
+      }
+
       raf = requestAnimationFrame(loop);
     };
+
+    const handleInput = () => {
+      lastInput = performance.now();
+    };
+
+    window.addEventListener("pointerdown", handleInput, { passive: true });
+    window.addEventListener("pointermove", handleInput, { passive: true });
+    window.addEventListener("keydown", handleInput, { passive: true });
+    window.addEventListener("wheel", handleInput, { passive: true });
+    window.addEventListener("touchstart", handleInput, { passive: true });
+
     raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, []);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("pointerdown", handleInput);
+      window.removeEventListener("pointermove", handleInput);
+      window.removeEventListener("keydown", handleInput);
+      window.removeEventListener("wheel", handleInput);
+      window.removeEventListener("touchstart", handleInput);
+    };
+  }, [ready]);
 
   // load saved config (YouTube video tool is hidden unless enabled)
   useEffect(() => {
