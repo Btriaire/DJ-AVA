@@ -35,6 +35,8 @@ function startServer() {
       ELECTRON_RUN_AS_NODE: "1",
       // Demucs sur le GPU Apple (MPS) : ~1/3 plus rapide que le CPU mesuré sur un extrait de 30 s
       DEMUCS_DEVICE: process.env.DEMUCS_DEVICE || "mps",
+      PYTHON3_PATH: process.env.PYTHON3_PATH || path.join(PROJECT, ".venv-stems", "bin", "python"),
+      PATH: `/opt/homebrew/bin:/usr/local/bin:${path.join(PROJECT, ".venv-stems", "bin")}:${process.env.PATH || ""}`,
     },
     stdio: ["ignore", "ignore", "pipe"],
   });
