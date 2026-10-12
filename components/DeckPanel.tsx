@@ -3,6 +3,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { Deck } from "@/lib/audio/Deck";
 import { Knob } from "./Knob";
 import { Fader } from "./Fader";
+import { StemFxPanel } from "./StemFxPanel";
 import { Waveform } from "./Waveform";
 import { FXPad } from "./FXPad";
 import { Spectrum } from "./Spectrum";
@@ -1301,7 +1302,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                           rerender();
                         }}
                       >
-                        FX
+                        RACK
                       </button>
                     </div>
                     <div className="relative w-full">
@@ -1322,96 +1323,14 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                         FX•
                       </button>
                       {openSendMenu === i && (
-                        <>
-                          <div className="fixed inset-0 z-40" onClick={() => setOpenSendMenu(null)} />
-                          <div
-                            className="absolute bottom-full left-1/2 z-50 mb-1.5 flex w-max -translate-x-1/2 flex-col gap-2 rounded-lg p-2.5"
-                            style={{
-                              background: "linear-gradient(180deg,#1c1c1e,#0e0e10)",
-                              border: "1px solid #000",
-                              boxShadow: "0 10px 24px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.06)",
-                            }}
-                          >
-                            <div className="flex items-center gap-1.5">
-                              <span className="w-10 shrink-0 text-[8px] font-bold uppercase text-neutral-500">Filtre</span>
-                              <input
-                                type="range"
-                                min={-1}
-                                max={1}
-                                step={0.01}
-                                value={deck.stemFilterX[i] ?? 0}
-                                onChange={(e) => {
-                                  deck.setStemFilter(i, parseFloat(e.target.value));
-                                  rerender();
-                                }}
-                                className="h-1 w-28 accent-current"
-                                style={{ color }}
-                                title="Négatif = passe-bas (étouffe), positif = passe-haut (aminci) — centre = transparent"
-                              />
-                              <span className="w-9 shrink-0 text-right font-mono text-[9px]" style={{ color }}>
-                                {Math.round((deck.stemFilterX[i] ?? 0) * 100)}%
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="w-10 shrink-0 text-[8px] font-bold uppercase text-neutral-500">Drive</span>
-                              <input
-                                type="range"
-                                min={0}
-                                max={1}
-                                step={0.01}
-                                value={deck.stemDriveAmt[i] ?? 0}
-                                onChange={(e) => {
-                                  deck.setStemDrive(i, parseFloat(e.target.value));
-                                  rerender();
-                                }}
-                                className="h-1 w-28 accent-current"
-                                style={{ color }}
-                                title="Saturation douce (soft-clip) — ajoute du grain/de la chaleur"
-                              />
-                              <span className="w-9 shrink-0 text-right font-mono text-[9px]" style={{ color }}>
-                                {Math.round((deck.stemDriveAmt[i] ?? 0) * 100)}%
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1.5 border-t border-white/10 pt-2">
-                              <span className="w-10 shrink-0 text-[8px] font-bold uppercase text-neutral-500">Verb</span>
-                              <input
-                                type="range"
-                                min={0}
-                                max={1}
-                                step={0.01}
-                                value={deck.stemReverbSend[i] ?? 0}
-                                onChange={(e) => {
-                                  deck.setStemReverbSend(i, parseFloat(e.target.value));
-                                  rerender();
-                                }}
-                                className="h-1 w-28 accent-current"
-                                style={{ color }}
-                              />
-                              <span className="w-9 shrink-0 text-right font-mono text-[9px]" style={{ color }}>
-                                {Math.round((deck.stemReverbSend[i] ?? 0) * 100)}%
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="w-10 shrink-0 text-[8px] font-bold uppercase text-neutral-500">Delay</span>
-                              <input
-                                type="range"
-                                min={0}
-                                max={1}
-                                step={0.01}
-                                value={deck.stemDelaySend[i] ?? 0}
-                                onChange={(e) => {
-                                  deck.setStemDelaySend(i, parseFloat(e.target.value));
-                                  rerender();
-                                }}
-                                className="h-1 w-28 accent-current"
-                                style={{ color }}
-                              />
-                              <span className="w-9 shrink-0 text-right font-mono text-[9px]" style={{ color }}>
-                                {Math.round((deck.stemDelaySend[i] ?? 0) * 100)}%
-                              </span>
-                            </div>
-                          </div>
-                        </>
+                        <StemFxPanel
+                          deck={deck}
+                          i={i}
+                          label={info.label}
+                          color={color}
+                          rerender={rerender}
+                          onClose={() => setOpenSendMenu(null)}
+                        />
                       )}
                     </div>
                     <div className="relative flex w-full items-stretch gap-0.5">
