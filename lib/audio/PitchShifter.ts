@@ -9,7 +9,6 @@
 // one is always in its smooth middle region while the other re-laps, producing
 // a continuous resampled (pitch-shifted) stream.
 
-const DELAY_TIME = 0.1;
 const FADE_TIME = 0.05;
 const BUFFER_TIME = 0.1;
 
@@ -146,8 +145,8 @@ export class PitchShifter {
 
   // semitones: how many semitones to transpose (can be fractional)
   setSemitones(semitones: number) {
-    const mult = semitones / 12; // octaves
-    if (mult > 0) {
+    const ratio = Math.pow(2, semitones / 12);
+    if (ratio > 1) {
       this.mod1Gain.gain.value = 0;
       this.mod2Gain.gain.value = 0;
       this.mod3Gain.gain.value = 1;
@@ -158,7 +157,7 @@ export class PitchShifter {
       this.mod3Gain.gain.value = 0;
       this.mod4Gain.gain.value = 0;
     }
-    const d = 0.5 * DELAY_TIME * Math.abs(mult);
+    const d = Math.abs(ratio - 1) * BUFFER_TIME;
     this.modGain1.gain.setTargetAtTime(d, this.ctx.currentTime, 0.01);
     this.modGain2.gain.setTargetAtTime(d, this.ctx.currentTime, 0.01);
   }

@@ -5,6 +5,9 @@ import { Sampler } from "./Sampler";
 import { Recorder } from "./Recorder";
 import { FXRack, FxName } from "./FXRack";
 import { SoundFX } from "./SoundFX";
+import { DrumMachine } from "./DrumMachine";
+import { DjSynth } from "./DjSynth";
+import { Slicer } from "./Slicer";
 import { MidiManager } from "./midi";
 import { idbPutBlob, idbGetBlob, idbDelBlob } from "../library";
 import * as Tone from "tone";
@@ -33,6 +36,10 @@ export class DJEngine {
   readonly sampler: Sampler;
   readonly midi: MidiManager; // Web MIDI input → synth + sampler (Arturia MiniLab)
   readonly soundFx: SoundFX; // synthesised one-shot DJ effects (airhorn, riser…)
+  readonly drums: DrumMachine;
+  readonly djSynth: DjSynth;
+  readonly slicerA: Slicer;
+  readonly slicerB: Slicer;
   readonly recorder: Recorder;
   readonly dlRecorder: Recorder; // dedicated capture for WAV download
   readonly masterFx: FXRack; // FX bus on the full mix
@@ -99,6 +106,12 @@ export class DJEngine {
     this.synth.out.connect(this.master);
     this.sampler.output.connect(this.master); // post-limiter sampler output
     this.soundFx.output.connect(this.master); // one-shot FX sit on the master too
+    this.drums = new DrumMachine(this.ctx, () => this.masterClock());
+    this.drums.out.connect(this.master);
+    this.djSynth = new DjSynth(this.ctx, () => this.masterClock());
+    this.djSynth.out.connect(this.master);
+    this.slicerA = new Slicer(this.ctx, this.deckA);
+    this.slicerB = new Slicer(this.ctx, this.deckB);
 
     // recorders tap the full post-FX mix (decks + FX + synth + sampler)
     this.recorder = new Recorder(this.ctx, 30);
@@ -365,6 +378,10 @@ export class DJEngine {
     this.deckB.reset();
     this.synth.reset();
     this.masterFx.resetAll();
+    this.drums.panic();
+    this.djSynth.panic();
+    this.slicerA.panic();
+    this.slicerB.panic();
     this.sampler.resetFx();
     this.setMaster(0.9);
     this.setCrossfade(0.5);
@@ -398,13 +415,16 @@ export class DJEngine {
     return r;
   }
 
-  private masterClock() {
+  masterDeck(): Deck | null {
     // Choose playing deck with BPM (A has priority if both are playing), or any deck with BPM
-    const deck = this.deckA.playing && this.deckA.fxClock() ? this.deckA :
-                 this.deckB.playing && this.deckB.fxClock() ? this.deckB :
-                 this.deckA.fxClock() ? this.deckA :
-                 this.deckB.fxClock() ? this.deckB : null;
-    return deck?.fxClock() ?? null;
+    return this.deckA.playing && this.deckA.fxClock() ? this.deckA :
+           this.deckB.playing && this.deckB.fxClock() ? this.deckB :
+           this.deckA.fxClock() ? this.deckA :
+           this.deckB.fxClock() ? this.deckB : null;
+  }
+
+  private masterClock() {
+    return this.masterDeck()?.fxClock() ?? null;
   }
 
   // --- master FX bus (affects the whole mix) ---

@@ -114,3 +114,70 @@ export function detectKey(buffer: AudioBuffer): KeyResult | null {
   const name = best.mode === "major" ? NOTE_NAMES[best.pc] : `${NOTE_NAMES[best.pc]}m`;
   return { pitchClass: best.pc, mode: best.mode, name, camelot };
 }
+
+export function keyName(pc: number, mode: "major" | "minor"): string {
+  return mode === "major" ? NOTE_NAMES[pc] : NOTE_NAMES[pc] + "m";
+}
+
+export function camelotOf(pc: number, mode: "major" | "minor"): string {
+  return mode === "major" ? CAMELOT_MAJOR[pc] : CAMELOT_MINOR[pc];
+}
+
+export function transposeKey(k: KeyResult, semis: number): KeyResult {
+  const pc = (((k.pitchClass + Math.round(semis)) % 12) + 12) % 12;
+  return {
+    pitchClass: pc,
+    mode: k.mode,
+    name: keyName(pc, k.mode),
+    camelot: camelotOf(pc, k.mode)
+  };
+}
+
+export interface KeyCompat { level: 0 | 1 | 2 | 3; label: string }
+
+export function keyCompat(a: KeyResult, b: KeyResult): KeyCompat {
+  const na = parseInt(a.camelot, 10);
+  const nb = parseInt(b.camelot, 10);
+  const la = a.camelot.slice(-1);
+  const lb = b.camelot.slice(-1);
+
+  let dn = Math.abs(na - nb);
+  dn = Math.min(dn, 12 - dn);
+
+  if (la === lb) {
+    if (dn === 0) return { level: 3, label: "Même tonalité" };
+    if (dn === 1) return { level: 2, label: "Compatible" };
+    if (dn === 2) return { level: 1, label: "Boost d'énergie" };
+    return { level: 0, label: "Incompatible" };
+  } else {
+    if (dn === 0) return { level: 3, label: "Relatif majeur/mineur" };
+    if (dn === 1) return { level: 1, label: "Changement d'ambiance" };
+    return { level: 0, label: "Incompatible" };
+  }
+}
+
+export function bestShift(from: KeyResult, to: KeyResult, maxShift = 6): number {
+  const shifts = [0];
+  for (let i = 1; i <= maxShift; i++) {
+    shifts.push(i, -i);
+  }
+
+  let bestLevel = -1;
+  let bestS = 0;
+
+  for (const s of shifts) {
+    const transposed = transposeKey(from, s);
+    const compat = keyCompat(transposed, to);
+    if (compat.level >= 2) return s;
+    if (compat.level > bestLevel) {
+      bestLevel = compat.level;
+      bestS = s;
+    }
+  }
+
+  return bestS;
+}
+
+export function camelotHue(camelot: string): number {
+  return (parseInt(camelot, 10) - 1) * 30;
+}

@@ -1,10 +1,11 @@
 import { detectBPM, buildWaveformPeaks } from "./bpm";
-import { detectKey, KeyResult } from "./key";
+import { detectKey, transposeKey, KeyResult } from "./key";
 import { FXRack, FX_LIST, FxName } from "./FXRack";
 import { Retouch } from "./Retouch";
 import { Rack, RackPreset } from "./Rack";
 import { sha1Hex16 } from "./stemHash";
 import { PitchShifter } from "./PitchShifter";
+import type { ClockInfo } from "./stepClock";
 import { guess as guessBeat } from "web-audio-beat-detector";
 
 // synthesized white-noise impulse response for the shared per-stem reverb
@@ -208,6 +209,8 @@ export class Deck {
 
   // Master Tempo (Key Lock) & Quantize (Beatgrid)
   keyLock = false; // preserves track pitch when pitch fader / tempo changes
+  keyShift = 0; // semitones added on top of the key-lock compensation, -6..+6
+  readonly sliceGate: GainNode; // normal deck sound level, ducked by the slicer
   private keyShifter: PitchShifter | null = null;
   private keyShifterIn!: GainNode;
   private keyShifterOut!: GainNode;
@@ -425,7 +428,9 @@ export class Deck {
     this.keyShifterBypass.connect(this.keyShifterOut);
 
     // signal chain: trim -> autotune -> keyLock -> EQ -> filter -> FX -> volume -> crowd -> analyser -> out
-    this.trim.connect(this.autotuneIn);
+    this.sliceGate = C();
+    this.trim.connect(this.sliceGate);
+    this.sliceGate.connect(this.autotuneIn);
     this.autotuneOut.connect(this.keyShifterIn);
     this.keyShifterOut.connect(this.low);
     this.low.connect(this.mid);
@@ -574,6 +579,8 @@ export class Deck {
     this.bpm = detectBPM(buf);
     this.key = detectKey(buf);
     this.pausedAt = 0;
+    this.keyShift = 0;
+    this.updateKeyLockShifter();
     this.cuePoint = 0;
     this.loopActive = false;
     this._playing = false;
@@ -970,9 +977,26 @@ export class Deck {
     return this.keyLock;
   }
 
+  setKeyShift(semis: number) {
+    this.keyShift = Math.max(-6, Math.min(6, Math.round(semis)));
+    this.updateKeyLockShifter();
+  }
+
+  get effectiveKey(): KeyResult | null {
+    if (!this.key) return null;
+    const total = this.keyShift + (this.keyLock ? 0 : Math.round(12 * Math.log2(this.rate)));
+    return transposeKey(this.key, total);
+  }
+
+  get sliceInput(): AudioNode { return this.autotuneIn; }
+  get audioBuffer(): AudioBuffer | null { return this.buffer; }
+  get playbackRate(): number { return this.effRate; }
+
   private updateKeyLockShifter() {
-    if (!this.keyLock || Math.abs(this.rate - 1) < 0.0005) {
-      // Key lock off or at neutral rate: route through pure clean bypass
+    const comp = this.keyLock && Math.abs(this.rate - 1) >= 0.0005 ? -12 * (Math.log(this.rate) / Math.LN2) : 0;
+    const total = comp + this.keyShift;
+
+    if (Math.abs(total) < 0.005) {
       this.keyShifterBypass.gain.setTargetAtTime(1, this.ctx.currentTime, 0.01);
       this.keyShifterWet.gain.setTargetAtTime(0, this.ctx.currentTime, 0.01);
       return;
@@ -986,11 +1010,7 @@ export class Deck {
       this.keyShifterWet.connect(this.keyShifterOut);
     }
 
-    // Changing rate by factor R transposes pitch by 12 * log2(R) semitones.
-    // To preserve the original musical key, we shift pitch in reverse: -12 * log2(rate).
-    const semitonesToCompensate = -12 * (Math.log(this.rate) / Math.LN2);
-    this.keyShifter.setSemitones(semitonesToCompensate);
-
+    this.keyShifter.setSemitones(total);
     this.keyShifterBypass.gain.setTargetAtTime(0, this.ctx.currentTime, 0.01);
     this.keyShifterWet.gain.setTargetAtTime(1, this.ctx.currentTime, 0.01);
   }
@@ -1393,11 +1413,16 @@ export class Deck {
   get fxRack(): FXRack { return this.fx; }
   get retouchFx(): Retouch { return this.retouch; }
 
-  public fxClock(): { bpm: number; toNextBeat: number } | null {
+  public fxClock(): ClockInfo | null {
     if (!this.bpm || !this.rate) return null;
     const spb = 60 / this.bpm;
     const rel = (((this.position() - this.beatGridOffset) % spb) + spb) % spb;
-    return { bpm: this.bpm * this.rate, toNextBeat: this._playing ? (spb - rel) / this.rate : 0 };
+    return {
+      bpm: this.bpm * this.rate,
+      toNextBeat: this._playing ? (spb - rel) / this.rate : 0,
+      nextBeat: Math.floor((this.position() - this.beatGridOffset) / spb) + 1,
+      playing: this._playing
+    };
   }
 
   // FX rack — each effect has an independent wet level (0..1)
@@ -1695,6 +1720,7 @@ export class Deck {
     this.setEQ("low", 0);
     this.setEQ("mid", 0);
     this.setEQ("high", 0);
+    this.keyShift = 0;
     this.setFilter(0);
     this.setPitch(0);
     this.scratch(0);
