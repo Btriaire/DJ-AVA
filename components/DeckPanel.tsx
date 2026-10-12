@@ -4,6 +4,7 @@ import { Deck } from "@/lib/audio/Deck";
 import { Knob } from "./Knob";
 import { Fader } from "./Fader";
 import { StemFxPanel } from "./StemFxPanel";
+import { StemLoopPanel } from "./StemLoopPanel";
 import { Waveform } from "./Waveform";
 import { FxSection } from "./FxSection";
 import { Spectrum } from "./Spectrum";
@@ -501,12 +502,6 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
   // now applied to the length picker and ½/×2 buttons too.
   const stemLoopBeats = deck.stemLoopBeatsVal;
   const [openStemLoopMenu, setOpenStemLoopMenu] = useState<number | null>(null);
-  function setStemLoop(i: number, beats: number | null) {
-    if (beats === null) deck.clearStemLoop(i);
-    else deck.setStemBeatLoop(i, beats);
-    setOpenStemLoopMenu(null);
-    rerender();
-  }
   // ½ / ×2 — resize the current loop live, snapped to the same preset ladder
   // so the button label always reads a clean value. No-ops at the ends.
   function resizeStemLoop(i: number, factor: 0.5 | 2) {
@@ -518,7 +513,6 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
     deck.resizeStemLoop(i, factor);
     rerender();
   }
-  const ROLL_OPTIONS: (number | null)[] = [null, 2, 4, 8]; // null = Lock (stays until cleared)
   const [openSendMenu, setOpenSendMenu] = useState<number | null>(null);
   // bulk faders: drop everything to silence (remembering levels) or push it all up
   function allStems(up: boolean) {
@@ -1373,99 +1367,15 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                         ×2
                       </button>
                       {openStemLoopMenu === i && (
-                        <>
-                          {/* backdrop — click anywhere outside to close */}
-                          <div className="fixed inset-0 z-40" onClick={() => setOpenStemLoopMenu(null)} />
-                          <div
-                            className="absolute bottom-full left-1/2 z-50 mb-1.5 flex w-max -translate-x-1/2 flex-col gap-1.5 rounded-lg p-2"
-                            style={{
-                              background: "linear-gradient(180deg,#1c1c1e,#0e0e10)",
-                              border: "1px solid #000",
-                              boxShadow: "0 10px 24px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.06)",
-                            }}
-                          >
-                            <div className="grid grid-cols-3 gap-1">
-                              {STEM_LOOP_BEATS.map((b, bi) => (
-                                <button
-                                  key={b}
-                                  disabled={!deck.stemsActive || !deck.stemReady || !deck.bpm}
-                                  onClick={() => setStemLoop(i, stemLoopBeats[i] === b ? null : b)}
-                                  className="rounded px-2.5 py-1.5 text-[11px] font-bold leading-none disabled:opacity-30"
-                                  style={
-                                    stemLoopBeats[i] === b
-                                      ? { background: color, color: "#0a0a0a" }
-                                      : { background: "rgba(255,255,255,0.08)", color: "#d8d8d8" }
-                                  }
-                                >
-                                  {STEM_LOOP_LABELS[bi]}
-                                </button>
-                              ))}
-                            </div>
-
-                            {/* Roll vs Lock: auto-release the loop after N repeats, or keep it until cleared */}
-                            <div className="flex items-center gap-1 border-t border-white/10 pt-1.5">
-                              <span className="mr-0.5 text-[8px] font-bold uppercase text-neutral-500">Fin</span>
-                              {ROLL_OPTIONS.map((r) => (
-                                <button
-                                  key={String(r)}
-                                  onClick={() => {
-                                    deck.setStemLoopRoll(i, r);
-                                    rerender();
-                                  }}
-                                  className="flex-1 rounded px-1.5 py-1 text-[9px] font-bold leading-none"
-                                  style={
-                                    (deck.stemLoopRollAt[i] ?? null) === r
-                                      ? { background: color, color: "#0a0a0a" }
-                                      : { background: "rgba(255,255,255,0.08)", color: "#d8d8d8" }
-                                  }
-                                  title={r == null ? "Lock — reste en boucle jusqu'à ce que tu l'arrêtes" : `Roll — se relâche automatiquement après ${r} répétitions et le morceau reprend son cours`}
-                                >
-                                  {r == null ? "LOCK" : `ROLL ${r}×`}
-                                </button>
-                              ))}
-                            </div>
-
-                            {/* Smooth: fade the loop seam instead of a hard cut */}
-                            <div className="flex items-center gap-1.5 border-t border-white/10 pt-1.5">
-                              <span className="text-[8px] font-bold uppercase text-neutral-500">Doux</span>
-                              <input
-                                type="range"
-                                min={0}
-                                max={60}
-                                step={5}
-                                value={deck.stemLoopSmoothMs[i] ?? 10}
-                                onChange={(e) => {
-                                  deck.setStemLoopSmooth(i, parseInt(e.target.value, 10));
-                                  rerender();
-                                }}
-                                className="h-1 flex-1 accent-current"
-                                style={{ color }}
-                                title="Lisse la jonction du loop (fondu court) pour éviter le clic entre deux répétitions"
-                              />
-                              <span className="w-8 shrink-0 text-right font-mono text-[9px]" style={{ color }}>
-                                {deck.stemLoopSmoothMs[i] ?? 10}ms
-                              </span>
-                            </div>
-
-                            <div className="flex items-center gap-1 border-t border-white/10 pt-1.5">
-                              <button
-                                onClick={() => exportStemLoopWav(i)}
-                                className="flex-1 rounded px-2 py-1 text-[10px] font-bold text-amber-300"
-                                style={{ background: "rgba(255,190,0,0.12)" }}
-                                title="Télécharger la boucle de ce stem au format WAV haute qualité"
-                              >
-                                💾 Export WAV
-                              </button>
-                              <button
-                                onClick={() => setStemLoop(i, null)}
-                                className="rounded px-2 py-1 text-[10px] font-black uppercase tracking-wide text-red-400"
-                                style={{ background: "rgba(255,60,60,0.14)" }}
-                              >
-                                ✕ Off
-                              </button>
-                            </div>
-                          </div>
-                        </>
+                        <StemLoopPanel
+                          deck={deck}
+                          labels={deck.stemNames.map((n) => (STEM_INFO[n] ?? { label: n.toUpperCase() }).label)}
+                          initial={i}
+                          color={color}
+                          rerender={rerender}
+                          onExport={exportStemLoopWav}
+                          onClose={() => setOpenStemLoopMenu(null)}
+                        />
                       )}
                     </div>
                   </div>

@@ -1,9 +1,12 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { Deck } from "@/lib/audio/Deck";
-import { RACK_MODULES, EQ_FREQS } from "@/lib/audio/Rack";
+import { EQ_FREQS } from "@/lib/audio/Rack";
+import { EQ_PRESETS, presetGains } from "@/lib/audio/eqPresets";
 import { Fader } from "./Fader";
-import { levelColor, DigitalVU } from "./EqVisuals";
+import { Knob } from "./Knob";
+import { EqGraph } from "./EqGraph";
+import { DigitalVU } from "./EqVisuals";
 
 // ---- persistent EQ presets (5 numbered slots, like a hardware EQ) ----
 const EQ_LS_KEY = "djsynth.eqpresets.v1";
@@ -62,83 +65,6 @@ function Toggle({ on, color, onClick }: { on: boolean; color: string; onClick: (
   );
 }
 
-// ---- real-time EQ response graph + spectrum behind it ----
-const EQ_AX_LO = 20, EQ_AX_HI = 20000, EQ_RANGE = 18;
-
-function EqGraph({ deck, color }: { deck: Deck; color: string }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  const raf = useRef(0);
-  const buf = useRef<Uint8Array<ArrayBuffer> | null>(null);
-  const xAtF = (f: number, w: number) => (w * Math.log(f / EQ_AX_LO)) / Math.log(EQ_AX_HI / EQ_AX_LO);
-  const yAtDb = (db: number, h: number) => (h * (1 - db / EQ_RANGE)) / 2;
-  const eqDef = RACK_MODULES.find((m) => m.id === "eq")!;
-
-  useEffect(() => {
-    const cv = ref.current;
-    if (!cv) return;
-    const ctx = cv.getContext("2d");
-    if (!ctx) return;
-    const w = cv.width, h = cv.height;
-    const rack = deck.rack;
-    const draw = () => {
-      raf.current = requestAnimationFrame(draw);
-      const bins = rack.spectrumBins;
-      if (!buf.current || buf.current.length !== bins) buf.current = new Uint8Array(bins);
-      rack.getSpectrum(buf.current);
-      ctx.clearRect(0, 0, w, h);
-      // spectrum bars
-      const barW = 3;
-      for (let x = 0; x < w; x += barW) {
-        const f = EQ_AX_LO * Math.pow(EQ_AX_HI / EQ_AX_LO, x / w);
-        const bin = Math.min(bins - 1, Math.max(0, Math.round((f / 22050) * bins)));
-        const t = buf.current[bin] / 255;
-        if (t <= 0.01) continue;
-        ctx.fillStyle = levelColor(t);
-        ctx.globalAlpha = 0.42;
-        ctx.fillRect(x, h - t * h, barW - 1, t * h);
-      }
-      ctx.globalAlpha = 1;
-      // grid
-      ctx.strokeStyle = "#ffffff14"; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2); ctx.stroke();
-      [100, 1000, 10000].forEach((f) => {
-        const x = xAtF(f, w);
-        ctx.beginPath(); ctx.strokeStyle = "#ffffff10";
-        ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-      });
-      // EQ response curve
-      const gains = eqDef.params.map((p) => rack.getParam("eq", p.key));
-      const resp = (f: number) => {
-        let db = 0;
-        for (let i = 0; i < EQ_FREQS.length; i++) {
-          const oct = Math.log2(f / EQ_FREQS[i]);
-          db += gains[i] / (1 + Math.pow(oct * 1.4, 2));
-        }
-        return db;
-      };
-      ctx.beginPath();
-      for (let px = 0; px <= w; px++) {
-        const f = EQ_AX_LO * Math.pow(EQ_AX_HI / EQ_AX_LO, px / w);
-        const db = Math.max(-EQ_RANGE, Math.min(EQ_RANGE, resp(f)));
-        const y = yAtDb(db, h);
-        if (px === 0) ctx.moveTo(px, y); else ctx.lineTo(px, y);
-      }
-      ctx.strokeStyle = color; ctx.lineWidth = 1.8;
-      ctx.shadowColor = color; ctx.shadowBlur = 6; ctx.stroke(); ctx.shadowBlur = 0;
-    };
-    draw();
-    return () => cancelAnimationFrame(raf.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [color]);
-
-  return (
-    <canvas ref={ref} width={520} height={88}
-      className="h-[88px] w-full rounded bg-neutral-950 ring-1 ring-neutral-800"
-      title="Spectre en temps réel + courbe de réponse EQ 15 bandes"
-    />
-  );
-}
-
 // ---- main exported component ----
 export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
   const rack = deck.rack;
@@ -148,9 +74,27 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
   const [eqSaveMode, setEqSaveMode] = useState(false);
   const [eqActivePreset, setEqActivePreset] = useState<number | null>(null);
   const [lcd, setLcd] = useState<string | null>(null);
+  const [ab, setAb] = useState<"A" | "B">("A");
+  const [fadersOpen, setFadersOpen] = useState(false);
   const lcdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abMem = useRef<{ A: number[] | null; B: number[] | null }>({ A: null, B: null });
 
-  useEffect(() => { setEqPresets(loadEqPresets()); }, []);
+  useEffect(() => {
+    const t0 = setTimeout(() => {
+      setEqPresets(loadEqPresets());
+      try {
+        const saved = localStorage.getItem("djsynth.eq.faders");
+        if (saved) setFadersOpen(JSON.parse(saved));
+      } catch { /* ignore */ }
+    }, 0);
+    return () => clearTimeout(t0);
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(rerender, 400);
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => () => { if (lcdTimer.current) clearTimeout(lcdTimer.current); }, []);
 
   const flashLcd = (txt: string) => {
@@ -160,44 +104,66 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
   };
 
   const eqOn = rack.isOn("eq");
-  const eqDef = RACK_MODULES.find((m) => m.id === "eq")!;
 
   const saveEqSlot = (n: number) => {
-    const g = eqDef.params.map((p) => rack.getParam("eq", p.key));
+    const g = EQ_FREQS.map((_, i) => rack.getParam("eq", `g${i}`));
     const next = eqPresets.slice(); next[n] = { g };
     setEqPresets(next); saveEqPresets(next);
     setEqSaveMode(false); setEqActivePreset(n);
     flashLcd(`EQ PRESET ${n + 1} SAVED`);
   };
+
   const recallEqSlot = (n: number) => {
     const p = eqPresets[n]; if (!p) return;
-    eqDef.params.forEach((def, i) => {
-      if (typeof p.g[i] === "number") rack.setParam("eq", def.key, p.g[i]);
-    });
+    EQ_FREQS.forEach((_, i) => rack.setParam("eq", `g${i}`, p.g[i]));
     setEqActivePreset(n); flashLcd(`EQ PRESET ${n + 1}`); rerender();
   };
+
   const resetEq = () => {
-    eqDef.params.forEach((p) => rack.setParam("eq", p.key, 0));
+    EQ_FREQS.forEach((_, i) => rack.setParam("eq", `g${i}`, 0));
     setEqActivePreset(null); flashLcd("EQ RESET"); rerender();
   };
 
-  const eqMix = rack.getMix("eq");
-  // rows: MIX fader + 15 band faders
-  const rows: { key: string; label: string; min: number; max: number; step: number; value: number; disp: string; set: (v: number) => void }[] = [
-    {
-      key: "mix", label: "MIX", min: 0, max: 1, step: 0.01, value: eqMix,
-      disp: `${Math.round(eqMix * 100)}%`,
-      set: (v) => { rack.setMix("eq", v); flashLcd(`EQ MIX ${Math.round(v * 100)}%`); rerender(); },
-    },
-    ...eqDef.params.map((p) => {
-      const val = rack.getParam("eq", p.key);
-      return {
-        key: p.key, label: p.label, min: p.min, max: p.max, step: (p.max - p.min) / 240,
-        value: val, disp: `${val > 0 ? "+" : ""}${Math.round(val)}`,
-        set: (v: number) => { rack.setParam("eq", p.key, v); flashLcd(`EQ ${p.label} ${v > 0 ? "+" : ""}${Math.round(v)}dB`); rerender(); },
-      };
-    }),
-  ];
+  const applyPreset = (preset: [number, number][]) => {
+    const gains = presetGains(preset, EQ_FREQS);
+    EQ_FREQS.forEach((_, i) => rack.setParam("eq", `g${i}`, gains[i]));
+    setEqActivePreset(null); rerender();
+  };
+
+  const toggleAb = () => {
+    const currentGains = EQ_FREQS.map((_, i) => rack.getParam("eq", `g${i}`));
+    const currentQ = rack.getParam("eq", "q");
+    abMem.current[ab] = [...currentGains, currentQ];
+    const nextAb = ab === "A" ? "B" : "A";
+    setAb(nextAb);
+    const otherMem = abMem.current[nextAb];
+    if (otherMem) {
+      EQ_FREQS.forEach((_, i) => rack.setParam("eq", `g${i}`, otherMem[i]));
+      rack.setParam("eq", "q", otherMem[15]);
+    }
+    flashLcd(`COMPARAISON ${nextAb}`);
+    rerender();
+  };
+
+  const toggleFaders = () => {
+    const newState = !fadersOpen;
+    setFadersOpen(newState);
+    try { localStorage.setItem("djsynth.eq.faders", JSON.stringify(newState)); } catch { /* ignore */ }
+  };
+
+  const currentGains = EQ_FREQS.map((_, i) => rack.getParam("eq", `g${i}`));
+  const currentQ = rack.getParam("eq", "q");
+  const currentMix = rack.getMix("eq");
+
+  const isPresetActive = (preset: [number, number][]) => {
+    const gains = presetGains(preset, EQ_FREQS);
+    return gains.every((g, i) => Math.abs(g - currentGains[i]) < 0.5);
+  };
+
+  const freqLabels = EQ_FREQS.map(f => {
+    if (f >= 1000) return `${f / 1000}k`;
+    return f.toString();
+  });
 
   return (
     <div
@@ -208,9 +174,9 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
       <div className="flex flex-wrap items-center gap-2">
         <Toggle on={eqOn} color={color} onClick={() => { rack.setEnabled("eq", !eqOn); rerender(); }} />
         <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: eqOn ? color : "#6b6b6b" }}>
-          Égaliseur
+          Égaliseur 15 bandes
         </span>
-        <span className="text-[8px] text-neutral-500">15 bandes · 2/3 oct</span>
+        <span className="text-[8px] text-neutral-500">2/3 d&apos;octave</span>
 
         {/* live digital VU bar (input level to the EQ) */}
         <div className="flex items-center gap-1 rounded bg-black/40 px-1.5 py-1">
@@ -221,7 +187,104 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
         {/* LCD readout */}
         <Lcd text={lcd ?? (eqOn ? "EQ ACTIF" : "EQ BYPASS")} color={color} />
 
-        {/* preset shortcuts 1-5 + SAVE + RESET */}
+        {/* A/B button */}
+        <button
+          onClick={toggleAb}
+          className={`hw-btn px-1.5 py-0.5 text-[8px] font-black ${ab === "A" ? "hw-btn-on" : ""}`}
+          style={{ ["--led" as string]: color }}
+          title="Comparaison A/B"
+        >{ab}</button>
+
+        {/* AUTO GAIN button */}
+        <button
+          onClick={() => { rack.setFlag("eq", "auto", !rack.getFlag("eq", "auto")); rerender(); }}
+          className={`hw-btn px-1.5 py-0.5 text-[8px] font-black ${rack.getFlag("eq", "auto") ? "hw-btn-on" : ""}`}
+          style={{ ["--led" as string]: color }}
+          title="Compense automatiquement le niveau quand tu renforces ou creuses beaucoup"
+        >AUTO GAIN</button>
+
+        {/* FLAT button */}
+        <button
+          onClick={resetEq}
+          className="hw-btn px-1.5 py-0.5 text-[8px] font-black"
+          style={{ ["--led" as string]: "#6b6b6b", color: "#9b9b9b" }}
+          title="Remet toutes les bandes à 0 dB"
+        >FLAT</button>
+      </div>
+
+      {/* ── response graph ── */}
+      <EqGraph
+        rack={rack}
+        color={color}
+        sampleRate={deck.ctx.sampleRate}
+        active={() => deck.playing}
+        onEdit={(i, db, finished) => {
+          rack.setParam("eq", `g${i}`, db);
+          setEqActivePreset(null);
+          if (finished) flashLcd(`EQ ${freqLabels[i]} ${db > 0 ? "+" : ""}${db.toFixed(1)} dB`);
+          rerender();
+        }}
+      />
+
+      {/* ── factory presets ── */}
+      <div className="flex gap-1.5 overflow-x-auto pb-1">
+        {EQ_PRESETS.map((preset) => {
+          const g = presetGains(preset.pts, EQ_FREQS);
+          return (
+            <button
+              key={preset.id}
+              onClick={() => { applyPreset(preset.pts); flashLcd(`PRESET ${preset.name}`); }}
+              className={`hw-btn flex w-16 flex-col items-center justify-center gap-0.5 p-1 ${isPresetActive(preset.pts) ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: color, height: 44 }}
+              title={preset.title}
+            >
+              <svg viewBox="0 0 56 20" width={56} height={20}>
+                <path
+                  d={g.map((v, k) => {
+                    const x = 2 + k * (52 / 14);
+                    const y = 10 - (v / 18) * 8;
+                    return `${k === 0 ? "M" : "L"} ${x} ${y}`;
+                  }).join(" ")}
+                  stroke={color}
+                  strokeWidth={1.5}
+                  fill="none"
+                />
+                <line x1={0} y1={10} x2={56} y2={10} stroke="#ffffff22" strokeWidth={0.5} />
+              </svg>
+              <span className="text-[10px] font-bold">{preset.name}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── settings ── */}
+      <div className="flex flex-wrap items-end gap-3">
+        <Knob
+          label="Largeur"
+          value={currentQ}
+          min={0}
+          max={1}
+          defaultValue={0.62}
+          onChange={(v) => { rack.setParam("eq", "q", v); rerender(); }}
+          color={color}
+          size={48}
+          led
+          format={(v) => `${((2 / Math.LN2) * Math.asinh(1 / (2 * 0.7 * Math.pow(6, v)))).toFixed(2)} oct`}
+        />
+        <Knob
+          label="Mix"
+          value={currentMix}
+          min={0}
+          max={1}
+          defaultValue={1}
+          onChange={(v) => { rack.setMix("eq", v); rerender(); }}
+          color={color}
+          size={48}
+          led
+          format={(v) => `${Math.round(v * 100)}%`}
+        />
+
+        {/* preset shortcuts 1-5 + SAVE */}
         <div className="ml-auto flex items-center gap-1">
           {eqPresets.map((p, n) => {
             const filled = !!p;
@@ -250,43 +313,46 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
               ? { ["--led" as string]: "#ff5252", color: "#ff5252", boxShadow: "0 0 6px #ff525288" }
               : { ["--led" as string]: color, color }}
           >{eqSaveMode ? "CHOISIR…" : "SAVE"}</button>
-          <button
-            onClick={resetEq}
-            className="hw-btn px-1.5 py-0.5 text-[8px] font-black"
-            style={{ ["--led" as string]: "#6b6b6b", color: "#9b9b9b" }}
-            title="Remet toutes les bandes à 0 dB"
-          >FLAT</button>
         </div>
       </div>
 
-      {/* ── response graph ── */}
-      <EqGraph deck={deck} color={color} />
+      {/* ── compact faders ── */}
+      <div className="flex flex-col gap-1">
+        <button
+          onClick={toggleFaders}
+          className="hw-btn w-full text-[9px] font-bold"
+          style={{ ["--led" as string]: color }}
+        >
+          FADERS {fadersOpen ? "▴" : "▾"}
+        </button>
 
-      {/* ── faders + digital VU per band ── */}
-      <div className="flex items-start justify-around gap-0.5 overflow-x-auto pt-1">
-        {rows.map((r) => (
-          <div key={r.key} className="flex flex-col items-center gap-1">
-            {/* mini digital VU above each fader — lights up for BOOST only (more
-                energy added = more LEDs, like a real spectrum display); a CUT
-                shows no LEDs instead of being conflated with a boost of the
-                same magnitude */}
-            <DigitalVU
-              level={r.key === "mix" ? r.value : Math.max(0, r.value) / 18}
-              vertical
-            />
-            <span
-              className="rounded px-0.5 py-0.5 text-center font-mono text-[8px] font-bold tracking-tight"
-              style={{ width: 36, color, background: "#0a0d0a", textShadow: `0 0 5px ${color}`, boxShadow: "inset 0 0 0 1px #1a1a1a" }}
-            >{r.disp}</span>
-            <Fader
-              value={r.value} min={r.min} max={r.max} step={r.step}
-              vertical onChange={r.set} className="!h-[140px]"
-            />
-            <span className="text-center text-[8px] font-bold uppercase leading-none"
-              style={{ color: eqOn ? color : "#6b6b6b" }}
-            >{r.label}</span>
+        {fadersOpen && (
+          <div className="flex gap-1 overflow-x-auto [contain:inline-size]">
+            {EQ_FREQS.map((_, i) => (
+              <div key={i} className="flex flex-col items-center gap-0.5">
+                <span className="font-mono text-[10px]" style={{ color }}>
+                  {currentGains[i] > 0 ? "+" : ""}{currentGains[i].toFixed(1)} dB
+                </span>
+                <Fader
+                  value={currentGains[i]}
+                  min={-18}
+                  max={18}
+                  step={0.1}
+                  vertical
+                  onChange={(v) => {
+                    rack.setParam("eq", `g${i}`, v);
+                    flashLcd(`EQ ${freqLabels[i]} ${v > 0 ? "+" : ""}${v.toFixed(1)} dB`);
+                    rerender();
+                  }}
+                  className="!h-[90px]"
+                />
+                <span className="text-[8px] font-bold uppercase" style={{ color: eqOn ? color : "#6b6b6b" }}>
+                  {freqLabels[i]}
+                </span>
+              </div>
+            ))}
           </div>
-        ))}
+        )}
       </div>
     </div>
   );

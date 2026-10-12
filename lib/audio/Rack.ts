@@ -11,6 +11,7 @@
 // voice isolator) are native mid-side / formant filters with no Tone equivalent.
 
 import * as Tone from "tone";
+import { buildEq, eqQ, type EqBuilt } from "./eqModule";
 
 export type RackModuleId =
   | "isolator"
@@ -97,15 +98,26 @@ export const RACK_MODULES: RackModuleDef[] = [
   {
     id: "eq",
     label: "EQ",
-    title: "Égaliseur graphique 10 bandes — un curseur vertical par fréquence, balayage large et précis du spectre",
-    params: EQ_FREQS.map((f, i) => ({
-      key: `g${i}`,
-      label: eqLabel(f),
-      min: -18,
-      max: 18,
-      def: 0,
-      fmt: dbr,
-    })),
+    title: "Égaliseur graphique 15 bandes — une courbe interactive, la réponse réelle du filtre et un spectre avant/après",
+    params: [
+      ...EQ_FREQS.map((f, i) => ({
+        key: `g${i}`,
+        label: eqLabel(f),
+        min: -18,
+        max: 18,
+        def: 0,
+        fmt: dbr,
+      })),
+      {
+        key: "q",
+        label: "Largeur",
+        min: 0,
+        max: 1,
+        def: 0.62,
+        fmt: (v) => `${((2 / Math.LN2) * Math.asinh(1 / (2 * eqQ(v)))).toFixed(2)} oct`,
+      },
+    ],
+    flags: [{ key: "auto", label: "AUTO GAIN" }],
   },
   {
     id: "isolator",
@@ -356,6 +368,7 @@ interface BuiltModule {
   fxOut: AudioNode;
   onParam: (key: string, v: number) => void;
   onFlag?: (key: string, on: boolean) => void;
+  eq?: EqBuilt;
 }
 
 class RackSlot {
@@ -471,6 +484,14 @@ class RackSlot {
     this.flags[key] = on;
     this.built.onFlag?.(key, on);
   }
+
+  eqResponse(freqs: Float32Array, out: Float32Array) {
+    this.built.eq?.response(freqs, out);
+  }
+
+  eqAnalyser(which: "pre" | "post"): AnalyserNode | null {
+    return this.built.eq ? this.built.eq[which] : null;
+  }
 }
 
 export class Rack {
@@ -572,6 +593,20 @@ export class Rack {
     this.slots.get(id)?.setFlag(key, on);
   }
 
+  eqResponse(freqs: Float32Array, out: Float32Array): void {
+    this.slots.get("eq")?.eqResponse(freqs, out);
+  }
+
+  get eqSpectrumBins(): number {
+    const a = this.slots.get("eq")?.eqAnalyser("post");
+    return a ? a.frequencyBinCount : 0;
+  }
+
+  getEqSpectrum(which: "pre" | "post", arr: Uint8Array<ArrayBuffer>): void {
+    const a = this.slots.get("eq")?.eqAnalyser(which);
+    a?.getByteFrequencyData(arr);
+  }
+
   // move a module up (-1) or down (+1) the chain
   move(id: RackModuleId, dir: -1 | 1) {
     const i = this.order.indexOf(id);
@@ -667,27 +702,8 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
 
   switch (id) {
     case "eq": {
-      // 15-band 2/3-octave graphic EQ: a chain of peaking biquads, one per ISO centre
-      // frequency (25 Hz … 16 kHz). Q=2.14 matches 2/3-octave bandwidth. Flat = transparent.
-      const bands = EQ_FREQS.map((f) => {
-        const b = c.createBiquadFilter();
-        b.type = "peaking";
-        b.frequency.value = f;
-        b.Q.value = 2.14;
-        b.gain.value = 0;
-        return b;
-      });
-      for (let i = 0; i < bands.length - 1; i++) bands[i].connect(bands[i + 1]);
-      return {
-        fxIn: bands[0],
-        fxOut: bands[bands.length - 1],
-        onParam: (k, v) => {
-          if (k[0] === "g") {
-            const i = parseInt(k.slice(1), 10);
-            if (bands[i]) at(bands[i].gain, v);
-          }
-        },
-      };
+      const eq = buildEq(c, EQ_FREQS);
+      return { fxIn: eq.fxIn, fxOut: eq.fxOut, onParam: eq.onParam, onFlag: eq.onFlag, eq };
     }
     case "autotune": {
       // monophonic pitch-correction worklet. Loads async; until ready, a dry

@@ -1472,12 +1472,16 @@ export class Deck {
   // guard below (stems off, not ready, BPM unknown, bad index). The panel uses
   // this to decide whether to show the loop as active, instead of assuming a
   // click always "took" (see stemLoopBeatsVal comment above).
-  setStemBeatLoop(i: number, beats: number, opts?: { quantize?: boolean }): boolean {
+  setStemBeatLoop(i: number, beats: number, opts?: { quantize?: boolean; start?: number }): boolean {
     if (!this.stemsActive || !this.stemReady || !this.bpm) return false;
     if (i < 0 || i >= this.stemGains.length) return false;
     const secPerBeat = 60 / this.bpm;
     const rawStart = this.position();
-    const start = (opts?.quantize ?? true) ? Math.round(rawStart / secPerBeat) * secPerBeat : rawStart;
+    const start = opts?.start !== undefined
+      ? Math.max(0, opts.start)
+      : (opts?.quantize ?? true)
+        ? Math.max(0, Math.round((rawStart - this.beatGridOffset) / secPerBeat) * secPerBeat + this.beatGridOffset)
+        : rawStart;
     const end = Math.min(start + secPerBeat * beats, this.duration);
     this.stemLoopActive[i] = true;
     this.stemLoopStart[i] = start;
@@ -1523,6 +1527,43 @@ export class Deck {
     this.stemLoopWrapCount[i] = 0;
     const src = this.activeSources[i];
     if (src) src.loopEnd = end;
+    this.scheduleStemLoopWrap(i);
+    return true;
+  }
+
+  // Returns current loop position (0-1) and wrap count
+  stemLoopStatus(i: number): { phase: number; wraps: number; start: number; end: number } | null {
+    if (i < 0 || i >= Deck.STEM_MAX) return null;
+    if (!this.stemLoopActive[i]) return null;
+    const start = this.stemLoopStart[i];
+    const len = this.stemLoopEnd[i] - start;
+    if (!(len > 0)) return null;
+    const phase = ((((this.position() - start) % len) + len) % len) / len;
+    return { phase, wraps: this.stemLoopWrapCount[i] ?? 0, start, end: this.stemLoopEnd[i] };
+  }
+
+  // Shifts loop window by given beats while keeping length
+  shiftStemLoop(i: number, beats: number): boolean {
+    if (i < 0 || i >= this.stemGains.length) return false;
+    if (!this.stemLoopActive[i] || !this.bpm) return false;
+    const len = this.stemLoopEnd[i] - this.stemLoopStart[i];
+    const delta = beats * (60 / this.bpm);
+    const start = Math.max(0, Math.min(this.stemLoopStart[i] + delta, this.duration - len));
+    const end = start + len;
+    const forward = start > this.stemLoopStart[i];
+    this.stemLoopStart[i] = start;
+    this.stemLoopEnd[i] = end;
+    this.stemLoopWrapCount[i] = 0;
+    const src = this.activeSources[i];
+    if (src) {
+      if (forward) {
+        src.loopEnd = end;
+        src.loopStart = start;
+      } else {
+        src.loopStart = start;
+        src.loopEnd = end;
+      }
+    }
     this.scheduleStemLoopWrap(i);
     return true;
   }
