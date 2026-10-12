@@ -405,6 +405,7 @@ class RackSlot {
     if (id === "eq") {
       this.on = true;
       this.mix = 1;
+      this.setWetLive(true); // Constructor bypasses setOn, so must connect wet branch manually
     }
 
     const def = RACK_DEF.get(id)!;
