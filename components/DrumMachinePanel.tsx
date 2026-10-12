@@ -90,7 +90,7 @@ export function DrumMachinePanel({ engine }: { engine: DJEngine }) {
         </div>
       </div>
 
-      <div className="flex gap-1 overflow-x-auto">
+      <div className="flex gap-1 overflow-x-auto [contain:inline-size]">
         {DRUM_PRESETS.map(({ id, name, bpm }) => (
           <button
             key={id}

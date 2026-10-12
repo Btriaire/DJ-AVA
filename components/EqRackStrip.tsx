@@ -227,7 +227,7 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
       />
 
       {/* ── factory presets ── */}
-      <div className="flex gap-1.5 overflow-x-auto pb-1">
+      <div className="flex gap-1.5 overflow-x-auto pb-1 [contain:inline-size]">
         {EQ_PRESETS.map((preset) => {
           const g = presetGains(preset.pts, EQ_FREQS);
           return (
