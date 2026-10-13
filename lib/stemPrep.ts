@@ -122,6 +122,7 @@ async function startSeparation(bytes: ArrayBuffer): Promise<{ hash: string }> {
 }
 
 async function monitorSeparation(trackId: string, hash: string): Promise<void> {
+  let idlePolls = 0; // consecutive polls with nothing running on the server
   while (true) {
     const job = state.jobs.find(j => j.trackId === trackId);
     if (!job) return; // Job was canceled
@@ -151,6 +152,9 @@ async function monitorSeparation(trackId: string, hash: string): Promise<void> {
       });
       return;
     }
+
+    idlePolls = s.progress == null ? idlePolls + 1 : 0;
+    if (idlePolls >= 10) throw new Error("calcul interrompu côté serveur");
 
     saveState({
       ...state,
