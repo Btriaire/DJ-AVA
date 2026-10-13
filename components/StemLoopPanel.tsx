@@ -80,9 +80,8 @@ export function StemLoopPanel({ deck, labels, initial, color, rerender, onExport
     return quant ? Math.max(0, Math.round((raw - deck.beatGridOffset) / spb) * spb + deck.beatGridOffset) : raw;
   };
 
-  const handleLengthDown = () => {
+  const handleLengthDown = (b: number) => {
     if (!targets.length) return;
-    const b = firstLoop ?? 1;
     if (mode === "lock") {
       const allSame = targets.every(i => deck.stemLoopBeatsVal[i] === b);
       if (allSame) {
@@ -189,7 +188,7 @@ export function StemLoopPanel({ deck, labels, initial, color, rerender, onExport
             lit={targets.some(j => deck.stemLoopBeatsVal[j] === b)}
             height={46}
             disabled={!canLoop}
-            onDown={handleLengthDown}
+            onDown={() => handleLengthDown(b)}
             onUp={handleLengthUp}
           />
         ))}
