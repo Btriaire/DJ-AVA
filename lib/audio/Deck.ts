@@ -1606,6 +1606,19 @@ export class Deck {
   }
 
   // Snapshot the current loop configuration of stem `i` so it can be saved in presets/library
+  // per-stem waveform peaks, cached per decoded buffer (freed together with it)
+  private stemPeakCache = new WeakMap<AudioBuffer, Float32Array>();
+  getStemPeaks(i: number): Float32Array | null {
+    const buf = this.stemBuffers[i];
+    if (!buf) return null;
+    let peaks = this.stemPeakCache.get(buf);
+    if (!peaks) {
+      peaks = buildWaveformPeaks(buf, 1200);
+      this.stemPeakCache.set(buf, peaks);
+    }
+    return peaks;
+  }
+
   getStemLoopState(i: number): { active: boolean; beats: number | null; start: number; end: number; smoothMs: number; rollAt: number | null } | null {
     if (i < 0 || i >= Deck.STEM_MAX) return null;
     return {

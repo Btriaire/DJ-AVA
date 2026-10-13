@@ -5,6 +5,8 @@ import { Knob } from "./Knob";
 import { Fader } from "./Fader";
 import { StemFxPanel } from "./StemFxPanel";
 import { StemLoopPanel } from "./StemLoopPanel";
+import { StemLanes } from "./StemLanes";
+import { StemLiveMeter } from "./StemLiveMeter";
 import { Waveform } from "./Waveform";
 import { FxSection } from "./FxSection";
 import { DeckTransport } from "./DeckTransport";
@@ -124,29 +126,7 @@ function saveStemTpls(arr: (StemTpl | null)[]) {
 // from the bottom up with the stem's live level. Top segment red, next two
 // amber, the rest the deck colour — a classic VU look. Purely presentational;
 // the parent re-renders each animation frame (via `tick`) so it animates.
-function StemMeter({ level, color }: { level: number; color: string }) {
-  const SEG = 6;
-  const lit = Math.round(Math.min(1, Math.max(0, level)) * SEG);
-  return (
-    <div className="flex flex-col-reverse items-center gap-[1.5px]" aria-hidden>
-      {Array.from({ length: SEG }).map((_, s) => {
-        const on = s < lit;
-        const segColor = s >= SEG - 1 ? "#ff4d4d" : s >= SEG - 3 ? "#ffd23d" : color;
-        return (
-          <span
-            key={s}
-            className="h-[3px] w-3 rounded-[1px]"
-            style={{
-              background: on ? segColor : "#241f18",
-              boxShadow: on ? `0 0 4px ${segColor}` : "none",
-              opacity: on ? 1 : 0.55,
-            }}
-          />
-        );
-      })}
-    </div>
-  );
-}
+
 
 export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToConverter, otherBpm, onStems, onLibraryChange, onClose, forceTrim, activeModules }: Props) {
   void tick;
@@ -921,6 +901,8 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
         />
       </div>}
 
+      {deck.stemReady && <StemLanes deck={deck} color={color} />}
+
       {/* stem separation (Demucs) — split the track into live faders. Demucs on
           CPU can't realistically finish beyond ~8 min of audio, so the trigger
           is removed outright for long tracks instead of failing after a click. */}
@@ -1096,12 +1078,12 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
             const lvl = deck.stemReady ? deck.stemVol[i] : 1;
             const muted = deck.stemReady && lvl <= 0.001;
             // live audio level of this stem (post-fader) -> mini LED equalizer
-            const meter = deck.stemReady && deck.stemsActive ? deck.stemLevel(i) : 0;
+
             return (
               <Fragment key={name}>
                 <div className="flex flex-col items-center gap-1" title={info.title}>
                   {/* voyant équaliseur: barre de LED qui suit le niveau de la piste */}
-                  <StemMeter level={meter} color={muted ? "#555" : color} />
+                  <StemLiveMeter deck={deck} i={i} color={muted ? "#555" : color} />
                   {/* discreet graduation strips either side of the cap, like the other faders */}
                   <div className="flex items-stretch justify-center gap-0.5">
                     <span className="fader-ticks" aria-hidden />
