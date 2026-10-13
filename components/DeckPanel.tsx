@@ -747,6 +747,9 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
             progress={progress}
             cue={deck.duration ? deck.cuePoint / deck.duration : 0}
             color={color}
+            bpm={deck.bpm}
+            beatOffset={deck.beatGridOffset}
+            duration={deck.duration}
             onSeek={(n) => {
               deck.seek(n * deck.duration);
               rerender();
@@ -919,7 +922,12 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
       {/* contain: inline-size = ce scroll ne doit pas imposer sa largeur au deck (613 px -> 520 px) */}
       <div className="hw-recess flex items-stretch gap-3 overflow-x-auto p-3 [contain:inline-size]">
         <div className="flex w-28 shrink-0 flex-col justify-center gap-1">
-          <span className="text-[9px] uppercase leading-none text-neutral-500">Séparation</span>
+          <span
+            className="text-[10px] font-bold uppercase leading-none tracking-[0.15em] text-neutral-400"
+            title="Choisis la qualité de séparation, puis clique STEMS dans la platine. Le calcul se fait à l'arrêt de la lecture."
+          >
+            Séparation
+          </span>
           {stemTooLongForTrack ? (
             <span className="text-[9px] leading-tight text-amber-400">
               Indisponible — morceau &gt; 8 min
@@ -1042,7 +1050,12 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
               </div>
               {/* STEM templates 1-5 : réglages mémorisés, réutilisables sur tout morceau */}
               <div className={`flex flex-col gap-1 ${deck.stemReady ? "" : "pointer-events-none opacity-40"}`}>
-                <span className="text-[8px] uppercase leading-none text-neutral-500">Templates</span>
+                <span
+                  className="text-[10px] font-bold uppercase leading-none tracking-[0.15em] text-neutral-400"
+                  title="Réglages de stems mémorisés (1 à 5), réutilisables sur n'importe quel morceau"
+                >
+                  Templates
+                </span>
                 <div className="flex gap-0.5">
                   {stemTpls.map((t, n) => {
                     const filled = !!t;
