@@ -38,6 +38,12 @@ let state: PrepState = loadState();
 const subscribers = new Set<() => void>();
 let worker: Promise<void> | null = null;
 
+// Set by the app: false while a deck is playing, so no separation runs during playback.
+let canRun: () => boolean = () => true;
+export function setPrepGate(fn: () => boolean): void {
+  canRun = fn;
+}
+
 function loadState(): PrepState {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -77,6 +83,7 @@ async function processQueue(): Promise<void> {
   while (true) {
     const job = state.jobs.find(j => j.status === "queued");
     if (!job) break;
+    while (!canRun()) await new Promise(r => setTimeout(r, 2000)); // wait for playback to stop
 
     saveState({
       ...state,

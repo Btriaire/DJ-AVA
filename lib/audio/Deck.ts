@@ -103,6 +103,8 @@ export class Deck {
   //   htdemucs / htdemucs_ft -> 4 (drums/bass/other/vocals)
   //   htdemucs_6s            -> 6 (+ guitar/piano)
   static readonly STEM_MAX = 6;
+  // false while a deck plays: separation would make the audio stutter, so it waits for pause
+  static separationAllowed: () => boolean = () => true;
   private stemBuffers: (AudioBuffer | null)[] = []; // length === stemNames.length when loaded
   private stemGains: GainNode[] = []; // STEM_MAX gains, all summed into stemBus
   private stemAnalysers: AnalyserNode[] = []; // per-stem level taps for the LED meters
@@ -122,7 +124,7 @@ export class Deck {
   // instead of waiting for a STEMS click after it's already live
   stemsWanted = false;
   stemVol: number[] = []; // one entry per active stem
-  stemStatus: "none" | "prefetching" | "working" | "ready" | "error" = "none";
+  stemStatus: "none" | "prefetching" | "working" | "ready" | "error" | "blocked" = "none";
   // 0..100 while a separation is actively running/queued server-side for the
   // currently-loading track (working or prefetching); null the rest of the
   // time — see pollStemProgress()/stopStemProgressPoll() below.
@@ -1197,6 +1199,7 @@ export class Deck {
   // Caller should poll probeStems() to flip the "cached" badge once it lands.
   async prefetchStems(): Promise<void> {
     if (!this.rawData || this.stemReady || this.stemCached) return;
+    if (!Deck.separationAllowed()) return;
     // don't stomp on a live, foreground separation
     if (this.stemStatus === "working") return;
     const model = this.stemModel;
@@ -1374,6 +1377,10 @@ export class Deck {
   async ensureStems(): Promise<void> {
     if (this.stemReady) {
       this.stemStatus = "ready";
+      return;
+    }
+    if (!this.stemCached && !Deck.separationAllowed()) {
+      this.stemStatus = "blocked";
       return;
     }
     if (!this.rawData) {

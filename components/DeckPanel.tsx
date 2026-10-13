@@ -1007,6 +1007,9 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
               {deck.stemCached && !deck.stemReady && deck.stemStatus !== "working" && (
                 <span className="text-[8px] leading-tight text-neutral-500">en cache — instantané</span>
               )}
+              {deck.stemStatus === "blocked" && (
+                <span className="text-[9px] text-amber-300">mets les platines en pause pour séparer</span>
+              )}
               {deck.stemStatus === "error" && (
                 <span className="text-[9px] text-red-400">échec — réessaie</span>
               )}
