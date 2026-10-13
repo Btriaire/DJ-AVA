@@ -104,7 +104,10 @@ export class Deck {
   //   htdemucs_6s            -> 6 (+ guitar/piano)
   static readonly STEM_MAX = 6;
   // false while a deck plays: separation would make the audio stutter, so it waits for pause
-  static separationAllowed: () => boolean = () => true;
+  private playbackGate: () => boolean = () => true;
+  setPlaybackGate(fn: () => boolean): void {
+    this.playbackGate = fn;
+  }
   private stemBuffers: (AudioBuffer | null)[] = []; // length === stemNames.length when loaded
   private stemGains: GainNode[] = []; // STEM_MAX gains, all summed into stemBus
   private stemSynthIn: GainNode[] = []; // per-stem input for the DJ synth, feeds the stem's filter
@@ -1206,7 +1209,7 @@ export class Deck {
   // Caller should poll probeStems() to flip the "cached" badge once it lands.
   async prefetchStems(): Promise<void> {
     if (!this.rawData || this.stemReady || this.stemCached) return;
-    if (!Deck.separationAllowed()) return;
+    if (!this.playbackGate()) return;
     // don't stomp on a live, foreground separation
     if (this.stemStatus === "working") return;
     const model = this.stemModel;
@@ -1417,7 +1420,7 @@ export class Deck {
       this.stemStatus = "ready";
       return;
     }
-    if (!this.stemCached && !Deck.separationAllowed()) {
+    if (!this.stemCached && !this.playbackGate()) {
       this.stemStatus = "blocked";
       return;
     }

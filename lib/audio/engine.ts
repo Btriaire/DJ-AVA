@@ -91,7 +91,9 @@ export class DJEngine {
 
     this.deckA = new Deck(this.ctx);
     this.deckB = new Deck(this.ctx);
-    Deck.separationAllowed = () => !this.deckA.playing && !this.deckB.playing;
+    const allowed = () => !this.deckA.playing && !this.deckB.playing;
+    this.deckA.setPlaybackGate(allowed);
+    this.deckB.setPlaybackGate(allowed);
     this.watchPlayback();
     this.deckA.output.connect(this.chA);
     this.deckB.output.connect(this.chB);
