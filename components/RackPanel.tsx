@@ -833,7 +833,7 @@ export function RackPanel({
               style={{ ["--led" as string]: color, color }}
               title="Sauvegarder l'état du rack comme preset"
             >
-              💾 SAUVER
+              SAUVER
             </button>
             <button
               onClick={() => {
