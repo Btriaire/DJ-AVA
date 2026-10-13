@@ -56,7 +56,7 @@ export function StemPrepPanel({ engine }: { engine: DJEngine }) {
           style={{ ["--led" as string]: "#34d399" }}
           title={`Modèle ${PREP_MODEL}, ${PREP_SHIFTS} passes de séparation, pistes WAV sans perte`}
         >
-          Qualité max · WAV
+          Qualité élevée · WAV
         </div>
         <span className="text-[10px] text-neutral-400">
           {prep.jobs.length} en file · {prep.ready.length} prêts

@@ -390,7 +390,10 @@ async function doSeparate(
         try {
           produced = await separateWithMlx(sepArgs);
         } catch (e) {
-          console.warn(`[stems] MLX tentative ${attempt}/2 échouée : ${(e as Error).message.slice(0, 200)}`);
+          const msg = (e as Error).message;
+          // a GPU watchdog timeout repeats on retry, and torch on CPU is far slower: fail fast
+          if (/GPU Timeout/.test(msg)) throw new Error("calcul trop lourd pour le GPU : essaie une qualité plus légère");
+          console.warn(`[stems] MLX tentative ${attempt}/2 échouée : ${msg.slice(0, 200)}`);
         }
       }
     }

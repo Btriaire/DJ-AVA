@@ -1,7 +1,8 @@
 import { idbGetBlob, idbPutBlob, loadLibrary, saveLibrary, uid, extractCover, type LibTrack, type TrackSource } from "@/lib/library";
 
-export const PREP_MODEL = "htdemucs_ft";
-export const PREP_SHIFTS = 5;
+// htdemucs_ft overruns the Metal GPU watchdog on MLX; htdemucs stays reliable
+export const PREP_MODEL = "htdemucs";
+export const PREP_SHIFTS = 2;
 export const PREP_STEMS: readonly string[] = ["drums", "bass", "other", "vocals"];
 
 export type PrepStatus = "queued" | "running" | "done" | "error";
