@@ -1,6 +1,24 @@
 import { useRef, useState } from "react"
 import type { DJEngine } from "@/lib/audio/engine"
 import { DEFAULT_SS_PARAMS, DELAY_LABELS, FILTER_NAMES, type SSParams } from "@/lib/audio/SuperSampler"
+
+const PRESET_KEY = "djsynth.supersampler.presets.v1"
+
+function readPresets(): Record<string, SSParams> {
+  try {
+    return JSON.parse(localStorage.getItem(PRESET_KEY) || "{}") as Record<string, SSParams>
+  } catch {
+    return {}
+  }
+}
+
+function writePresets(presets: Record<string, SSParams>): void {
+  try {
+    localStorage.setItem(PRESET_KEY, JSON.stringify(presets))
+  } catch {
+    // storage full or blocked: presets stay in memory only
+  }
+}
 import { Knob } from "./Knob"
 import { SSScreen } from "./SSScreen"
 import { SSKeys } from "./SSKeys"
@@ -13,6 +31,8 @@ export function SuperSampler({ engine }: { engine: DJEngine }) {
   const [p, setP] = useState<SSParams>(() => engine.superSampler.getParams())
   const [side, setSide] = useState<"A" | "B">("A")
   const [status, setStatus] = useState("Charge une source")
+  const [presets, setPresets] = useState<Record<string, SSParams>>(() => readPresets())
+  const [presetName, setPresetName] = useState("")
   const [busy, setBusy] = useState(false)
   const [keyBase, setKeyBase] = useState(48)
   const [mode, setMode] = useState<"keys" | "pads" | "seq">("keys")
@@ -104,6 +124,82 @@ export function SuperSampler({ engine }: { engine: DJEngine }) {
     } finally {
       setBusy(false)
     }
+  }
+
+  const savePreset = () => {
+    const name = presetName.trim() || "Préréglage " + (Object.keys(presets).length + 1)
+    const next = { ...presets, [name]: { ...p } }
+    setPresets(next)
+    writePresets(next)
+    setStatus("Préréglage enregistré : " + name)
+  }
+
+  const loadPreset = (name: string) => {
+    const preset = presets[name]
+    if (!preset) return
+    for (const key in preset) {
+      engine.superSampler.setParam(key as keyof SSParams, preset[key as keyof SSParams])
+    }
+    setP({ ...preset })
+    setStatus("Préréglage chargé : " + name)
+  }
+
+  const deletePreset = (name: string) => {
+    const next = { ...presets }
+    delete next[name]
+    setPresets(next)
+    writePresets(next)
+  }
+
+  const normalizeSource = () => {
+    const buf = engine.superSampler.buffer
+    if (!buf) { setStatus("Aucune source à normaliser"); return }
+    let peak = 0
+    for (let c = 0; c < buf.numberOfChannels; c++) {
+      const d = buf.getChannelData(c)
+      for (let i = 0; i < d.length; i++) peak = Math.max(peak, Math.abs(d[i]))
+    }
+    if (peak === 0) { setStatus("Silence : rien à normaliser"); return }
+    const gain = 0.97 / peak
+    const out = engine.ctx.createBuffer(buf.numberOfChannels, buf.length, buf.sampleRate)
+    for (let c = 0; c < buf.numberOfChannels; c++) {
+      const src = buf.getChannelData(c)
+      const dst = out.getChannelData(c)
+      for (let i = 0; i < src.length; i++) dst[i] = src[i] * gain
+    }
+    const name = engine.superSampler.name
+    engine.superSampler.setSource(out, name)
+    setP(prev => ({ ...prev, start: 0, end: 1 }))
+    setStatus("Normalisée à -0,3 dBFS (gain " + (20 * Math.log10(gain)).toFixed(1) + " dB)")
+  }
+
+  const trimSilence = () => {
+    const buf = engine.superSampler.buffer
+    if (!buf) { setStatus("Aucune source à rogner"); return }
+    const threshold = 0.004
+    let first = buf.length
+    let last = -1
+    for (let c = 0; c < buf.numberOfChannels; c++) {
+      const d = buf.getChannelData(c)
+      for (let i = 0; i < d.length; i++) {
+        if (Math.abs(d[i]) > threshold) { if (i < first) first = i; break }
+      }
+      for (let i = d.length - 1; i >= 0; i--) {
+        if (Math.abs(d[i]) > threshold) { if (i > last) last = i; break }
+      }
+    }
+    if (last < 0) { setStatus("Silence : aucune région"); return }
+    const start = first / buf.length
+    const end = Math.max(start + 0.001, (last + 1) / buf.length)
+    set("start", start)
+    set("end", end)
+    setStatus("Silences rognés : " + ((end - start) * buf.duration).toFixed(2) + " s conservées")
+  }
+
+  const resetRegion = () => {
+    set("start", 0)
+    set("end", 1)
+    setStatus("Région remise à zéro")
   }
 
   const resetAll = () => {
@@ -229,6 +325,30 @@ export function SuperSampler({ engine }: { engine: DJEngine }) {
           <div className="hw-lcd text-[9px] p-1 bg-carbon-800 text-cyan-400">
             {status}
           </div>
+          <div className="grid grid-cols-3 gap-1">
+            <button className="hw-btn text-[10px]" onClick={normalizeSource}>NORMALISER</button>
+            <button className="hw-btn text-[10px]" onClick={trimSilence}>ROGNER</button>
+            <button className="hw-btn text-[10px]" onClick={resetRegion}>RÉGION 0-100</button>
+          </div>
+          <div className="flex gap-1">
+            <input
+              className="hw-lcd flex-1 min-w-0 text-[10px] px-2"
+              placeholder="Nom du préréglage"
+              value={presetName}
+              onChange={e => setPresetName(e.target.value)}
+            />
+            <button className="hw-btn text-[10px]" onClick={savePreset}>SAUVER</button>
+          </div>
+          {Object.keys(presets).length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {Object.keys(presets).map(name => (
+                <span key={name} className="flex items-center rounded ring-1 ring-neutral-700">
+                  <button className="px-2 py-1 text-[10px] font-bold text-neutral-200" onClick={() => loadPreset(name)}>{name}</button>
+                  <button className="px-1 py-1 text-[10px] text-neutral-500 hover:text-red-400" title="Supprimer ce préréglage" onClick={() => deletePreset(name)}>x</button>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
