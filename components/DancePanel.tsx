@@ -25,6 +25,7 @@ const GENRES: Genre[] = [
 
 const RELEASE_BEATS = [0.25, 0.5, 1] as const;
 const RAMP_LENGTHS = [2, 4, 8, 16] as const;
+const TRANSITION_STEPS = ["MONTÉE", "DROP", "RETOUR"] as const;
 
 export function DancePanel({ engine }: { engine: DJEngine }) {
   const [deck, setDeck] = useState<Deck | null>(engine.deckA);
@@ -35,15 +36,22 @@ export function DancePanel({ engine }: { engine: DJEngine }) {
   const [beatIdx, setBeatIdx] = useState(0);
   const [rampLength, setRampLength] = useState<typeof RAMP_LENGTHS[number]>(8);
   const [rampProgress, setRampProgress] = useState(0);
+  const [filterActive, setFilterActive] = useState(true);
+  const [transitionStep, setTransitionStep] = useState<typeof TRANSITION_STEPS[number] | null>(null);
+  const [transitionProgress, setTransitionProgress] = useState(0);
+  const [pumpLevel, setPumpLevel] = useState(0);
 
   const beatIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const rampIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const transitionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pumpIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [rampActive, setRampActive] = useState(false);
 
   const handleDeckChange = (d: Deck | null) => {
     setDeck(d);
     setPumpOn(false);
     setActiveGenre(null);
+    stopTransition();
   };
 
   const applyGenre = (genre: Genre) => {
@@ -84,9 +92,15 @@ export function DancePanel({ engine }: { engine: DJEngine }) {
     const t0 = performance.now();
 
     deck.setFxWet("noise", 0);
+    if (filterActive) {
+      deck.setFxWet("sweep", 1);
+      deck.setFxParam("sweep", "p1", 0);
+    }
+
     rampIntervalRef.current = setInterval(() => {
       const p = Math.min(1, (performance.now() - t0) / durMs);
       deck.setFxWet("noise", p * p);
+      if (filterActive) deck.setFxParam("sweep", "p1", p * 0.5);
       setRampProgress(p);
 
       if (p >= 1) {
@@ -103,13 +117,88 @@ export function DancePanel({ engine }: { engine: DJEngine }) {
       clearInterval(rampIntervalRef.current);
       rampIntervalRef.current = null;
     }
-    if (deck) deck.setFxWet("noise", 0);
+    if (deck) {
+      deck.setFxWet("noise", 0);
+      deck.setFxWet("sweep", 0);
+    }
     setRampProgress(0);
+  };
+
+  const startTransition = () => {
+    if (!deck || transitionStep) return;
+
+    const bpm = deck.fxClock()?.bpm || deck.bpm || 120;
+    const durMs = (60000 / bpm) * rampLength;
+    const wasPumping = pumpOn;
+
+    setTransitionStep("MONTÉE");
+    setTransitionProgress(0);
+
+    // Step 1: Ramp up
+    const t0 = performance.now();
+    deck.setFxWet("noise", 0);
+    if (filterActive) {
+      deck.setFxWet("sweep", 1);
+      deck.setFxParam("sweep", "p1", 0);
+    }
+
+    const rampInterval = setInterval(() => {
+      const p = Math.min(1, (performance.now() - t0) / durMs);
+      deck.setFxWet("noise", p * p);
+      if (filterActive) deck.setFxParam("sweep", "p1", p * 0.5);
+      setTransitionProgress(p);
+
+      if (p >= 1) {
+        clearInterval(rampInterval);
+        setTransitionStep("DROP");
+        setTransitionProgress(0);
+
+        // Step 2: Drop
+        deck.setFxWet("noise", 0);
+        deck.setFxWet("sweep", 0);
+        deck.setStemPump(false);
+
+        transitionTimeoutRef.current = setTimeout(() => {
+          // Step 3: Return
+          setTransitionStep("RETOUR");
+          setTransitionProgress(0);
+
+          if (wasPumping) {
+            deck.setStemPump(true, pumpDepth / 100, releaseBeats);
+          }
+
+          setTimeout(() => {
+            setTransitionStep(null);
+            setTransitionProgress(0);
+          }, 1000);
+        }, (60000 / bpm) * 2);
+      }
+    }, 50);
+
+    rampIntervalRef.current = rampInterval;
+  };
+
+  const stopTransition = () => {
+    if (rampIntervalRef.current) {
+      clearInterval(rampIntervalRef.current);
+      rampIntervalRef.current = null;
+    }
+    if (transitionTimeoutRef.current) {
+      clearTimeout(transitionTimeoutRef.current);
+      transitionTimeoutRef.current = null;
+    }
+    if (deck) {
+      deck.setFxWet("noise", 0);
+      deck.setFxWet("sweep", 0);
+    }
+    setTransitionStep(null);
+    setTransitionProgress(0);
   };
 
   useEffect(() => {
     if (!deck) return;
 
+    // Beat indicator
     beatIntervalRef.current = setInterval(() => {
       const clock = deck.fxClock();
       if (clock?.playing && clock.nextBeat) {
@@ -120,11 +209,29 @@ export function DancePanel({ engine }: { engine: DJEngine }) {
       }
     }, 100);
 
+    // Pump level indicator
+    pumpIntervalRef.current = setInterval(() => {
+      const clock = deck.fxClock();
+      if (!clock?.playing || !pumpOn) {
+        setPumpLevel(0);
+        return;
+      }
+
+      const bpm = clock.bpm || deck.bpm || 120;
+      const spb = 60 / bpm;
+      const tSince = spb - (clock.toNextBeat || 0);
+      const release = releaseBeats * spb;
+      const level = 1 - (pumpDepth / 100) * Math.max(0, 1 - tSince / release);
+      setPumpLevel(1 - level);
+    }, 50);
+
     return () => {
       if (beatIntervalRef.current) clearInterval(beatIntervalRef.current);
       if (rampIntervalRef.current) clearInterval(rampIntervalRef.current);
+      if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
+      if (pumpIntervalRef.current) clearInterval(pumpIntervalRef.current);
     };
-  }, [deck]);
+  }, [deck, pumpOn, pumpDepth, releaseBeats]);
 
   return (
     <div className="hw-panel p-2">
@@ -207,6 +314,12 @@ export function DancePanel({ engine }: { engine: DJEngine }) {
             className="flex-1"
           />
           <div className="text-[10px] w-8 text-right">{pumpDepth}%</div>
+          <div className="w-2 h-12 bg-neutral-700 rounded-full overflow-hidden">
+            <div
+              className="bg-neutral-200"
+              style={{ height: `${pumpLevel * 100}%` }}
+            />
+          </div>
         </div>
 
         <div className="flex items-center gap-2 mb-2">
@@ -232,7 +345,7 @@ export function DancePanel({ engine }: { engine: DJEngine }) {
         </div>
       </div>
 
-      <div className="hw-recess p-2">
+      <div className="hw-recess p-2 mb-2">
         <div className="flex gap-1 mb-2">
           {RAMP_LENGTHS.map((len) => (
             <button
@@ -259,6 +372,12 @@ export function DancePanel({ engine }: { engine: DJEngine }) {
           >
             DROP
           </button>
+          <button
+            className={`hw-btn text-[10px] px-2 py-1 ${filterActive ? "hw-btn-on" : ""}`}
+            onClick={() => setFilterActive(!filterActive)}
+          >
+            FILTRE
+          </button>
         </div>
 
         {rampProgress > 0 && (
@@ -273,6 +392,40 @@ export function DancePanel({ engine }: { engine: DJEngine }) {
           />
         </div>
         <div className="text-[10px] text-neutral-400 mt-1">DROP coupe la montée et le souffle.</div>
+      </div>
+
+      <div className="hw-recess p-2">
+        <button
+          className="hw-btn text-[11px] font-bold w-full py-2 mb-2"
+          onClick={transitionStep ? stopTransition : startTransition}
+          disabled={!deck}
+        >
+          {transitionStep ? "ARRÊTER" : "TRANSITION"}
+        </button>
+
+        {transitionStep && (
+          <>
+            <div className="flex justify-between text-[10px] mb-1">
+              {TRANSITION_STEPS.map((step) => (
+                <div
+                  key={step}
+                  className={`flex-1 text-center ${transitionStep === step ? "text-neutral-200" : "text-neutral-500"}`}
+                >
+                  {step}
+                </div>
+              ))}
+            </div>
+            <div className="h-2 bg-neutral-700 rounded-full overflow-hidden mb-2">
+              <div
+                className="h-full bg-neutral-200"
+                style={{ width: `${transitionProgress * 100}%` }}
+              />
+            </div>
+            {transitionStep === "RETOUR" && (
+              <div className="text-[10px] text-neutral-400 text-center">Transition terminée</div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

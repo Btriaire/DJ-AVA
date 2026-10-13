@@ -1534,6 +1534,10 @@ export class Deck {
   setFxWet(name: FxName, v: number) {
     this.fx.setWet(name, v);
   }
+  // p1 / p2 of an effect (e.g. sweep position), exposed for the dance tools
+  setFxParam(name: FxName, key: "p1" | "p2", v: number) {
+    this.fx.setParam(name, key, v);
+  }
   getFxWet(name: FxName): number {
     return this.fx.getWet(name);
   }
