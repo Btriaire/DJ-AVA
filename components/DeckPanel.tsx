@@ -794,8 +794,12 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
           >
             MT
           </button>
-          <span className="shrink-0 text-[10px] uppercase text-neutral-500">
-            Pitch {pitch > 0 ? "+" : ""}
+          <span
+            className="shrink-0 rounded px-1.5 py-0.5 font-mono text-[11px] font-bold tabular-nums"
+            style={{ color, background: "#0a0d0a", textShadow: `0 0 5px ${color}`, boxShadow: "inset 0 0 0 1px #1a1a1a" }}
+            title="Variation de vitesse de la platine (0 % = vitesse d'origine)"
+          >
+            {pitch > 0 ? "+" : ""}
             {pitch.toFixed(1)}%
           </span>
           <Fader
@@ -815,7 +819,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
         </div>
         {/* right half: momentary scratch / pitch-bend (springs back to 0 on release) */}
         <div className="flex min-w-[140px] flex-1 items-center gap-2">
-          <span className="shrink-0 text-[10px] uppercase text-neutral-500">Scratch</span>
+          <span className="shrink-0 text-[10px] uppercase text-neutral-500" title="Scratch : tire le curseur, il revient à zéro quand tu relâches">Scratch</span>
           <Fader
             value={scratch}
             min={-1}
@@ -840,6 +844,10 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
       {/* channel strip — always visible: Gain + 3-band EQ (same fader model as
           the 15-band rack EQ below, so every EQ in the app reads the same way)
           + Filter */}
+      <div className="flex items-center justify-between px-1 text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500">
+        <span>Voie</span>
+        <span className="font-normal normal-case tracking-normal">Gain · aigus / médium / graves · filtre</span>
+      </div>
       <div className="hw-recess flex items-center justify-around py-3">
         <Knob
           label="Gain"
@@ -853,15 +861,15 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
         {(["high", "mid", "low"] as const).map((b) => (
           <div key={b} className="flex flex-col items-center gap-1">
             <span
-              className="rounded px-0.5 py-0.5 text-center font-mono text-[8px] font-bold tracking-tight"
-              style={{ width: 32, color, background: "#0a0d0a", textShadow: `0 0 5px ${color}`, boxShadow: "inset 0 0 0 1px #1a1a1a" }}
+              className="rounded px-0.5 py-0.5 text-center font-mono text-[10px] font-bold tracking-tight"
+              style={{ width: 40, color, background: "#0a0d0a", textShadow: `0 0 5px ${color}`, boxShadow: "inset 0 0 0 1px #1a1a1a" }}
             >{eq[b] > 0 ? "+" : ""}{Math.round(eq[b])}</span>
             <Fader
               value={eq[b]} min={-26} max={12} step={0.1} neutral={0}
               vertical onChange={(v) => { setEq((e) => ({ ...e, [b]: v })); deck.setEQ(b, v); }}
               className="!h-[86px]"
             />
-            <span className="text-center text-[8px] font-bold uppercase leading-none" style={{ color }}>{b}</span>
+            <span className="text-center text-[10px] font-bold uppercase leading-none" style={{ color }}>{b}</span>
           </div>
         ))}
         <Knob label="Filter" value={filter} min={-1} max={1} defaultValue={0} color={color}
