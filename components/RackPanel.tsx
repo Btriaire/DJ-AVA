@@ -168,14 +168,40 @@ function RackSpectrum({ rack, color }: { rack: Rack; color: string }) {
     const data = new Uint8Array(rack.spectrumBins);
     const BARS = 56;
     let raf = 0;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const cssW = entry.contentRect.width;
+        const cssH = entry.contentRect.height;
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.round(cssW * dpr);
+        canvas.height = Math.round(cssH * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        draw();
+      }
+    });
+    observer.observe(canvas);
     const draw = () => {
-      const w = canvas.width;
-      const h = canvas.height;
+      const dpr = window.devicePixelRatio || 1;
+      const w = canvas.width / dpr;
+      const h = canvas.height / dpr;
       rack.getSpectrum(data);
       ctx.clearRect(0, 0, w, h);
       const gap = 1;
       const bw = w / BARS;
+      ctx.strokeStyle = `${color}66`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, h - 0.5);
+      ctx.lineTo(w, h - 0.5);
+      ctx.stroke();
       for (let i = 0; i < BARS; i++) {
+        if (i % 8 === 0) {
+          ctx.strokeStyle = "#ffffff0d";
+          ctx.beginPath();
+          ctx.moveTo(i * bw, 0);
+          ctx.lineTo(i * bw, h);
+          ctx.stroke();
+        }
         const frac = Math.pow(i / BARS, 1.6);
         const bin = Math.min(data.length - 1, Math.floor(frac * data.length * 0.75));
         const mag = data[bin] / 255;
@@ -187,12 +213,19 @@ function RackSpectrum({ rack, color }: { rack: Rack; color: string }) {
         ctx.fillStyle = grad;
         ctx.fillRect(i * bw, h - bh, bw - gap, bh);
       }
-      raf = requestAnimationFrame(draw);
     };
+    const dpr0 = window.devicePixelRatio || 1;
+    const rect0 = canvas.getBoundingClientRect();
+    canvas.width = Math.round(rect0.width * dpr0);
+    canvas.height = Math.round(rect0.height * dpr0);
+    ctx.setTransform(dpr0, 0, 0, dpr0, 0, 0);
     raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      observer.disconnect();
+    };
   }, [rack, color]);
-  return <canvas ref={canvasRef} width={420} height={40} className="h-10 w-full rounded bg-neutral-950 ring-1 ring-neutral-800" />;
+  return <canvas ref={canvasRef} className="block w-full h-10 rounded bg-neutral-950 ring-1 ring-neutral-800" />;
 }
 
 function curveFor(id: RackModuleId, p: Record<string, number>): ((x: number) => number) | null {
@@ -235,35 +268,98 @@ function curveFor(id: RackModuleId, p: Record<string, number>): ((x: number) => 
 
 function MiniCurve({ id, params, color }: { id: RackModuleId; params: Record<string, number>; color: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const fn = curveFor(id, params);
   const sig = JSON.stringify(params);
   useEffect(() => {
     const canvas = canvasRef.current;
+    const fn = curveFor(id, params);
     if (!canvas || !fn) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    const w = canvas.width;
-    const h = canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    ctx.strokeStyle = "#ffffff14";
-    ctx.beginPath();
-    ctx.moveTo(0, h / 2);
-    ctx.lineTo(w, h / 2);
-    ctx.stroke();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    for (let i = 0; i <= w; i++) {
-      const x = (i / w) * 2 - 1;
-      const y = Math.max(-1, Math.min(1, fn(x)));
-      const py = h / 2 - (y * h) / 2;
-      if (i === 0) ctx.moveTo(i, py);
-      else ctx.lineTo(i, py);
-    }
-    ctx.stroke();
-  }, [sig, color, id, fn]);
-  if (!fn) return null;
-  return <canvas ref={canvasRef} width={120} height={34} className="rounded bg-neutral-950/70 ring-1 ring-neutral-800" />;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const cssW = entry.contentRect.width;
+        const cssH = entry.contentRect.height;
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.round(cssW * dpr);
+        canvas.height = Math.round(cssH * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        draw();
+      }
+    });
+    observer.observe(canvas);
+    const draw = () => {
+      const dpr = window.devicePixelRatio || 1;
+      const w = canvas.width / dpr;
+      const h = canvas.height / dpr;
+      ctx.clearRect(0, 0, w, h);
+      ctx.strokeStyle = "#ffffff14";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, h / 2 + 0.5);
+      ctx.lineTo(w, h / 2 + 0.5);
+      ctx.stroke();
+      ctx.strokeStyle = "#ffffff14";
+      ctx.beginPath();
+      ctx.moveTo(0, h / 4 + 0.5);
+      ctx.lineTo(w, h / 4 + 0.5);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, (3 * h) / 4 + 0.5);
+      ctx.lineTo(w, (3 * h) / 4 + 0.5);
+      ctx.stroke();
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = '#ffffff22';
+      ctx.beginPath();
+      ctx.moveTo(0, h - 3);
+      ctx.lineTo(w, 3);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.6;
+      ctx.lineJoin = "round";
+      ctx.shadowBlur = 6;
+      ctx.shadowColor = color;
+      ctx.beginPath();
+      for (let i = 0; i <= w; i++) {
+        const x = (i / w) * 2 - 1;
+        const y = Math.max(-1, Math.min(1, fn(x)));
+        const py = h / 2 - y * (h / 2 - 3);
+        if (i === 0) ctx.moveTo(i, py);
+        else ctx.lineTo(i, py);
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(0.5, h / 2 - fn(0) * (h / 2 - 3), 3, 0, Math.PI * 2);
+      ctx.fill();
+      const grad = ctx.createLinearGradient(0, 0, 0, h);
+      grad.addColorStop(0, `${color}40`);
+      grad.addColorStop(1, `${color}00`);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(0, h / 2);
+      for (let i = 0; i <= w; i++) {
+        const x = (i / w) * 2 - 1;
+        const y = Math.max(-1, Math.min(1, fn(x)));
+        const py = h / 2 - y * (h / 2 - 3);
+        if (i === 0) ctx.lineTo(i, py);
+        else ctx.lineTo(i, py);
+      }
+      ctx.lineTo(w, h / 2);
+      ctx.closePath();
+      ctx.fill();
+    };
+    const dpr0 = window.devicePixelRatio || 1;
+    const rect0 = canvas.getBoundingClientRect();
+    canvas.width = Math.round(rect0.width * dpr0);
+    canvas.height = Math.round(rect0.height * dpr0);
+    ctx.setTransform(dpr0, 0, 0, dpr0, 0, 0);
+    draw();
+    return () => observer.disconnect();
+  }, [sig, color, id]);
+  if (!curveFor(id, params)) return null;
+  return <canvas ref={canvasRef} className="block w-full h-[44px] rounded bg-neutral-950/70 ring-1 ring-neutral-800" />;
 }
 
 function SlotVU({ rack, on, color }: { rack: Rack; on: boolean; color: string }) {
