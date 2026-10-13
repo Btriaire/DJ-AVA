@@ -34,6 +34,7 @@ import { CpuMeter } from "@/components/CpuMeter";
 import { StudioView } from "@/components/StudioView";
 import { PlatineView } from "@/components/PlatineView";
 import { StemPrepPanel } from "@/components/StemPrepPanel";
+import { DancePanel } from "@/components/DancePanel";
 import { HoldButton } from "@/components/HoldButton";
 import { Splash } from "@/components/Splash";
 import {
@@ -225,6 +226,7 @@ export default function Home() {
     fxpad: boolean;
     stemprep: boolean;
     djsynth: boolean;
+    dance: boolean;
     drums: boolean;
     slicer: boolean;
     harmony: boolean;
@@ -263,6 +265,7 @@ export default function Home() {
     fxpad: true,
     stemprep: true,
     djsynth: false,
+    dance: true,
     drums: false,
     slicer: false,
     harmony: false,
@@ -322,6 +325,7 @@ export default function Home() {
     { key: "soundfx", label: "FX Sonores", scope: "global", category: "Instruments & Sources" },
     { key: "djsynth", label: "Synthé DJ · Basse & Stab", scope: "global", category: "Instruments & Sources" },
     { key: "drums", label: "Boîte à rythmes", scope: "global", category: "Instruments & Sources" },
+    { key: "dance", label: "Danse · Genres, pompage des stems, montée et drop", scope: "global", category: "Instruments & Sources" },
     // Mixer & EQ
     { key: "boss", label: "Boss Master FX", scope: "mixer", category: "Mixer & EQ" },
     { key: "eq", label: "EQ 15 bandes", scope: "deck", category: "Mixer & EQ" },
@@ -1415,6 +1419,12 @@ export default function Home() {
             {modules.solar42 && (
               <div className={deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}>
                 <Solar42F key={`solar42-${resetKey}`} engine={engine} embedded />
+              </div>
+            )}
+
+            {modules.dance && (
+              <div className={deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}>
+                <DancePanel engine={engine} />
               </div>
             )}
 

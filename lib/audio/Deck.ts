@@ -118,6 +118,9 @@ export class Deck {
   private stemMeterBuf = new Float32Array(256); // reusable scratch for RMS reads
   private stemEnv: number[] = []; // smoothed per-stem meter level (VU-style ballistics)
   private stemBus!: GainNode; // sum of the stem gains, carries the makeup gain
+  private stemPump!: GainNode; // dips on every beat while the stem pump is on
+  private pumpLast = -1; // ctx time of the last beat already pumped
+  private pumpTimer: ReturnType<typeof setInterval> | null = null;
   stemMakeup = true; // auto-compensate level when stem faders are pulled down
   stemNames: string[] = []; // active stem labels (drives the fader count)
   stemModel: "htdemucs" | "htdemucs_ft" | "htdemucs_6s" = "htdemucs";
@@ -321,7 +324,9 @@ export class Deck {
     // shouldn't make the whole deck quieter). The rest of the chain — EQ, filter,
     // FX, volume — is identical whether we play the full mix or N stems.
     this.stemBus = C();
-    this.stemBus.connect(this.trim);
+    this.stemPump = C();
+    this.stemBus.connect(this.stemPump);
+    this.stemPump.connect(this.trim);
 
     // shared reverb/delay send buses — built once per deck, always present;
     // each stem's SEND gain (below) starts at 0 so this is silent until raised.
@@ -1492,6 +1497,37 @@ export class Deck {
       nextBeat: Math.floor((this.position() - this.beatGridOffset) / spb) + 1,
       playing: this._playing
     };
+  }
+
+  // Pump the stem bus on the beat: it dips to (1 - depth) on each beat and comes back
+  // over releaseBeats. Scheduled on the audio clock, looking ahead a quarter second.
+  setStemPump(on: boolean, depth = 0.8, releaseBeats = 0.5): void {
+    if (this.pumpTimer) {
+      clearInterval(this.pumpTimer);
+      this.pumpTimer = null;
+    }
+    const now = this.ctx.currentTime;
+    this.stemPump.gain.cancelScheduledValues(now);
+    this.stemPump.gain.setValueAtTime(1, now);
+    this.pumpLast = -1;
+    if (!on) return;
+    this.pumpTimer = setInterval(() => {
+      const c = this.fxClock();
+      if (!c || !c.playing) return;
+      const spb = 60 / c.bpm;
+      const t0 = this.ctx.currentTime;
+      const horizon = t0 + 0.25;
+      let t = t0 + c.toNextBeat;
+      while (t < horizon) {
+        if (t > this.pumpLast + spb * 0.5) {
+          const g = this.stemPump.gain;
+          g.setValueAtTime(1 - depth, t);
+          g.linearRampToValueAtTime(1, t + releaseBeats * spb);
+          this.pumpLast = t;
+        }
+        t += spb;
+      }
+    }, 50);
   }
 
   // FX rack — each effect has an independent wet level (0..1)
