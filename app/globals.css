@@ -214,6 +214,14 @@ body {
   transform: translateY(1px);
 }
 
+/* keyboard focus always visible; mouse clicks don't draw the ring */
+button:focus-visible,
+[role="switch"]:focus-visible,
+input:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
+}
+
 /* ---- DDJ-REV5 style jog wheel ---- */
 /* outer grippy rubber rim with radial notches */
 .hw-jog {

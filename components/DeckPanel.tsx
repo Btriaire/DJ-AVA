@@ -7,6 +7,7 @@ import { StemFxPanel } from "./StemFxPanel";
 import { StemLoopPanel } from "./StemLoopPanel";
 import { Waveform } from "./Waveform";
 import { FxSection } from "./FxSection";
+import { HoldButton } from "./HoldButton";
 import { saveFileToLibrary, enqueuePrep } from "@/lib/stemPrep";
 import { Spectrum } from "./Spectrum";
 import { RackPanel } from "./RackPanel";
@@ -240,6 +241,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
   // stems are simply unavailable past 8 min (Demucs on CPU can't keep up) — the
   // whole trigger is hidden rather than allowing a click that fails later.
   const stemTooLongForTrack = !!deck.name && deck.duration > 8 * 60 && !deck.stemReady;
+  const [dragOver, setDragOver] = useState(false);
 
   // per-deck PANIC: eject the loaded song and return every control of THIS deck
   // to zero (EQ, gain, filter, pitch, scratch, loop, FX) — the other deck is
@@ -262,12 +264,10 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
   const pos = deck.position();
   const progress = deck.duration ? pos / deck.duration : 0;
 
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
+  async function loadFile(file: File) {
     setLoading(true);
     try {
+      await deck.loadStreaming(file, file.name.replace(/\.[^.]+$/, ""));
       void saveFileToLibrary(file)
         .then((t) => {
           enqueuePrep([t]);
@@ -282,6 +282,12 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (file) await loadFile(file);
   }
 
   // --- previous / next single -------------------------------------------
@@ -650,13 +656,13 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
           >
             ⏻
           </button>
-          <button
-            onClick={panic}
+          <HoldButton
+            onConfirm={panic}
+            holdMs={700}
             className="hw-panic text-[11px]"
-            title={`PANIC Deck ${side} : éjecte le morceau et remet toutes les commandes à zéro`}
-          >
-            PANIC
-          </button>
+            label="PANIC"
+            title={`PANIC Deck ${side} : maintiens 0,7 s pour éjecter le morceau et remettre les commandes à zéro`}
+          />
           {onClose && (
             <button
               onClick={onClose}
@@ -728,7 +734,31 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
             </div>
           )}
         </div>
-        <div className="hw-screen flex-1 p-2">
+        <div
+          className={`hw-screen relative flex-1 p-2 ${dragOver ? "ring-2 ring-offset-0" : ""}`}
+          style={dragOver ? { ["--tw-ring-color" as string]: color } : undefined}
+          onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setDragOver(true); } }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            const f = e.dataTransfer.files[0];
+            if (f && f.type.startsWith("audio") || f && /\.(mp3|wav|flac|ogg|m4a|aac)$/i.test(f.name)) loadFile(f);
+          }}
+        >
+          {!deck.name && (
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1 rounded-[inherit] text-center"
+              title="Glisse un morceau ici, ou clique pour choisir un fichier"
+            >
+              <span className="text-[12px] font-bold uppercase tracking-wide" style={{ color }}>
+                {dragOver ? "Relâche pour charger" : "Glisse un morceau ici"}
+              </span>
+              <span className="text-[11px] text-neutral-400">ou clique pour choisir un fichier audio</span>
+            </button>
+          )}
           <Waveform
             peaks={deck.peaks}
             progress={progress}
@@ -1212,7 +1242,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                         style={
                           deck.stemFxTargets.has(i)
                             ? { background: color, color: "#0a0a0a" }
-                            : { background: "rgba(255,255,255,0.1)", color: "#b0b0b0" }
+                            : { background: "rgba(255,255,255,0.08)", color: "#b0b0b0" }
                         }
                         title="Route ce stem à travers le Rack DSP en bas — pense à aussi ALLUMER un module ET monter son fader INT là-bas, sinon rien ne s'entend (le Rack démarre à 0%)"
                         onClick={() => {

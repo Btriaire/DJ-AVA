@@ -34,6 +34,7 @@ import { CpuMeter } from "@/components/CpuMeter";
 import { StudioView } from "@/components/StudioView";
 import { PlatineView } from "@/components/PlatineView";
 import { StemPrepPanel } from "@/components/StemPrepPanel";
+import { HoldButton } from "@/components/HoldButton";
 import { Splash } from "@/components/Splash";
 import {
   IconMixer,
@@ -899,14 +900,13 @@ export default function Home() {
           )}
 
           {ready && (
-            <button
-              onClick={panic}
+            <HoldButton
+              onConfirm={panic}
+              holdMs={700}
               className="hw-panic inline-flex items-center gap-1 px-2.5 py-1 text-xs"
-              title="Tout remettre à zéro (garde les morceaux chargés)"
-            >
-              <IconAlertTriangle className="w-3.5 h-3.5" />
-              <span>PANIC</span>
-            </button>
+              label={<><IconAlertTriangle className="w-3.5 h-3.5" /><span>PANIC</span></>}
+              title="Tout remettre à zéro : maintiens 0,7 s (garde les morceaux chargés)"
+            />
           )}
 
           {ready && view === "console" && (
