@@ -107,6 +107,10 @@ export class Deck {
   static separationAllowed: () => boolean = () => true;
   private stemBuffers: (AudioBuffer | null)[] = []; // length === stemNames.length when loaded
   private stemGains: GainNode[] = []; // STEM_MAX gains, all summed into stemBus
+  private stemSynthIn: GainNode[] = []; // per-stem input for the DJ synth, feeds the stem's filter
+  private synthRoute: { src: AudioNode; dst: AudioNode } | null = null; // synth output and its master bus
+  private synthStem: number | null = null; // stem currently replaced by the synth
+  private static synthHolder: Deck | null = null; // only one deck can hold the synth at a time
   private stemAnalysers: AnalyserNode[] = []; // per-stem level taps for the LED meters
   private stemMeterBuf = new Float32Array(256); // reusable scratch for RMS reads
   private stemEnv: number[] = []; // smoothed per-stem meter level (VU-style ballistics)
@@ -352,6 +356,9 @@ export class Deck {
       g.connect(filt);
       filt.connect(drive);
       drive.connect(this.stemBus);
+      const synthIn = C();
+      synthIn.connect(filt);
+      this.stemSynthIn.push(synthIn);
       this.stemFilter.push(filt);
       this.stemFilterX.push(0);
       this.stemDrive.push(drive);
@@ -1226,6 +1233,37 @@ export class Deck {
     } catch {
       if (this.loadGen === gen && this.stemStatus === "prefetching") this.stemStatus = "none";
     }
+  }
+
+  setSynthRoute(src: AudioNode, dst: AudioNode) {
+    this.synthRoute = { src, dst };
+  }
+
+  get stemSynthIndex(): number | null {
+    return this.synthStem;
+  }
+
+  // Replace stem i with the DJ synth (it then goes through this stem's filter and FX),
+  // or give the stem back when i is null. One replacement at a time across both decks.
+  setStemSynth(i: number | null) {
+    const route = this.synthRoute;
+    if (!route) return;
+    if (Deck.synthHolder && Deck.synthHolder !== this) Deck.synthHolder.releaseStemSynth();
+    this.releaseStemSynth();
+    if (i === null || i < 0 || i >= this.stemSynthIn.length) return;
+    route.src.disconnect(route.dst);
+    route.src.connect(this.stemSynthIn[i]);
+    this.synthStem = i;
+    Deck.synthHolder = this;
+  }
+
+  releaseStemSynth() {
+    const route = this.synthRoute;
+    if (!route || this.synthStem === null) return;
+    route.src.disconnect(this.stemSynthIn[this.synthStem]);
+    route.src.connect(route.dst);
+    this.synthStem = null;
+    if (Deck.synthHolder === this) Deck.synthHolder = null;
   }
 
   // per-stem volume (0..1+); index follows stemNames order

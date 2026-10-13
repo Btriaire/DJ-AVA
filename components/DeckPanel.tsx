@@ -1125,6 +1125,28 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                         S
                       </button>
                       <button
+                        className="min-w-[26px] rounded px-2 py-1 text-[11px] font-black leading-none disabled:opacity-30"
+                        disabled={!deck.stemsActive}
+                        style={
+                          deck.stemSynthIndex === i
+                            ? { background: "#e879f9", color: "#0a0a0a" }
+                            : { background: "rgba(255,255,255,0.08)", color: "#b0b0b0" }
+                        }
+                        title="Remplace ce stem par le Synthé DJ (il passe par les filtres et effets de ce stem). Clique à nouveau pour rendre le stem"
+                        onClick={() => {
+                          if (deck.stemSynthIndex === i) {
+                            deck.setStemSynth(null);
+                            deck.setStemVol(i, 1);
+                          } else {
+                            deck.setStemSynth(i);
+                            deck.setStemVol(i, 0);
+                          }
+                          rerender();
+                        }}
+                      >
+                        SYN
+                      </button>
+                      <button
                         className="min-w-[26px] rounded px-2 py-1 text-[11px] font-black leading-none"
                         style={
                           deck.stemFxTargets.has(i)

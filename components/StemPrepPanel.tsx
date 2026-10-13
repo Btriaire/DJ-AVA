@@ -105,9 +105,9 @@ export function StemPrepPanel({ engine }: { engine: DJEngine }) {
                   <div className="h-full rounded" style={{ width: `${job.progress}%`, background: "#34d399" }} />
                 </div>
                 <span className="text-[10px] text-neutral-400">
-                  {job.status === "queued" ? "dans la file" : job.status === "running" ? `séparation ${job.progress} %` : `échec : ${job.error}`}
+                  {job.status === "queued" ? "dans la file" : job.status === "running" ? `séparation ${job.progress} %` : job.error === "fichier introuvable" ? "fichier absent : réimporte le morceau" : `échec : ${job.error}`}
                 </span>
-                {job.status === "error" && (
+                {job.status === "error" && job.error !== "fichier introuvable" && (
                   <button
                     className="hw-btn px-2 py-1 text-[10px] font-bold"
                     title="Relancer la préparation de ce morceau"

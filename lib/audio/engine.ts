@@ -113,6 +113,8 @@ export class DJEngine {
     this.drums.out.connect(this.master);
     this.djSynth = new DjSynth(this.ctx, () => this.masterClock());
     this.djSynth.out.connect(this.master);
+    this.deckA.setSynthRoute(this.djSynth.out, this.master);
+    this.deckB.setSynthRoute(this.djSynth.out, this.master);
     this.slicerA = new Slicer(this.ctx, this.deckA);
     this.slicerB = new Slicer(this.ctx, this.deckB);
 

@@ -1260,7 +1260,12 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
                 ⏳ en file
               </span>
             )}
-            {!hasStems && !prepReady && prepJob?.status === "error" && (
+            {!hasStems && !prepReady && prepJob?.status === "error" && prepJob.error === "fichier introuvable" && (
+              <span className="rounded-sm px-1 font-black text-red-300" title="Le fichier audio n'est plus dans le navigateur : réimporte le morceau">
+                ✂ FICHIER ABSENT
+              </span>
+            )}
+            {!hasStems && !prepReady && prepJob?.status === "error" && prepJob.error !== "fichier introuvable" && (
               <button
                 onClick={() => queueStemsPrep(t)}
                 className="rounded-sm px-1 font-black text-red-300 ring-1 ring-red-800"
