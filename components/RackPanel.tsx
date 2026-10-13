@@ -454,8 +454,21 @@ function RackModuleDetail({
           }}
         />
         <span className="text-[10px] font-black uppercase" style={{ color: on ? color : "#6b6b6b" }}>{def.label}</span>
+        <span className="text-[9px] font-bold tracking-wider" style={{ color: on ? color : "#6b6b6b" }}>{on ? "ACTIF" : "BYPASS"}</span>
         <span className="text-[10px] text-neutral-400">{def.title}</span>
         <div className="ml-auto flex items-center gap-1">
+          <button
+            className="mr-2 text-[10px] font-bold text-neutral-400 hover:text-neutral-100"
+            title="Remet les paramètres de ce module à leurs valeurs par défaut"
+            onClick={() => {
+              def.params.forEach((p) => rack.setParam(id, p.key, p.def));
+              rack.setMix(id, 1);
+              flashLcd(`${def.label} RÉINITIALISÉ`);
+              onChanged();
+            }}
+          >
+            RÉINIT.
+          </button>
           <button
             className="text-[10px] leading-none text-neutral-500 hover:text-neutral-200 disabled:opacity-30"
             onClick={() => onMove(id, -1)}
@@ -839,8 +852,9 @@ export function RackPanel({
 
         <RackSpectrum rack={rack} color={color} />
 
-        <div className="hw-recess flex flex-wrap items-end gap-3 p-2 min-w-0">
+        <div className="hw-recess flex flex-wrap items-end gap-3 p-2 min-w-0" title="Une macro pilote plusieurs paramètres d'un coup : clique LIER, puis clique les paramètres à lier">
           <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500">Macros</span>
+          <span className="text-[9px] text-neutral-500">un bouton, plusieurs paramètres</span>
           {rack.macros.map((m, i) => (
             <div key={i} className="flex flex-col items-center">
               <Knob
@@ -864,7 +878,7 @@ export function RackPanel({
                 style={{ ["--led" as string]: color, color: armed === i ? "#0a0a0a" : color, background: armed === i ? color : "transparent" }}
                 title="Mode assignation : clique ensuite un paramètre pour le lier/délier à cette macro"
               >
-                {m.targets.length ? `lié ${m.targets.length}` : "ASSIGN"}
+                {m.targets.length ? `${m.targets.length} lié${m.targets.length > 1 ? "s" : ""}` : "LIER"}
               </button>
             </div>
           ))}
@@ -905,14 +919,16 @@ export function RackPanel({
                       rack.setEnabled(id, !on);
                       force();
                     }}
-                    className="rounded-full"
+                    title={on ? "Activé : clic pour désactiver" : "Désactivé : clic pour activer"}
+                    className="rounded px-1 text-[8px] font-black leading-tight"
                     style={{
-                      width: 8,
-                      height: 8,
-                      background: on ? color : "#3a3a3a",
+                      color: on ? "#0a0a0a" : "#8a8a8a",
+                      background: on ? color : "#2a2a2a",
                       boxShadow: on ? `0 0 3px ${color}` : "none",
                     }}
-                  />
+                  >
+                    {on ? "ON" : "OFF"}
+                  </span>
                 </div>
               </button>
             );
@@ -938,7 +954,7 @@ export function RackPanel({
         )}
 
         <span className="text-[9px] leading-tight text-neutral-600">
-          Pédalier série. Clic pad = sélectionner · voyant = bypass · ◀▶ = réordonner · Dosage = intensité. Sauvé par morceau.
+          Clique un module pour le régler. Pastille ON/OFF = activer ou couper. ◀ ▶ = changer l&apos;ordre de la chaîne. Dosage = part de l&apos;effet dans le son. Réglages sauvés par morceau.
         </span>
       </div>
     </div>
