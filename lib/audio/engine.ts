@@ -12,6 +12,7 @@ import { MidiManager } from "./midi";
 import { idbPutBlob, idbGetBlob, idbDelBlob } from "../library";
 import * as Tone from "tone";
 import { SamplePad, type PadSource } from "./SamplePad";
+import { SuperSampler } from "./SuperSampler";
 
 // Build the AudioContext tuned for the lowest practical action latency. The
 // "interactive" hint tells the browser to pick the smallest hardware buffer it
@@ -40,6 +41,7 @@ export class DJEngine {
   readonly drums: DrumMachine;
   readonly djSynth: DjSynth;
   readonly keyPad: SamplePad; // DJ keyboard: plays slices of the chosen deck
+  readonly superSampler: SuperSampler; // sampler: any source, played from the keyboard or sequencer
   private keySide: "A" | "B" = "A";
   readonly slicerA: Slicer;
   readonly slicerB: Slicer;
@@ -119,6 +121,7 @@ export class DJEngine {
     this.djSynth = new DjSynth(this.ctx, () => this.masterClock());
     this.djSynth.out.connect(this.master);
     this.keyPad = new SamplePad(this.ctx, this.master, () => this.keySourceInfo());
+    this.superSampler = new SuperSampler(this.ctx, this.master, () => this.masterDeck()?.fxClock()?.bpm ?? 120);
     this.deckA.setSynthRoute(this.djSynth.out, this.master);
     this.deckB.setSynthRoute(this.djSynth.out, this.master);
     this.slicerA = new Slicer(this.ctx, this.deckA);

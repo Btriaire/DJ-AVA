@@ -86,6 +86,8 @@ export class Deck {
   // true while we're in phase 1 (streaming preview, full decode still in flight)
   private _bufferLoading = false;
   get bufferLoading(): boolean { return this._bufferLoading; }
+  // decoded stem i of the loaded track (null when not separated), for the sampler
+  getStemBuffer(i: number): AudioBuffer | null { return this.stemBuffers[i] ?? null; }
 
   private cleanupMediaEl() {
     if (this.mediaElSrc) { try { this.mediaElSrc.disconnect(); } catch {} this.mediaElSrc = null; }
