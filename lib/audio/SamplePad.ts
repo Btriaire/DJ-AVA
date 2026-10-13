@@ -1,5 +1,8 @@
 export const PAD_SLICES = 16;
 export const ECHO_DIVS: number[] = [0.25, 0.5, 1, 2];
+export const DRUM_NAMES: string[] = ["Kick", "Kick 2", "Snare", "Clap", "Hat fermé", "Hat ouvert", "Rim", "Tom bas", "Tom haut", "Crash", "Montée", "Descente", "Sub", "Stab", "Sirène", "Zap"];
+
+export type PadBank = "slices" | "drums";
 
 export interface PadSource {
   buffer: AudioBuffer | null;
@@ -53,6 +56,8 @@ export class SamplePad {
   private lastPlayedSlice: number | null = null;
   private sourceBuffer: AudioBuffer | null = null;
   private reversedBuffer: AudioBuffer | null = null;
+  private bank: PadBank = "slices";
+  private drumBuffers: AudioBuffer[] | null = null;
 
   constructor(ctx: AudioContext, dest: AudioNode, source: () => PadSource) {
     this.ctx = ctx;
@@ -90,6 +95,296 @@ export class SamplePad {
     this.reverbOut.connect(dest);
 
     this.noiseBuffer = this.createNoiseBuffer();
+  }
+
+  setBank(b: PadBank): void {
+    this.stopAll();
+    this.bank = b;
+  }
+
+  private generateDrumBuffers(): AudioBuffer[] {
+    const buffers: AudioBuffer[] = [];
+    const sampleRate = this.ctx.sampleRate;
+
+    // Kick (0)
+    const kickBuffer = this.ctx.createBuffer(2, sampleRate * 0.35, sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = kickBuffer.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) {
+        const t = i / sampleRate;
+        const freq = 150 * Math.exp(-t * 5);
+        const env = Math.exp(-t * 2.85);
+        const click = t < 0.003 ? (1 - t * 1000) : 0;
+        data[i] = Math.sin(2 * Math.PI * freq * t) * env + click * 0.2;
+      }
+    }
+    buffers.push(this.normalizeBuffer(kickBuffer, 0.9));
+
+    // Kick 2 (1)
+    const kick2Buffer = this.ctx.createBuffer(2, sampleRate * 0.6, sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = kick2Buffer.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) {
+        const t = i / sampleRate;
+        const freq = 120 * Math.exp(-t * 3.3);
+        const env = Math.exp(-t * 1.66);
+        data[i] = Math.tanh(2 * Math.sin(2 * Math.PI * freq * t) * env);
+      }
+    }
+    buffers.push(this.normalizeBuffer(kick2Buffer, 0.9));
+
+    // Snare (2)
+    const snareBuffer = this.ctx.createBuffer(2, sampleRate * 0.18, sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = snareBuffer.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) {
+        const t = i / sampleRate;
+        const env = Math.exp(-t * 3.8);
+        const noise = (Math.random() * 2 - 1) * env;
+        const tone = Math.sin(2 * Math.PI * 190 * t) * (t < 0.08 ? 1 : 0);
+        data[i] = noise * 0.5 + tone * 0.3;
+      }
+    }
+    buffers.push(this.normalizeBuffer(snareBuffer, 0.9));
+
+    // Clap (3)
+    const clapBuffer = this.ctx.createBuffer(2, sampleRate * 0.15, sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = clapBuffer.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) {
+        const t = i / sampleRate;
+        const env = Math.exp(-t * 4.6);
+        const burst = (t < 0.01 || (t > 0.015 && t < 0.025) || (t > 0.035 && t < 0.045)) ? 1 : 0;
+        data[i] = (Math.random() * 2 - 1) * burst * env;
+      }
+    }
+    buffers.push(this.normalizeBuffer(clapBuffer, 0.9));
+
+    // Hat fermé (4)
+    const closedHatBuffer = this.ctx.createBuffer(2, sampleRate * 0.04, sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = closedHatBuffer.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) {
+        const t = i / sampleRate;
+        const env = Math.exp(-t * 17);
+        data[i] = (Math.random() * 2 - 1) * env;
+      }
+    }
+    buffers.push(this.normalizeBuffer(closedHatBuffer, 0.9));
+
+    // Hat ouvert (5)
+    const openHatBuffer = this.ctx.createBuffer(2, sampleRate * 0.35, sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = openHatBuffer.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) {
+        const t = i / sampleRate;
+        const env = Math.exp(-t * 2);
+        data[i] = (Math.random() * 2 - 1) * env;
+      }
+    }
+    buffers.push(this.normalizeBuffer(openHatBuffer, 0.9));
+
+    // Rim (6)
+    const rimBuffer = this.ctx.createBuffer(2, sampleRate * 0.03, sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = rimBuffer.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) {
+        const t = i / sampleRate;
+        const env = Math.exp(-t * 33);
+        const click = t < 0.001 ? (1 - t * 1000) : 0;
+        data[i] = Math.sin(2 * Math.PI * 900 * t) * env + click * 0.3;
+      }
+    }
+    buffers.push(this.normalizeBuffer(rimBuffer, 0.9));
+
+    // Tom bas (7)
+    const lowTomBuffer = this.ctx.createBuffer(2, sampleRate * 0.5, sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = lowTomBuffer.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) {
+        const t = i / sampleRate;
+        const freq = 110 * Math.exp(-t * 3.5);
+        const env = Math.exp(-t * 2);
+        data[i] = Math.sin(2 * Math.PI * freq * t) * env;
+      }
+    }
+    buffers.push(this.normalizeBuffer(lowTomBuffer, 0.9));
+
+    // Tom haut (8)
+    const highTomBuffer = this.ctx.createBuffer(2, sampleRate * 0.35, sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = highTomBuffer.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) {
+        const t = i / sampleRate;
+        const freq = 220 * Math.exp(-t * 5);
+        const env = Math.exp(-t * 2.85);
+        data[i] = Math.sin(2 * Math.PI * freq * t) * env;
+      }
+    }
+    buffers.push(this.normalizeBuffer(highTomBuffer, 0.9));
+
+    // Crash (9)
+    const crashBuffer = this.ctx.createBuffer(2, sampleRate * 1.6, sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = crashBuffer.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) {
+        const t = i / sampleRate;
+        const env = t < 0.002 ? t * 500 : Math.exp(-t * 0.625);
+        data[i] = (Math.random() * 2 - 1) * env;
+      }
+    }
+    buffers.push(this.normalizeBuffer(crashBuffer, 0.9));
+
+    // Montée (10)
+    const riseBuffer = this.ctx.createBuffer(2, sampleRate * 2, sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = riseBuffer.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) {
+        const t = i / sampleRate;
+        const env = t / 2;
+        const cutoff = 300 + (12000 - 300) * (t / 2);
+        const noise = (Math.random() * 2 - 1) * env;
+        data[i] = noise * (cutoff > 12000 ? 1 : Math.exp(-(12000 - cutoff) * 0.001));
+      }
+    }
+    buffers.push(this.normalizeBuffer(riseBuffer, 0.9));
+
+    // Descente (11)
+    const fallBuffer = this.ctx.createBuffer(2, sampleRate * 1.5, sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = fallBuffer.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) {
+        const t = i / sampleRate;
+        const env = 1 - t / 1.5;
+        const cutoff = 12000 - (12000 - 200) * (t / 1.5);
+        const noise = (Math.random() * 2 - 1) * env;
+        data[i] = noise * (cutoff < 200 ? 1 : Math.exp(-(cutoff - 200) * 0.001));
+      }
+    }
+    buffers.push(this.normalizeBuffer(fallBuffer, 0.9));
+
+    // Sub (12)
+    const subBuffer = this.ctx.createBuffer(2, sampleRate * 1.2, sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = subBuffer.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) {
+        const t = i / sampleRate;
+        const env = t < 0.01 ? t * 100 : Math.exp(-(t - 0.01) * 1.66);
+        data[i] = Math.sin(2 * Math.PI * 50 * t) * env;
+      }
+    }
+    buffers.push(this.normalizeBuffer(subBuffer, 0.9));
+
+    // Stab (13)
+    const stabBuffer = this.ctx.createBuffer(2, sampleRate * 0.35, sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = stabBuffer.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) {
+        const t = i / sampleRate;
+        const env = Math.exp(-t * 2.85);
+        const saw = (t * 1000) % 1;
+        const chord = Math.sin(2 * Math.PI * 220 * t) * 0.6 +
+                      Math.sin(2 * Math.PI * 277 * t) * 0.3 +
+                      Math.sin(2 * Math.PI * 330 * t) * 0.1;
+        data[i] = (chord * (1 - saw) + saw * chord * 0.5) * env;
+      }
+    }
+    buffers.push(this.normalizeBuffer(stabBuffer, 0.9));
+
+    // Sirène (14)
+    const sirenBuffer = this.ctx.createBuffer(2, sampleRate * 1.2, sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = sirenBuffer.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) {
+        const t = i / sampleRate;
+        const freq = 500 + 700 * Math.sin(2 * Math.PI * t);
+        const env = Math.exp(-t * 0.833);
+        data[i] = Math.sin(2 * Math.PI * freq * t) * env;
+      }
+    }
+    buffers.push(this.normalizeBuffer(sirenBuffer, 0.9));
+
+    // Zap (15)
+    const zapBuffer = this.ctx.createBuffer(2, sampleRate * 0.3, sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = zapBuffer.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) {
+        const t = i / sampleRate;
+        const freq = 2000 * Math.exp(-t * 3.3);
+        const env = Math.exp(-t * 4);
+        data[i] = Math.sin(2 * Math.PI * freq * t) * env;
+      }
+    }
+    buffers.push(this.normalizeBuffer(zapBuffer, 0.9));
+
+    return buffers;
+  }
+
+  private normalizeBuffer(buffer: AudioBuffer, targetPeak: number): AudioBuffer {
+    let max = 0;
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+      const data = buffer.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) {
+        max = Math.max(max, Math.abs(data[i]));
+      }
+    }
+
+    if (max > 0) {
+      const scale = targetPeak / max;
+      for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+        const data = buffer.getChannelData(ch);
+        for (let i = 0; i < data.length; i++) {
+          data[i] *= scale;
+        }
+      }
+    }
+
+    return buffer;
+  }
+
+  triggerDrum(index: number): void {
+    if (index < 0 || index >= 16) return;
+
+    if (!this.drumBuffers) {
+      this.drumBuffers = this.generateDrumBuffers();
+    }
+
+    const buffer = this.drumBuffers[index];
+    if (!buffer) return;
+
+    if (this.voices.has(index)) {
+      this.stopVoice(index);
+    }
+
+    const source = this.ctx.createBufferSource();
+    source.buffer = buffer;
+    source.playbackRate.value = 2 ** (this.settings.pitch / 12);
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0, this.ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(1, this.ctx.currentTime + 0.004);
+
+    source.connect(gain);
+    gain.connect(this.filter);
+
+    const startTime = this.ctx.currentTime;
+    source.start(0, 0);
+    source.stop(startTime + buffer.duration);
+
+    const voice: Voice = {
+      source,
+      gain,
+      gateInterval: null,
+      startTime,
+    };
+
+    this.voices.set(index, voice);
+
+    source.onended = () => {
+      if (this.voices.get(index) === voice) {
+        this.voices.delete(index);
+      }
+    };
   }
 
   private startVoice(slice: number): void {
@@ -180,6 +475,11 @@ export class SamplePad {
 
   trigger(slice: number): void {
     if (slice < 0 || slice >= PAD_SLICES) return;
+
+    if (this.bank === "drums") {
+      this.triggerDrum(slice);
+      return;
+    }
 
     const src = this.source();
     if (!src.buffer || src.bpm <= 0) return;

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { DJEngine } from "@/lib/audio/engine";
-import { PAD_SLICES, ECHO_DIVS, type PadSettings } from "@/lib/audio/SamplePad";
+import { PAD_SLICES, ECHO_DIVS, DRUM_NAMES, type PadBank, type PadSettings } from "@/lib/audio/SamplePad";
 import { Knob } from "./Knob";
 
 type Props = {
@@ -12,6 +12,13 @@ export const DJKeyboard = ({ engine }: Props) => {
   const [activeMask, setActiveMask] = useState(0);
   const [lastEffect, setLastEffect] = useState("");
   const [keySource, setKeySource] = useState(engine.getKeySource());
+  const [bank, setBank] = useState<PadBank>("slices");
+
+  const toggleBank = () => {
+    const next: PadBank = bank === "slices" ? "drums" : "slices";
+    engine.keyPad.setBank(next);
+    setBank(next);
+  };
   const [currentStep, setCurrentStep] = useState(-1);
   const [dropUntil, setDropUntil] = useState<number | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -52,6 +59,7 @@ export const DJKeyboard = ({ engine }: Props) => {
       const wasReversed = settings.reverse;
       if (shiftPressed.current) setSetting("reverse", true);
       engine.keyPad.trigger(sliceIndex);
+      if (bank === "drums") setLastEffect(DRUM_NAMES[sliceIndex]);
       if (shiftPressed.current) setSetting("reverse", wasReversed);
       return;
     }
@@ -98,7 +106,7 @@ export const DJKeyboard = ({ engine }: Props) => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [settings]);
+  }, [settings, bank]);
 
   useEffect(() => {
     intervalRef.current = setInterval(() => {
@@ -135,6 +143,7 @@ export const DJKeyboard = ({ engine }: Props) => {
     const wasReversed = settings.reverse;
     if (shiftPressed.current) setSetting("reverse", true);
     engine.keyPad.trigger(slice);
+    if (bank === "drums") setLastEffect(DRUM_NAMES[slice]);
     if (shiftPressed.current) setSetting("reverse", wasReversed);
   };
 
@@ -164,7 +173,7 @@ export const DJKeyboard = ({ engine }: Props) => {
           <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-white"></div>
         )}
         <div className="text-3xl font-bold">{padKeys[slice]}</div>
-        <div className="text-xs opacity-70">{slice + 1}</div>
+        <div className="text-[10px] opacity-70 truncate max-w-full">{bank === "drums" ? DRUM_NAMES[slice] : slice + 1}</div>
       </div>
     );
   };
@@ -272,6 +281,14 @@ export const DJKeyboard = ({ engine }: Props) => {
         </button>
       </div>
 
+      <div className="grid grid-cols-1 gap-2">
+        <button
+          className={`hw-btn ${bank === "drums" ? "hw-btn-on" : ""}`}
+          onClick={toggleBank}
+        >
+          {bank === "drums" ? "BANQUE : BATTERIE" : "BANQUE : TRANCHES"}
+        </button>
+      </div>
       <div className="grid grid-cols-2 gap-2">
         <button
           className={`hw-btn ${keySource === "A" ? "hw-btn-on" : ""}`}
