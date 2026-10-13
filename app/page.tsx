@@ -36,6 +36,7 @@ import { PlatineView } from "@/components/PlatineView";
 import { StemPrepPanel } from "@/components/StemPrepPanel";
 import { DancePanel } from "@/components/DancePanel";
 import { DJKeyboard } from "@/components/DJKeyboard";
+import { SuperSampler } from "@/components/SuperSampler";
 import { HoldButton } from "@/components/HoldButton";
 import { Splash } from "@/components/Splash";
 import {
@@ -229,6 +230,7 @@ export default function Home() {
     djsynth: boolean;
     dance: boolean;
     djkbd: boolean;
+    supersampler: boolean;
     drums: boolean;
     slicer: boolean;
     harmony: boolean;
@@ -269,6 +271,7 @@ export default function Home() {
     djsynth: false,
     dance: true,
     djkbd: true,
+    supersampler: true,
     drums: false,
     slicer: false,
     harmony: false,
@@ -330,6 +333,7 @@ export default function Home() {
     { key: "drums", label: "Boîte à rythmes", scope: "global", category: "Instruments & Sources" },
     { key: "dance", label: "Danse · Genres, pompage des stems, montée et drop", scope: "global", category: "Instruments & Sources" },
     { key: "djkbd", label: "Clavier DJ · Tranches du morceau, effets, drops", scope: "global", category: "Instruments & Sources" },
+    { key: "supersampler", label: "Super Sampler · Carbone, LCD, stems, YouTube, WAV 24 bits", scope: "global", category: "Instruments & Sources" },
     // Mixer & EQ
     { key: "boss", label: "Boss Master FX", scope: "mixer", category: "Mixer & EQ" },
     { key: "eq", label: "EQ 15 bandes", scope: "deck", category: "Mixer & EQ" },
@@ -1435,6 +1439,12 @@ export default function Home() {
             {modules.djkbd && (
               <div className={deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}>
                 <DJKeyboard engine={engine} />
+              </div>
+            )}
+
+            {modules.supersampler && (
+              <div className={deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}>
+                <SuperSampler engine={engine} />
               </div>
             )}
 
