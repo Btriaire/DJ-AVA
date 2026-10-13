@@ -33,6 +33,7 @@ import { MixScope } from "@/components/MixScope";
 import { CpuMeter } from "@/components/CpuMeter";
 import { StudioView } from "@/components/StudioView";
 import { PlatineView } from "@/components/PlatineView";
+import { StemPrepPanel } from "@/components/StemPrepPanel";
 import { Splash } from "@/components/Splash";
 import {
   IconMixer,
@@ -221,6 +222,7 @@ export default function Home() {
     boss: boolean;
     eq: boolean;
     fxpad: boolean;
+    stemprep: boolean;
     djsynth: boolean;
     drums: boolean;
     slicer: boolean;
@@ -258,6 +260,7 @@ export default function Home() {
     boss: false,
     eq: false,
     fxpad: true,
+    stemprep: true,
     djsynth: false,
     drums: false,
     slicer: false,
@@ -310,6 +313,7 @@ export default function Home() {
   }
   const MODULE_DEFS: { key: keyof Modules; label: string; scope: string; category: "Instruments & Sources" | "Performance DJ" | "Mixer & EQ" | "Dynamique & Filtrage" | "Distorsion & Caractère" | "Espace & Modulation" }[] = [
     // Instruments & Sources
+    { key: "stemprep", label: "Préparation des stems · Bibliothèque", scope: "global", category: "Instruments & Sources" },
     { key: "synth", label: "Synthé", scope: "global", category: "Instruments & Sources" },
     { key: "dx7", label: "DX7 · Synthé + Sampler", scope: "global", category: "Instruments & Sources" },
     { key: "solar42", label: "Solar 42F · Drone", scope: "global", category: "Instruments & Sources" },
@@ -320,7 +324,7 @@ export default function Home() {
     // Mixer & EQ
     { key: "boss", label: "Boss Master FX", scope: "mixer", category: "Mixer & EQ" },
     { key: "eq", label: "EQ 15 bandes", scope: "deck", category: "Mixer & EQ" },
-    { key: "fxpad", label: "DJ FX + Retouche", scope: "deck", category: "Mixer & EQ" },
+    { key: "fxpad", label: "Effets · DJ FX, Perfo, Rack, Retouche", scope: "deck", category: "Mixer & EQ" },
     { key: "isolator", label: "Isolateur Voix", scope: "deck", category: "Mixer & EQ" },
     // Dynamique & Filtrage
     { key: "comp", label: "Compresseur", scope: "deck", category: "Dynamique & Filtrage" },
@@ -1392,6 +1396,13 @@ export default function Home() {
                 libRefresh={libRefresh}
               />
             </div>
+
+            {/* stem preparation queue + library of prepared stems */}
+            {modules.stemprep && (
+              <div className={deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}>
+                <StemPrepPanel engine={engine} />
+              </div>
+            )}
 
             {/* DX7 synth + sampler — full-width connectable module */}
             {modules.dx7 && (

@@ -7,6 +7,7 @@ import { StemFxPanel } from "./StemFxPanel";
 import { StemLoopPanel } from "./StemLoopPanel";
 import { Waveform } from "./Waveform";
 import { FxSection } from "./FxSection";
+import { saveFileToLibrary, enqueuePrep } from "@/lib/stemPrep";
 import { Spectrum } from "./Spectrum";
 import { RackPanel } from "./RackPanel";
 import { EqRackStrip } from "./EqRackStrip";
@@ -267,7 +268,12 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
     if (!file) return;
     setLoading(true);
     try {
-      deck.loadStreaming(file, file.name.replace(/\.[^.]+$/, ""));
+      void saveFileToLibrary(file)
+        .then((t) => {
+          enqueuePrep([t]);
+          onLibraryChange?.();
+        })
+        .catch(() => {});
       deck.play();
       onLoaded();
       rerender();
@@ -973,7 +979,14 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
 
       {/* FX pad */}
       {activeModules?.fxpad !== false && <div className="hw-recess p-3">
-        <FxSection key={fxKey} rack={deck.fxRack} retouch={deck.retouchFx} color={color} />
+        <FxSection
+          key={fxKey}
+          rack={deck.fxRack}
+          retouch={deck.retouchFx}
+          color={color}
+          perfo={<PerfoPanel deck={deck} color={color} />}
+          dsp={<RackPanel deck={deck} color={color} activeModules={activeModules} />}
+        />
       </div>}
 
       {/* stem separation (Demucs) — split the track into live faders. Demucs on
@@ -1320,11 +1333,6 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
         </div>
       </div>
 
-      {/* full serial DSP rack — modules now individually selectable */}
-      <RackPanel deck={deck} color={color} activeModules={activeModules} />
-
-      {/* performance moves: brake, echo out, censor — beat-synced, same look as DJ FX */}
-      <PerfoPanel deck={deck} color={color} />
 
       {/* beat loop + actions */}
       <div className="flex items-end justify-between gap-4">

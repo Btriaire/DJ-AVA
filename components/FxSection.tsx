@@ -1,45 +1,69 @@
-"use client";
 import { useState } from "react";
 import { DjFxPanel } from "./DjFxPanel";
 import { RetouchPanel } from "./RetouchPanel";
 import { FXRack } from "@/lib/audio/FXRack";
 import { Retouch } from "@/lib/audio/Retouch";
 
-interface Props {
+type Tab = "djfx" | "perfo" | "retouch" | "dsp";
+
+export function FxSection({
+  rack,
+  retouch,
+  color,
+  perfo,
+  dsp,
+}: {
   rack: FXRack;
   retouch: Retouch;
   color: string;
-}
-
-export function FxSection({ rack, retouch, color }: Props) {
-  const [activeTab, setActiveTab] = useState<"djfx" | "retouch">("djfx");
+  perfo: React.ReactNode;
+  dsp: React.ReactNode;
+}) {
+  const [tab, setTab] = useState<Tab>("djfx");
 
   return (
     <div className="flex flex-col gap-2">
-      {/* Tab bar */}
-      <div className="flex gap-1">
+      <div className="flex flex-wrap gap-1">
         <button
-          className={`hw-btn px-3 py-1.5 text-xs font-bold ${activeTab === "djfx" ? "" : "opacity-70"}`}
-          style={activeTab === "djfx" ? { backgroundColor: color, color: "white" } : undefined}
-          onClick={() => setActiveTab("djfx")}
+          className="hw-btn px-2.5 py-1 text-[11px] font-bold"
+          style={tab === "djfx" ? { backgroundColor: color, color: "white" } : { opacity: 0.7 }}
+          onClick={() => setTab("djfx")}
         >
           DJ FX
         </button>
         <button
-          className={`hw-btn px-3 py-1.5 text-xs font-bold relative ${activeTab === "retouch" ? "" : "opacity-70"}`}
-          style={activeTab === "retouch" ? { backgroundColor: color, color: "white" } : undefined}
-          onClick={() => setActiveTab("retouch")}
+          className="hw-btn px-2.5 py-1 text-[11px] font-bold"
+          style={tab === "perfo" ? { backgroundColor: color, color: "white" } : { opacity: 0.7 }}
+          onClick={() => setTab("perfo")}
+        >
+          PERFO
+        </button>
+        <button
+          className="hw-btn px-2.5 py-1 text-[11px] font-bold"
+          style={
+            tab === "retouch"
+              ? { backgroundColor: color, color: "white" }
+              : retouch.isNeutral()
+              ? { opacity: 0.7 }
+              : { backgroundColor: color, opacity: 0.7 }
+          }
+          onClick={() => setTab("retouch")}
         >
           RETOUCHE
-          {!retouch.isNeutral() && (
-            <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
-          )}
+        </button>
+        <button
+          className="hw-btn px-2.5 py-1 text-[11px] font-bold"
+          style={tab === "dsp" ? { backgroundColor: color, color: "white" } : { opacity: 0.7 }}
+          onClick={() => setTab("dsp")}
+        >
+          RACK DSP
         </button>
       </div>
 
-      {/* Tab content */}
-      {activeTab === "djfx" && <DjFxPanel rack={rack} color={color} />}
-      {activeTab === "retouch" && <RetouchPanel retouch={retouch} color={color} />}
+      {tab === "djfx" && <DjFxPanel rack={rack} color={color} />}
+      {tab === "perfo" && perfo}
+      {tab === "retouch" && <RetouchPanel retouch={retouch} color={color} />}
+      {tab === "dsp" && dsp}
     </div>
   );
 }

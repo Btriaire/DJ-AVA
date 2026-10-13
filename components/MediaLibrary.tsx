@@ -14,6 +14,7 @@ import {
   idbDelBlob,
   extractCover,
 } from "@/lib/library";
+import { enqueuePrep } from "@/lib/stemPrep";
 import { AudiusTrack } from "@/lib/audius";
 import { CdPlayerFace } from "./CdPlayerFace";
 
@@ -492,6 +493,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
     }
     if (added.length) {
       persist((d) => ({ ...d, tracks: [...added, ...d.tracks] }));
+      enqueuePrep(added); // every imported file gets its stems prepared in the background
       flash(`${added.length} fichier(s) ajouté(s)`);
     }
   }
