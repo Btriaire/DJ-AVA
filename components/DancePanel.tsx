@@ -48,6 +48,7 @@ export function DancePanel({ engine }: { engine: DJEngine }) {
   const [rampActive, setRampActive] = useState(false);
 
   const handleDeckChange = (d: Deck | null) => {
+    stopRamp();
     setDeck(d);
     setPumpOn(false);
     setActiveGenre(null);
@@ -177,6 +178,23 @@ export function DancePanel({ engine }: { engine: DJEngine }) {
 
     rampIntervalRef.current = rampInterval;
   };
+
+  // stop everything this panel started on a deck when the deck changes or the panel closes
+  useEffect(() => {
+    const previous = deck;
+    return () => {
+      if (!previous) return;
+      previous.setStemPump(false);
+      previous.setFxWet("noise", 0);
+      previous.setFxWet("sweep", 0);
+      if (rampIntervalRef.current) clearInterval(rampIntervalRef.current);
+      rampIntervalRef.current = null;
+      if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
+      transitionTimeoutRef.current = null;
+      if (pumpIntervalRef.current) clearInterval(pumpIntervalRef.current);
+      pumpIntervalRef.current = null;
+    };
+  }, [deck]);
 
   const stopTransition = () => {
     if (rampIntervalRef.current) {
