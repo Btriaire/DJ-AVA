@@ -7,6 +7,9 @@ import { StemFxPanel } from "./StemFxPanel";
 import { StemLoopPanel } from "./StemLoopPanel";
 import { Waveform } from "./Waveform";
 import { FxSection } from "./FxSection";
+import { DeckTransport } from "./DeckTransport";
+import { DeckHotCues } from "./DeckHotCues";
+import { DeckLoopPads } from "./DeckLoopPads";
 import { HoldButton } from "./HoldButton";
 import { saveFileToLibrary, enqueuePrep } from "@/lib/stemPrep";
 import { Spectrum } from "./Spectrum";
@@ -779,123 +782,22 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
       {/* live spectrum */}
       <Spectrum deck={deck} color={color} />
 
-      {/* transport — wraps on narrow screens: 11 controls in one row don't fit
-          an iPhone width, unlike on desktop where there's room to spare */}
-      <div className="flex flex-wrap gap-2">
-        <button
-          className="hw-btn px-2 py-2 text-sm disabled:opacity-40"
-          style={{ ["--led" as string]: color, color }}
-          disabled={stepping}
-          onClick={() => stepSingle(-1)}
-          title={`Single précédent (morceaux classés sur le Deck ${side})`}
-        >
-          ⏮
-        </button>
-        <button
-          className="hw-btn px-2 py-2 text-sm disabled:opacity-40"
-          style={{ ["--led" as string]: color, color }}
-          disabled={stepping}
-          onClick={() => stepSingle(1)}
-          title={`Single suivant (morceaux classés sur le Deck ${side})`}
-        >
-          ⏭
-        </button>
-        <button
-          className="hw-btn flex-1 py-2 text-sm"
-          style={{ ["--led" as string]: color, color }}
-          onClick={() => {
-            deck.setCue();
-            rerender();
-          }}
-        >
-          SET CUE
-        </button>
-        <button
-          className="hw-btn flex-1 py-2 text-sm"
-          style={{ ["--led" as string]: color, color }}
-          onClick={() => {
-            deck.gotoCue();
-            rerender();
-          }}
-        >
-          CUE
-        </button>
-        <button
-          className={`hw-btn flex-1 py-2 text-sm ${deck.playing ? "hw-btn-on" : ""}`}
-          style={{ ["--led" as string]: color }}
-          onClick={() => {
-            deck.toggle();
-            rerender();
-          }}
-        >
-          {deck.playing ? "❚❚ PAUSE" : "▶ PLAY"}
-        </button>
-        {/* seek: retour rapide / retour / avance / avance rapide */}
-        {(
-          [
-            ["«15", -15, "Retour rapide"],
-            ["‹5", -5, "Retour"],
-            ["5›", 5, "Avance"],
-            ["15»", 15, "Avance rapide"],
-          ] as [string, number, string][]
-        ).map(([label, dt, title]) => (
-          <button
-            key={label}
-            className="hw-btn px-1.5 py-2 text-[10px] font-bold leading-none"
-            style={{ ["--led" as string]: color, color }}
-            disabled={!deck.name}
-            title={title}
-            onClick={() => {
-              const t = Math.min(deck.duration, Math.max(0, deck.position() + dt));
-              deck.seek(t);
-              rerender();
-            }}
-          >
-            {label}
-          </button>
-        ))}
-        <button
-          className={`hw-btn px-2.5 py-2 text-xs font-bold ${deck.quantize ? "hw-btn-on" : ""}`}
-          style={{ ["--led" as string]: color, color: deck.quantize ? undefined : color }}
-          onClick={() => {
-            deck.toggleQuantize();
-            rerender();
-          }}
-          title={deck.quantize ? "QUANTIZE ON : calage automatique des départs, repères et boucles sur la grille rythmique" : "QUANTIZE OFF : déclenchement libre"}
-        >
-          <span className="flex items-center gap-1">
-            <svg className="h-3 w-3 stroke-current fill-none" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
-            </svg>
-            Q
-          </span>
-        </button>
-        <button
-          className="hw-btn px-3 py-2 text-sm text-neutral-200"
-          onClick={onSync}
-          title="Caler le tempo sur l'autre deck (immédiat)"
-        >
-          SYNC
-        </button>
-        <button
-          className={`hw-btn px-3 py-2 text-sm ${autoSync ? "hw-btn-on" : ""}`}
-          style={{ ["--led" as string]: color, color: autoSync ? undefined : color }}
-          onClick={() => (autoSync ? stopAutoSync() : startAutoSync())}
-          title="Glisser progressivement vers le tempo de l'autre deck (6 s)"
-        >
-          {autoSync ? "■ Sync…" : "⇄ Auto-sync"}
-        </button>
-        <button
-          className={`hw-btn px-2.5 py-2 text-xs font-semibold ${autoReset ? "hw-btn-on" : ""}`}
-          style={{ ["--led" as string]: color, color: autoReset ? undefined : Math.abs(pitch) > 0.05 ? color : "#888" }}
-          disabled={Math.abs(pitch) <= 0.05 && !autoReset}
-          onClick={() => (autoReset ? stopAutoSync() : startPitchReset())}
-          title="Glisser progressivement le pitch pour revenir au tempo naturel 0% (5 s)"
-        >
-          {autoReset ? "■ Reset…" : "↺ 0% Pitch"}
-        </button>
-      </div>
+      {/* transport: cue & play, zone and tempo — the big buttons are the ones used in performance */}
+      <DeckTransport
+        deck={deck}
+        color={color}
+        side={side}
+        stepping={stepping}
+        onStep={stepSingle}
+        onSync={onSync}
+        autoSync={autoSync}
+        autoReset={autoReset}
+        pitch={pitch}
+        onToggleAutoSync={() => (autoSync ? stopAutoSync() : startAutoSync())}
+        onTogglePitchReset={() => (autoReset ? stopAutoSync() : startPitchReset())}
+        onChange={rerender}
+      />
+      <DeckHotCues deck={deck} color={color} onChange={rerender} />
 
       {/* pitch + scratch — two halves directly under the SYNC / Auto-sync buttons */}
       <div className="flex flex-wrap items-stretch gap-3">
@@ -1366,42 +1268,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
 
       {/* beat loop + actions */}
       <div className="flex items-end justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase text-neutral-500">Beat loop</span>
-          <div className="grid grid-cols-5 gap-1">
-            {(
-              [
-                [1 / 16, "1/16"],
-                [1 / 8, "1/8"],
-                [1 / 4, "1/4"],
-                [1 / 2, "1/2"],
-                [1, "1"],
-                [2, "2"],
-                [4, "4"],
-                [8, "8"],
-                [16, "16"],
-              ] as [number, string][]
-            ).map(([b, l]) => (
-              <button
-                key={l}
-                className={`hw-btn px-1.5 py-1 text-[11px] ${loop === b ? "hw-btn-on" : ""}`}
-                style={{ ["--led" as string]: color }}
-                onClick={() => {
-                  if (loop === b) {
-                    deck.clearLoop();
-                    setLoop(0);
-                  } else {
-                    deck.setBeatLoop(b);
-                    setLoop(b);
-                  }
-                  rerender();
-                }}
-              >
-                {l}
-              </button>
-            ))}
-          </div>
-        </div>
+        <DeckLoopPads deck={deck} color={color} loop={loop} setLoop={setLoop} onChange={rerender} />
 
         {/* save the loaded track into a playlist (menu of existing + new) */}
         <div className="relative">

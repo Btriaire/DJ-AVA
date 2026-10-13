@@ -56,6 +56,7 @@ export interface DeckSettings {
   fx: Partial<Record<FxName, number>>;
   fxp?: Partial<Record<FxName, { beat: number; p1: number; p2: number }>>; // DJ FX beat division + params; old saves lack it
   retouch?: Record<string, number>; // sound retouch settings; old saves lack it
+  hot?: (number | null)[]; // hot cue positions in seconds (4 slots); old saves lack it
   rack?: RackPreset; // serial DSP rack state (optional: old saves won't have it)
 }
 
@@ -227,6 +228,7 @@ export class Deck {
   key: KeyResult | null = null; // musical key + Camelot notation, for harmonic mixing
   peaks: Float32Array = new Float32Array(0);
   cuePoint = 0;
+  hotCues: (number | null)[] = [null, null, null, null]; // four performance cue points, seconds
   // original YouTube link of the loaded track (empty for uploads / Audius) —
   // lets the deck hand the track off to the MP3 converter.
   sourceLink = "";
@@ -582,6 +584,7 @@ export class Deck {
     this.keyShift = 0;
     this.updateKeyLockShifter();
     this.cuePoint = 0;
+    this.hotCues = [null, null, null, null];
     this.loopActive = false;
     this._playing = false;
     this.sourceLink = ""; // default: no external source; caller may set it after
@@ -903,6 +906,24 @@ export class Deck {
     } else {
       this.pausedAt = target;
     }
+  }
+
+  // hot cues: a tap sets the slot to the current (quantized) position, then jumps there
+  setHotCue(i: number): void {
+    if (i < 0 || i >= this.hotCues.length || !this.buffer) return;
+    const pos = this.position();
+    const t = this.quantize ? this.snapToBeat(pos) : pos;
+    this.hotCues[i] = Math.max(0, Math.min(this.duration, t));
+  }
+
+  gotoHotCue(i: number): void {
+    const t = this.hotCues[i];
+    if (t === null || t === undefined) return;
+    this.seek(t);
+  }
+
+  clearHotCue(i: number): void {
+    if (i >= 0 && i < this.hotCues.length) this.hotCues[i] = null;
   }
 
   setCue() {
@@ -1732,6 +1753,7 @@ export class Deck {
   // hard clear: stop playback, drop the loaded track entirely (so the deck is
   // "— vide —" again) and return every control to neutral. Per-deck PANIC.
   unload() {
+    this.hotCues = [null, null, null, null];
     this.cleanupMediaEl();
     this.stopSources();
     this._playing = false;
@@ -1791,6 +1813,7 @@ export class Deck {
       fxp,
       rack: this.rack.export(),
       retouch: this.retouch.export(),
+      hot: [...this.hotCues],
     };
   }
 
@@ -1814,6 +1837,7 @@ export class Deck {
     }
     if (s.rack) this.rack.import(s.rack);
     if (s.retouch) this.retouch.import(s.retouch);
+    if (Array.isArray(s.hot)) this.hotCues = [0, 1, 2, 3].map((k) => (typeof s.hot?.[k] === "number" ? (s.hot[k] as number) : null));
   }
 
   getLevel(): number {
