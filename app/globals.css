@@ -526,10 +526,14 @@ input:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
+  min-width: 30px;
   height: 26px;
+  padding: 0 7px;
+  white-space: nowrap;
   border-radius: 7px;
-  font-size: 0.8rem;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
   color: #c9ccd1;
   background: linear-gradient(180deg, #303135 0%, #161619 100%);
   border: 1px solid #000;
