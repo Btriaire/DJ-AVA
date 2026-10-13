@@ -200,6 +200,12 @@ export function SynthPanel({ engine }: Props) {
   const [seqLen, setSeqLen] = useState(synthSeq.length);
   const [seqStep, setSeqStep] = useState(synthSeq.current);
   const [bpm, setBpm] = useState(synthSeq.bpm);
+  const [synced, setSyncedState] = useState(synthSeq.synced);
+  const [liveBpm, setLiveBpm] = useState(synthSeq.effectiveBpm());
+  useEffect(() => {
+    const id = setInterval(() => setLiveBpm(synthSeq.effectiveBpm()), 400);
+    return () => clearInterval(id);
+  }, [synthSeq]);
   const [steps, setSteps] = useState<(number | null)[]>(() => [...synthSeq.steps]);
   const [armed, setArmed] = useState(60); // note written into steps on click
   const armedRef = useRef(60);
@@ -218,6 +224,10 @@ export function SynthPanel({ engine }: Props) {
   const setSeqLength = (l: number) => {
     synthSeq.setLength(l);
     setSeqLen(l);
+  };
+  const toggleSynced = () => {
+    synthSeq.setSynced(!synthSeq.synced);
+    setSyncedState(synthSeq.synced);
   };
   const setSeqBpm = (b: number) => {
     synthSeq.setBpm(b);
@@ -740,9 +750,10 @@ export function SynthPanel({ engine }: Props) {
             ))}
           </div>
           <div className="ml-auto flex items-center gap-1 font-mono text-[10px] text-neutral-400">
-            <button onClick={() => setSeqBpm(bpm - 1)} className="opxy-minibtn" title="BPM −">−</button>
-            <span className="w-14 text-center tabular-nums">{bpm} BPM</span>
-            <button onClick={() => setSeqBpm(bpm + 1)} className="opxy-minibtn" title="BPM ＋">＋</button>
+            <button onClick={toggleSynced} className={`opxy-minibtn ${synced ? "opxy-minibtn-go" : ""}`} title="Suit le tempo de la platine maîtresse">SYNC</button>
+            <button onClick={() => setSeqBpm(bpm - 1)} disabled={synced} className="opxy-minibtn disabled:opacity-30" title="BPM −">−</button>
+            <span className="w-14 text-center tabular-nums" title={synced ? "Tempo de la platine" : "Tempo propre au séquenceur"}>{liveBpm} BPM</span>
+            <button onClick={() => setSeqBpm(bpm + 1)} disabled={synced} className="opxy-minibtn disabled:opacity-30" title="BPM ＋">＋</button>
           </div>
           <span className="font-mono text-[10px] text-amber-300" title="Note écrite au clic (joue une touche pour la changer)">
             ♪ {NOTE_NAME(armed)}

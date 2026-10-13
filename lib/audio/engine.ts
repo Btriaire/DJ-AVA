@@ -100,6 +100,7 @@ export class DJEngine {
       (n) => this.synth.noteOn(n),
       (n) => this.synth.noteOff(n)
     );
+    this.synthSeq.setSyncSource(() => this.masterDeck()?.bpm ?? null);
     this.sampler = new Sampler(this.ctx);
     this.midi = new MidiManager(this.synth, this.sampler);
     this.soundFx = new SoundFX(this.ctx);

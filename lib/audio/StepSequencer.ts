@@ -6,6 +6,9 @@ export class StepSequencer {
   steps: (number | null)[] = new Array(16).fill(null);
   length = 8;
   bpm = 120;
+  synced = true; // follow the master deck tempo when one is available
+  private syncBpm: (() => number | null) | null = null;
+  private armedBpm = 0; // tempo the interval was armed with
   playing = false;
   recording = false; // live overdub: keys played get written into the steps
   current = -1; // step index lit while playing, -1 when stopped
@@ -21,12 +24,28 @@ export class StepSequencer {
     private noteOff: (n: number) => void
   ) {}
 
+  setSyncSource(fn: () => number | null) {
+    this.syncBpm = fn;
+  }
+
+  setSynced(on: boolean) {
+    this.synced = on;
+    if (this.playing) this.arm();
+  }
+
+  // tempo actually used: the master deck's when synced and available, else our own
+  effectiveBpm(): number {
+    const ext = this.synced ? this.syncBpm?.() : null;
+    return ext && ext > 0 ? ext : this.bpm;
+  }
+
   private stepMs() {
-    return 60000 / this.bpm / 4; // one 16th note
+    return 60000 / this.effectiveBpm() / 4; // one 16th note
   }
 
   private tick = () => {
     this.lastTickAt = performance.now();
+    if (this.playing && this.effectiveBpm() !== this.armedBpm) this.arm();
     if (this.last !== null) {
       this.noteOff(this.last);
       this.last = null;
@@ -42,6 +61,7 @@ export class StepSequencer {
 
   private arm() {
     if (this.timer) clearInterval(this.timer);
+    this.armedBpm = this.effectiveBpm();
     this.timer = setInterval(this.tick, this.stepMs());
   }
 
