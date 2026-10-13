@@ -11,6 +11,7 @@ import { Slicer } from "./Slicer";
 import { MidiManager } from "./midi";
 import { idbPutBlob, idbGetBlob, idbDelBlob } from "../library";
 import * as Tone from "tone";
+import { SamplePad, type PadSource } from "./SamplePad";
 
 // Build the AudioContext tuned for the lowest practical action latency. The
 // "interactive" hint tells the browser to pick the smallest hardware buffer it
@@ -38,6 +39,8 @@ export class DJEngine {
   readonly soundFx: SoundFX; // synthesised one-shot DJ effects (airhorn, riser…)
   readonly drums: DrumMachine;
   readonly djSynth: DjSynth;
+  readonly keyPad: SamplePad; // DJ keyboard: plays slices of the chosen deck
+  private keySide: "A" | "B" = "A";
   readonly slicerA: Slicer;
   readonly slicerB: Slicer;
   readonly recorder: Recorder;
@@ -115,6 +118,7 @@ export class DJEngine {
     this.drums.out.connect(this.master);
     this.djSynth = new DjSynth(this.ctx, () => this.masterClock());
     this.djSynth.out.connect(this.master);
+    this.keyPad = new SamplePad(this.ctx, this.master, () => this.keySourceInfo());
     this.deckA.setSynthRoute(this.djSynth.out, this.master);
     this.deckB.setSynthRoute(this.djSynth.out, this.master);
     this.slicerA = new Slicer(this.ctx, this.deckA);
@@ -433,6 +437,25 @@ export class DJEngine {
       }
       wasPlaying = playing;
     }, 3000);
+  }
+
+  // the DJ keyboard slices the track of deck A or B
+  setKeySource(side: "A" | "B"): void {
+    this.keySide = side;
+  }
+
+  getKeySource(): "A" | "B" {
+    return this.keySide;
+  }
+
+  private keySourceInfo(): PadSource {
+    const d = this.keySide === "A" ? this.deckA : this.deckB;
+    return {
+      buffer: d.audioBuffer,
+      bpm: d.fxClock()?.bpm ?? d.bpm,
+      beatOffset: d.beatGridOffset,
+      position: d.position(),
+    };
   }
 
   masterDeck(): Deck | null {
