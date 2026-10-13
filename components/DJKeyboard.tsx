@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { DJEngine } from "@/lib/audio/engine";
 import { PAD_SLICES, ECHO_DIVS, type PadSettings } from "@/lib/audio/SamplePad";
+import { Knob } from "./Knob";
 
 type Props = {
   engine: DJEngine;
@@ -150,10 +151,9 @@ export const DJKeyboard = ({ engine }: Props) => {
     return (
       <div
         key={slice}
-        className={`relative flex flex-col items-center justify-center p-3 rounded-lg cursor-pointer transition-all ${
-          isActive ? "ring-2 ring-white/50 shadow-lg" : ""
-        }`}
+        className={`hw-pad ${isActive ? "hw-pad-loaded" : ""} relative flex flex-col items-center justify-center p-3 rounded-lg cursor-pointer transition-all`}
         style={{
+          ["--rgb" as string]: isFirstRow ? "56, 189, 248" : "232, 121, 249",
           background: `radial-gradient(circle at 50% 50%, ${bgColor} 0%, ${isFirstRow ? "#0ea5e9" : "#d946ef"} 100%)`
         }}
         onPointerDown={() => handlePadDown(slice)}
@@ -170,132 +170,126 @@ export const DJKeyboard = ({ engine }: Props) => {
   };
 
   return (
-    <div className="hw-panel p-4 space-y-4">
-      <div className="hw-recess p-2 rounded-lg">
-        <div className="grid grid-cols-16 gap-1 mb-2">
-          {Array.from({ length: 16 }, (_, i) => (
-            <div
-              key={i}
-              className={`h-2 rounded-sm ${currentStep === i ? "bg-white" : "bg-neutral-700"}`}
-            ></div>
-          ))}
-        </div>
-        <div className="grid grid-cols-8 gap-2">
-          {Array.from({ length: PAD_SLICES }, (_, i) => renderPad(i))}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="hw-recess p-2 rounded-lg">
-          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500">
-            PITCH
-          </div>
-          <div className="font-mono bg-[#0a0d0a] text-white p-1 rounded text-center">
-            {settings.pitch === 0 ? "0 st" : `${settings.pitch > 0 ? "+" : ""}${settings.pitch} st`}
-          </div>
-          <div className="flex gap-1 mt-1">
-            <button
-              className="hw-btn flex-1"
-              onClick={() => setSetting("pitch", Math.max(settings.pitch - 1, -12))}
-            >
-              −
-            </button>
-            <button
-              className="hw-btn flex-1"
-              onClick={() => setSetting("pitch", 0)}
-            >
-              0
-            </button>
-            <button
-              className="hw-btn flex-1"
-              onClick={() => setSetting("pitch", Math.min(settings.pitch + 1, 12))}
-            >
-              +
-            </button>
-          </div>
-        </div>
-
-        <div className="hw-recess p-2 rounded-lg">
-          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500 flex justify-between">
-            <span>FILTRE</span>
-            <span className="font-mono text-xs">{Math.round(settings.filter * 100)}%</span>
-          </div>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            value={settings.filter * 100}
-            onChange={(e) => setSetting("filter", parseInt(e.target.value) / 100)}
-            className="w-full"
-          />
+    <div className="max-w-[420px] mx-auto hw-carbon hw-screwed p-4 space-y-4 rounded-lg">
+      <div className="hw-brushed p-2 rounded-t-lg flex justify-between items-center">
+        <div className="text-xs font-bold">DJ PADS</div>
+        <div className="flex items-center gap-2">
+          <div className="hw-led" style={{ color: "#22c55e" }}></div>
+          <div className="text-xs">PLATINE {keySource}</div>
         </div>
       </div>
 
       <div className="hw-recess p-2 rounded-lg">
-        <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500 flex justify-between">
-          <span>ÉCHO</span>
-          <span className="font-mono text-xs">{Math.round(settings.echo * 100)}%</span>
+        <div className="hw-screen font-mono text-xs p-1 mb-2">
+          {lastEffect || "AUCUN"}
         </div>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          value={settings.echo * 100}
-          onChange={(e) => setSetting("echo", parseInt(e.target.value) / 100)}
-          className="w-full"
+        <div className="flex items-center gap-2">
+          <div className="text-xs">Mesure</div>
+          <div className="flex gap-1">
+            {Array.from({ length: 16 }, (_, i) => (
+              <div
+                key={i}
+                className={`h-2 w-2 rounded-sm ${currentStep === i ? "bg-white" : "bg-neutral-700"}`}
+              ></div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-8 gap-1.5">
+        {Array.from({ length: PAD_SLICES }, (_, i) => renderPad(i))}
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        <Knob
+          label="PITCH"
+          value={settings.pitch}
+          min={-12}
+          max={12}
+          defaultValue={0}
+          size={44}
+          color="#38bdf8"
+          led={true}
+          format={(v) => v === 0 ? "0 st" : `${v > 0 ? "+" : ""}${v} st`}
+          onChange={(v) => setSetting("pitch", Math.round(v))}
         />
-        <div className="flex gap-1 mt-1">
-          {ECHO_DIVS.map((div, i) => (
-            <button
-              key={i}
-              className={`hw-btn flex-1 ${settings.echoDiv === i ? "hw-btn-on" : ""}`}
-              onClick={() => setSetting("echoDiv", i)}
-            >
-              {div === 0.25 ? "1/4" : div === 0.5 ? "1/2" : div === 1 ? "1" : "2"}
-            </button>
-          ))}
-        </div>
+        <Knob
+          label="FILTRE"
+          value={settings.filter}
+          min={0}
+          max={1}
+          defaultValue={0.5}
+          size={44}
+          color="#e879f9"
+          led={true}
+          format={(v) => `${Math.round(v * 100)}%`}
+          onChange={(v) => setSetting("filter", v)}
+        />
+        <Knob
+          label="ÉCHO"
+          value={settings.echo}
+          min={0}
+          max={1}
+          defaultValue={0.5}
+          size={44}
+          color="#f43f5e"
+          led={true}
+          format={(v) => `${Math.round(v * 100)}%`}
+          onChange={(v) => setSetting("echo", v)}
+        />
       </div>
 
-      <div className="flex gap-2">
+      <div className="grid grid-cols-4 gap-1">
+        {ECHO_DIVS.map((div, i) => (
+          <button
+            key={i}
+            className={`hw-btn ${settings.echoDiv === i ? "hw-btn-on" : ""} text-xs`}
+            onClick={() => setSetting("echoDiv", i)}
+          >
+            {div === 0.25 ? "1/4" : div === 0.5 ? "1/2" : div === 1 ? "1" : "2"}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
         <button
-          className={`hw-btn flex-1 ${settings.reverse ? "hw-btn-on" : ""}`}
+          className={`hw-btn ${settings.reverse ? "hw-btn-on" : ""}`}
           onClick={() => setSetting("reverse", !settings.reverse)}
         >
           INVERSÉ
         </button>
         <button
-          className={`hw-btn flex-1 ${settings.hold ? "hw-btn-on" : ""}`}
+          className={`hw-btn ${settings.hold ? "hw-btn-on" : ""}`}
           onClick={() => setSetting("hold", !settings.hold)}
         >
           MAINTIEN
         </button>
         <button
-          className={`hw-btn flex-1 ${settings.gate ? "hw-btn-on" : ""}`}
+          className={`hw-btn ${settings.gate ? "hw-btn-on" : ""}`}
           onClick={() => setSetting("gate", !settings.gate)}
         >
           RÉPÈTITION
         </button>
       </div>
 
-      <div className="flex gap-2">
+      <div className="grid grid-cols-2 gap-2">
         <button
-          className={`hw-btn flex-1 ${keySource === "A" ? "hw-btn-on" : ""}`}
+          className={`hw-btn ${keySource === "A" ? "hw-btn-on" : ""}`}
           onClick={() => { engine.setKeySource("A"); setKeySource("A"); }}
         >
           PLATINE A
         </button>
         <button
-          className={`hw-btn flex-1 ${keySource === "B" ? "hw-btn-on" : ""}`}
+          className={`hw-btn ${keySource === "B" ? "hw-btn-on" : ""}`}
           onClick={() => { engine.setKeySource("B"); setKeySource("B"); }}
         >
           PLATINE B
         </button>
       </div>
 
-      <div className="flex gap-2">
+      <div className="grid grid-cols-5 gap-2">
         <button
-          className={`hw-btn flex-1 bg-[#f43f5e] text-white ${dropUntil ? "animate-pulse" : ""}`}
+          className={`hw-btn bg-[#f43f5e] text-white ${dropUntil ? "animate-pulse" : ""}`}
           onClick={() => {
             engine.keyPad.dropHQ();
             setLastEffect("DROP HQ");
@@ -306,55 +300,42 @@ export const DJKeyboard = ({ engine }: Props) => {
           {dropUntil ? "DROP EN COURS" : "DROP HQ"}
         </button>
         <button
-          className="hw-btn flex-1"
+          className="hw-btn"
           onClick={() => { engine.keyPad.impact(); setLastEffect("IMPACT"); }}
         >
           IMPACT
         </button>
         <button
-          className="hw-btn flex-1"
+          className="hw-btn"
           onClick={() => { engine.keyPad.brake(1); setLastEffect("FREIN 1 TEMPS"); }}
         >
           FREIN 1 TEMPS
         </button>
         <button
-          className="hw-btn flex-1"
+          className="hw-btn"
           onClick={() => { engine.keyPad.scratch(); setLastEffect("SCRATCH"); }}
         >
           SCRATCH
         </button>
         <button
-          className="hw-btn flex-1"
+          className="hw-btn"
           onClick={() => { engine.keyPad.stopAll(); setLastEffect("TOUT ARRÊTER"); }}
         >
           TOUT ARRÊTER
         </button>
       </div>
 
-      <div className="hw-recess p-2 rounded-lg">
-        <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500">
-          Dernier effet
-        </div>
-        <div className="font-mono bg-[#0a0d0a] text-white p-1 rounded text-center">
-          {lastEffect || "AUCUN"}
-        </div>
-      </div>
-
-      <div className="text-[11px] font-bold text-neutral-300">Source : platine {keySource}</div>
-
-      <div className="grid grid-cols-2 gap-2 text-[11px] text-neutral-400">
+      <div className="text-[10px] text-neutral-400 grid grid-cols-2 gap-2">
         <div>
-          <div className="font-bold">Tranches</div>
-          <div>A à K : 1-8</div>
-          <div>Z à , : 9-16</div>
-          <div>Shift : inversée</div>
+          <div>A à K / Z à , : tranches</div>
+          <div>Maj : inversée</div>
         </div>
         <div>
-          <div className="font-bold">Commandes</div>
           <div>1 inverser · 2 maintien · 3 écho</div>
-          <div>4 filtre · 5 répétition · 6 DROP HQ</div>
-          <div>7 impact · 8 frein · 9 scratch · 0 stop</div>
-          <div>↑↓ pitch · ←→ division écho</div>
+          <div>4 filtre · 5 répétition</div>
+          <div>6 DROP HQ · 7 impact · 8 frein</div>
+          <div>9 scratch · 0 stop</div>
+          <div>↑ ↓ pitch · ← → division écho</div>
         </div>
       </div>
     </div>
