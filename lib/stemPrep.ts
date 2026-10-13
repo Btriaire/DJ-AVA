@@ -243,3 +243,12 @@ export async function saveFileToLibrary(file: File): Promise<LibTrack> {
 
   return track;
 }
+
+// Resume queued jobs after app reload
+if (typeof window !== "undefined") {
+  // Check if there are queued jobs on load
+  if (state.jobs.some(j => j.status === "queued")) {
+    // Schedule worker restart after small delay to ensure UI is ready
+    setTimeout(() => ensureWorker(), 3000);
+  }
+}
