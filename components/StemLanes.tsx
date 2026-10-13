@@ -14,6 +14,7 @@ const STEM_COLORS: Record<string, string> = {
 export function StemLanes({ deck, color }: { deck: Deck; color: string }) {
   const canvases = useRef<(HTMLCanvasElement | null)[]>([]);
   const lastTime = useRef(0);
+  const dirty = useRef(true);
   const lastState = useRef<{
     position: number;
     loopState: ({ active: boolean; start: number; end: number } | null)[];
@@ -38,6 +39,7 @@ export function StemLanes({ deck, color }: { deck: Deck; color: string }) {
         canvas.width = Math.round(cssW * dpr);
         canvas.height = Math.round(cssH * dpr);
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        dirty.current = true;
       });
     });
 
@@ -53,7 +55,7 @@ export function StemLanes({ deck, color }: { deck: Deck; color: string }) {
       }
       lastTime.current = time;
 
-      const needsRedraw = deck.playing ||
+      const needsRedraw = dirty.current || deck.playing ||
         deck.position() !== lastState.current.position ||
         deck.stemVol.some((v, i) => v !== lastState.current.volumes[i]) ||
         deck.stemNames.some((_, i) => {
@@ -126,6 +128,7 @@ export function StemLanes({ deck, color }: { deck: Deck; color: string }) {
           ctx.fillRect(progress * cssW, 0, 1.5, cssH);
         }
       });
+      dirty.current = false;
 
       rafId = requestAnimationFrame(draw);
     };
