@@ -8,7 +8,7 @@
 //   htdemucs_ft  — fine-tuned, 4 stems, ~4× slower but cleaner separation
 //   htdemucs_6s  — 6 stems (adds guitar + piano), more channels
 // `shifts` adds test-time augmentation (slower, more precise) when > 0.
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { copyFile, mkdtemp, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
@@ -132,6 +132,38 @@ async function moveFile(src: string, dst: string): Promise<void> {
 // yield CPU to the live app and any on-demand separation. `onProgress`, when
 // given, is fed every stderr chunk so the caller can scrape a percentage out
 // of it (Demucs writes a tqdm bar there — see doSeparate below).
+// separations are suspended (SIGSTOP) while a deck plays; the client refreshes the request,
+// and the watchdog below resumes them if it stops (tab closed)
+const children = new Set<ChildProcess>();
+let stopped = false;
+let suspendedUntil = 0;
+function signalAll(sig: NodeJS.Signals): void {
+  for (const c of children) {
+    try {
+      if (c.pid) process.kill(c.pid, sig);
+    } catch {
+      // already exited
+    }
+  }
+}
+export function requestSuspend(ms = 15000): void {
+  suspendedUntil = Date.now() + ms;
+  if (!stopped) {
+    stopped = true;
+    signalAll("SIGSTOP");
+  }
+}
+export function resumeSeparations(): void {
+  suspendedUntil = 0;
+  if (stopped) {
+    stopped = false;
+    signalAll("SIGCONT");
+  }
+}
+setInterval(() => {
+  if (stopped && Date.now() > suspendedUntil) resumeSeparations();
+}, 3000).unref();
+
 function run(cmd: string, args: string[], niceness?: number, onProgress?: (chunk: string) => void, env?: Record<string, string>): Promise<void> {
   return new Promise((resolve, reject) => {
     let exe = cmd;
@@ -141,6 +173,9 @@ function run(cmd: string, args: string[], niceness?: number, onProgress?: (chunk
       exeArgs = ["-n", String(niceness), cmd, ...args];
     }
     const p = spawn(exe, exeArgs, { stdio: ["ignore", "ignore", "pipe"], env: { ...process.env, ...(env || {}) } });
+    children.add(p);
+    p.once("exit", () => children.delete(p));
+    if (stopped && p.pid) process.kill(p.pid, "SIGSTOP");
     let err = "";
     p.stderr.on("data", (d) => {
       err += d;

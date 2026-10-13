@@ -92,6 +92,7 @@ export class DJEngine {
     this.deckA = new Deck(this.ctx);
     this.deckB = new Deck(this.ctx);
     Deck.separationAllowed = () => !this.deckA.playing && !this.deckB.playing;
+    this.watchPlayback();
     this.deckA.output.connect(this.chA);
     this.deckB.output.connect(this.chB);
 
@@ -415,6 +416,19 @@ export class DJEngine {
     const r = new Recorder(this.ctx, maxSeconds);
     this.masterFx.output.connect(r.input);
     return r;
+  }
+
+  // the server suspends running separations while a deck plays; the flag is refreshed
+  // every few seconds, so a closed tab lets the server resume them on its own
+  private watchPlayback() {
+    let wasPlaying = false;
+    setInterval(() => {
+      const playing = this.deckA.playing || this.deckB.playing;
+      if (playing || wasPlaying) {
+        void fetch(`/api/stems/suspend?on=${playing ? 1 : 0}`, { method: "POST" }).catch(() => {});
+      }
+      wasPlaying = playing;
+    }, 3000);
   }
 
   masterDeck(): Deck | null {
