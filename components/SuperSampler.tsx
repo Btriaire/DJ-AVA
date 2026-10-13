@@ -1,4 +1,4 @@
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { DJEngine } from "@/lib/audio/engine"
 import { DEFAULT_SS_PARAMS, DELAY_LABELS, FILTER_NAMES, type SSParams } from "@/lib/audio/SuperSampler"
 
@@ -41,6 +41,12 @@ export function SuperSampler({ engine }: { engine: DJEngine }) {
   const [screenMode, setScreenMode] = useState<"wave" | "spectrum" | "scope">("wave")
   const [youtube, setYoutube] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [, setBakeTick] = useState(0)
+
+  useEffect(() => {
+    engine.superSampler.setBakeListener(() => setBakeTick(n => n + 1))
+    return () => engine.superSampler.setBakeListener(null)
+  }, [engine])
 
   const set = <K extends keyof SSParams>(key: K, value: SSParams[K]) => {
     engine.superSampler.setParam(key, value)
@@ -374,6 +380,20 @@ export function SuperSampler({ engine }: { engine: DJEngine }) {
               onChange={v => set("fine", v)}
               format={v => `${v.toFixed(0)} ct`}
             />
+          </div>
+          <div className="flex items-center gap-2 mt-2">
+            <Knob
+              label="ÉTIRE"
+              min={0.5}
+              max={2}
+              defaultValue={1}
+              value={p.stretch}
+              onChange={v => set("stretch", Math.round(v * 100) / 100)}
+              format={v => `×${v.toFixed(2)}`}
+            />
+            <span className="hw-lcd text-[9px] flex-1 text-center">
+              {engine.superSampler.baking ? "RENDU…" : p.stretch === 1 ? "ORIGINE" : "ÉTIRÉ"}
+            </span>
           </div>
           <div className="flex gap-1 mt-2">
             <button

@@ -1,3 +1,5 @@
+import { stretchBuffer } from "./stretch";
+
 export const SS_VOICES = 16;
 export const DELAY_DIVS: number[] = [0.25, 0.5, 0.75, 1, 1.5, 2];
 export const DELAY_LABELS: string[] = ["1/4", "1/2", "3/4", "1", "1.5", "2"];
@@ -26,6 +28,7 @@ export interface SSParams {
   delayFb: number;
   reverbSend: number;
   reverbDecay: number;
+  stretch: number;
 }
 
 export const DEFAULT_SS_PARAMS: SSParams = {
@@ -51,6 +54,7 @@ export const DEFAULT_SS_PARAMS: SSParams = {
   delayFb: 0.35,
   reverbSend: 0,
   reverbDecay: 0.4,
+  stretch: 1,
 };
 
 type Voice = {
@@ -85,6 +89,14 @@ export class SuperSampler {
   private reverbSend: GainNode;
   private lastDriveCurve: number | null = null;
   private lastReverbDecay: number | null = null;
+  private baseVersion = 0;
+  private bakedBuffer: AudioBuffer | null = null;
+  private bakedKey = "";
+  private bakeTimer: ReturnType<typeof setTimeout> | null = null;
+  private bakeToken = 0;
+  private bakingNow = false;
+  private reversedCache = new WeakMap<AudioBuffer, AudioBuffer>();
+  private bakeListener: (() => void) | null = null;
 
   constructor(ctx: BaseAudioContext, dest: AudioNode, getBpm: () => number) {
     this.ctx = ctx;
@@ -149,6 +161,14 @@ export class SuperSampler {
     return this._name;
   }
 
+  get baking(): boolean {
+    return this.bakingNow;
+  }
+
+  setBakeListener(listener: (() => void) | null): void {
+    this.bakeListener = listener;
+  }
+
   setSource(buffer: AudioBuffer, name: string): void {
     this.sourceBuffer = buffer;
     this.reversedBuffer = null;
@@ -156,6 +176,10 @@ export class SuperSampler {
     this.params.start = 0;
     this.params.end = 1;
     this.stopAll();
+    this.baseVersion++;
+    this.bakedBuffer = null;
+    this.bakedKey = "";
+    this.scheduleBake();
   }
 
   getParams(): SSParams {
@@ -236,18 +260,22 @@ export class SuperSampler {
       case "volume":
         this.updateVolume();
         break;
+      case "start":
+      case "end":
+      case "stretch":
+        this.scheduleBake();
+        break;
     }
   }
 
   noteOn(note: number, velocity: number = 1): void {
-    if (!this.sourceBuffer) return;
+    const range = this.playRange();
+    if (!range) return;
 
     const now = this.ctx.currentTime;
-    const buffer = this.params.reverse ? this.getReversedBuffer() : this.sourceBuffer;
-    if (!buffer) return;
-
-    const regionStart = this.params.start * buffer.duration;
-    const regionEnd = this.params.end * buffer.duration;
+    const buffer = range.buffer;
+    const regionStart = range.start * buffer.duration;
+    const regionEnd = range.end * buffer.duration;
     const regionDuration = regionEnd - regionStart;
 
     const playbackRate = this.calculatePlaybackRate(note);
@@ -324,11 +352,12 @@ export class SuperSampler {
   playSlice(index: number, count: number): void {
     if (!this.sourceBuffer || count <= 0 || index < 0 || index >= count) return;
 
-    const buffer = this.params.reverse ? this.getReversedBuffer() : this.sourceBuffer;
-    if (!buffer) return;
+    const range = this.playRange();
+    if (!range) return;
 
-    const regionStart = this.params.start * buffer.duration;
-    const regionEnd = this.params.end * buffer.duration;
+    const buffer = range.buffer;
+    const regionStart = range.start * buffer.duration;
+    const regionEnd = range.end * buffer.duration;
     const sliceDuration = (regionEnd - regionStart) / count;
     const sliceStart = regionStart + index * sliceDuration;
     const sliceEnd = sliceStart + sliceDuration;
@@ -347,13 +376,12 @@ export class SuperSampler {
   }
 
   playStep(note: number, lengthSec: number, when: number, velocity: number = 1): void {
-    if (!this.sourceBuffer) return;
+    const range = this.playRange();
+    if (!range) return;
 
-    const buffer = this.params.reverse ? this.getReversedBuffer() : this.sourceBuffer;
-    if (!buffer) return;
-
-    const regionStart = this.params.start * buffer.duration;
-    const regionEnd = this.params.end * buffer.duration;
+    const buffer = range.buffer;
+    const regionStart = range.start * buffer.duration;
+    const regionEnd = range.end * buffer.duration;
     const playbackRate = this.calculatePlaybackRate(note);
     const source = this.ctx.createBufferSource();
     source.buffer = buffer;
@@ -389,23 +417,17 @@ export class SuperSampler {
   }
 
   async exportWav(): Promise<Blob> {
-    if (!this.sourceBuffer) return new Blob();
+    const range = this.playRange();
+    if (!range) return new Blob();
 
     const offlineCtx = new OfflineAudioContext(
-      this.sourceBuffer.numberOfChannels,
-      Math.ceil(this.sourceBuffer.sampleRate * (this.params.end - this.params.start) * this.sourceBuffer.duration),
-      this.sourceBuffer.sampleRate
+      range.buffer.numberOfChannels,
+      Math.ceil(range.buffer.sampleRate * (range.end - range.start) * range.buffer.duration),
+      range.buffer.sampleRate
     );
 
-    const sourceBuffer = this.params.reverse ? this.getReversedBuffer() : this.sourceBuffer;
-    if (!sourceBuffer) return new Blob();
-
-    const regionStart = this.params.start * sourceBuffer.duration;
-    const regionEnd = this.params.end * sourceBuffer.duration;
-    const regionDuration = regionEnd - regionStart;
-
     const source = offlineCtx.createBufferSource();
-    source.buffer = sourceBuffer;
+    source.buffer = range.buffer;
     source.playbackRate.value = this.calculatePlaybackRate(this.params.rootNote);
 
     const gain = offlineCtx.createGain();
@@ -413,16 +435,17 @@ export class SuperSampler {
 
     const fadeIn = 0.003;
     const fadeOut = 0.008;
+    const regionDuration = (range.end - range.start) * range.buffer.duration;
     gain.gain.setValueAtTime(0, 0);
     gain.gain.linearRampToValueAtTime(1, fadeIn);
     gain.gain.setValueAtTime(1, regionDuration - fadeOut);
     gain.gain.linearRampToValueAtTime(0, regionDuration);
 
-    source.start(0, regionStart);
+    source.start(0, range.start * range.buffer.duration);
     source.stop(regionDuration);
 
     const merger = offlineCtx.createChannelMerger(2);
-    if (sourceBuffer.numberOfChannels === 1) {
+    if (range.buffer.numberOfChannels === 1) {
       gain.connect(merger, 0, 0);
       gain.connect(merger, 0, 1);
     } else {
@@ -445,6 +468,7 @@ export class SuperSampler {
 
     const out = offlineCtx.createGain();
     limiter.connect(out);
+    out.connect(offlineCtx.destination);
 
     const renderedBuffer = await offlineCtx.startRendering();
 
@@ -676,6 +700,127 @@ export class SuperSampler {
         this.voices.splice(index, 1);
       }
     }, (time - this.ctx.currentTime) * 1000);
+  }
+
+  private currentBakeKey(): string {
+    return `${this.baseVersion}|${this.params.start}|${this.params.end}|${this.params.stretch}`;
+  }
+
+  private notifyBake(): void {
+    this.bakeListener?.();
+  }
+
+  private scheduleBake(): void {
+    if (this.bakeTimer) {
+      clearTimeout(this.bakeTimer);
+      this.bakeTimer = null;
+    }
+    this.bakeToken++;
+
+    if (this.params.stretch === 1) {
+      this.bakedBuffer = null;
+      this.bakedKey = "";
+      this.bakingNow = false;
+      this.notifyBake();
+      return;
+    }
+
+    this.bakeTimer = setTimeout(() => {
+      this.bakeTimer = null;
+      void this.bake();
+    }, 200);
+  }
+
+  private async bake(): Promise<void> {
+    if (!this.sourceBuffer) return;
+
+    const key = this.currentBakeKey();
+    if (this.bakedBuffer !== null && this.bakedKey === key) return;
+
+    const { start, end, stretch } = this.params;
+    const token = ++this.bakeToken;
+
+    this.bakingNow = true;
+    this.notifyBake();
+
+    try {
+      const regionStart = start * this.sourceBuffer.duration;
+      const regionEnd = end * this.sourceBuffer.duration;
+      const regionDuration = regionEnd - regionStart;
+      const regionSamples = Math.floor(regionDuration * this.sourceBuffer.sampleRate);
+
+      const region = this.ctx.createBuffer(
+        this.sourceBuffer.numberOfChannels,
+        regionSamples,
+        this.sourceBuffer.sampleRate
+      );
+
+      for (let channel = 0; channel < this.sourceBuffer.numberOfChannels; channel++) {
+        const sourceData = this.sourceBuffer.getChannelData(channel);
+        const destData = region.getChannelData(channel);
+        const startSample = Math.floor(regionStart * this.sourceBuffer.sampleRate);
+        for (let i = 0; i < regionSamples; i++) {
+          destData[i] = sourceData[startSample + i];
+        }
+      }
+
+      const out = await stretchBuffer(this.ctx, region, stretch, () => token !== this.bakeToken);
+      if (token !== this.bakeToken || out === null) return;
+
+      this.bakedBuffer = out;
+      this.bakedKey = key;
+    } catch (error) {
+      console.error(error);
+    } finally {
+      if (token === this.bakeToken) {
+        this.bakingNow = false;
+        this.notifyBake();
+      }
+    }
+  }
+
+  private reversedOf(buffer: AudioBuffer): AudioBuffer {
+    const cached = this.reversedCache.get(buffer);
+    if (cached) return cached;
+
+    const reversed = this.ctx.createBuffer(
+      buffer.numberOfChannels,
+      buffer.length,
+      buffer.sampleRate
+    );
+
+    for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+      const sourceData = buffer.getChannelData(channel);
+      const destData = reversed.getChannelData(channel);
+      for (let i = 0; i < buffer.length; i++) {
+        destData[i] = sourceData[buffer.length - 1 - i];
+      }
+    }
+
+    this.reversedCache.set(buffer, reversed);
+    return reversed;
+  }
+
+  private playRange(): { buffer: AudioBuffer; start: number; end: number } | null {
+    if (!this.sourceBuffer) return null;
+
+    if (this.params.stretch !== 1 && this.bakedBuffer !== null && this.bakedKey === this.currentBakeKey()) {
+      const b = this.bakedBuffer;
+      return {
+        buffer: this.params.reverse ? this.reversedOf(b) : b,
+        start: 0,
+        end: 1
+      };
+    }
+
+    const b = this.params.reverse ? this.getReversedBuffer() : this.sourceBuffer;
+    if (!b) return null;
+
+    return {
+      buffer: b,
+      start: this.params.start,
+      end: this.params.end
+    };
   }
 }
 
