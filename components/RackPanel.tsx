@@ -2,14 +2,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Deck } from "@/lib/audio/Deck";
 import { Rack, RACK_MODULES, RackModuleId, RackPreset, XY_TARGETS, XY_FILTER_TYPES } from "@/lib/audio/Rack";
+import { levelColor } from "./EqVisuals";
 import { Knob } from "./Knob";
-import { Fader } from "./Fader";
-import { DigitalVU, levelColor } from "./EqVisuals";
 import { XyPad } from "./XyPad";
 
 const LS_KEY = "djsynth.rackpresets.v1";
 
-// quick factory presets — applied imperatively onto the live rack
 const FACTORY: { name: string; apply: (r: Rack) => void }[] = [
   {
     name: "Shimmer Pad",
@@ -93,8 +91,6 @@ function saveStore(s: Record<string, RackPreset>) {
   }
 }
 
-
-// ---------- small dot-matrix LCD ----------
 function Lcd({ text, color }: { text: string; color: string }) {
   return (
     <span
@@ -114,7 +110,6 @@ function Lcd({ text, color }: { text: string; color: string }) {
   );
 }
 
-// ---------- on/off rocker switch (module bypass) — real appliance I/O rocker ----------
 function Toggle({ on, color, onClick }: { on: boolean; color: string; onClick: () => void }) {
   return (
     <button
@@ -130,7 +125,6 @@ function Toggle({ on, color, onClick }: { on: boolean; color: string; onClick: (
       }}
       title={on ? "ON (I) — clic pour bypass (O)" : "BYPASS (O) — clic pour activer (I)"}
     >
-      {/* the tilting black paddle: I-side (top) pressed in = ON, O-side (bottom) = OFF */}
       <span
         className="absolute inset-[2px] flex flex-col items-center justify-between rounded-[3px] py-[3px]"
         style={{
@@ -142,7 +136,6 @@ function Toggle({ on, color, onClick }: { on: boolean; color: string; onClick: (
             : "inset 0 -3px 4px rgba(0,0,0,.85), inset 0 1px 1px rgba(255,255,255,.10)",
         }}
       >
-        {/* I (on) */}
         <span
           style={{
             width: 2,
@@ -152,7 +145,6 @@ function Toggle({ on, color, onClick }: { on: boolean; color: string; onClick: (
             boxShadow: on ? `0 0 5px ${color}` : "none",
           }}
         />
-        {/* O (off) */}
         <span
           style={{
             width: 7,
@@ -166,7 +158,6 @@ function Toggle({ on, color, onClick }: { on: boolean; color: string; onClick: (
   );
 }
 
-// ---------- live spectrum of the rack output ----------
 function RackSpectrum({ rack, color }: { rack: Rack; color: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -204,7 +195,6 @@ function RackSpectrum({ rack, color }: { rack: Rack; color: string }) {
   return <canvas ref={canvasRef} width={420} height={40} className="h-10 w-full rounded bg-neutral-950 ring-1 ring-neutral-800" />;
 }
 
-// ---------- per-module transfer-curve thumbnail ----------
 function curveFor(id: RackModuleId, p: Record<string, number>): ((x: number) => number) | null {
   switch (id) {
     case "drive": {
@@ -220,7 +210,7 @@ function curveFor(id: RackModuleId, p: Record<string, number>): ((x: number) => 
       return (x) => Math.round(x * step) / step;
     }
     case "comp": {
-      const thr = (p.thresh ?? -24) / 60 + 1; // 0..1 normalized threshold
+      const thr = (p.thresh ?? -24) / 60 + 1;
       const ratio = p.ratio ?? 4;
       return (x) => {
         const a = Math.abs(x);
@@ -255,7 +245,6 @@ function MiniCurve({ id, params, color }: { id: RackModuleId; params: Record<str
     const w = canvas.width;
     const h = canvas.height;
     ctx.clearRect(0, 0, w, h);
-    // grid baseline
     ctx.strokeStyle = "#ffffff14";
     ctx.beginPath();
     ctx.moveTo(0, h / 2);
@@ -272,14 +261,11 @@ function MiniCurve({ id, params, color }: { id: RackModuleId; params: Record<str
       else ctx.lineTo(i, py);
     }
     ctx.stroke();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sig, color, id]);
+  }, [sig, color, id, fn]);
   if (!fn) return null;
   return <canvas ref={canvasRef} width={120} height={34} className="rounded bg-neutral-950/70 ring-1 ring-neutral-800" />;
 }
 
-
-// ---------- per-slot digital VU meter (10 LED segments, reads rack output level) ----------
 function SlotVU({ rack, on, color }: { rack: Rack; on: boolean; color: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -300,18 +286,12 @@ function SlotVU({ rack, on, color }: { rack: Rack; on: boolean; color: string })
         ctx2d.fillRect(i * 5, 0, 4, 8);
       }
     };
-    // a bypassed module reads 0 forever — paint once and skip the loop
-    // entirely instead of redrawing a dark meter 60×/s for nothing. With up
-    // to 23 modules × 2 decks, most idle at any time, this was the single
-    // biggest source of needless main-thread work in the whole app.
     if (!on) {
       paint(0);
       return;
     }
     let raf = 0;
     let last = 0;
-    // ~20 fps is plenty for a 10-segment bar — a quarter of the redraw+shadow
-    // cost of 60 fps with no visible loss of smoothness.
     const step = (ts: number) => {
       if (ts - last >= 50) {
         last = ts;
@@ -321,14 +301,300 @@ function SlotVU({ rack, on, color }: { rack: Rack; on: boolean; color: string })
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rack, on, color]);
   return <canvas ref={canvasRef} width={50} height={8} className="shrink-0 rounded-sm" />;
 }
 
-// ---------- BPM sync presets per module ----------
 function syncButtons(id: RackModuleId): boolean {
   return id === "delay" || id === "glitch" || id === "gate";
+}
+
+function RackModuleDetail({
+  rack,
+  deck,
+  id,
+  color,
+  armed,
+  flashLcd,
+  onChanged,
+  pos,
+  count,
+  onMove,
+}: {
+  rack: Rack;
+  deck: Deck;
+  id: RackModuleId;
+  color: string;
+  armed: number | null;
+  flashLcd: (txt: string) => void;
+  onChanged: () => void;
+  pos: number;
+  count: number;
+  onMove: (id: RackModuleId, dir: -1 | 1) => void;
+}) {
+  const def = RACK_MODULES.find((m) => m.id === id)!;
+  const on = rack.isOn(id);
+  const isXyMatrix = id === "xymatrix";
+  const xTarget = isXyMatrix ? Math.round(rack.getParam(id, "xTarget")) : 0;
+  const yTarget = isXyMatrix ? Math.round(rack.getParam(id, "yTarget")) : 0;
+  const FILTER_ABBR = ["LP", "HP", "BP", "CB"];
+
+  const syncValue = (id: RackModuleId, frac: number): [string, number] => {
+    const beat = deck.bpm > 0 ? 60 / deck.bpm : 0.5;
+    const t = beat * frac;
+    if (id === "gate") return ["rate", Math.min(16, 1 / t)];
+    return ["time", Math.min(id === "glitch" ? 0.5 : 1.2, t)];
+  };
+
+  return (
+    <div className="hw-recess flex flex-col gap-2 p-3" style={{ borderLeft: `3px solid ${color}` }}>
+      <div className="flex items-center gap-2">
+        <Toggle
+          on={on}
+          color={color}
+          onClick={() => {
+            rack.setEnabled(id, !on);
+            onChanged();
+          }}
+        />
+        <span className="text-[10px] font-black uppercase" style={{ color: on ? color : "#6b6b6b" }}>{def.label}</span>
+        <span className="text-[10px] text-neutral-400">{def.title}</span>
+        <div className="ml-auto flex items-center gap-1">
+          <button
+            className="text-[10px] leading-none text-neutral-500 hover:text-neutral-200 disabled:opacity-30"
+            onClick={() => onMove(id, -1)}
+            disabled={pos <= 1}
+            title="Déplacer à gauche"
+          >
+            ◀
+          </button>
+          <span className="text-[9px] text-neutral-600">{pos + 1}</span>
+          <button
+            className="text-[10px] leading-none text-neutral-500 hover:text-neutral-200 disabled:opacity-30"
+            onClick={() => onMove(id, 1)}
+            disabled={pos === count - 1}
+            title="Déplacer à droite"
+          >
+            ▶
+          </button>
+        </div>
+      </div>
+
+      {!isXyMatrix && (
+        <MiniCurve
+          id={id}
+          params={{ mix: rack.getMix(id), ...Object.fromEntries(def.params.map((p) => [p.key, rack.getParam(id, p.key)])) }}
+          color={color}
+        />
+      )}
+
+      <div className="flex flex-wrap items-end gap-3 min-w-0">
+        <Knob
+          label="Dosage"
+          value={rack.getMix(id)}
+          min={0}
+          max={1}
+          defaultValue={1}
+          size={52}
+          color={color}
+          led
+          format={(v) => `${Math.round(v * 100)}%`}
+          onChange={(v) => {
+            rack.setMix(id, v);
+            flashLcd(`${def.label} DOSAGE ${Math.round(v * 100)}%`);
+            onChanged();
+          }}
+        />
+
+        {def.params.filter((p) => !isXyMatrix || !["x", "y", "xTarget", "yTarget", "xFilterType", "yFilterType"].includes(p.key)).map((p) => {
+          const isTarget = armed !== null && rack.isMacroTarget(armed, { id, key: p.key });
+          return (
+            <div
+              key={p.key}
+              onClickCapture={(e) => {
+                if (armed === null) return;
+                e.stopPropagation();
+                rack.toggleMacroTarget(armed, { id, key: p.key });
+                onChanged();
+              }}
+              style={{
+                borderRadius: 6,
+                padding: 1,
+                cursor: armed !== null ? "pointer" : undefined,
+                outline: isTarget ? `2px solid ${color}` : armed !== null ? "1px dashed #555" : "none",
+              }}
+            >
+              <Knob
+                label={p.label}
+                value={rack.getParam(id, p.key)}
+                min={p.min}
+                max={p.max}
+                defaultValue={p.def}
+                size={48}
+                color={color}
+                led
+                format={p.fmt}
+                onChange={(v) => {
+                  rack.setParam(id, p.key, v);
+                  flashLcd(`${def.label} ${p.label.toUpperCase()} ${p.fmt ? p.fmt(v) : v.toFixed(2)}`);
+                  onChanged();
+                }}
+              />
+            </div>
+          );
+        })}
+      </div>
+
+      {(def.flags ?? []).length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {(def.flags ?? []).map((f) => (
+            <button
+              key={f.key}
+              onClick={() => {
+                rack.setFlag(id, f.key, !rack.getFlag(id, f.key));
+                onChanged();
+              }}
+              className="hw-btn px-2 py-1 text-[10px] font-bold"
+              style={{
+                ["--led" as string]: color,
+                color: rack.getFlag(id, f.key) ? "#0a0a0a" : color,
+                background: rack.getFlag(id, f.key) ? color : "transparent",
+              }}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {syncButtons(id) && deck.bpm > 0 && (
+        <div className="flex items-center gap-0.5">
+          {([
+            ["¼", 1],
+            ["⅛", 0.5],
+            ["1/16", 0.25],
+          ] as const).map(([lbl, frac]) => (
+            <button
+              key={lbl}
+              onClick={() => {
+                const [key, val] = syncValue(id, frac);
+                rack.setParam(id, key, val);
+                flashLcd(`${def.label} SYNC ${lbl}`);
+                onChanged();
+              }}
+              className="hw-btn px-2 py-1 text-[9px] font-bold"
+              style={{ ["--led" as string]: color, color }}
+              title={`Cale sur ${lbl} de noire (${deck.bpm.toFixed(0)} BPM)`}
+            >
+              {lbl}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {isXyMatrix && (() => {
+        const xFilterType = Math.round(rack.getParam(id, "xFilterType"));
+        return (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <div className="flex flex-col gap-1">
+                <span className="text-[9px] font-bold uppercase text-neutral-500">Effet Y</span>
+                {XY_TARGETS.map((t, i) => (
+                  <button
+                    key={t}
+                    onClick={() => {
+                      rack.setParam(id, "yTarget", i);
+                      flashLcd(`XY MATRIX — Y = ${t}`);
+                      onChanged();
+                    }}
+                    className={`hw-btn px-2 py-1 text-[10px] font-bold ${yTarget === i ? "hw-btn-on" : ""}`}
+                    style={{ ["--led" as string]: color }}
+                  >
+                    {t}
+                  </button>
+                ))}
+                <span className="mt-1 text-[9px] font-bold uppercase" style={{ color: yTarget === 0 ? "#9a9a9a" : "#4a4a4a" }}>
+                  Type Y
+                </span>
+                <div className="flex gap-0.5">
+                  {XY_FILTER_TYPES.map((t, i) => (
+                    <button
+                      key={t}
+                      title={t}
+                      disabled={yTarget !== 0}
+                      onClick={() => {
+                        rack.setParam(id, "yFilterType", i);
+                        flashLcd(`XY MATRIX — Filtre Y = ${t}`);
+                        onChanged();
+                      }}
+                      className={`hw-btn px-1.5 py-1 text-[10px] font-bold ${xFilterType === i ? "hw-btn-on" : ""}`}
+                      style={{ ["--led" as string]: color }}
+                    >
+                      {FILTER_ABBR[i]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <XyPad
+                size={240}
+                color={color}
+                x={rack.getParam(id, "x")}
+                y={rack.getParam(id, "y")}
+                xLabel={XY_TARGETS[xTarget]}
+                yLabel={XY_TARGETS[yTarget]}
+                onChange={(nx, ny) => {
+                  rack.setParam(id, "x", nx);
+                  rack.setParam(id, "y", ny);
+                  flashLcd(`XY MATRIX ${Math.round(nx * 100)}/${Math.round(ny * 100)}`);
+                  onChanged();
+                }}
+              />
+            </div>
+            <div className="flex items-center justify-end gap-3 pr-1">
+              <div className="flex items-center gap-1">
+                <span className="mr-1 text-[9px] font-bold uppercase text-neutral-500">Effet X</span>
+                {XY_TARGETS.map((t, i) => (
+                  <button
+                    key={t}
+                    onClick={() => {
+                      rack.setParam(id, "xTarget", i);
+                      flashLcd(`XY MATRIX — X = ${t}`);
+                      onChanged();
+                    }}
+                    className={`hw-btn px-2 py-1 text-[10px] font-bold ${xTarget === i ? "hw-btn-on" : ""}`}
+                    style={{ ["--led" as string]: color }}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-[9px] font-bold uppercase" style={{ color: xTarget === 0 ? "#9a9a9a" : "#4a4a4a" }}>
+                  Type X
+                </span>
+                {XY_FILTER_TYPES.map((t, i) => (
+                  <button
+                    key={t}
+                    title={t}
+                    disabled={xTarget !== 0}
+                    onClick={() => {
+                      rack.setParam(id, "xFilterType", i);
+                      flashLcd(`XY MATRIX — Filtre X = ${t}`);
+                      onChanged();
+                    }}
+                    className={`hw-btn px-1.5 py-1 text-[10px] font-bold ${xFilterType === i ? "hw-btn-on" : ""}`}
+                    style={{ ["--led" as string]: color }}
+                  >
+                    {FILTER_ABBR[i]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
 }
 
 export function RackPanel({
@@ -341,18 +607,24 @@ export function RackPanel({
   activeModules?: Record<string, boolean>;
 }) {
   const rack = deck.rack;
-  const [, force] = useState(0);
-  const rerender = () => force((n) => n + 1);
+  const [, setV] = useState(0);
+  const force = () => setV((n) => n + 1);
   const [store, setStore] = useState<Record<string, RackPreset>>({});
-  const [armed, setArmed] = useState<number | null>(null); // macro index in "assign" mode
-  const [collapsed, setCollapsed] = useState<Set<RackModuleId>>(new Set());
+  const [armed, setArmed] = useState<number | null>(null);
+  const [selected, setSelected] = useState<RackModuleId | null>(null);
   const [presetName, setPresetName] = useState("INIT");
   const [lcd, setLcd] = useState<string | null>(null);
   const lcdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => setStore(loadStore()), []);
-  useEffect(() => () => { if (lcdTimer.current) clearTimeout(lcdTimer.current); }, []);
 
-  // flash a "PARAM value" line on the LCD, then fade back to idle
+  useEffect(() => {
+    const t0 = setTimeout(() => setStore(loadStore()), 0);
+    return () => clearTimeout(t0);
+  }, []);
+
+  useEffect(() => () => {
+    if (lcdTimer.current) clearTimeout(lcdTimer.current);
+  }, []);
+
   const flashLcd = (txt: string) => {
     setLcd(txt);
     if (lcdTimer.current) clearTimeout(lcdTimer.current);
@@ -360,8 +632,7 @@ export function RackPanel({
   };
 
   const activeCount = rack.order.filter((id) => rack.isOn(id)).length;
-  const lcdText =
-    armed !== null ? `ASSIGN M${armed + 1}…` : lcd ?? `${presetName.toUpperCase()} · ${activeCount} ON`;
+  const lcdText = armed !== null ? `ASSIGN M${armed + 1}…` : lcd ?? `${presetName.toUpperCase()} · ${activeCount} ON`;
 
   const savePreset = () => {
     const name = window.prompt("Nom du preset de rack ?");
@@ -371,6 +642,7 @@ export function RackPanel({
     saveStore(next);
     setPresetName(name);
   };
+
   const deletePreset = (name: string) => {
     const next = { ...store };
     delete next[name];
@@ -378,498 +650,202 @@ export function RackPanel({
     saveStore(next);
   };
 
-  const toggleCollapse = (id: RackModuleId) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-  const allCollapsed = collapsed.size >= rack.order.length;
-  const toggleAll = () => {
-    setCollapsed(allCollapsed ? new Set() : new Set(rack.order));
-  };
-  // bulk bypass — every module off in one tap, e.g. to A/B against the dry
-  // signal or start a set from a clean slate. EQ is skipped: it behaves like
-  // always-inline hardware, not a bypassable pedal (see Rack.ts).
   const allOff = () => {
     for (const id of rack.order) {
       if (id !== "eq") rack.setEnabled(id, false);
     }
     flashLcd("TOUS LES EFFETS OFF");
-    rerender();
+    force();
   };
 
-  // BPM-synced value for a sync button (returns param key + value)
-  const syncValue = (id: RackModuleId, frac: number): [string, number] => {
-    const beat = deck.bpm > 0 ? 60 / deck.bpm : 0.5; // seconds per quarter
-    const t = beat * frac;
-    if (id === "gate") return ["rate", Math.min(16, 1 / t)]; // Hz
-    return ["time", Math.min(id === "glitch" ? 0.5 : 1.2, t)];
-  };
+  const visible = rack.order.filter((id) => {
+    if (id === "eq") return false;
+    if (activeModules && id in activeModules) return activeModules[id];
+    return true;
+  });
+
+  const current = selected ?? visible[0];
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2 min-w-0 [contain:inline-size]">
       <div className="hw-recess flex flex-col gap-2 p-3">
-      {/* header: title + LCD + global collapse + presets */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[10px] font-black uppercase tracking-widest" style={{ color }}>
-          Rack DSP
-        </span>
-        <Lcd text={lcdText} color={color} />
-        <button
-          onClick={toggleAll}
-          className="hw-btn px-1.5 py-0.5 text-[9px] font-bold"
-          style={{ ["--led" as string]: color, color }}
-          title="Tout replier / déplier"
-        >
-          {allCollapsed ? "⊕ DÉPLIER" : "⊖ REPLIER"}
-        </button>
-        <button
-          onClick={allOff}
-          className="hw-btn px-1.5 py-0.5 text-[9px] font-bold text-red-400"
-          style={{ ["--led" as string]: "#ef4444" }}
-          title="Coupe tous les effets d'un coup (l'EQ reste actif — toujours inline comme du vrai matériel)"
-        >
-          ⏻ TOUT OFF
-        </button>
-        <div className="ml-auto flex flex-wrap items-center gap-1">
-          {FACTORY.map((f) => (
-            <button
-              key={f.name}
-              onClick={() => {
-                f.apply(rack);
-                setPresetName(f.name);
-                rerender();
-              }}
-              className="hw-btn px-1.5 py-0.5 text-[9px] font-bold"
-              style={{ ["--led" as string]: color, color }}
-              title={`Preset d'usine : ${f.name}`}
-            >
-              {f.name}
-            </button>
-          ))}
-          {Object.keys(store).map((n) => (
-            <span key={n} className="flex items-center rounded ring-1 ring-neutral-700">
-              <button
-                onClick={() => {
-                  rack.import(store[n]);
-                  setPresetName(n);
-                  rerender();
-                }}
-                className="px-1.5 py-0.5 text-[9px] font-bold text-neutral-200"
-                title={`Charger le preset « ${n} »`}
-              >
-                {n}
-              </button>
-              <button
-                onClick={() => deletePreset(n)}
-                className="px-1 py-0.5 text-[9px] text-neutral-500 hover:text-red-400"
-                title="Supprimer ce preset"
-              >
-                ✕
-              </button>
-            </span>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-neutral-500">RACK DSP</span>
+          <Lcd text={lcdText} color={color} />
           <button
-            onClick={savePreset}
-            className="hw-btn px-1.5 py-0.5 text-[9px] font-bold"
-            style={{ ["--led" as string]: color, color }}
-            title="Sauvegarder l'état du rack comme preset"
+            onClick={allOff}
+            className="hw-btn px-2 py-1 text-[10px] font-bold text-red-400"
+            style={{ ["--led" as string]: "#ef4444" }}
+            title="Coupe tous les effets d'un coup (l'EQ reste actif — toujours inline comme du vrai matériel)"
           >
-            💾 SAVE
+            ⏻ TOUT OFF
           </button>
-        </div>
-      </div>
-
-      {/* live spectrum of the rack output */}
-      <RackSpectrum rack={rack} color={color} />
-
-      {/* macros */}
-      <div className="flex items-center gap-3 rounded bg-black/20 p-2">
-        <span className="text-[9px] uppercase text-neutral-500">Macros</span>
-        {rack.macros.map((m, i) => (
-          <div key={i} className="flex flex-col items-center">
-            <Knob
-              label={`M${i + 1}`}
-              value={m.value}
-              min={0}
-              max={1}
-              defaultValue={0}
-              size={34}
-              color={color}
-              onChange={(v) => {
-                rack.setMacro(i, v);
-                flashLcd(`MACRO M${i + 1} ${Math.round(v * 100)}%`);
-                rerender();
-              }}
-            />
+          <div className="ml-auto flex flex-wrap items-center gap-1">
+            {FACTORY.map((f) => (
+              <button
+                key={f.name}
+                onClick={() => {
+                  f.apply(rack);
+                  setPresetName(f.name);
+                  force();
+                }}
+                className="hw-btn px-2 py-1 text-[10px] font-bold"
+                style={{ ["--led" as string]: color, color }}
+                title={`Preset d'usine : ${f.name}`}
+              >
+                {f.name}
+              </button>
+            ))}
+            {Object.keys(store).map((n) => (
+              <span key={n} className="flex items-center rounded ring-1 ring-neutral-700">
+                <button
+                  onClick={() => {
+                    rack.import(store[n]);
+                    setPresetName(n);
+                    force();
+                  }}
+                  className="px-2 py-1 text-[10px] font-bold text-neutral-200"
+                  title={`Charger le preset « ${n} »`}
+                >
+                  {n}
+                </button>
+                <button
+                  onClick={() => deletePreset(n)}
+                  className="px-1 py-1 text-[10px] text-neutral-500 hover:text-red-400"
+                  title="Supprimer ce preset"
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
             <button
-              onClick={() => setArmed(armed === i ? null : i)}
-              className="text-[9px] font-bold uppercase"
-              style={{ color: armed === i ? "#0a0a0a" : color, background: armed === i ? color : "transparent", borderRadius: 3, padding: "0 3px" }}
-              title="Mode assignation : clique ensuite un paramètre pour le lier/délier à cette macro"
+              onClick={savePreset}
+              className="hw-btn px-2 py-1 text-[10px] font-bold"
+              style={{ ["--led" as string]: color, color }}
+              title="Sauvegarder l'état du rack comme preset"
             >
-              {m.targets.length ? `lié ${m.targets.length}` : "assign"}
+              💾 SAUVER
+            </button>
+            <button
+              onClick={() => {
+                rack.import({ order: [...rack.order], modules: {}, macros: [] });
+                setPresetName("INIT");
+                force();
+              }}
+              className="hw-btn px-2 py-1 text-[10px] font-bold"
+              style={{ ["--led" as string]: color, color }}
+              title="Réinitialiser tous les modules à leurs valeurs par défaut"
+            >
+              RESET
             </button>
           </div>
-        ))}
-        {armed !== null && (
-          <span className="text-[9px] text-amber-300">
-            Assignation M{armed + 1} : clique un paramètre ci-dessous
-          </span>
-        )}
-      </div>
+        </div>
 
-      {/* pedalboard — wraps onto rows so it never widens the page. `items-start` so a
-          collapsed card keeps its small height (no stretching to taller neighbours) →
-          replier un module fait bien remonter ce qui est en dessous. overflow-x-auto
-          is the fallback for the XY Matrix card alone (460px, a 2D touch pad that
-          can't usefully shrink below that) — on an iPhone-width screen it scrolls
-          within this row instead of forcing the whole page to scroll sideways. */}
-      <div className="flex w-full min-w-0 flex-wrap items-start content-start gap-1.5 overflow-x-auto">
-        {rack.order
-          .filter((id) => {
-            // EQ is pinned above, never shown here
-            if (id === "eq") return false;
-            // If module is in activeModules, only show if true; otherwise show all
-            if (activeModules && id in activeModules) return activeModules[id];
-            return true; // Show modules not in activeModules (backward compat)
-          })
-          .map((id, pos) => {
-            const def = RACK_MODULES.find((m) => m.id === id)!;
-            const on = rack.isOn(id);
-            const isCollapsed = collapsed.has(id);
+        <RackSpectrum rack={rack} color={color} />
 
-          // header is shared by both states: toggle + label + VU meter (click label = fold)
-          const header = (
-            <div className="flex items-center gap-1.5">
-              <Toggle
-                on={on}
+        <div className="hw-recess flex flex-wrap items-end gap-3 p-2 min-w-0">
+          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500">Macros</span>
+          {rack.macros.map((m, i) => (
+            <div key={i} className="flex flex-col items-center">
+              <Knob
+                label={`M${i + 1}`}
+                value={m.value}
+                min={0}
+                max={1}
+                defaultValue={0}
+                size={44}
                 color={color}
-                onClick={() => {
-                  rack.setEnabled(id, !on);
-                  rerender();
+                led
+                onChange={(v) => {
+                  rack.setMacro(i, v);
+                  flashLcd(`MACRO M${i + 1} ${Math.round(v * 100)}%`);
+                  force();
                 }}
               />
               <button
-                onClick={() => toggleCollapse(id)}
-                className="flex-1 truncate text-left text-[10px] font-black uppercase"
-                style={{ color: on ? color : "#6b6b6b" }}
-                title={`${def.title} — clic pour ${isCollapsed ? "déplier" : "replier"}`}
+                onClick={() => setArmed(armed === i ? null : i)}
+                className="hw-btn px-2 py-0.5 text-[9px] font-bold"
+                style={{ ["--led" as string]: color, color: armed === i ? "#0a0a0a" : color, background: armed === i ? color : "transparent" }}
+                title="Mode assignation : clique ensuite un paramètre pour le lier/délier à cette macro"
               >
-                {def.label}
+                {m.targets.length ? `lié ${m.targets.length}` : "ASSIGN"}
               </button>
-              <SlotVU rack={rack} on={on} color={color} />
-              <span className="text-[10px] leading-none text-neutral-600">{isCollapsed ? "▸" : "▾"}</span>
             </div>
-          );
+          ))}
+          {armed !== null && (
+            <span className="text-[9px] text-amber-300">
+              Assignation M{armed + 1} : clique un paramètre ci-dessous
+            </span>
+          )}
+        </div>
 
-          if (isCollapsed) {
+        <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5 min-w-0">
+          {visible.map((id, pos) => {
+            const def = RACK_MODULES.find((m) => m.id === id)!;
+            const on = rack.isOn(id);
+            const isSelected = id === current;
             return (
-              <div
+              <button
                 key={id}
-                className="hw-recess flex w-[124px] flex-col rounded px-2 py-1.5"
-                style={{ opacity: on ? 1 : 0.62 }}
+                type="button"
+                onClick={() => setSelected(id)}
+                className={`hw-pad ${on ? "hw-pad-loaded" : ""}`}
+                style={{
+                  ["--rgb" as string]: color,
+                  height: 56,
+                  opacity: on ? 1 : 0.6,
+                  border: isSelected ? `2px solid ${color}` : "none",
+                }}
               >
-                {header}
-              </div>
-            );
-          }
-
-          const isXyMatrix = id === "xymatrix";
-          const xTarget = isXyMatrix ? Math.round(rack.getParam(id, "xTarget")) : 0;
-          const yTarget = isXyMatrix ? Math.round(rack.getParam(id, "yTarget")) : 0;
-          return (
-            <div
-              key={id}
-              className={`hw-recess flex flex-col gap-1.5 rounded p-2 ${isXyMatrix ? "w-[460px]" : "w-[172px]"}`}
-              style={{ opacity: on ? 1 : 0.62 }}
-            >
-              {header}
-
-              {/* transfer-curve thumbnail (where meaningful) */}
-              {!isXyMatrix && (
-                <MiniCurve id={id} params={{ mix: rack.getMix(id), ...Object.fromEntries(def.params.map((p) => [p.key, rack.getParam(id, p.key)])) }} color={color} />
-              )}
-
-              {/* FX intensity (MIX) — long vertical fader for fine latitude + params */}
-              <div className="flex items-start gap-2">
-                <div className="flex flex-col items-center gap-1">
-                  <DigitalVU level={rack.getMix(id)} vertical />
+                <div className="flex h-full flex-col items-center justify-between p-1">
+                  <span className="text-[9px] opacity-70">{pos + 1}</span>
+                  <span className="text-[10px] font-bold uppercase truncate">{def.label}</span>
+                  <SlotVU rack={rack} on={on} color={color} />
                   <span
-                    className="rounded px-0.5 py-0.5 text-center font-mono text-[9px] font-bold tracking-tight"
-                    style={{ width: 36, color, background: "#0a0d0a", textShadow: `0 0 5px ${color}`, boxShadow: "inset 0 0 0 1px #1a1a1a" }}
-                  >
-                    {Math.round(rack.getMix(id) * 100)}%
-                  </span>
-                  <Fader
-                    value={rack.getMix(id)}
-                    min={0}
-                    max={1}
-                    step={0.005}
-                    vertical
-                    onChange={(v) => {
-                      rack.setMix(id, v);
-                      flashLcd(`${def.label} INTENSITÉ ${Math.round(v * 100)}%`);
-                      rerender();
+                    role="switch"
+                    aria-checked={on}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      rack.setEnabled(id, !on);
+                      force();
                     }}
-                    className={isXyMatrix ? "!h-[260px]" : "!h-[160px]"}
+                    className="rounded-full"
+                    style={{
+                      width: 8,
+                      height: 8,
+                      background: on ? color : "#3a3a3a",
+                      boxShadow: on ? `0 0 3px ${color}` : "none",
+                    }}
                   />
-                  <span className="text-[9px] font-bold uppercase leading-none" style={{ color: on ? color : "#6b6b6b" }}>INT</span>
                 </div>
-                {isXyMatrix && (() => {
-                  const xFilterType = Math.round(rack.getParam(id, "xFilterType"));
-                  const yFilterType = Math.round(rack.getParam(id, "yFilterType"));
-                  const FILTER_ABBR = ["LP", "HP", "BP", "CB"]; // Passe-bas/haut/bande, Coupe-bande
-                  return (
-                    <div className="flex flex-1 flex-col gap-2">
-                      {/* Y-axis target picker, stacked so it reads top→bottom next to the pad */}
-                      <div className="flex items-center gap-2">
-                        <div className="flex flex-col gap-1">
-                          <span className="text-[9px] font-bold uppercase text-neutral-500">Effet Y</span>
-                          {XY_TARGETS.map((t, i) => (
-                            <button
-                              key={t}
-                              onClick={() => {
-                                rack.setParam(id, "yTarget", i);
-                                flashLcd(`XY MATRIX — Y = ${t}`);
-                                rerender();
-                              }}
-                              className="rounded px-2 py-1 text-[10px] font-bold transition-colors"
-                              style={
-                                yTarget === i
-                                  ? { background: color, color: "#0a0a0a" }
-                                  : { background: "rgba(255,255,255,0.06)", color: "#9a9a9a" }
-                              }
-                            >
-                              {t}
-                            </button>
-                          ))}
-                          {/* filter type for Y — only meaningful while Effet Y = Filtre */}
-                          <span
-                            className="mt-1 text-[9px] font-bold uppercase"
-                            style={{ color: yTarget === 0 ? "#9a9a9a" : "#4a4a4a" }}
-                          >
-                            Type Y
-                          </span>
-                          <div className="flex gap-0.5">
-                            {XY_FILTER_TYPES.map((t, i) => (
-                              <button
-                                key={t}
-                                title={t}
-                                disabled={yTarget !== 0}
-                                onClick={() => {
-                                  rack.setParam(id, "yFilterType", i);
-                                  flashLcd(`XY MATRIX — Filtre Y = ${t}`);
-                                  rerender();
-                                }}
-                                className="flex-1 rounded px-1 py-0.5 text-[10px] font-bold transition-colors disabled:opacity-30"
-                                style={
-                                  yFilterType === i
-                                    ? { background: color, color: "#0a0a0a" }
-                                    : { background: "rgba(255,255,255,0.06)", color: "#9a9a9a" }
-                                }
-                              >
-                                {FILTER_ABBR[i]}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                        <XyPad
-                          size={240}
-                          color={color}
-                          x={rack.getParam(id, "x")}
-                          y={rack.getParam(id, "y")}
-                          xLabel={XY_TARGETS[xTarget]}
-                          yLabel={XY_TARGETS[yTarget]}
-                          onChange={(nx, ny) => {
-                            rack.setParam(id, "x", nx);
-                            rack.setParam(id, "y", ny);
-                            flashLcd(`XY MATRIX ${Math.round(nx * 100)}/${Math.round(ny * 100)}`);
-                            rerender();
-                          }}
-                        />
-                      </div>
-                      {/* X-axis target + filter-type pickers, laid out under the pad to match its horizontal axis */}
-                      <div className="flex items-center justify-end gap-3 pr-1">
-                        <div className="flex items-center gap-1">
-                          <span
-                            className="text-[9px] font-bold uppercase"
-                            style={{ color: xTarget === 0 ? "#9a9a9a" : "#4a4a4a" }}
-                          >
-                            Type X
-                          </span>
-                          {XY_FILTER_TYPES.map((t, i) => (
-                            <button
-                              key={t}
-                              title={t}
-                              disabled={xTarget !== 0}
-                              onClick={() => {
-                                rack.setParam(id, "xFilterType", i);
-                                flashLcd(`XY MATRIX — Filtre X = ${t}`);
-                                rerender();
-                              }}
-                              className="rounded px-1.5 py-1 text-[10px] font-bold transition-colors disabled:opacity-30"
-                              style={
-                                xFilterType === i
-                                  ? { background: color, color: "#0a0a0a" }
-                                  : { background: "rgba(255,255,255,0.06)", color: "#9a9a9a" }
-                              }
-                            >
-                              {FILTER_ABBR[i]}
-                            </button>
-                          ))}
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <span className="mr-1 text-[9px] font-bold uppercase text-neutral-500">Effet X</span>
-                          {XY_TARGETS.map((t, i) => (
-                            <button
-                              key={t}
-                              onClick={() => {
-                                rack.setParam(id, "xTarget", i);
-                                flashLcd(`XY MATRIX — X = ${t}`);
-                                rerender();
-                              }}
-                              className="rounded px-2 py-1 text-[10px] font-bold transition-colors"
-                              style={
-                                xTarget === i
-                                  ? { background: color, color: "#0a0a0a" }
-                                  : { background: "rgba(255,255,255,0.06)", color: "#9a9a9a" }
-                              }
-                            >
-                              {t}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-                <div className={isXyMatrix ? "flex flex-wrap items-start gap-1.5" : "flex flex-1 flex-wrap items-start gap-1.5"}>
-                {def.params.filter((p) => !isXyMatrix || !["x", "y", "xTarget", "yTarget", "xFilterType", "yFilterType"].includes(p.key)).map((p) => {
-                  const isTarget = armed !== null && rack.isMacroTarget(armed, { id, key: p.key });
-                  return (
-                    <div
-                      key={p.key}
-                      onClickCapture={(e) => {
-                        if (armed === null) return;
-                        e.stopPropagation();
-                        rack.toggleMacroTarget(armed, { id, key: p.key });
-                        rerender();
-                      }}
-                      style={{
-                        borderRadius: 6,
-                        padding: 1,
-                        cursor: armed !== null ? "pointer" : undefined,
-                        outline: isTarget ? `2px solid ${color}` : armed !== null ? "1px dashed #555" : "none",
-                      }}
-                    >
-                      <Knob
-                        label={p.label}
-                        value={rack.getParam(id, p.key)}
-                        min={p.min}
-                        max={p.max}
-                        defaultValue={p.def}
-                        size={30}
-                        color={color}
-                        format={p.fmt}
-                        onChange={(v) => {
-                          rack.setParam(id, p.key, v);
-                          flashLcd(`${def.label} ${p.label.toUpperCase()} ${p.fmt ? p.fmt(v) : v.toFixed(2)}`);
-                          rerender();
-                        }}
-                      />
-                    </div>
-                  );
-                })}
-                </div>
-              </div>
+              </button>
+            );
+          })}
+        </div>
 
-              {/* flags */}
-              {(def.flags ?? []).length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {(def.flags ?? []).map((f) => (
-                    <button
-                      key={f.key}
-                      onClick={() => {
-                        rack.setFlag(id, f.key, !rack.getFlag(id, f.key));
-                        rerender();
-                      }}
-                      className="hw-btn px-1.5 py-1 text-[9px] font-bold"
-                      style={{
-                        ["--led" as string]: color,
-                        color: rack.getFlag(id, f.key) ? "#0a0a0a" : color,
-                        background: rack.getFlag(id, f.key) ? color : "transparent",
-                      }}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
-                </div>
-              )}
+        {current && (
+          <RackModuleDetail
+            rack={rack}
+            deck={deck}
+            id={current}
+            color={color}
+            armed={armed}
+            flashLcd={flashLcd}
+            onChanged={force}
+            pos={rack.order.indexOf(current)}
+            count={visible.length}
+            onMove={(id, dir) => {
+              rack.move(id, dir);
+              force();
+            }}
+          />
+        )}
 
-              {/* BPM sync (delay / glitch / gate) */}
-              {syncButtons(id) && deck.bpm > 0 && (
-                <div className="flex items-center gap-0.5">
-                  {([
-                    ["¼", 1],
-                    ["⅛", 0.5],
-                    ["1/16", 0.25],
-                  ] as const).map(([lbl, frac]) => (
-                    <button
-                      key={lbl}
-                      onClick={() => {
-                        const [key, val] = syncValue(id, frac);
-                        rack.setParam(id, key, val);
-                        flashLcd(`${def.label} SYNC ${lbl}`);
-                        rerender();
-                      }}
-                      className="rounded px-1 py-0.5 text-[9px] font-bold ring-1 ring-neutral-700"
-                      style={{ color }}
-                      title={`Cale sur ${lbl} de noire (${deck.bpm.toFixed(0)} BPM)`}
-                    >
-                      {lbl}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* reorder ◀ ▶ */}
-              <div className="mt-auto flex items-center justify-between pt-1">
-                <button
-                  className="text-[10px] leading-none text-neutral-500 hover:text-neutral-200 disabled:opacity-30"
-                  onClick={() => {
-                    rack.move(id, -1);
-                    rerender();
-                  }}
-                  disabled={pos <= 1}
-                  title="Déplacer à gauche"
-                >
-                  ◀
-                </button>
-                <span className="text-[9px] text-neutral-600">{pos + 1}</span>
-                <button
-                  className="text-[10px] leading-none text-neutral-500 hover:text-neutral-200 disabled:opacity-30"
-                  onClick={() => {
-                    rack.move(id, 1);
-                    rerender();
-                  }}
-                  disabled={pos === rack.order.length - 1}
-                  title="Déplacer à droite"
-                >
-                  ▶
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <span className="text-[9px] leading-tight text-neutral-600">
-        Pédalier série gauche→droite. Clic titre = replier · pastille = bypass · ◀▶ = réordonner · MIX = dosage. Sauvé par morceau.
-      </span>
+        <span className="text-[9px] leading-tight text-neutral-600">
+          Pédalier série. Clic pad = sélectionner · voyant = bypass · ◀▶ = réordonner · Dosage = intensité. Sauvé par morceau.
+        </span>
       </div>
     </div>
   );
 }
+
