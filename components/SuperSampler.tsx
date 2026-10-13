@@ -4,6 +4,8 @@ import { DEFAULT_SS_PARAMS, DELAY_LABELS, FILTER_NAMES, type SSParams } from "@/
 import { Knob } from "./Knob"
 import { SSScreen } from "./SSScreen"
 import { SSKeys } from "./SSKeys"
+import { SSPads } from "./SSPads"
+import { SSSeq } from "./SSSeq"
 
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
@@ -13,6 +15,8 @@ export function SuperSampler({ engine }: { engine: DJEngine }) {
   const [status, setStatus] = useState("Charge une source")
   const [busy, setBusy] = useState(false)
   const [keyBase, setKeyBase] = useState(48)
+  const [mode, setMode] = useState<"keys" | "pads" | "seq">("keys")
+  const deckBpm = engine.masterDeck()?.fxClock()?.bpm ?? 0
   const [held, setHeld] = useState<Set<number>>(new Set())
   const [screenMode, setScreenMode] = useState<"wave" | "spectrum" | "scope">("wave")
   const [youtube, setYoutube] = useState("")
@@ -434,15 +438,44 @@ export function SuperSampler({ engine }: { engine: DJEngine }) {
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2 mb-2">
+        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500">Mode de jeu</span>
+        {(["keys", "pads", "seq"] as const).map(m => (
+          <button
+            key={m}
+            className={`hw-btn px-3 py-1.5 text-[11px] font-bold ${mode === m ? "hw-btn-on" : ""}`}
+            onClick={() => { engine.superSampler.stopAll(); setMode(m) }}
+          >
+            {m === "keys" ? "CLAVIER" : m === "pads" ? "PADS" : "SÉQUENCE"}
+          </button>
+        ))}
+      </div>
       <div className="flex flex-col lg:flex-row gap-3">
         <div className="flex-1">
-          <SSKeys
-            baseNote={keyBase}
-            activeMask={mask}
-            onDown={noteDown}
-            onUp={noteUp}
-            onOctave={octave}
-          />
+          {mode === "keys" && (
+            <SSKeys
+              baseNote={keyBase}
+              activeMask={mask}
+              onDown={noteDown}
+              onUp={noteUp}
+              onOctave={octave}
+            />
+          )}
+          {mode === "pads" && (
+            <SSPads
+              onPlay={i => engine.superSampler.playSlice(i, 16)}
+              sliceLabel={i => `${Math.round((i / 16) * 100)}%`}
+            />
+          )}
+          {mode === "seq" && (
+            <SSSeq
+              keyBase={keyBase}
+              deckBpm={deckBpm}
+              stepsCount={16}
+              now={() => engine.ctx.currentTime}
+              playStep={(note, len, when) => engine.superSampler.playStep(note, len, when)}
+            />
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-2 w-full lg:w-[200px]">
