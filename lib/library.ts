@@ -245,7 +245,24 @@ function thumbnail(blob: Blob): Promise<string | null> {
   });
 }
 
+export async function addLocalTrack(
+  blob: Blob,
+  name: string,
+  extra: Partial<LibTrack> = {}
+): Promise<LibTrack> {
+  const track: LibTrack = { id: uid(), name, source: "local", deck: null, addedAt: Date.now(), ...extra };
+  await idbPutBlob(track.id, blob);
+  const data = loadLibrary();
+  data.tracks = [track, ...data.tracks];
+  if (!saveLibrary(data)) {
+    await idbDelBlob(track.id);
+    throw new Error("stockage navigateur plein");
+  }
+  return track;
+}
+
 export async function idbDelBlob(id: string): Promise<void> {
+
   const db = await openDB();
   await new Promise<void>((resolve) => {
     const tx = db.transaction(STORE, "readwrite");

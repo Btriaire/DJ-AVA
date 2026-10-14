@@ -1444,7 +1444,7 @@ export default function Home() {
 
             {modules.supersampler && (
               <div className={deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}>
-                <SuperSampler engine={engine} />
+                <SuperSampler engine={engine} onLibraryChange={bumpLib} />
               </div>
             )}
 

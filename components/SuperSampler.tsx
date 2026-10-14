@@ -24,13 +24,16 @@ import { SSScreen } from "./SSScreen"
 import { SSKeys } from "./SSKeys"
 import { SSPads } from "./SSPads"
 import { SSSeq } from "./SSSeq"
+import { detectBPM } from "@/lib/audio/bpm"
+import { addLocalTrack } from "@/lib/library"
 
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
-export function SuperSampler({ engine }: { engine: DJEngine }) {
+export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; onLibraryChange?: () => void }) {
   const [p, setP] = useState<SSParams>(() => engine.superSampler.getParams())
   const [side, setSide] = useState<"A" | "B">("A")
   const [status, setStatus] = useState("Charge une source")
+  const [srcBpm, setSrcBpm] = useState(0)
   const [presets, setPresets] = useState<Record<string, SSParams>>(() => readPresets())
   const [presetName, setPresetName] = useState("")
   const [busy, setBusy] = useState(false)
@@ -53,8 +56,9 @@ export function SuperSampler({ engine }: { engine: DJEngine }) {
     setP(prev => ({ ...prev, [key]: value }))
   }
 
-  const loadBuffer = (buffer: AudioBuffer, name: string, label: string) => {
+  const loadBuffer = (buffer: AudioBuffer, name: string, label: string, bpmHint?: number) => {
     engine.superSampler.setSource(buffer, name)
+    setSrcBpm(bpmHint && bpmHint > 0 ? bpmHint : detectBPM(buffer))
     setStatus(label)
   }
 
@@ -77,7 +81,7 @@ export function SuperSampler({ engine }: { engine: DJEngine }) {
       setStatus("Aucun morceau sur la platine " + s)
       return
     }
-    loadBuffer(deck.audioBuffer, deck.name || "Platine " + s, "Source : platine " + s)
+    loadBuffer(deck.audioBuffer, deck.name || "Platine " + s, "Source : platine " + s, deck.bpm)
   }
 
   const pickStem = (i: number) => {
@@ -87,7 +91,7 @@ export function SuperSampler({ engine }: { engine: DJEngine }) {
       setStatus("Stem indisponible (sépare d'abord le morceau)")
       return
     }
-    loadBuffer(buf, (deck.name || "Platine " + side) + " · " + deck.stemNames[i], "Source : stem " + deck.stemNames[i])
+    loadBuffer(buf, (deck.name || "Platine " + side) + " · " + deck.stemNames[i], "Source : stem " + deck.stemNames[i], deck.bpm)
   }
 
   const loadYoutube = async () => {
@@ -206,6 +210,40 @@ export function SuperSampler({ engine }: { engine: DJEngine }) {
     set("start", 0)
     set("end", 1)
     setStatus("Région remise à zéro")
+  }
+
+  const syncToDeck = () => {
+    if (srcBpm <= 0 || deckBpm <= 0) return
+    const factor = srcBpm / deckBpm
+    const clamped = Math.min(2, Math.max(0.5, factor))
+    set("stretch", Math.round(clamped * 100) / 100)
+    const pair = `${Math.round(srcBpm)} → ${Math.round(deckBpm)} BPM`
+    setStatus(clamped === factor ? `Synchro : ${pair}` : `Hors plage ×0,5 à ×2 : ${pair}`)
+  }
+
+  const exportToLibrary = async () => {
+    if (!engine.superSampler.buffer) return
+    if (engine.superSampler.baking) {
+      setStatus("Attends la fin du rendu d'étirement")
+      return
+    }
+    setBusy(true)
+    try {
+      const blob = await engine.superSampler.exportWav()
+      const base = engine.superSampler.name || "Sample"
+      const params = engine.superSampler.getParams()
+      const buf = engine.superSampler.buffer
+      await addLocalTrack(blob, base + " · Super Sampler", {
+        durationSec: (params.end - params.start) * buf.duration * params.stretch,
+        bpm: srcBpm > 0 ? Math.round((srcBpm / params.stretch) * 10) / 10 : undefined,
+      })
+      onLibraryChange?.()
+      setStatus("Ajouté à la bibliothèque : " + base)
+    } catch {
+      setStatus("Ajout impossible (stockage navigateur plein ?)")
+    } finally {
+      setBusy(false)
+    }
   }
 
   const resetAll = () => {
@@ -394,6 +432,14 @@ export function SuperSampler({ engine }: { engine: DJEngine }) {
             <span className="hw-lcd text-[9px] flex-1 text-center">
               {engine.superSampler.baking ? "RENDU…" : p.stretch === 1 ? "ORIGINE" : "ÉTIRÉ"}
             </span>
+            <button
+              className="hw-btn text-[10px] whitespace-nowrap"
+              onClick={syncToDeck}
+              disabled={srcBpm <= 0 || deckBpm <= 0}
+              title={srcBpm > 0 && deckBpm > 0 ? `${Math.round(srcBpm)} → ${Math.round(deckBpm)} BPM` : "Il faut un BPM source et une platine cadencée"}
+            >
+              SYNC
+            </button>
           </div>
           <div className="flex gap-1 mt-2">
             <button
@@ -643,6 +689,13 @@ export function SuperSampler({ engine }: { engine: DJEngine }) {
             disabled={busy || !engine.superSampler.buffer}
           >
             {busy ? "EXPORT…" : "EXPORT WAV"}
+          </button>
+          <button
+            className="hw-btn col-span-2"
+            onClick={exportToLibrary}
+            disabled={busy || !engine.superSampler.buffer}
+          >
+            VERS BIBLIOTHÈQUE
           </button>
           <button
             className="hw-btn col-span-2"
