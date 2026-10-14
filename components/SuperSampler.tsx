@@ -418,8 +418,6 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
               onChange={v => set("fine", v)}
               format={v => `${v.toFixed(0)} ct`}
             />
-          </div>
-          <div className="flex items-center gap-2 mt-2">
             <Knob
               label="ÉTIRE"
               min={0.5}
@@ -427,13 +425,10 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
               defaultValue={1}
               value={p.stretch}
               onChange={v => set("stretch", Math.round(v * 100) / 100)}
-              format={v => `×${v.toFixed(2)}`}
+              format={v => engine.superSampler.baking ? "RENDU…" : `×${v.toFixed(2)}`}
             />
-            <span className="hw-lcd text-[9px] flex-1 text-center">
-              {engine.superSampler.baking ? "RENDU…" : p.stretch === 1 ? "ORIGINE" : "ÉTIRÉ"}
-            </span>
             <button
-              className="hw-btn text-[10px] whitespace-nowrap"
+              className="hw-btn self-center text-[10px] whitespace-nowrap"
               onClick={syncToDeck}
               disabled={srcBpm <= 0 || deckBpm <= 0}
               title={srcBpm > 0 && deckBpm > 0 ? `${Math.round(srcBpm)} → ${Math.round(deckBpm)} BPM` : "Il faut un BPM source et une platine cadencée"}
@@ -599,8 +594,9 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
           </div>
         </div>
 
-        <div className="hw-recess p-2">
+        <div className="hw-recess p-2 col-span-2">
           <h3 className="text-[10px] tracking-[0.2em] text-neutral-500">SORTIE</h3>
+
           <div className="grid grid-cols-2 gap-2">
             <Knob
               label="VOL"
