@@ -14,6 +14,7 @@ type SSScreenProps = {
   mode: "wave" | "spectrum" | "scope";
   onModeChange: (m: "wave" | "spectrum" | "scope") => void;
   onRegionChange: (start: number, end: number) => void;
+  playhead?: () => number | null;
 };
 
 export const SSScreen = ({
@@ -30,6 +31,7 @@ export const SSScreen = ({
   mode,
   onModeChange,
   onRegionChange,
+  playhead,
 }: SSScreenProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -209,6 +211,20 @@ export const SSScreen = ({
       ctx.moveTo(endX + 0.5, waveY + 0.5);
       ctx.lineTo(endX + 0.5, waveY + waveHeight + 0.5);
       ctx.stroke();
+
+      // playhead: where the last note is inside the source (wave mode only)
+      const ph = playhead ? playhead() : null;
+      if (ph !== null) {
+        const phX = ph * width;
+        ctx.strokeStyle = "#ffffff";
+        ctx.shadowColor = "#5ef2ff";
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.moveTo(phX + 0.5, waveY);
+        ctx.lineTo(phX + 0.5, waveY + waveHeight);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
 
       // End handle
       ctx.fillStyle = "#f87171";

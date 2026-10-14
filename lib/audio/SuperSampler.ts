@@ -98,6 +98,7 @@ export class SuperSampler {
   private bakingNow = false;
   private reversedCache = new WeakMap<AudioBuffer, AudioBuffer>();
   private lastLoudness: LoudnessResult | null = null;
+  private lastPlay: { startTime: number; rate: number; regionDuration: number; from: number; to: number; loop: boolean; reverse: boolean } | null = null;
   private bakeListener: (() => void) | null = null;
 
   constructor(ctx: BaseAudioContext, dest: AudioNode, getBpm: () => number) {
@@ -313,6 +314,7 @@ export class SuperSampler {
       startTime: now,
     };
 
+    this.lastPlay = { startTime: now, rate: playbackRate, regionDuration, from: this.params.start, to: this.params.end, loop: this.params.loop, reverse: this.params.reverse };
     this.voices.push(voice);
 
     if (this.voices.length > SS_VOICES) {
@@ -377,6 +379,15 @@ export class SuperSampler {
     source.connect(gain);
     gain.connect(this.voiceBus);
 
+    this.lastPlay = {
+      startTime: this.ctx.currentTime,
+      rate: this.calculatePlaybackRate(this.params.rootNote),
+      regionDuration: sliceDuration,
+      from: this.params.start + (index / count) * (this.params.end - this.params.start),
+      to: this.params.start + ((index + 1) / count) * (this.params.end - this.params.start),
+      loop: false,
+      reverse: this.params.reverse,
+    };
     source.start(0, sliceStart);
     source.stop(this.ctx.currentTime + (sliceEnd - sliceStart));
   }
@@ -407,6 +418,7 @@ export class SuperSampler {
     gain.gain.setValueAtTime(velocity, endTime - releaseTime);
     gain.gain.linearRampToValueAtTime(0, endTime);
 
+    this.lastPlay = { startTime: when, rate: playbackRate, regionDuration: regionEnd - regionStart, from: this.params.start, to: this.params.end, loop: false, reverse: this.params.reverse };
     source.start(when, regionStart);
     source.stop(endTime);
   }
@@ -420,6 +432,7 @@ export class SuperSampler {
       voice.source.stop(now + 0.005);
     });
     this.voices = [];
+    this.lastPlay = null;
   }
 
   async exportWav(): Promise<Blob> {
@@ -708,6 +721,18 @@ export class SuperSampler {
         this.voices.splice(index, 1);
       }
     }, (time - this.ctx.currentTime) * 1000);
+  }
+
+  // position of the most recent note over the whole source, 0..1, or null when silent
+  playhead(): number | null {
+    const p = this.lastPlay;
+    if (!p) return null;
+    const elapsed = (this.ctx.currentTime - p.startTime) * p.rate;
+    let progress = elapsed / Math.max(1e-6, p.regionDuration);
+    if (p.loop) progress = progress % 1;
+    else if (progress >= 1) return null;
+    if (p.reverse) progress = 1 - progress;
+    return p.from + progress * (p.to - p.from);
   }
 
   private currentBakeKey(): string {

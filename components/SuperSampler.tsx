@@ -343,6 +343,7 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
             mode={screenMode}
             onModeChange={setScreenMode}
             onRegionChange={(s, e) => { set("start", s); set("end", e); }}
+            playhead={() => engine.superSampler.playhead()}
           />
         </div>
 
