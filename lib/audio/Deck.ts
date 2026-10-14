@@ -159,6 +159,7 @@ export class Deck {
   // THROUGH one instead).
   stemReverbSend: number[] = []; // 0..1 per stem, public read for the UI
   stemDelaySend: number[] = [];
+  stemFxVol: number[] = []; // 0..1 per stem: level of this stem's reverb and delay returns (starts at 40%)
   private stemReverbSendGain: GainNode[] = [];
   private stemDelaySendGain: GainNode[] = [];
   private stemReverbConv!: ConvolverNode;
@@ -395,6 +396,7 @@ export class Deck {
       dSend.connect(this.stemDelayNode);
       this.stemDelaySendGain.push(dSend);
       this.stemDelaySend.push(0);
+      this.stemFxVol.push(0.4);
 
       this.stemLoopWrapTimer.push(null);
       this.stemLoopWrapCount.push(0);
@@ -1350,13 +1352,21 @@ export class Deck {
   setStemReverbSend(i: number, v: number) {
     if (i < 0 || i >= this.stemReverbSendGain.length) return;
     this.stemReverbSend[i] = Math.min(1, Math.max(0, v));
-    this.stemReverbSendGain[i].gain.value = this.stemReverbSend[i] * 0.9; // headroom
+    this.stemReverbSendGain[i].gain.value = this.stemReverbSend[i] * 0.9 * (this.stemFxVol[i] ?? 0.4); // headroom
   }
   setStemDelaySend(i: number, v: number) {
     if (i < 0 || i >= this.stemDelaySendGain.length) return;
     this.stemDelaySend[i] = Math.min(1, Math.max(0, v));
-    this.stemDelaySendGain[i].gain.value = this.stemDelaySend[i] * 0.8;
+    this.stemDelaySendGain[i].gain.value = this.stemDelaySend[i] * 0.8 * (this.stemFxVol[i] ?? 0.4);
   }
+  // level of one stem's reverb and delay returns, 0..1
+  setStemFxVol(i: number, v: number) {
+    if (i < 0 || i >= this.stemFxVol.length) return;
+    this.stemFxVol[i] = Math.min(1, Math.max(0, v));
+    this.setStemReverbSend(i, this.stemReverbSend[i] ?? 0);
+    this.setStemDelaySend(i, this.stemDelaySend[i] ?? 0);
+  }
+
   setStemReverbDecay(sec: number) {
     this.stemReverbConv.buffer = makeReverbImpulse(this.ctx, Math.min(6, Math.max(0.3, sec)));
   }
@@ -1768,6 +1778,10 @@ export class Deck {
   // precisely schedules the NEXT loop-wrap instant for stem `i` (via a
   // recursively-recomputed setTimeout, so no drift accumulates), and at that
   // instant applies the smoothing duck and/or counts toward Roll release.
+  // Schedules the next loop seam for stem `i`. The smoothing duck is scheduled on the
+  // AUDIO clock at the exact seam instant; the setTimeout only wakes up early to queue
+  // it, so timer jitter (busy CPU, separation running) cannot move the dip off the loop
+  // point. Seam bookkeeping (count, Roll release) runs once the seam has passed.
   private scheduleStemLoopWrap(i: number) {
     this.clearStemLoopTimer(i);
     if (!this.stemLoopActive[i] || !this._playing) return;
@@ -1777,28 +1791,35 @@ export class Deck {
     const posNow = this.startOffset + (this.ctx.currentTime - this.startCtxTime) * this.effRate;
     const sinceStart = Math.max(0, posNow - start);
     const untilWrapSec = len - (sinceStart % len);
+    const seamAt = this.ctx.currentTime + untilWrapSec; // audio-clock instant of the seam
     const smoothMs = this.stemLoopSmoothMs[i] ?? 0;
     const fadeSec = Math.min(untilWrapSec * 0.9, smoothMs / 1000);
-    const fireInMs = Math.max(0, (untilWrapSec - fadeSec / 2) * 1000);
+    const WAKE_AHEAD = 0.15; // seconds before the seam at which the timer queues the duck
+    const wakeInMs = Math.max(0, (untilWrapSec - WAKE_AHEAD) * 1000);
     this.stemLoopWrapTimer[i] = setTimeout(() => {
       if (!this.stemLoopActive[i]) return;
       if (fadeSec > 0.0005) {
         const g = this.stemGains[i];
-        const now = this.ctx.currentTime;
         const base = this.stemVol[i] ?? 1;
+        const now = this.ctx.currentTime;
         g.gain.cancelScheduledValues(now);
         g.gain.setValueAtTime(g.gain.value, now);
-        g.gain.linearRampToValueAtTime(0, now + fadeSec / 2);
-        g.gain.linearRampToValueAtTime(base, now + fadeSec);
+        g.gain.setValueAtTime(base, Math.max(now, seamAt - fadeSec / 2));
+        g.gain.linearRampToValueAtTime(0, seamAt);
+        g.gain.linearRampToValueAtTime(base, seamAt + fadeSec / 2);
       }
-      this.stemLoopWrapCount[i]++;
-      const rollAt = this.stemLoopRollAt[i];
-      if (rollAt != null && this.stemLoopWrapCount[i] >= rollAt) {
-        this.clearStemLoop(i); // Roll: release — the stem continues naturally
-        return;
-      }
-      this.scheduleStemLoopWrap(i);
-    }, fireInMs);
+      const afterMs = Math.max(0, (seamAt - this.ctx.currentTime) * 1000 + 5);
+      this.stemLoopWrapTimer[i] = setTimeout(() => {
+        if (!this.stemLoopActive[i]) return;
+        this.stemLoopWrapCount[i]++;
+        const rollAt = this.stemLoopRollAt[i];
+        if (rollAt != null && this.stemLoopWrapCount[i] >= rollAt) {
+          this.clearStemLoop(i); // Roll: release — the stem continues naturally
+          return;
+        }
+        this.scheduleStemLoopWrap(i);
+      }, afterMs);
+    }, wakeInMs);
   }
 
   get hasLoop() {

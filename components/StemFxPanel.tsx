@@ -154,6 +154,7 @@ export function StemFxPanel({ deck, i, label, color, rerender, onClose }: Props)
   const drive = deck.stemDriveAmt[i] ?? 0;
   const verb = deck.stemReverbSend[i] ?? 0;
   const delay = deck.stemDelaySend[i] ?? 0;
+  const fxVol = deck.stemFxVol[i] ?? 0.4;
 
   function apply(f: number, d: number, v: number, dl: number) {
     deck.setStemFilter(i, f);
@@ -219,6 +220,21 @@ export function StemFxPanel({ deck, i, label, color, rerender, onClose }: Props)
         </div>
 
         <div className="hw-recess flex items-center justify-around p-2">
+          <Knob
+            label="VOL FX"
+            value={fxVol}
+            min={0}
+            max={1}
+            defaultValue={0.4}
+            color={color}
+            size={58}
+            led
+            format={pct}
+            onChange={(v) => {
+              deck.setStemFxVol(i, v);
+              rerender();
+            }}
+          />
           <Knob
             label="Reverb"
             value={verb}
