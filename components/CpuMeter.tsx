@@ -1,167 +1,256 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { DJEngine } from "@/lib/audio/engine";
 
-// Web Audio exposes no real CPU figure, so we estimate the DSP load from what's
-// actually running: active rack modules (the Tone/convolver effects are the
-// heavy ones), live stem playback (one decode + gain per stem), auto-tune
-// (a worklet), and whether each deck is playing. One real, MEASURED signal is
-// blended in so the needle actually breathes instead of sitting flat: main-
-// thread frame jank (`jankExtra`, how far the rAF cadence slips past 16.7 ms).
-// The sum is squashed through 1-e^-x so realistic loads reach the amber/red
-// zones without idle sitting near the top.
-function estimateLoad(engine: DJEngine, jankExtra: number): number {
-  let raw = 0.05; // idle floor (audio thread + rAF loop never truly zero)
-  for (const deck of [engine.deckA, engine.deckB]) {
-    if (!deck.playing) continue;
-    raw += 0.7; // playing deck: source node + EQ + filter + analyser
-    const onMods = deck.rack.order.filter((id) => deck.rack.isOn(id)).length;
-    raw += onMods * 0.95; // each active Rack module (convolver/delay are heavy)
-    if (deck.stemsActive) raw += 1.1 + deck.stemNames.length * 0.55;
-    if (deck.autotuneOn) raw += 1.1; // pitch worklet is expensive
-    if (deck.bufferLoading) raw += 0.8; // background decodeAudioData in flight
-  }
-  // output latency is mostly hardware/OS-fixed, not an app-load signal — keep
-  // its nudge small so it can't dominate the reading on its own.
-  raw += Math.min(0.5, engine.latencyMs() / 60);
-  // rAF jank: how many extra 16.7 ms frames the main thread took — a real,
-  // if noisy, live CPU signal. Capped so a brief stall doesn't peg the meter.
-  raw += Math.min(2.0, jankExtra * 1.1);
-  // divisor 2.0: idle ≈8-15%, 1 deck ≈30-40%, stems+FX ≈60-75%, all-out ≈85%+.
-  return 1 - Math.exp(-raw / 2.0);
-}
+type RenderCapacityUpdate = { averageLoad: number; peakLoad: number; underrunRatio: number; timestamp: number };
+type RenderCapacity = {
+  start(options?: { updateInterval?: number }): void;
+  stop(): void;
+  addEventListener(type: "update", listener: (event: RenderCapacityUpdate) => void): void;
+  removeEventListener(type: "update", listener: (event: RenderCapacityUpdate) => void): void;
+};
 
 const W = 132;
 const H = 92;
-const PAINT_INTERVAL_MS = 80; // ~12 fps — a needle gauge doesn't need 60 fps,
-// and redrawing less means the meter stops feeding its own render cost back
-// into the "jank" signal it uses to estimate load.
-const WARMUP_MS = 2500; // ignore jank from initial page hydration/paint
+const MAX_DPR = 2;
+const REFRESH_INTERVAL = 80;
+const DROP_LED_DURATION = 2000;
+const STALE_THRESHOLD = 2000;
+const LABEL_REFRESH_INTERVAL = 250;
+const SMOOTHING_FACTOR = 0.25;
+const PEAK_DECAY_FACTOR = 0.99;
+const MIN_ESTIMATED_LOAD = 0.05;
 
 export function CpuMeter({ engine }: { engine: DJEngine }) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const shownRef = useRef(0); // smoothed needle value
-  const jankRef = useRef(0); // EMA of frame-time overshoot past 16.7 ms (live load)
-  const lastTsRef = useRef(0); // previous rAF timestamp
-  const lastPaintRef = useRef(0);
-  const mountTsRef = useRef(0);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const renderCapacityRef = useRef<RenderCapacity | null>(null);
+  const lastUpdateRef = useRef<number>(0);
+  const dropCountRef = useRef<number>(0);
+  const dropLedVisibleRef = useRef<boolean>(false);
+  const displayedLoadRef = useRef<number>(0);
+  const displayedPeakRef = useRef<number>(0);
+  const lastUnderrunRef = useRef<number>(0);
+  const labelRef = useRef<"MESURÉ" | "ESTIMÉ" | "VEILLE">("VEILLE");
+  const subscribedCtxRef = useRef<AudioContext | null>(null);
+  const [, forceUpdate] = useState(0);
+
+  const estimateLoad = (engine: DJEngine): number => {
+    let raw = 0;
+    for (const deck of [engine.deckA, engine.deckB]) {
+      if (deck.playing) raw += 0.7;
+      const onMods = deck.rack.order.filter(id => deck.rack.isOn(id)).length;
+      raw += onMods * 0.95;
+      if (deck.stemsActive) raw += 1.1 + deck.stemNames.length * 0.55;
+      if (deck.autotuneOn) raw += 1.1;
+      if (deck.bufferLoading) raw += 0.8;
+    }
+    raw += Math.min(0.5, engine.latencyMs() / 60);
+    return Math.max(MIN_ESTIMATED_LOAD, 1 - Math.exp(-raw / 2.0));
+  };
+
+  const updateLabel = (engine: DJEngine, lastUpdate: number) => {
+    const ctx = engine.ctx;
+    const now = Date.now();
+    const isRunning = ctx.state === "running";
+    const isFresh = now - lastUpdate < STALE_THRESHOLD;
+
+    if (!isRunning) {
+      labelRef.current = "VEILLE";
+    } else if (renderCapacityRef.current && isFresh) {
+      labelRef.current = "MESURÉ";
+    } else {
+      labelRef.current = "ESTIMÉ";
+    }
+    forceUpdate(n => n + 1);
+  };
+
+  const handleUpdate = (event: RenderCapacityUpdate) => {
+    lastUpdateRef.current = Date.now();
+    displayedLoadRef.current = event.averageLoad;
+    displayedPeakRef.current = Math.max(displayedPeakRef.current, event.peakLoad);
+
+    if (event.underrunRatio > lastUnderrunRef.current) {
+      dropCountRef.current += 1;
+      dropLedVisibleRef.current = true;
+      setTimeout(() => {
+        dropLedVisibleRef.current = false;
+        forceUpdate(n => n + 1);
+      }, DROP_LED_DURATION);
+    }
+    lastUnderrunRef.current = event.underrunRatio;
+  };
+
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current;
+    const canvasCtx = canvasCtxRef.current;
+    if (!canvas || !canvasCtx) return;
+
+    // Background
+    canvasCtx.clearRect(0, 0, W, H);
+    canvasCtx.fillStyle = "#1a1a1a";
+    canvasCtx.fillRect(0, 0, W, H);
+
+    // Arc
+    const centerX = W / 2;
+    const centerY = H / 2;
+    const radius = 30;
+    const startAngle = -Math.PI * 0.7;
+    const endAngle = Math.PI * 0.7;
+    const arcWidth = 4;
+
+    canvasCtx.lineWidth = arcWidth;
+    canvasCtx.strokeStyle = "#333";
+    canvasCtx.beginPath();
+    canvasCtx.arc(centerX, centerY, radius, startAngle, endAngle);
+    canvasCtx.stroke();
+
+    // Zones
+    const zone1End = startAngle + (endAngle - startAngle) * 0.6;
+    const zone2End = startAngle + (endAngle - startAngle) * 0.85;
+
+    canvasCtx.strokeStyle = "#4CAF50";
+    canvasCtx.beginPath();
+    canvasCtx.arc(centerX, centerY, radius, startAngle, zone1End);
+    canvasCtx.stroke();
+
+    canvasCtx.strokeStyle = "#FFC107";
+    canvasCtx.beginPath();
+    canvasCtx.arc(centerX, centerY, radius, zone1End, zone2End);
+    canvasCtx.stroke();
+
+    canvasCtx.strokeStyle = "#F44336";
+    canvasCtx.beginPath();
+    canvasCtx.arc(centerX, centerY, radius, zone2End, endAngle);
+    canvasCtx.stroke();
+
+    // Needle
+    const loadAngle = startAngle + (endAngle - startAngle) * displayedLoadRef.current;
+    canvasCtx.strokeStyle = "#FFF";
+    canvasCtx.lineWidth = 2;
+    canvasCtx.beginPath();
+    canvasCtx.moveTo(centerX, centerY);
+    canvasCtx.lineTo(
+      centerX + radius * Math.cos(loadAngle),
+      centerY + radius * Math.sin(loadAngle)
+    );
+    canvasCtx.stroke();
+
+    // Peak marker
+    const peakAngle = startAngle + (endAngle - startAngle) * displayedPeakRef.current;
+    canvasCtx.fillStyle = "#F44336";
+    canvasCtx.beginPath();
+    canvasCtx.arc(
+      centerX + (radius + 5) * Math.cos(peakAngle),
+      centerY + (radius + 5) * Math.sin(peakAngle),
+      2,
+      0,
+      Math.PI * 2
+    );
+    canvasCtx.fill();
+
+    // Drop LED
+    if (dropLedVisibleRef.current) {
+      canvasCtx.fillStyle = "#F44336";
+      canvasCtx.beginPath();
+      canvasCtx.arc(10, 10, 5, 0, Math.PI * 2);
+      canvasCtx.fill();
+      canvasCtx.fillStyle = "#FFF";
+      canvasCtx.font = "8px Arial";
+      canvasCtx.fillText("DROP", 18, 13);
+    }
+
+    // Value
+    canvasCtx.fillStyle = "#FFF";
+    canvasCtx.font = "12px Arial";
+    canvasCtx.textAlign = "center";
+    canvasCtx.fillText(`${Math.round(displayedLoadRef.current * 100)}%`, centerX, centerY + 5);
+
+    // Label
+    canvasCtx.fillStyle = "#AAA";
+    canvasCtx.font = "8px Arial";
+    canvasCtx.textAlign = "left";
+    canvasCtx.fillText(labelRef.current, 5, H - 5);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+
+    const dpr = Math.min(window.devicePixelRatio, MAX_DPR);
     canvas.width = W * dpr;
     canvas.height = H * dpr;
-    ctx.scale(dpr, dpr);
+    const canvasCtx = canvas.getContext("2d");
+    if (!canvasCtx) return;
+    canvasCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    canvasCtxRef.current = canvasCtx;
 
-    // dial geometry: a 140° arc, centre near the bottom
-    const cx = W / 2;
-    const cy = H - 14;
-    const r = 56;
-    const a0 = Math.PI * 1.18; // left end
-    const a1 = Math.PI * (2 - 0.18); // right end
-    const span = a1 - a0;
+    const ctx = engine.ctx;
+    const renderCapacity = (ctx as AudioContext & { renderCapacity?: RenderCapacity }).renderCapacity;
 
-    mountTsRef.current = performance.now();
-    let raf = 0;
-    const tick = (ts: number) => {
-      // Measure how much the frame cadence slips past the 60 fps budget —
-      // but only once the page has settled; hydration/initial paint jank
-      // isn't a meaningful "app is under load" signal and was the main
-      // reason the needle used to slam to the top on first render.
-      const warmedUp = ts - mountTsRef.current > WARMUP_MS;
-      const last = lastTsRef.current;
-      lastTsRef.current = ts;
-      if (last && warmedUp) {
-        const dt = ts - last;
-        const extra = Math.max(0, dt - 16.7) / 16.7; // 0 at 60fps, ~1 at 30fps
-        // fast attack so spikes show, slow release so it doesn't flicker to 0
-        const k = extra > jankRef.current ? 0.4 : 0.06;
-        jankRef.current += (extra - jankRef.current) * k;
+    if (renderCapacity) {
+      renderCapacityRef.current = renderCapacity;
+      subscribedCtxRef.current = ctx;
+      renderCapacity.start({ updateInterval: 0.5 });
+      renderCapacity.addEventListener("update", handleUpdate);
+    }
+
+    const labelInterval = setInterval(() => updateLabel(engine, lastUpdateRef.current), LABEL_REFRESH_INTERVAL);
+    const animationFrame = requestAnimationFrame(function frame() {
+      const now = Date.now();
+      const isRunning = ctx.state === "running";
+      const isFresh = now - lastUpdateRef.current < STALE_THRESHOLD;
+
+      // Re-subscribe if context changed
+      if (subscribedCtxRef.current !== ctx) {
+        if (renderCapacityRef.current) {
+          renderCapacityRef.current.stop();
+          renderCapacityRef.current.removeEventListener("update", handleUpdate);
+        }
+        const newRenderCapacity = (ctx as AudioContext & { renderCapacity?: RenderCapacity }).renderCapacity;
+        if (newRenderCapacity) {
+          renderCapacityRef.current = newRenderCapacity;
+          subscribedCtxRef.current = ctx;
+          newRenderCapacity.start({ updateInterval: 0.5 });
+          newRenderCapacity.addEventListener("update", handleUpdate);
+        }
       }
 
-      const target = estimateLoad(engine, warmedUp ? jankRef.current : 0);
-      shownRef.current += (target - shownRef.current) * 0.2; // ballistic smoothing
-
-      // the needle value updates every frame (cheap), but the canvas only
-      // repaints at ~12 fps — plenty smooth for a gauge, and it means this
-      // component's own drawing no longer inflates the jank it measures.
-      if (ts - lastPaintRef.current >= PAINT_INTERVAL_MS) {
-        lastPaintRef.current = ts;
-        const v = shownRef.current;
-
-        ctx.clearRect(0, 0, W, H);
-
-        // coloured zones: green → amber → red
-        const zones: [number, number, string][] = [
-          [0, 0.6, "#3ad17a"],
-          [0.6, 0.85, "#ffb02e"],
-          [0.85, 1, "#ff4646"],
-        ];
-        ctx.lineWidth = 6;
-        for (const [z0, z1, col] of zones) {
-          ctx.beginPath();
-          ctx.strokeStyle = col;
-          ctx.arc(cx, cy, r, a0 + span * z0, a0 + span * z1);
-          ctx.stroke();
-        }
-
-        // tick marks
-        ctx.strokeStyle = "#7a7a7a";
-        ctx.lineWidth = 1;
-        for (let i = 0; i <= 10; i++) {
-          const a = a0 + (span * i) / 10;
-          const inner = i % 5 === 0 ? r - 11 : r - 7;
-          ctx.beginPath();
-          ctx.moveTo(cx + Math.cos(a) * (r - 2), cy + Math.sin(a) * (r - 2));
-          ctx.lineTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner);
-          ctx.stroke();
-        }
-
-        // needle
-        const na = a0 + span * Math.min(1, Math.max(0, v));
-        const nx = cx + Math.cos(na) * (r - 6);
-        const ny = cy + Math.sin(na) * (r - 6);
-        const hot = v > 0.85 ? "#ff4646" : v > 0.6 ? "#ffb02e" : "#e8e8e8";
-        ctx.strokeStyle = hot;
-        ctx.lineWidth = 2;
-        ctx.shadowColor = hot;
-        ctx.shadowBlur = 6;
-        ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.lineTo(nx, ny);
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-
-        // hub
-        ctx.fillStyle = "#1a1a1a";
-        ctx.beginPath();
-        ctx.arc(cx, cy, 4, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = "#555";
-        ctx.stroke();
-
-        // labels
-        ctx.fillStyle = "#8a8a8a";
-        ctx.font = "700 8px ui-monospace, monospace";
-        ctx.textAlign = "center";
-        ctx.fillText("CPU", cx, 12);
-        ctx.fillStyle = hot;
-        ctx.font = "700 11px ui-monospace, monospace";
-        ctx.fillText(`${Math.round(v * 100)}%`, cx, cy + 8);
+      if (!renderCapacityRef.current || !isRunning || !isFresh) {
+        const estimatedLoad = estimateLoad(engine);
+        displayedLoadRef.current = SMOOTHING_FACTOR * estimatedLoad + (1 - SMOOTHING_FACTOR) * displayedLoadRef.current;
       }
 
-      raf = requestAnimationFrame(tick);
+      displayedPeakRef.current *= PEAK_DECAY_FACTOR;
+      draw();
+
+      setTimeout(() => requestAnimationFrame(frame), REFRESH_INTERVAL);
+    });
+
+    return () => {
+      clearInterval(labelInterval);
+      cancelAnimationFrame(animationFrame);
+
+      if (renderCapacityRef.current) {
+        renderCapacityRef.current.stop();
+        renderCapacityRef.current.removeEventListener("update", handleUpdate);
+      }
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [engine]);
+  }, [engine, draw]);
 
   return (
-    <div className="hw-recess flex shrink-0 items-center justify-center rounded p-1" title="Charge processeur (estimée)">
-      <canvas ref={canvasRef} style={{ width: W, height: H }} />
+    <div
+      className="hw-recess flex shrink-0 items-center justify-center rounded p-1"
+      title={
+        labelRef.current === "MESURÉ"
+          ? "Charge CPU mesurée par l'API Web Audio"
+          : labelRef.current === "ESTIMÉ"
+          ? "Charge CPU estimée par l'état des decks"
+          : "Moteur audio en veille"
+      }
+      style={{ width: W, height: H }}
+    >
+      <canvas ref={canvasRef} />
     </div>
   );
 }
