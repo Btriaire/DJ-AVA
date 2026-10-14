@@ -38,6 +38,7 @@ import { DancePanel } from "@/components/DancePanel";
 import { DJKeyboard } from "@/components/DJKeyboard";
 import { SuperSampler } from "@/components/SuperSampler";
 import { HoldButton } from "@/components/HoldButton";
+import { DisplayTemplate, TemplateView, loadTemplates, saveTemplates, newTemplate } from "@/lib/displayTemplates";
 import { Splash } from "@/components/Splash";
 import {
   IconMixer,
@@ -311,7 +312,34 @@ export default function Home() {
       return DEFAULT_MODULES;
     }
   });
-  const [showModulePicker, setShowModulePicker] = useState(false);
+const [templates, setTemplates] = useState<DisplayTemplate[]>(() => loadTemplates());
+const [templateName, setTemplateName] = useState("");
+function persistTemplates(list: DisplayTemplate[]) {
+  setTemplates(list);
+  saveTemplates(list);
+}
+function saveCurrentTemplate() {
+  const name = templateName.trim() || `Modèle ${templates.length + 1}`;
+  persistTemplates([newTemplate(name, modules, view as TemplateView, deckClosed), ...templates]);
+  setTemplateName("");
+}
+function applyTemplate(t: DisplayTemplate) {
+  const next = Object.fromEntries(
+    Object.entries(DEFAULT_MODULES).map(([k, d]) => [k, t.modules[k] ?? d])
+  ) as Modules;
+  setModules(next);
+  try {
+    localStorage.setItem("djsynth.modules.v1", JSON.stringify(next));
+  } catch {
+    /* storage unavailable: the layout still applies for this session */
+  }
+  setView(t.view);
+  setDeckClosed(t.deckClosed);
+}
+function deleteTemplate(id: string) {
+  persistTemplates(templates.filter((t) => t.id !== id));
+}
+const [showModulePicker, setShowModulePicker] = useState(false);
   function toggleModule(k: keyof Modules) {
     setModules((m) => {
       const next = { ...m, [k]: !m[k] };
@@ -1012,6 +1040,46 @@ export default function Home() {
                       </div>
                     );
                   })}
+                  <div className="mt-4 pt-3 border-t border-neutral-800">
+  <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+    Modèles d&apos;affichage
+  </div>
+  <div className="flex gap-1 mb-2">
+    <input
+      value={templateName}
+      onChange={(e) => setTemplateName(e.target.value)}
+      placeholder="Nom du modèle"
+      className="flex-1 min-w-0 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-[11px] text-neutral-100"
+    />
+    <button onClick={saveCurrentTemplate} className="hw-btn px-2 py-1 text-[10px] font-bold">
+      SAUVER
+    </button>
+  </div>
+  {templates.length === 0 && (
+    <div className="text-[10px] text-neutral-500">
+      Aucun modèle. Règle les modules puis sauve-les ici.
+    </div>
+  )}
+  <div className="space-y-1">
+    {templates.map((t) => (
+      <div key={t.id} className="flex items-center justify-between gap-2 py-1 px-1.5 rounded bg-neutral-900/40">
+        <span className="truncate text-[11px] text-neutral-200">{t.name}</span>
+        <div className="flex items-center gap-1">
+          <button onClick={() => applyTemplate(t)} className="hw-btn px-2 py-0.5 text-[10px] font-bold">
+            CHARGER
+          </button>
+          <button
+            onClick={() => deleteTemplate(t.id)}
+            className="px-1.5 text-[11px] text-neutral-500 hover:text-red-400"
+            title="Supprimer ce modèle"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+    ))}
+  </div>
+                  </div>
                 </div>
               )}
             </div>
