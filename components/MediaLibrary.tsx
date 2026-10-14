@@ -680,6 +680,29 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     }));
   }
 
+  // rename / duplicate / clear a set (immutable updates: persist gets the previous state)
+  function renamePlaylist(id: string) {
+    const current = dataRef.current.playlists.find((pl) => pl.id === id)?.name;
+    if (!current) return;
+    const next = prompt("Renommer le set", current)?.trim();
+    if (!next) return;
+    persist((d) => ({ ...d, playlists: d.playlists.map((pl) => (pl.id === id ? { ...pl, name: next } : pl)) }));
+  }
+  function duplicatePlaylist(id: string) {
+    const original = dataRef.current.playlists.find((pl) => pl.id === id);
+    if (!original) return;
+    const copy = { id: uid(), name: `${original.name} (copie)`, trackIds: [...original.trackIds] };
+    persist((d) => ({ ...d, playlists: [...d.playlists, copy] }));
+    setActivePl(copy.id);
+    flash(`Set dupliqué : ${original.name}`);
+  }
+  function clearPlaylist(id: string) {
+    const name = dataRef.current.playlists.find((pl) => pl.id === id)?.name;
+    if (!name || !confirm(`Vider le set « ${name} » ?`)) return;
+    persist((d) => ({ ...d, playlists: d.playlists.map((pl) => (pl.id === id ? { ...pl, trackIds: [] } : pl)) }));
+    flash("Set vidé");
+  }
+
   // --- Audius / YouTube search ---
   async function search(durOverride?: string) {
     if (!q.trim()) return;
@@ -1522,12 +1545,29 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                 au total
               </span>
             </div>
-            <button
-              onClick={() => delPlaylist(activePlaylist.id)}
-              className="hw-btn shrink-0 px-2 py-0.5 text-[11px] text-neutral-500"
-            >
-              Supprimer le set
-            </button>
+            <div className="flex shrink-0 gap-1">
+              <button className="hw-btn px-2 py-0.5 text-[10px] font-bold" title="Renommer le set" onClick={() => renamePlaylist(activePlaylist.id)}>
+                RENOMMER
+              </button>
+              <button className="hw-btn px-2 py-0.5 text-[10px] font-bold" title="Dupliquer le set" onClick={() => duplicatePlaylist(activePlaylist.id)}>
+                DUPLIQUER
+              </button>
+              <button className="hw-btn px-2 py-0.5 text-[10px] font-bold" title="Vider le set (les morceaux restent dans la bibliothèque)" onClick={() => clearPlaylist(activePlaylist.id)}>
+                VIDER
+              </button>
+              <button
+                className="hw-btn px-2 py-0.5 text-[10px] font-bold text-red-400"
+                title="Supprimer le set (les morceaux restent dans la bibliothèque)"
+                onClick={() => {
+                  const name = dataRef.current.playlists.find((pl) => pl.id === activePlaylist.id)?.name;
+                  if (name && confirm(`Supprimer le set « ${name} » ? Les morceaux restent dans la bibliothèque.`)) {
+                    delPlaylist(activePlaylist.id);
+                  }
+                }}
+              >
+                SUPPRIMER LE SET
+              </button>
+            </div>
           </div>
 
           {/* transition duration — the crossfade length used between every
