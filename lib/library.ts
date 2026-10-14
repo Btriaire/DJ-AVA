@@ -316,12 +316,12 @@ export async function removeOrphanBlobs(ids: string[]): Promise<void> {
   }
 }
 
-export async function storageUsage(): Promise<string> {
-  if (!navigator.storage?.estimate) return "";
+export async function storageUsage(): Promise<{ usedMb: number; quotaMb: number } | null> {
+  if (!navigator.storage?.estimate) return null;
   const { usage, quota } = await navigator.storage.estimate();
-  if (usage === undefined || quota === undefined) return "";
-  const toMo = (bytes: number) => (bytes / (1024 * 1024)).toFixed(1);
-  return `${toMo(usage)} Mo sur ${toMo(quota)} Mo`;
+  if (usage === undefined || quota === undefined) return null;
+  const toMb = (bytes: number) => bytes / (1024 * 1024);
+  return { usedMb: toMb(usage), quotaMb: toMb(quota) };
 }
 
 export async function idbDelBlob(id: string): Promise<void> {

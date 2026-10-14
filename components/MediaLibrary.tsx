@@ -365,13 +365,13 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
       flash("⚠ Stockage plein : les pochettes ont été retirées de la bibliothèque.");
   }
   const [audit, setAudit] = useState<LibraryAudit | null>(null);
-  const [usageText, setUsageText] = useState("");
+const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(null);
 
   async function runAudit() {
     try {
       const result = await auditLibrary(dataRef.current.tracks);
       setAudit(result);
-      setUsageText(await storageUsage());
+      setUsage(await storageUsage());
       if (result.missing.length === 0 && result.orphans.length === 0) {
         flash("Bibliothèque cohérente");
       } else {
@@ -1931,40 +1931,54 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
               </button>
             ))}
             {tab === "files" && (
-              <div className="ml-auto flex items-center gap-2">
-                <button
-                  title="Vérifie que chaque piste a son fichier et que chaque fichier a sa piste"
-                  onClick={runAudit}
-                  className="px-2 py-1 text-sm border rounded hover:bg-gray-100"
-                >
-                  VÉRIFIER
-                </button>
-                {audit && (
-                  <>
-                    <span className="text-sm">
-                      {audit.missing.length > 0 || audit.orphans.length > 0
-                        ? `${audit.missing.length} sans fichier, ${audit.orphans.length} orphelins`
-                        : "OK"}
-                    </span>
-                    {audit.missing.length > 0 && (
-                      <button
-                        onClick={fixMissing}
-                        className="px-2 py-1 text-sm border rounded hover:bg-gray-100"
-                      >
-                        Retirer sans fichier ({audit.missing.length})
-                      </button>
-                    )}
-                    {audit.orphans.length > 0 && (
-                      <button
-                        onClick={fixOrphans}
-                        className="px-2 py-1 text-sm border rounded hover:bg-gray-100"
-                      >
-                        Supprimer orphelins ({audit.orphans.length})
-                      </button>
-                    )}
-                    {usageText && <span className="text-sm">{usageText}</span>}
-                  </>
-                )}
+<div className="ml-auto flex items-center gap-2">
+  <div className="flex items-center gap-2.5 rounded-lg border border-neutral-800 bg-neutral-950/60 px-2.5 py-1.5">
+    <div className={`hw-led ${audit === null ? 'bg-[#525252]' : (audit ? audit.missing.length + audit.orphans.length : 0) > 0 ? 'bg-[#f59e0b]' : 'bg-[#22c55e]'}`} />
+    <div className="flex flex-col gap-1">
+      <div className="text-[11px] font-bold text-neutral-200">
+        {audit === null ? 'Non vérifiée' : (audit ? audit.missing.length + audit.orphans.length : 0) > 0 ? `${audit.missing.length} sans fichier · ${audit.orphans.length} orphelins` : 'Cohérente'}
+      </div>
+      {usage && (
+        <>
+          <div className="relative h-1.5 w-40 rounded-full bg-neutral-800">
+            <div
+              className="absolute h-full rounded-full bg-gradient-to-r from-[#38bdf8] to-[#a78bfa]"
+              style={{ width: `${Math.min(100, (usage.usedMb / usage.quotaMb) * 100)}%` }}
+            />
+          </div>
+          <div className="text-[9px] font-mono text-neutral-500">
+            {usage.usedMb.toFixed(1)} Mo / {Math.round(usage.quotaMb)} Mo
+          </div>
+        </>
+      )}
+    </div>
+    <button
+      className="hw-btn px-2.5 py-1 text-[10px] font-bold"
+      onClick={async () => {
+        setUsage(await storageUsage());
+        runAudit();
+      }}
+      title="Vérifie que chaque piste a son fichier et que chaque fichier a sa piste"
+    >
+      VÉRIFIER
+    </button>
+    {audit && audit.missing.length > 0 && (
+      <button
+        className="hw-btn px-2.5 py-1 text-[10px] font-bold"
+        onClick={fixMissing}
+      >
+        Retirer sans fichier ({audit.missing.length})
+      </button>
+    )}
+    {audit && audit.orphans.length > 0 && (
+      <button
+        className="hw-btn px-2.5 py-1 text-[10px] font-bold"
+        onClick={fixOrphans}
+      >
+        Supprimer orphelins ({audit.orphans.length})
+      </button>
+    )}
+  </div>
                 <button
                   onClick={delAll}
                   disabled={data.tracks.length === 0}
