@@ -566,7 +566,7 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
             {DELAY_LABELS.map((label, i) => (
               <button
                 key={i}
-                className={`hw-btn flex-1 text-[8px] ${p.delayDiv === i ? "hw-btn-on" : ""}`}
+                className={`hw-btn flex-1 min-w-0 whitespace-nowrap text-[10px] ${p.delayDiv === i ? "hw-btn-on" : ""}`}
                 onClick={() => set("delayDiv", i)}
               >
                 {label}
@@ -602,7 +602,7 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
         <div className="hw-recess p-2 col-span-2">
           <h3 className="text-[10px] tracking-[0.2em] text-neutral-500">SORTIE</h3>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2 max-w-xs mx-auto justify-items-center">
             <Knob
               label="VOL"
               min={0}

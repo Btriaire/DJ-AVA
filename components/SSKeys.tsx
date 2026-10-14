@@ -76,7 +76,7 @@ export function SSKeys({ baseNote, activeMask, onDown, onUp, onOctave }: SSKeysP
     const isActive = (activeMask & (1 << index)) !== 0;
     const note = baseNote + index;
     const whiteBefore = KEY_IS_BLACK.slice(0, index).filter(b => !b).length;
-    const whiteWidth = 100 / 9;
+    const whiteWidth = 100 / 9.3; // 9 touches blanches + marge pour la 16e touche noire
     const left = isBlack ? `${whiteBefore * whiteWidth - whiteWidth * 0.3}%` : `${whiteBefore * whiteWidth}%`;
     const width = isBlack ? `${whiteWidth * 0.6}%` : `${whiteWidth}%`;
     const height = isBlack ? "62%" : "100%";

@@ -174,7 +174,7 @@ export const DJKeyboard = ({ engine }: Props) => {
     const accentColor = isFirstRow ? "#38bdf8" : "#e879f9";
 
     const whiteKeysBefore = KEY_IS_BLACK.slice(0, slice).filter(b => !b).length;
-    const whiteWidth = 100 / 9;
+    const whiteWidth = 100 / 9.3; // 9 touches blanches + marge pour la 16e touche noire
     const leftPosition = isBlack ? whiteKeysBefore * whiteWidth - whiteWidth * 0.3 : whiteKeysBefore * whiteWidth;
 
     return (
@@ -245,7 +245,7 @@ export const DJKeyboard = ({ engine }: Props) => {
   };
 
   return (
-    <div className="max-w-[420px] mx-auto hw-carbon hw-screwed p-4 space-y-4 rounded-lg">
+    <div className="w-full hw-carbon hw-screwed p-4 space-y-4 rounded-lg">
       <div className="hw-brushed p-2 rounded-t-lg flex justify-between items-center">
         <div className="text-xs font-bold">DJ KEYS</div>
         <div className="flex items-center gap-2">
@@ -279,16 +279,16 @@ export const DJKeyboard = ({ engine }: Props) => {
             <div className="text-[10px]">BAS</div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-3 items-end">
             <Knob
               label="FILTRE"
               value={settings.filter}
               min={0}
               max={1}
               defaultValue={0.5}
-              size={40}
+              size={44}
               color="#e879f9"
-              led={true}
+              led={false}
               format={(v) => `${Math.round(v * 100)}%`}
               onChange={(v) => setSetting("filter", v)}
             />
@@ -298,9 +298,9 @@ export const DJKeyboard = ({ engine }: Props) => {
               min={0}
               max={1}
               defaultValue={0.5}
-              size={40}
+              size={44}
               color="#f43f5e"
-              led={true}
+              led={false}
               format={(v) => `${Math.round(v * 100)}%`}
               onChange={(v) => setSetting("echo", v)}
             />
@@ -310,9 +310,9 @@ export const DJKeyboard = ({ engine }: Props) => {
               min={0}
               max={3}
               defaultValue={1}
-              size={40}
+              size={44}
               color="#38bdf8"
-              led={true}
+              led={false}
               format={(v) => ECHO_LABELS[v]}
               onChange={(v) => setSetting("echoDiv", Math.round(v))}
             />
