@@ -130,7 +130,12 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
       link.download = (engine.superSampler.name || "sample") + "-ss.wav"
       link.click()
       URL.revokeObjectURL(link.href)
-      setStatus("Export WAV 24 bits prêt")
+      const m = engine.superSampler.loudness
+      setStatus(
+        m && Number.isFinite(m.lufs) && Number.isFinite(m.truePeakDb)
+          ? `Export WAV 24 bits : ${m.lufs.toFixed(1)} LUFS · TP ${m.truePeakDb.toFixed(1)} dBTP`
+          : "Export WAV 24 bits prêt"
+      )
     } finally {
       setBusy(false)
     }

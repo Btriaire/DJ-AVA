@@ -1,4 +1,5 @@
 import { stretchBuffer } from "./stretch";
+import { measureLoudness, type LoudnessResult } from "./loudness";
 
 export const SS_VOICES = 16;
 export const DELAY_DIVS: number[] = [0.25, 0.5, 0.75, 1, 1.5, 2];
@@ -96,6 +97,7 @@ export class SuperSampler {
   private bakeToken = 0;
   private bakingNow = false;
   private reversedCache = new WeakMap<AudioBuffer, AudioBuffer>();
+  private lastLoudness: LoudnessResult | null = null;
   private bakeListener: (() => void) | null = null;
 
   constructor(ctx: BaseAudioContext, dest: AudioNode, getBpm: () => number) {
@@ -163,6 +165,10 @@ export class SuperSampler {
 
   get baking(): boolean {
     return this.bakingNow;
+  }
+
+  get loudness(): LoudnessResult | null {
+    return this.lastLoudness;
   }
 
   setBakeListener(listener: (() => void) | null): void {
@@ -480,13 +486,15 @@ export class SuperSampler {
         if (sample > maxSample) maxSample = sample;
       }
     }
-    const gainFactor = Math.min(1, 0.89125 / maxSample); // 0.89125 = 10^(-1/20)
+    const gainFactor = maxSample > 0 ? 0.89125 / maxSample : 1; // 0.89125 = 10^(-1/20)
     for (let channel = 0; channel < renderedBuffer.numberOfChannels; channel++) {
       const channelData = renderedBuffer.getChannelData(channel);
       for (let i = 0; i < channelData.length; i++) {
         channelData[i] *= gainFactor;
       }
     }
+
+    this.lastLoudness = measureLoudness(renderedBuffer);
 
     // Encode to 24-bit WAV
     const sampleRate = renderedBuffer.sampleRate;
