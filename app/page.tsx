@@ -1436,15 +1436,18 @@ export default function Home() {
               </div>
             )}
 
-            {modules.djkbd && (
-              <div className={deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}>
-                <DJKeyboard engine={engine} />
-              </div>
-            )}
-
-            {modules.supersampler && (
-              <div className={deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}>
-                <SuperSampler engine={engine} onLibraryChange={bumpLib} />
+            {(modules.djkbd || modules.supersampler) && (
+              <div className={`grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] ${deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}`}>
+                {modules.djkbd && (
+                  <div className="@container min-w-0">
+                    <DJKeyboard engine={engine} />
+                  </div>
+                )}
+                {modules.supersampler && (
+                  <div className="@container min-w-0">
+                    <SuperSampler engine={engine} onLibraryChange={bumpLib} />
+                  </div>
+                )}
               </div>
             )}
 

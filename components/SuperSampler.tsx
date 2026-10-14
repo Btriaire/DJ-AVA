@@ -293,7 +293,7 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
         </div>
       </header>
 
-      <div className="flex flex-col lg:flex-row gap-3">
+      <div className="flex flex-col @lg:flex-row gap-3">
         <div className="flex-1 flex flex-col">
           <SSScreen
             buffer={engine.superSampler.buffer}
@@ -312,7 +312,7 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
           />
         </div>
 
-        <div className="hw-recess flex-1 lg:w-[30%] p-3 flex flex-col gap-2">
+        <div className="hw-recess flex-1 @lg:w-[30%] p-3 flex flex-col gap-2">
           <h2 className="text-[10px] tracking-[0.2em] text-neutral-400">SOURCE</h2>
           <div className="flex gap-1">
             <button
@@ -401,7 +401,7 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 @md:grid-cols-4 gap-3">
         <div className="hw-recess p-2">
           <h3 className="text-[10px] tracking-[0.2em] text-neutral-400">ACCORD</h3>
           <div className="grid grid-cols-2 gap-2">
@@ -652,7 +652,7 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
           </button>
         ))}
       </div>
-      <div className="flex flex-col lg:flex-row gap-3">
+      <div className="flex flex-col @lg:flex-row gap-3">
         <div className="flex-1">
           {mode === "keys" && (
             <SSKeys
@@ -680,7 +680,7 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-2 w-full lg:w-[200px]">
+        <div className="grid grid-cols-2 gap-2 w-full @lg:w-[200px]">
           <button
             className={`hw-btn ${p.loop ? "hw-btn-on" : ""}`}
             onClick={() => set("loop", !p.loop)}

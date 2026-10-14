@@ -19,6 +19,8 @@ export interface PadSettings {
   echo: number;
   echoDiv: number;
   gate: boolean;
+  volume: number;
+  reverb: number;
 }
 
 export const DEFAULT_PAD_SETTINGS: PadSettings = {
@@ -29,6 +31,8 @@ export const DEFAULT_PAD_SETTINGS: PadSettings = {
   echo: 0,
   echoDiv: 1,
   gate: false,
+  volume: 0.8,
+  reverb: 0.35,
 };
 
 interface Voice {
@@ -58,6 +62,7 @@ export class SamplePad {
   private reversedBuffer: AudioBuffer | null = null;
   private bank: PadBank = "slices";
   private drumBuffers: AudioBuffer[] | null = null;
+  private readonly outGain: GainNode;
 
   constructor(ctx: AudioContext, dest: AudioNode, source: () => PadSource) {
     this.ctx = ctx;
@@ -82,17 +87,20 @@ export class SamplePad {
 
     this.filter.connect(this.dryOut);
     this.filter.connect(this.echoSend);
-    this.dryOut.connect(dest);
+    this.outGain = ctx.createGain();
+    this.outGain.gain.value = this.settings.volume;
+    this.outGain.connect(dest);
+    this.dryOut.connect(this.outGain);
     this.echoSend.connect(this.delay);
     this.delay.connect(this.feedback);
     this.feedback.connect(this.delay);
     this.delay.connect(this.echoOut);
-    this.echoOut.connect(dest);
+    this.echoOut.connect(this.outGain);
 
     this.reverb.buffer = this.createReverbImpulse();
     this.reverb.connect(this.reverbOut);
-    this.reverbOut.gain.value = 0.35;
-    this.reverbOut.connect(dest);
+    this.reverbOut.gain.value = this.settings.reverb;
+    this.reverbOut.connect(this.outGain);
 
     this.noiseBuffer = this.createNoiseBuffer();
   }
@@ -532,6 +540,12 @@ export class SamplePad {
       const src = this.source();
       const delayTime = ECHO_DIVS[this.settings.echoDiv] * (src.bpm > 0 ? 60 / src.bpm : 0.5);
       this.delay.delayTime.setTargetAtTime(delayTime, this.ctx.currentTime, 0.02);
+    } else if (key === "volume") {
+      this.settings.volume = typeof value === "number" ? Math.max(0, Math.min(1.5, value)) : 0.8;
+      this.outGain.gain.setTargetAtTime(this.settings.volume, this.ctx.currentTime, 0.02);
+    } else if (key === "reverb") {
+      this.settings.reverb = typeof value === "number" ? Math.max(0, Math.min(1, value)) : 0.35;
+      this.reverbOut.gain.setTargetAtTime(this.settings.reverb, this.ctx.currentTime, 0.02);
     } else if (key === "gate") {
       this.settings.gate = typeof value === "boolean" ? value : false;
     }

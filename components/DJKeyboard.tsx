@@ -235,17 +235,30 @@ export const DJKeyboard = ({ engine }: Props) => {
     const bankText = bank === "drums" ? "BATTERIE" : "TRANCHES";
 
     return (
-      <div className="hw-screen font-mono text-xs p-1 mb-2">
+      <div className="hw-screen font-mono text-sm p-1 mb-2 text-cyan-300">
         <div className="truncate">{lastEffect || "PRÊT"}</div>
         <div className="truncate text-[10px] opacity-80">
           {bankText} · {pitchText} {modeText && `· ${modeText}`}
+        </div>
+        <div className="flex gap-0.5 mt-1">
+          {Array.from({ length: 16 }, (_, i) => {
+            const isActive = (activeMask & (1 << i)) !== 0;
+            const accentColor = i < 8 ? "#38bdf8" : "#e879f9";
+            return (
+              <div
+                key={i}
+                className="h-1 w-1 rounded-sm"
+                style={{ backgroundColor: isActive ? accentColor : "#1e293b" }}
+              ></div>
+            );
+          })}
         </div>
       </div>
     );
   };
 
   return (
-    <div className="w-full lg:grid lg:grid-cols-[minmax(0,1fr)_230px] gap-3">
+    <div className="w-full @[640px]:grid @[640px]:grid-cols-[minmax(0,1fr)_230px] gap-3">
       <div className="hw-carbon hw-screwed p-4 space-y-4 rounded-lg">
         <div className="hw-brushed p-2 rounded-t-lg flex justify-between items-center">
           <div className="text-xs font-bold">DJ KEYS</div>
@@ -375,7 +388,7 @@ export const DJKeyboard = ({ engine }: Props) => {
             min={0}
             max={1}
             defaultValue={0.5}
-            size={52}
+            size={48}
             color="#e879f9"
             led={false}
             format={(v) => `${Math.round(v * 100)}%`}
@@ -387,7 +400,7 @@ export const DJKeyboard = ({ engine }: Props) => {
             min={0}
             max={1}
             defaultValue={0.5}
-            size={52}
+            size={48}
             color="#f43f5e"
             led={false}
             format={(v) => `${Math.round(v * 100)}%`}
@@ -399,11 +412,35 @@ export const DJKeyboard = ({ engine }: Props) => {
             min={0}
             max={3}
             defaultValue={1}
-            size={52}
+            size={48}
             color="#38bdf8"
             led={false}
             format={(v) => ECHO_LABELS[v]}
             onChange={(v) => setSetting("echoDiv", Math.round(v))}
+          />
+          <Knob
+            label="VOL"
+            value={settings.volume}
+            min={0}
+            max={1.5}
+            defaultValue={0.8}
+            size={48}
+            color="#22d3ee"
+            led={false}
+            format={(v) => `${Math.round(v * 100)}%`}
+            onChange={(v) => setSetting("volume", v)}
+          />
+          <Knob
+            label="REVERB"
+            value={settings.reverb}
+            min={0}
+            max={1}
+            defaultValue={0.35}
+            size={48}
+            color="#a78bfa"
+            led={false}
+            format={(v) => `${Math.round(v * 100)}%`}
+            onChange={(v) => setSetting("reverb", v)}
           />
         </div>
       </div>
