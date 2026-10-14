@@ -294,7 +294,7 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
       </header>
 
       <div className="flex flex-col lg:flex-row gap-3">
-        <div className="flex-1">
+        <div className="flex-1 flex flex-col">
           <SSScreen
             buffer={engine.superSampler.buffer}
             name={engine.superSampler.name}
@@ -313,7 +313,7 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
         </div>
 
         <div className="hw-recess flex-1 lg:w-[30%] p-3 flex flex-col gap-2">
-          <h2 className="text-[10px] tracking-[0.2em] text-neutral-500">SOURCE</h2>
+          <h2 className="text-[10px] tracking-[0.2em] text-neutral-400">SOURCE</h2>
           <div className="flex gap-1">
             <button
               className="hw-btn flex-1"
@@ -403,9 +403,10 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="hw-recess p-2">
-          <h3 className="text-[10px] tracking-[0.2em] text-neutral-500">ACCORD</h3>
+          <h3 className="text-[10px] tracking-[0.2em] text-neutral-400">ACCORD</h3>
           <div className="grid grid-cols-2 gap-2">
             <Knob
+              size={44}
               label="PITCH"
               min={-24}
               max={24}
@@ -415,6 +416,7 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
               format={v => `${v >= 0 ? "+" : ""}${v} st`}
             />
             <Knob
+              size={44}
               label="FIN"
               min={-100}
               max={100}
@@ -424,6 +426,7 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
               format={v => `${v.toFixed(0)} ct`}
             />
             <Knob
+              size={44}
               label="ÉTIRE"
               min={0.5}
               max={2}
@@ -461,7 +464,7 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
         </div>
 
         <div className="hw-recess p-2">
-          <h3 className="text-[10px] tracking-[0.2em] text-neutral-500">FILTRE</h3>
+          <h3 className="text-[10px] tracking-[0.2em] text-neutral-400">FILTRE</h3>
           <div className="flex gap-1 mb-2">
             <button
               className="hw-btn flex-1"
@@ -472,6 +475,7 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
           </div>
           <div className="grid grid-cols-2 gap-2">
             <Knob
+              size={44}
               label="CUT"
               min={0}
               max={1}
@@ -481,6 +485,7 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
               format={v => `${Math.round(v * 100)}%`}
             />
             <Knob
+              size={44}
               label="RES"
               min={0}
               max={1}
@@ -493,9 +498,10 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
         </div>
 
         <div className="hw-recess p-2">
-          <h3 className="text-[10px] tracking-[0.2em] text-neutral-500">SATURATION</h3>
+          <h3 className="text-[10px] tracking-[0.2em] text-neutral-400">SATURATION</h3>
           <div className="grid grid-cols-2 gap-2">
             <Knob
+              size={44}
               label="DRIVE"
               min={0}
               max={1}
@@ -505,6 +511,7 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
               format={v => `${Math.round(v * 100)}%`}
             />
             <Knob
+              size={44}
               label="CRUSH"
               min={0}
               max={1}
@@ -517,9 +524,10 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
         </div>
 
         <div className="hw-recess p-2">
-          <h3 className="text-[10px] tracking-[0.2em] text-neutral-500">ENVELOPPE</h3>
+          <h3 className="text-[10px] tracking-[0.2em] text-neutral-400">ENVELOPPE</h3>
           <div className="grid grid-cols-2 gap-2">
             <Knob
+              size={44}
               label="ATTAQUE"
               min={0}
               max={500}
@@ -529,6 +537,7 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
               format={v => `${v.toFixed(0)} ms`}
             />
             <Knob
+              size={44}
               label="RELÂCHE"
               min={2}
               max={3000}
@@ -541,9 +550,10 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
         </div>
 
         <div className="hw-recess p-2">
-          <h3 className="text-[10px] tracking-[0.2em] text-neutral-500">DÉLAI</h3>
+          <h3 className="text-[10px] tracking-[0.2em] text-neutral-400">DÉLAI</h3>
           <div className="grid grid-cols-2 gap-2">
             <Knob
+              size={44}
               label="ENVOI"
               min={0}
               max={1}
@@ -553,6 +563,7 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
               format={v => `${Math.round(v * 100)}%`}
             />
             <Knob
+              size={44}
               label="FB"
               min={0}
               max={0.85}
@@ -576,9 +587,10 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
         </div>
 
         <div className="hw-recess p-2">
-          <h3 className="text-[10px] tracking-[0.2em] text-neutral-500">RÉVERB</h3>
+          <h3 className="text-[10px] tracking-[0.2em] text-neutral-400">RÉVERB</h3>
           <div className="grid grid-cols-2 gap-2">
             <Knob
+              size={44}
               label="ENVOI"
               min={0}
               max={1}
@@ -588,6 +600,7 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
               format={v => `${Math.round(v * 100)}%`}
             />
             <Knob
+              size={44}
               label="DÉCLIN"
               min={0}
               max={1}
@@ -600,10 +613,11 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
         </div>
 
         <div className="hw-recess p-2 col-span-2">
-          <h3 className="text-[10px] tracking-[0.2em] text-neutral-500">SORTIE</h3>
+          <h3 className="text-[10px] tracking-[0.2em] text-neutral-400">SORTIE</h3>
 
           <div className="grid grid-cols-2 gap-2 max-w-xs mx-auto justify-items-center">
             <Knob
+              size={44}
               label="VOL"
               min={0}
               max={1.5}
@@ -613,6 +627,7 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
               format={v => v === 0 ? "-∞" : `${(20 * Math.log10(v)).toFixed(1)} dB`}
             />
             <Knob
+              size={44}
               label="PAN"
               min={-1}
               max={1}
@@ -626,7 +641,7 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
       </div>
 
       <div className="flex flex-wrap items-center gap-2 mb-2">
-        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500">Mode de jeu</span>
+        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">Mode de jeu</span>
         {(["keys", "pads", "seq"] as const).map(m => (
           <button
             key={m}

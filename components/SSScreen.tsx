@@ -75,7 +75,7 @@ export const SSScreen = ({
 
       const dpr = window.devicePixelRatio;
       canvas.width = entry.contentRect.width * dpr;
-      canvas.height = 232 * dpr;
+      canvas.height = entry.contentRect.height * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       force((n) => n + 1);
     });
@@ -380,7 +380,7 @@ export const SSScreen = ({
   return (
     <div
       ref={containerRef}
-      className="w-full h-[232px] rounded-[10px] border border-[#19324a] overflow-hidden relative"
+      className="w-full flex-1 min-h-[232px] rounded-[10px] border border-[#19324a] overflow-hidden relative"
     >
       <canvas
         ref={canvasRef}
