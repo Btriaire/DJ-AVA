@@ -268,6 +268,9 @@ export const DJKeyboard = ({ engine }: Props) => {
           </div>
         </div>
 
+        <div className="hw-recess p-2 rounded-lg text-[11px] leading-snug text-neutral-300">
+          Joue les tranches du morceau de la platine choisie : chaque touche = 1/16 de mesure, en rythme. MAINTIEN garde les notes, ROULEMENT les répète tant qu'elle est enfoncée. Pas de morceau ? Charge-le sur la platine A ou B.
+        </div>
         <div className="hw-recess p-2 rounded-lg space-y-2">
           {renderLCD()}
           {renderMeasureBar()}
@@ -280,26 +283,30 @@ export const DJKeyboard = ({ engine }: Props) => {
             <button
               className={`hw-btn ${settings.reverse ? "hw-btn-on" : ""}`}
               onClick={() => setSetting("reverse", !settings.reverse)}
+              title="Joue les tranches à l'envers"
             >
-              INVERSÉ
+              À L'ENVERS
             </button>
             <button
               className={`hw-btn ${settings.hold ? "hw-btn-on" : ""} ${showStop && settings.hold ? "animate-pulse" : ""}`}
               onClick={() => setSetting("hold", !settings.hold)}
+              title="Garde les notes jouées tant qu'elles ne sont pas relâchées"
             >
               MAINTIEN
             </button>
             <button
               className={`hw-btn ${settings.gate ? "hw-btn-on" : ""}`}
               onClick={() => setSetting("gate", !settings.gate)}
+              title="Répète la note en rafale tant qu'elle est enfoncée"
             >
-              RÉPÈTITION
+              ROULEMENT
             </button>
             <button
               className={`hw-btn ${bank === "drums" ? "hw-btn-on" : ""}`}
               onClick={toggleBank}
+              title="Remplace les tranches par 16 sons de batterie synthétiques"
             >
-              BANQUE
+              BATTERIE
             </button>
           </div>
 
@@ -327,24 +334,28 @@ export const DJKeyboard = ({ engine }: Props) => {
                 setDropUntil(Date.now() + 2500);
                 setTimeout(() => setDropUntil(null), 2500);
               }}
+              title="Remontée inversée de 4 mesures jusqu'au drop"
             >
               {dropUntil ? "DROP EN COURS" : "DROP HQ"}
             </button>
             <button
               className="hw-btn"
               onClick={() => { engine.keyPad.impact(); setLastEffect("IMPACT"); }}
+              title="Coup de basse et bruit"
             >
               IMPACT
             </button>
             <button
               className="hw-btn"
               onClick={() => { engine.keyPad.brake(1); setLastEffect("FREIN 1 TEMPS"); }}
+              title="Ralentit le son jusqu'à l'arrêt, sur 1 temps"
             >
               FREIN 1 TEMPS
             </button>
             <button
               className="hw-btn"
               onClick={() => { engine.keyPad.scratch(); setLastEffect("SCRATCH"); }}
+              title="Effet scratch sur la dernière tranche jouée"
             >
               SCRATCH
             </button>
@@ -357,6 +368,7 @@ export const DJKeyboard = ({ engine }: Props) => {
                 setShowStop(true);
                 setTimeout(() => setShowStop(false), 500);
               }}
+              title="Coupe tous les sons, écho compris"
             >
               STOP
             </button>
@@ -375,10 +387,11 @@ export const DJKeyboard = ({ engine }: Props) => {
             value={settings.pitch}
             onChange={(e) => setSetting("pitch", Number(e.target.value))}
             onPointerUp={() => setSetting("pitch", 0)}
+            title="Transpose les tranches de ±12 demi-tons ; revient à 0 au relâchement"
           />
-          <div className="text-[10px]">HAUT</div>
+          <div className="text-[10px]">TRANSPO +12</div>
           <div className="text-[10px]">0</div>
-          <div className="text-[10px]">BAS</div>
+          <div className="text-[10px]">-12</div>
         </div>
 
         <div className="flex flex-col space-y-3">
