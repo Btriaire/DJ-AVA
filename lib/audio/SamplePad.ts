@@ -63,6 +63,7 @@ export class SamplePad {
   private bank: PadBank = "slices";
   private drumBuffers: AudioBuffer[] | null = null;
   private readonly outGain: GainNode;
+  private readonly oneShots = new Set<AudioScheduledSourceNode>();
 
   constructor(ctx: AudioContext, dest: AudioNode, source: () => PadSource) {
     this.ctx = ctx;
@@ -528,6 +529,7 @@ export class SamplePad {
       this.settings.reverse = typeof value === "boolean" ? value : false;
     } else if (key === "hold") {
       this.settings.hold = typeof value === "boolean" ? value : false;
+      if (!this.settings.hold) this.stopAll();
     } else if (key === "filter") {
       this.settings.filter = typeof value === "number" ? Math.max(0, Math.min(1, value)) : 1;
       const freq = 120 * (20000 / 120) ** this.settings.filter;
@@ -563,7 +565,7 @@ export class SamplePad {
     if (duration <= 0) return;
 
     const reversed = this.getReversedBuffer(src.buffer);
-    const source = this.ctx.createBufferSource();
+    const source = this.track(this.ctx.createBufferSource());
     const sliceLength = Math.floor(duration * reversed.sampleRate);
     const sliceBuffer = this.ctx.createBuffer(
       reversed.numberOfChannels,
@@ -607,7 +609,7 @@ export class SamplePad {
 
   private impactAt(when: number): void {
     // Bass tone
-    const bass = this.ctx.createOscillator();
+    const bass = this.track(this.ctx.createOscillator());
     bass.type = "sine";
     bass.frequency.setValueAtTime(110, when);
     bass.frequency.exponentialRampToValueAtTime(38, when + 0.8);
@@ -621,7 +623,7 @@ export class SamplePad {
     bassGain.connect(this.dryOut);
 
     // Noise burst
-    const noise = this.ctx.createBufferSource();
+    const noise = this.track(this.ctx.createBufferSource());
     noise.buffer = this.noiseBuffer;
 
     const noiseFilter = this.ctx.createBiquadFilter();
@@ -686,6 +688,15 @@ export class SamplePad {
     });
   }
 
+  // one-shot sources (drop, impact) are kept here so STOP can cut them too
+  private track<T extends AudioScheduledSourceNode>(node: T): T {
+    this.oneShots.add(node);
+    node.onended = () => {
+      this.oneShots.delete(node);
+    };
+    return node;
+  }
+
   stopAll(): void {
     const now = this.ctx.currentTime;
     const slices = Array.from(this.voices.keys());
@@ -695,6 +706,15 @@ export class SamplePad {
     });
 
     this.voices.clear();
+
+    this.oneShots.forEach(node => {
+      try {
+        node.stop(now);
+      } catch {
+        // already stopped
+      }
+    });
+    this.oneShots.clear();
   }
 
   private getReversedBuffer(buffer: AudioBuffer): AudioBuffer {
