@@ -250,16 +250,18 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
   async function loadFile(file: File) {
     setLoading(true);
     try {
-      await deck.loadStreaming(file, file.name.replace(/\.[^.]+$/, ""));
+      // phase 1 starts the audio at once through the media element; the decode runs behind it
+      const decoded = deck.loadStreaming(file, file.name.replace(/\.[^.]+$/, ""));
+      deck.play();
+      onLoaded();
+      rerender();
+      await decoded;
       void saveFileToLibrary(file)
         .then((t) => {
           enqueuePrep([t]);
           onLibraryChange?.();
         })
         .catch(() => {});
-      deck.play();
-      onLoaded();
-      rerender();
     } catch (err) {
       alert("Décodage impossible: " + (err as Error).message);
     } finally {

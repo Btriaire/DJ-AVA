@@ -584,6 +584,16 @@ export class Deck {
     return this._playing;
   }
 
+  // Key detection is the heaviest sync analysis (~0.3-0.6 s): run it after the first paint.
+  // The load generation guards against writing the key of a track that was replaced meanwhile.
+  private deferKey(buf: AudioBuffer): void {
+    this.key = null;
+    const gen = this.loadGen;
+    setTimeout(() => {
+      if (this.loadGen === gen) this.key = detectKey(buf);
+    }, 0);
+  }
+
   async load(file: File | ArrayBuffer, name: string) {
     const data = file instanceof File ? await file.arrayBuffer() : file;
     this.rawData = data.slice(0); // keep a pristine copy for stem separation
@@ -598,7 +608,7 @@ export class Deck {
     this.duration = buf.duration;
     this.peaks = buildWaveformPeaks(buf);
     this.bpm = detectBPM(buf);
-    this.key = detectKey(buf);
+    this.deferKey(buf);
     this.pausedAt = 0;
     this.keyShift = 0;
     this.updateKeyLockShifter();
@@ -651,7 +661,7 @@ export class Deck {
     this.duration = buf.duration;
     this.peaks = buildWaveformPeaks(buf);
     this.bpm = detectBPM(buf);
-    this.key = detectKey(buf);
+    this.deferKey(buf);
     this.pausedAt = Math.min(Math.max(0, pos), buf.duration - 0.05);
     this._playing = false;
 
