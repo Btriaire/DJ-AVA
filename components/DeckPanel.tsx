@@ -271,6 +271,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
 
   async function loadFile(file: File) {
     setLoading(true);
+    setSel(null);
     try {
       // phase 1 starts the audio at once through the media element; the decode runs behind it
       const decoded = deck.loadStreaming(file, file.name.replace(/\.[^.]+$/, ""));
@@ -785,7 +786,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
           <div className="mt-1 flex items-center justify-between gap-2 text-[11px]">
             <span className="font-mono text-neutral-400">
               {sel
-                ? `Sélection ${fmtTime(Math.min(sel.start, sel.end) * deck.duration)} → ${fmtTime(Math.max(sel.start, sel.end) * deck.duration)}`
+                ? `Sélection ${fmtTime(Math.min(sel.start, sel.end) * deck.duration)} → ${fmtTime(Math.max(sel.start, sel.end) * deck.duration)} · ${fmtTime(Math.abs(sel.end - sel.start) * deck.duration)}${deck.bpm ? ` · ${(Math.abs(sel.end - sel.start) * deck.duration * deck.bpm / 60 / 4).toFixed(1)} mesures` : ""}`
                 : "Glisse sur la forme d'onde pour choisir une partie"}
             </span>
             <div className="flex gap-1">

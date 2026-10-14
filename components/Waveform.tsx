@@ -27,8 +27,22 @@ export function Waveform({
   onSelect,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [dragState, setDragState] = useState<{ start: number; end: number } | null>(null);
+  const [dragState, setDragState] = useState<{
+    start: number;
+    end: number;
+    edge?: "start" | "end";
+  } | null>(null);
   const [, force] = useState(0);
+
+  // Snap to nearest beat if bpm is provided and Alt is not pressed
+  const snapToBeat = (norm: number, e: React.MouseEvent): number => {
+    if (!bpm || !duration || e.altKey) return norm;
+    const spb = 60 / bpm;
+    const t = norm * duration;
+    const k = Math.round((t - beatOffset) / spb);
+    const snappedT = Math.max(0, Math.min(duration, beatOffset + k * spb));
+    return snappedT / duration;
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -67,7 +81,9 @@ export function Waveform({
     }
 
     // Draw selection
-    const currentSelection = dragState || selection;
+    const currentSelection = dragState
+      ? { start: dragState.start, end: dragState.end }
+      : selection;
     if (currentSelection) {
       const startX = Math.min(currentSelection.start, currentSelection.end) * w;
       const endX = Math.max(currentSelection.start, currentSelection.end) * w;
@@ -91,14 +107,40 @@ export function Waveform({
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = (e.clientX - rect.left) / rect.width;
-    setDragState({ start: x, end: x });
+    const snappedX = snapToBeat(x, e);
+
+    if (selection && !e.altKey) {
+      const w = rect.width;
+      const startX = Math.min(selection.start, selection.end) * w;
+      const endX = Math.max(selection.start, selection.end) * w;
+      const mouseX = e.clientX - rect.left;
+
+      if (Math.abs(mouseX - startX) <= 8) {
+        setDragState({ start: snappedX, end: selection.end, edge: "start" });
+        return;
+      }
+      if (Math.abs(mouseX - endX) <= 8) {
+        setDragState({ start: selection.start, end: snappedX, edge: "end" });
+        return;
+      }
+    }
+
+    setDragState({ start: snappedX, end: snappedX });
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!dragState) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const x = (e.clientX - rect.left) / rect.width;
-    setDragState({ start: dragState.start, end: x });
+    const snappedX = snapToBeat(x, e);
+
+    if (dragState.edge === "start") {
+      setDragState({ start: snappedX, end: dragState.end, edge: "start" });
+    } else if (dragState.edge === "end") {
+      setDragState({ start: dragState.start, end: snappedX, edge: "end" });
+    } else {
+      setDragState({ start: dragState.start, end: snappedX });
+    }
   };
 
   const handleMouseUp = () => {
