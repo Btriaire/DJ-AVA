@@ -51,7 +51,7 @@ export class SamplePad {
   private readonly filter: BiquadFilterNode;
   private readonly dryOut: GainNode;
   private readonly echoSend: GainNode;
-  private readonly delay: DelayNode;
+  private delay: DelayNode;
   private readonly feedback: GainNode;
   private readonly echoOut: GainNode;
   private readonly reverb: ConvolverNode;
@@ -82,6 +82,7 @@ export class SamplePad {
     this.echoSend = ctx.createGain();
     this.delay = ctx.createDelay(2);
     this.feedback = ctx.createGain();
+    this.feedback.gain.value = 0.5; // loop gain below 1: the echo tail decays instead of ringing forever
     this.echoOut = ctx.createGain();
     this.reverb = ctx.createConvolver();
     this.reverbOut = ctx.createGain();
@@ -688,6 +689,22 @@ export class SamplePad {
     });
   }
 
+  // drops the echo memory: a new delay line replaces the old one, so a stopped tail cannot come back
+  private flushEcho(): void {
+    const old = this.delay;
+    const time = old.delayTime.value;
+    this.echoSend.disconnect(old);
+    this.feedback.disconnect(old);
+    old.disconnect();
+
+    this.delay = this.ctx.createDelay(2);
+    this.delay.delayTime.value = time;
+    this.echoSend.connect(this.delay);
+    this.delay.connect(this.feedback);
+    this.feedback.connect(this.delay);
+    this.delay.connect(this.echoOut);
+  }
+
   // one-shot sources (drop, impact) are kept here so STOP can cut them too
   private track<T extends AudioScheduledSourceNode>(node: T): T {
     this.oneShots.add(node);
@@ -715,6 +732,7 @@ export class SamplePad {
       }
     });
     this.oneShots.clear();
+    this.flushEcho();
   }
 
   private getReversedBuffer(buffer: AudioBuffer): AudioBuffer {
