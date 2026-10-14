@@ -14,6 +14,7 @@ import { DeckHotCues } from "./DeckHotCues";
 import { DeckLoopPads } from "./DeckLoopPads";
 import { HoldButton } from "./HoldButton";
 import { saveFileToLibrary, enqueuePrep } from "@/lib/stemPrep";
+import { cropWav } from "@/lib/audio/wavEncode";
 import { Spectrum } from "./Spectrum";
 import { RackPanel } from "./RackPanel";
 import { EqRackStrip } from "./EqRackStrip";
@@ -247,6 +248,27 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
   const pos = deck.position();
   const progress = deck.duration ? pos / deck.duration : 0;
 
+  // Cuts the selected part of the track into its own library entry and queues its stems:
+  // only that part is separated, and it then loads and plays like any other track.
+  async function separateSelection() {
+    if (!sel || !deck.audioBuffer || !deck.duration) return;
+    const from = Math.min(sel.start, sel.end) * deck.duration;
+    const to = Math.max(sel.start, sel.end) * deck.duration;
+    const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+    const name = `${deck.name || "Morceau"} [${fmt(from)}-${fmt(to)}]`;
+    setLoading(true);
+    try {
+      const file = new File([cropWav(deck.audioBuffer, from, to)], `${name}.wav`, { type: "audio/wav" });
+      const t = await saveFileToLibrary(file);
+      enqueuePrep([t]);
+      onLibraryChange?.();
+    } catch (err) {
+      alert("Découpage impossible: " + (err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function loadFile(file: File) {
     setLoading(true);
     try {
@@ -322,6 +344,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
 
   // stems: remembered per-stem level so a mute toggle can restore it
   const stemPrev = useRef<number[]>([1, 1, 1, 1, 1, 1]);
+  const [sel, setSel] = useState<{ start: number; end: number } | null>(null);
   // when the loaded track changes, probe the server cache so the button can
   // advertise an instant load if the stems were already computed before. This
   // is read-only (a cheap cache check) — preparation is launched on demand from
@@ -752,11 +775,33 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
             bpm={deck.bpm}
             beatOffset={deck.beatGridOffset}
             duration={deck.duration}
+            selection={sel}
+            onSelect={(s, e) => setSel({ start: s, end: e })}
             onSeek={(n) => {
               deck.seek(n * deck.duration);
               rerender();
             }}
           />
+          <div className="mt-1 flex items-center justify-between gap-2 text-[11px]">
+            <span className="font-mono text-neutral-400">
+              {sel
+                ? `Sélection ${fmtTime(Math.min(sel.start, sel.end) * deck.duration)} → ${fmtTime(Math.max(sel.start, sel.end) * deck.duration)}`
+                : "Glisse sur la forme d'onde pour choisir une partie"}
+            </span>
+            <div className="flex gap-1">
+              <button className="hw-btn px-2 py-1 text-[10px] font-bold" disabled={!sel} onClick={() => setSel(null)}>
+                EFFACER
+              </button>
+              <button
+                className="hw-btn px-2 py-1 text-[10px] font-bold"
+                disabled={!sel || !deck.audioBuffer || loading}
+                onClick={separateSelection}
+                title="Découpe cette partie et la met en préparation des stems (seule cette partie est séparée)"
+              >
+                STEMS SÉLECTION
+              </button>
+            </div>
+          </div>
           <div className="mt-1 flex justify-between font-mono text-[11px] text-neutral-500">
             <span>{fmtTime(pos)}</span>
             <span>{fmtTime(deck.duration)}</span>
