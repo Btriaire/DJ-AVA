@@ -13,6 +13,11 @@ import {
   idbGetBlob,
   idbDelBlob,
   extractCover,
+  auditLibrary,
+  removeOrphanBlobs,
+  storageUsage,
+  wasLastSaveSlim,
+  type LibraryAudit,
 } from "@/lib/library";
 import { enqueuePrep, getPrepState, subscribePrep } from "@/lib/stemPrep";
 import { AudiusTrack } from "@/lib/audius";
@@ -356,7 +361,46 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
     setData(next); //          calls in the same tick each see the latest list
     if (!saveLibrary(next))
       flash("⚠ Sauvegarde impossible (stockage navigateur plein) — réessaie après avoir effacé des morceaux.");
+    else if (wasLastSaveSlim())
+      flash("⚠ Stockage plein : les pochettes ont été retirées de la bibliothèque.");
   }
+  const [audit, setAudit] = useState<LibraryAudit | null>(null);
+  const [usageText, setUsageText] = useState("");
+
+  async function runAudit() {
+    try {
+      const result = await auditLibrary(dataRef.current.tracks);
+      setAudit(result);
+      setUsageText(await storageUsage());
+      if (result.missing.length === 0 && result.orphans.length === 0) {
+        flash("Bibliothèque cohérente");
+      } else {
+        flash("Incohérences trouvées");
+      }
+    } catch (e) {
+      flash(`Audit impossible : ${(e as Error).message}`);
+    }
+  }
+
+  function fixMissing() {
+    if (!audit?.missing.length) return;
+    persist((d) => ({
+      ...d,
+      tracks: d.tracks.filter((t) => !audit.missing.some((m) => m.id === t.id)),
+    }));
+    setAudit({ ...audit, missing: [] });
+    flash(`${audit.missing.length} piste(s) sans fichier retirée(s)`);
+  }
+
+  async function fixOrphans() {
+    if (!audit?.orphans.length) return;
+    if (window.confirm(`Supprimer ${audit.orphans.length} fichier(s) audio qui n'appartiennent à aucune piste ? Irréversible.`)) {
+      await removeOrphanBlobs(audit.orphans);
+      setAudit({ ...audit, orphans: [] });
+      flash(`${audit.orphans.length} fichier(s) orphelin(s) supprimé(s)`);
+    }
+  }
+
   function flash(m: string) {
     setMsg(m);
     setTimeout(() => setMsg((cur) => (cur === m ? null : cur)), 2200);
@@ -365,11 +409,25 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   // --- import local files into the collection (blob → IndexedDB) ---
   async function importFiles(files: FileList) {
     const added: LibTrack[] = [];
+    const existingNames = new Set(
+      dataRef.current.tracks
+        .filter((t) => t.source === "local")
+        .map((t) => t.name.toLowerCase().replace(/\.[^.]+$/, ""))
+    );
+    let skipped = 0;
+
     try {
       for (const f of Array.from(files)) {
+        const cleanName = f.name.toLowerCase().replace(/\.[^.]+$/, "");
+        if (existingNames.has(cleanName)) {
+          skipped++;
+          continue;
+        }
+        existingNames.add(cleanName);
+
         const id = uid();
-        await idbPutBlob(id, f); // store the audio blob first…
-        const art = (await extractCover(f)) ?? undefined; // …then its embedded cover
+        await idbPutBlob(id, f);
+        const art = (await extractCover(f)) ?? undefined;
         const durationSec = await probeDuration(f).catch(() => undefined);
         added.push({
           id,
@@ -385,10 +443,16 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
       flash(`Import impossible : ${(e as Error).message}`);
       return;
     }
-    if (added.length) {
-      persist((d) => ({ ...d, tracks: [...added, ...d.tracks] }));
-      enqueuePrep(added); // every imported file gets its stems prepared in the background
-      flash(`${added.length} fichier(s) ajouté(s)`);
+
+    if (added.length || skipped > 0) {
+      if (added.length) {
+        persist((d) => ({ ...d, tracks: [...added, ...d.tracks] }));
+        enqueuePrep(added);
+      }
+      flash(
+        `${added.length} fichier(s) ajouté(s)` +
+          (skipped > 0 ? ` — ${skipped} doublon(s) ignoré(s)` : "")
+      );
     }
   }
 
@@ -1868,6 +1932,39 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
             ))}
             {tab === "files" && (
               <div className="ml-auto flex items-center gap-2">
+                <button
+                  title="Vérifie que chaque piste a son fichier et que chaque fichier a sa piste"
+                  onClick={runAudit}
+                  className="px-2 py-1 text-sm border rounded hover:bg-gray-100"
+                >
+                  VÉRIFIER
+                </button>
+                {audit && (
+                  <>
+                    <span className="text-sm">
+                      {audit.missing.length > 0 || audit.orphans.length > 0
+                        ? `${audit.missing.length} sans fichier, ${audit.orphans.length} orphelins`
+                        : "OK"}
+                    </span>
+                    {audit.missing.length > 0 && (
+                      <button
+                        onClick={fixMissing}
+                        className="px-2 py-1 text-sm border rounded hover:bg-gray-100"
+                      >
+                        Retirer sans fichier ({audit.missing.length})
+                      </button>
+                    )}
+                    {audit.orphans.length > 0 && (
+                      <button
+                        onClick={fixOrphans}
+                        className="px-2 py-1 text-sm border rounded hover:bg-gray-100"
+                      >
+                        Supprimer orphelins ({audit.orphans.length})
+                      </button>
+                    )}
+                    {usageText && <span className="text-sm">{usageText}</span>}
+                  </>
+                )}
                 <button
                   onClick={delAll}
                   disabled={data.tracks.length === 0}

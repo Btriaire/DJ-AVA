@@ -73,6 +73,11 @@ export function loadLibrary(): LibraryData {
   return { tracks, playlists };
 }
 
+let lastSaveSlim = false;
+export function wasLastSaveSlim(): boolean {
+  return lastSaveSlim;
+}
+
 // Returns true on success. Playlists are tiny ({id,name,trackIds[]}) and are
 // saved to their OWN key FIRST, so they always survive even if the heavy
 // track/cover-art blob blows the localStorage quota. The full library is then
@@ -91,6 +96,7 @@ export function saveLibrary(data: LibraryData): boolean {
   // 2. the full library (tracks carry the heavy cover-art).
   try {
     localStorage.setItem(LS_KEY, JSON.stringify(data));
+    lastSaveSlim = false;
     return true;
   } catch {
     try {
@@ -101,6 +107,7 @@ export function saveLibrary(data: LibraryData): boolean {
         ),
       };
       localStorage.setItem(LS_KEY, JSON.stringify(slim));
+      lastSaveSlim = true;
       return true;
     } catch {
       // Even slim tracks won't fit — but the playlists are safe in their own
@@ -259,6 +266,62 @@ export async function addLocalTrack(
     throw new Error("stockage navigateur plein");
   }
   return track;
+}
+
+export async function idbListBlobIds(): Promise<string[]> {
+  const db = await openDB();
+  try {
+    return await new Promise<string[]>((resolve, reject) => {
+      const tx = db.transaction(STORE, "readonly");
+      const r = tx.objectStore(STORE).getAllKeys();
+      r.onsuccess = () => resolve(r.result as string[]);
+      r.onerror = () => reject(r.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export interface LibraryAudit {
+  missing: LibTrack[];
+  orphans: string[];
+}
+
+export async function auditLibrary(tracks: LibTrack[]): Promise<LibraryAudit> {
+  const storedIds = await idbListBlobIds();
+  const localTracks = tracks.filter((t) => t.source === "local");
+  const missing: LibTrack[] = [];
+  const orphans: string[] = [];
+
+  const storedIdsSet = new Set(storedIds);
+  for (const track of localTracks) {
+    if (!storedIdsSet.has(track.id)) {
+      missing.push(track);
+    }
+  }
+
+  const trackIdsSet = new Set(localTracks.map((t) => t.id));
+  for (const id of storedIds) {
+    if (!trackIdsSet.has(id)) {
+      orphans.push(id);
+    }
+  }
+
+  return { missing, orphans };
+}
+
+export async function removeOrphanBlobs(ids: string[]): Promise<void> {
+  for (const id of ids) {
+    await idbDelBlob(id);
+  }
+}
+
+export async function storageUsage(): Promise<string> {
+  if (!navigator.storage?.estimate) return "";
+  const { usage, quota } = await navigator.storage.estimate();
+  if (usage === undefined || quota === undefined) return "";
+  const toMo = (bytes: number) => (bytes / (1024 * 1024)).toFixed(1);
+  return `${toMo(usage)} Mo sur ${toMo(quota)} Mo`;
 }
 
 export async function idbDelBlob(id: string): Promise<void> {
