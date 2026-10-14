@@ -245,164 +245,166 @@ export const DJKeyboard = ({ engine }: Props) => {
   };
 
   return (
-    <div className="w-full hw-carbon hw-screwed p-4 space-y-4 rounded-lg">
-      <div className="hw-brushed p-2 rounded-t-lg flex justify-between items-center">
-        <div className="text-xs font-bold">DJ KEYS</div>
-        <div className="flex items-center gap-2">
-          <div className={`hw-led ${showStop ? "animate-pulse" : ""}`} style={{ color: "#22c55e" }}></div>
-          <div className="text-xs">PLATINE {keySource}</div>
+    <div className="w-full lg:grid lg:grid-cols-[minmax(0,1fr)_230px] gap-3">
+      <div className="hw-carbon hw-screwed p-4 space-y-4 rounded-lg">
+        <div className="hw-brushed p-2 rounded-t-lg flex justify-between items-center">
+          <div className="text-xs font-bold">DJ KEYS</div>
+          <div className="flex items-center gap-2">
+            <div className={`hw-led ${showStop ? "animate-pulse" : ""}`} style={{ color: "#22c55e" }}></div>
+            <div className="text-xs">PLATINE {keySource}</div>
+          </div>
+        </div>
+
+        <div className="hw-recess p-2 rounded-lg space-y-2">
+          {renderLCD()}
+          {renderMeasureBar()}
+
+          <div className="relative h-44 w-full overflow-hidden rounded-b-md">
+            {Array.from({ length: PAD_SLICES }, (_, i) => renderKey(i))}
+          </div>
+
+          <div className="grid grid-cols-2 gap-1">
+            <button
+              className={`hw-btn ${settings.reverse ? "hw-btn-on" : ""}`}
+              onClick={() => setSetting("reverse", !settings.reverse)}
+            >
+              INVERSÉ
+            </button>
+            <button
+              className={`hw-btn ${settings.hold ? "hw-btn-on" : ""} ${showStop && settings.hold ? "animate-pulse" : ""}`}
+              onClick={() => setSetting("hold", !settings.hold)}
+            >
+              MAINTIEN
+            </button>
+            <button
+              className={`hw-btn ${settings.gate ? "hw-btn-on" : ""}`}
+              onClick={() => setSetting("gate", !settings.gate)}
+            >
+              RÉPÈTITION
+            </button>
+            <button
+              className={`hw-btn ${bank === "drums" ? "hw-btn-on" : ""}`}
+              onClick={toggleBank}
+            >
+              BANQUE
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              className={`hw-btn ${keySource === "A" ? "hw-btn-on" : ""}`}
+              onClick={() => { engine.setKeySource("A"); setKeySource("A"); }}
+            >
+              PLATINE A
+            </button>
+            <button
+              className={`hw-btn ${keySource === "B" ? "hw-btn-on" : ""}`}
+              onClick={() => { engine.setKeySource("B"); setKeySource("B"); }}
+            >
+              PLATINE B
+            </button>
+          </div>
+
+          <div className="grid grid-cols-5 gap-1 text-[10px]">
+            <button
+              className={`hw-btn bg-[#f43f5e] text-white ${dropUntil ? "animate-pulse" : ""}`}
+              onClick={() => {
+                engine.keyPad.dropHQ();
+                setLastEffect("DROP HQ");
+                setDropUntil(Date.now() + 2500);
+                setTimeout(() => setDropUntil(null), 2500);
+              }}
+            >
+              {dropUntil ? "DROP EN COURS" : "DROP HQ"}
+            </button>
+            <button
+              className="hw-btn"
+              onClick={() => { engine.keyPad.impact(); setLastEffect("IMPACT"); }}
+            >
+              IMPACT
+            </button>
+            <button
+              className="hw-btn"
+              onClick={() => { engine.keyPad.brake(1); setLastEffect("FREIN 1 TEMPS"); }}
+            >
+              FREIN 1 TEMPS
+            </button>
+            <button
+              className="hw-btn"
+              onClick={() => { engine.keyPad.scratch(); setLastEffect("SCRATCH"); }}
+            >
+              SCRATCH
+            </button>
+            <button
+              className={`hw-btn text-white font-black ${activeMask !== 0 || showStop ? "animate-pulse" : ""}`}
+              style={{ background: "linear-gradient(180deg, #f87171 0%, #dc2626 55%, #991b1b 100%)", boxShadow: "0 0 12px rgba(239,68,68,0.6)" }}
+              onClick={() => {
+                engine.keyPad.stopAll();
+                setLastEffect("TOUT ARRÊTER");
+                setShowStop(true);
+                setTimeout(() => setShowStop(false), 500);
+              }}
+            >
+              STOP
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="hw-recess p-2 rounded-lg space-y-2">
-        {renderLCD()}
-        {renderMeasureBar()}
-
-        <div className="relative h-40 w-full overflow-hidden rounded-b-md">
-          {Array.from({ length: PAD_SLICES }, (_, i) => renderKey(i))}
+      <div className="hw-recess p-3 flex flex-col space-y-3">
+        <div className="flex flex-col items-center space-y-1">
+          <input
+            type="range"
+            className="hw-cfader h-32 rotate-180"
+            min="-12"
+            max="12"
+            step="1"
+            value={settings.pitch}
+            onChange={(e) => setSetting("pitch", Number(e.target.value))}
+            onPointerUp={() => setSetting("pitch", 0)}
+          />
+          <div className="text-[10px]">HAUT</div>
+          <div className="text-[10px]">0</div>
+          <div className="text-[10px]">BAS</div>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 mt-2">
-          <div className="flex flex-col items-center">
-            <input
-              type="range"
-              className="hw-cfader h-24 rotate-180"
-              min="-12"
-              max="12"
-              step="1"
-              value={settings.pitch}
-              onChange={(e) => setSetting("pitch", Number(e.target.value))}
-              onPointerUp={() => setSetting("pitch", 0)}
-            />
-            <div className="text-[10px] mt-1">HAUT</div>
-            <div className="text-[10px]">0</div>
-            <div className="text-[10px]">BAS</div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-3 items-end">
-            <Knob
-              label="FILTRE"
-              value={settings.filter}
-              min={0}
-              max={1}
-              defaultValue={0.5}
-              size={44}
-              color="#e879f9"
-              led={false}
-              format={(v) => `${Math.round(v * 100)}%`}
-              onChange={(v) => setSetting("filter", v)}
-            />
-            <Knob
-              label="ÉCHO"
-              value={settings.echo}
-              min={0}
-              max={1}
-              defaultValue={0.5}
-              size={44}
-              color="#f43f5e"
-              led={false}
-              format={(v) => `${Math.round(v * 100)}%`}
-              onChange={(v) => setSetting("echo", v)}
-            />
-            <Knob
-              label="DIVISION"
-              value={settings.echoDiv}
-              min={0}
-              max={3}
-              defaultValue={1}
-              size={44}
-              color="#38bdf8"
-              led={false}
-              format={(v) => ECHO_LABELS[v]}
-              onChange={(v) => setSetting("echoDiv", Math.round(v))}
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-1">
-          <button
-            className={`hw-btn ${settings.reverse ? "hw-btn-on" : ""}`}
-            onClick={() => setSetting("reverse", !settings.reverse)}
-          >
-            INVERSÉ
-          </button>
-          <button
-            className={`hw-btn ${settings.hold ? "hw-btn-on" : ""} ${showStop && settings.hold ? "animate-pulse" : ""}`}
-            onClick={() => setSetting("hold", !settings.hold)}
-          >
-            MAINTIEN
-          </button>
-          <button
-            className={`hw-btn ${settings.gate ? "hw-btn-on" : ""}`}
-            onClick={() => setSetting("gate", !settings.gate)}
-          >
-            RÉPÈTITION
-          </button>
-          <button
-            className={`hw-btn ${bank === "drums" ? "hw-btn-on" : ""}`}
-            onClick={toggleBank}
-          >
-            BANQUE
-          </button>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            className={`hw-btn ${keySource === "A" ? "hw-btn-on" : ""}`}
-            onClick={() => { engine.setKeySource("A"); setKeySource("A"); }}
-          >
-            PLATINE A
-          </button>
-          <button
-            className={`hw-btn ${keySource === "B" ? "hw-btn-on" : ""}`}
-            onClick={() => { engine.setKeySource("B"); setKeySource("B"); }}
-          >
-            PLATINE B
-          </button>
-        </div>
-
-        <div className="grid grid-cols-5 gap-1 text-[10px]">
-          <button
-            className={`hw-btn bg-[#f43f5e] text-white ${dropUntil ? "animate-pulse" : ""}`}
-            onClick={() => {
-              engine.keyPad.dropHQ();
-              setLastEffect("DROP HQ");
-              setDropUntil(Date.now() + 2500);
-              setTimeout(() => setDropUntil(null), 2500);
-            }}
-          >
-            {dropUntil ? "DROP EN COURS" : "DROP HQ"}
-          </button>
-          <button
-            className="hw-btn"
-            onClick={() => { engine.keyPad.impact(); setLastEffect("IMPACT"); }}
-          >
-            IMPACT
-          </button>
-          <button
-            className="hw-btn"
-            onClick={() => { engine.keyPad.brake(1); setLastEffect("FREIN 1 TEMPS"); }}
-          >
-            FREIN 1 TEMPS
-          </button>
-          <button
-            className="hw-btn"
-            onClick={() => { engine.keyPad.scratch(); setLastEffect("SCRATCH"); }}
-          >
-            SCRATCH
-          </button>
-          <button
-            className={`hw-btn text-white font-black ${activeMask !== 0 || showStop ? "animate-pulse" : ""}`}
-            style={{ background: "linear-gradient(180deg, #f87171 0%, #dc2626 55%, #991b1b 100%)", boxShadow: "0 0 12px rgba(239,68,68,0.6)" }}
-            onClick={() => {
-              engine.keyPad.stopAll();
-              setLastEffect("TOUT ARRÊTER");
-              setShowStop(true);
-              setTimeout(() => setShowStop(false), 500);
-            }}
-          >
-            STOP
-          </button>
+        <div className="flex flex-col space-y-3">
+          <Knob
+            label="FILTRE"
+            value={settings.filter}
+            min={0}
+            max={1}
+            defaultValue={0.5}
+            size={52}
+            color="#e879f9"
+            led={false}
+            format={(v) => `${Math.round(v * 100)}%`}
+            onChange={(v) => setSetting("filter", v)}
+          />
+          <Knob
+            label="ÉCHO"
+            value={settings.echo}
+            min={0}
+            max={1}
+            defaultValue={0.5}
+            size={52}
+            color="#f43f5e"
+            led={false}
+            format={(v) => `${Math.round(v * 100)}%`}
+            onChange={(v) => setSetting("echo", v)}
+          />
+          <Knob
+            label="DIVISION"
+            value={settings.echoDiv}
+            min={0}
+            max={3}
+            defaultValue={1}
+            size={52}
+            color="#38bdf8"
+            led={false}
+            format={(v) => ECHO_LABELS[v]}
+            onChange={(v) => setSetting("echoDiv", Math.round(v))}
+          />
         </div>
       </div>
     </div>
