@@ -378,7 +378,7 @@ export class SuperSampler {
     gain.connect(this.voiceBus);
 
     source.start(0, sliceStart);
-    source.stop(sliceEnd);
+    source.stop(this.ctx.currentTime + (sliceEnd - sliceStart));
   }
 
   playStep(note: number, lengthSec: number, when: number, velocity: number = 1): void {

@@ -41,6 +41,9 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
   const [mode, setMode] = useState<"keys" | "pads" | "seq">("keys")
   const deckBpm = engine.masterDeck()?.fxClock()?.bpm ?? 0
   const [held, setHeld] = useState<Set<number>>(new Set())
+  const [sustain, setSustain] = useState(false)
+  const [latched, setLatched] = useState<Set<number>>(new Set())
+  const swallowUp = useRef<Set<number>>(new Set())
   const [screenMode, setScreenMode] = useState<"wave" | "spectrum" | "scope">("wave")
   const [youtube, setYoutube] = useState("")
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -259,26 +262,57 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
   }
 
   const noteDown = (n: number) => {
+    if (sustain && latched.has(n)) {
+      // a latched key is released by pressing it again
+      swallowUp.current.add(n)
+      setLatched(prev => {
+        const s = new Set(prev)
+        s.delete(n)
+        return s
+      })
+      engine.superSampler.noteOff(n)
+      return
+    }
+    swallowUp.current.delete(n)
     setHeld(prev => new Set(prev).add(n))
     engine.superSampler.noteOn(n, 1)
   }
 
   const noteUp = (n: number) => {
+    if (swallowUp.current.has(n)) {
+      swallowUp.current.delete(n)
+      return
+    }
     setHeld(prev => {
       const s = new Set(prev)
       s.delete(n)
       return s
     })
+    if (sustain) {
+      setLatched(prev => new Set(prev).add(n))
+      return
+    }
     engine.superSampler.noteOff(n)
+  }
+
+  // turning MAINTIEN off releases every latched key
+  const toggleSustain = () => {
+    if (sustain) {
+      latched.forEach(n => engine.superSampler.noteOff(n))
+      setLatched(new Set())
+    }
+    setSustain(!sustain)
   }
 
   const octave = (d: number) => {
     setKeyBase(b => Math.max(24, Math.min(84, b + 12 * d)))
     engine.superSampler.stopAll()
+    setLatched(new Set())
   }
 
   const deck = side === "A" ? engine.deckA : engine.deckB
-  const mask = Array.from(held).reduce((m, n) => m | (1 << (n - keyBase)), 0)
+  const shown = new Set([...Array.from(held), ...Array.from(latched)])
+  const mask = Array.from(shown).reduce((m, n) => m | (1 << (n - keyBase)), 0)
 
   return (
     <div className="hw-screwed bg-carbon-900 rounded-[14px] border border-carbon-800 shadow-2xl p-4 gap-3 flex flex-col">
@@ -646,11 +680,18 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
           <button
             key={m}
             className={`hw-btn px-3 py-1.5 text-[11px] font-bold ${mode === m ? "hw-btn-on" : ""}`}
-            onClick={() => { engine.superSampler.stopAll(); setMode(m) }}
+            onClick={() => { engine.superSampler.stopAll(); setLatched(new Set()); setMode(m) }}
           >
             {m === "keys" ? "CLAVIER" : m === "pads" ? "PADS" : "SÉQUENCE"}
           </button>
         ))}
+        <button
+          className={`hw-btn px-3 py-1.5 text-[11px] font-bold ${sustain ? "hw-btn-on" : ""}`}
+          onClick={toggleSustain}
+          title="Garde les touches enfoncées : appuie de nouveau sur une touche pour la relâcher"
+        >
+          MAINTIEN
+        </button>
       </div>
       <div className="flex flex-col @lg:flex-row gap-3">
         <div className="flex-1">

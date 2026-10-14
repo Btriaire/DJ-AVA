@@ -90,11 +90,7 @@ export const SSSeq = ({
   };
 
   const handleStepClick = (index: number) => {
-    setSteps((prev) => {
-      const newSteps = [...prev];
-      newSteps[index].on = !newSteps[index].on;
-      return newSteps;
-    });
+    setSteps((prev) => prev.map((step, i) => (i === index ? { ...step, on: !step.on } : step)));
   };
 
   const handlePointerDown = (index: number, e: React.PointerEvent) => {
