@@ -1,7 +1,7 @@
 "use client";
 import { useSyncExternalStore, useState, useEffect } from "react";
 import type { DJEngine } from "@/lib/audio/engine";
-import { getPrepState, subscribePrep, cancelPrep, forgetPrep, enqueuePrep, setPrepGate, PREP_MODEL, PREP_SHIFTS, PREP_STEMS, type PrepReady } from "@/lib/stemPrep";
+import { getPrepState, subscribePrep, cancelPrep, forgetPrep, enqueuePrep, PREP_MODEL, PREP_SHIFTS, PREP_STEMS, type PrepReady } from "@/lib/stemPrep";
 import { loadLibrary, idbGetBlob, type LibTrack } from "@/lib/library";
 
 const STEM_FR: Record<string, string> = { vocals: "Voix", drums: "Batterie", bass: "Basse", other: "Autres" };
@@ -10,10 +10,6 @@ export function StemPrepPanel({ engine }: { engine: DJEngine }) {
   const prep = useSyncExternalStore(subscribePrep, getPrepState, getPrepState);
   const [library, setLibrary] = useState<LibTrack[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
-
-  useEffect(() => {
-    setPrepGate(() => !engine.deckA.playing && !engine.deckB.playing);
-  }, [engine]);
 
   useEffect(() => {
     const t0 = setTimeout(() => setLibrary(loadLibrary().tracks), 0);
@@ -64,7 +60,7 @@ export function StemPrepPanel({ engine }: { engine: DJEngine }) {
       </div>
       <div className="hw-recess flex flex-col gap-1 p-2 text-[11px] text-neutral-300">
         <span>1. Chaque morceau de ta bibliothèque est séparé en 4 pistes : voix, batterie, basse et autres.</span>
-        <span>2. Ça se fait à l&apos;arrêt : la préparation se met en pause pendant la lecture, pour ne pas faire saccader le son.</span>
+        <span>2. La préparation tourne aussi pendant la lecture : le son peut saccader pendant les calculs.</span>
         <span>3. Quand un morceau est prêt, charge-le sur la platine A ou B : ses pistes sont disponibles tout de suite.</span>
       </div>
 

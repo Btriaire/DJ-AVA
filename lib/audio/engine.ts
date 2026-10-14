@@ -96,10 +96,8 @@ export class DJEngine {
 
     this.deckA = new Deck(this.ctx);
     this.deckB = new Deck(this.ctx);
-    const allowed = () => !this.deckA.playing && !this.deckB.playing;
-    this.deckA.setPlaybackGate(allowed);
-    this.deckB.setPlaybackGate(allowed);
-    this.watchPlayback();
+    this.deckA.setPlaybackGate(() => true);
+    this.deckB.setPlaybackGate(() => true);
     this.deckA.output.connect(this.chA);
     this.deckB.output.connect(this.chB);
 
@@ -429,18 +427,6 @@ export class DJEngine {
     return r;
   }
 
-  // the server suspends running separations while a deck plays; the flag is refreshed
-  // every few seconds, so a closed tab lets the server resume them on its own
-  private watchPlayback() {
-    let wasPlaying = false;
-    setInterval(() => {
-      const playing = this.deckA.playing || this.deckB.playing;
-      if (playing || wasPlaying) {
-        void fetch(`/api/stems/suspend?on=${playing ? 1 : 0}`, { method: "POST" }).catch(() => {});
-      }
-      wasPlaying = playing;
-    }, 3000);
-  }
 
   // the DJ keyboard slices the track of deck A or B
   setKeySource(side: "A" | "B"): void {
