@@ -1,7 +1,8 @@
 export type FxName =
   | "echo" | "reverb" | "flanger" | "phaser" | "gate"
   | "roll" | "brake" | "reverse" | "sweep" | "wobble" | "pump" | "pan"
-  | "noise" | "crush" | "pitch";
+  | "noise" | "crush" | "pitch"
+  | "dub" | "ring" | "tape" | "mash" | "vowel" | "scatter";
 
 export const BEAT_DIVS: number[] = [1 / 16, 1 / 8, 1 / 4, 1 / 2, 3 / 4, 1, 2, 4, 8, 16];
 export const BEAT_LABELS: string[] = ["1/16", "1/8", "1/4", "1/2", "3/4", "1", "2", "4", "8", "16"];
@@ -277,6 +278,132 @@ export const FX_LIST: FxMeta[] = [
     beat: null,
     p1: { label: "Demi-tons", def: 0.708, fmt: (v) => `${v === 0.708 ? "0 st" : (Math.round(-12 + v * 24) > 0 ? "+" : "") + Math.round(-12 + v * 24)} st` },
     p2: null,
+    sendGain: 1.0
+  }, {
+    id: "dub",
+    label: "DUB",
+    color: "#22c55e",
+    glyph: "⇄",
+    title: "Écho dub ping-pong : répétitions filtrées et saturées, calées sur le tempo",
+    insert: false,
+    always: false,
+    trigger: false,
+    beat: 4,
+    p1: {
+      label: "Retour",
+      def: 0.55,
+      fmt: (v) => `${Math.round((0.2 + v * 0.68) * 100)}%`
+    },
+    p2: {
+      label: "Ton",
+      def: 0.5,
+      fmt: (v) => fmtHz(300 * Math.pow(12, v))
+    },
+    sendGain: 1.0
+  }, {
+    id: "ring",
+    label: "RING",
+    color: "#f472b6",
+    glyph: "⊗",
+    title: "Modulation en anneau : son métallique, robotique ou cloche",
+    insert: true,
+    always: false,
+    trigger: false,
+    beat: null,
+    p1: {
+      label: "Porteuse",
+      def: 0.45,
+      fmt: (v) => fmtHz(30 * Math.pow(100, v))
+    },
+    p2: {
+      label: "Mélange",
+      def: 0.7,
+      fmt: (v) => `${Math.round(v * 100)}%`
+    },
+    sendGain: 1.0
+  }, {
+    id: "tape",
+    label: "TAPE",
+    color: "#f59e0b",
+    glyph: "⌁",
+    title: "Vieux magnéto : saturation, pleurage et souffle de bande",
+    insert: true,
+    always: false,
+    trigger: false,
+    beat: null,
+    p1: {
+      label: "Usure",
+      def: 0.5,
+      fmt: (v) => `${Math.round(v * 100)}%`
+    },
+    p2: {
+      label: "Coupure",
+      def: 0.55,
+      fmt: (v) => fmtHz(2000 * Math.pow(8, v))
+    },
+    sendGain: 1.0
+  }, {
+    id: "mash",
+    label: "MASH",
+    color: "#f43f5e",
+    glyph: "▦",
+    title: "Beat masher : hachage aléatoire du son sur une grille de 16 pas",
+    insert: true,
+    always: false,
+    trigger: false,
+    beat: 0,
+    p1: {
+      label: "Densité",
+      def: 0.5,
+      fmt: (v) => `${Math.round((0.35 + v * 0.6) * 100)}%`
+    },
+    p2: {
+      label: "Lissage",
+      def: 0.3,
+      fmt: (v) => `${Math.round(2 + v * 28)} ms`
+    },
+    sendGain: 1.0
+  }, {
+    id: "vowel",
+    label: "VOWEL",
+    color: "#a78bfa",
+    glyph: "◌",
+    title: "Filtre à voyelles : le son prononce a-e-i-o-u au tempo",
+    insert: true,
+    always: false,
+    trigger: false,
+    beat: 5,
+    p1: {
+      label: "Résonance",
+      def: 0.5,
+      fmt: (v) => `Q ${Math.round(4 + v * 16)}`
+    },
+    p2: {
+      label: "Glissé",
+      def: 0.4,
+      fmt: (v) => `${Math.round(v * 100)}%`
+    },
+    sendGain: 1.0
+  }, {
+    id: "scatter",
+    label: "SCATTER",
+    color: "#22d3ee",
+    glyph: "⁘",
+    title: "Granulaire : le son éclate en grains rejoués au hasard",
+    insert: false,
+    always: false,
+    trigger: false,
+    beat: null,
+    p1: {
+      label: "Densité",
+      def: 0.4,
+      fmt: (v) => `${Math.round(6 + v * 34)} gr/s`
+    },
+    p2: {
+      label: "Dispersion",
+      def: 0.4,
+      fmt: (v) => `${Math.round((0.04 + v * 0.6) * 1000)} ms`
+    },
     sendGain: 1.0
   }
 ];
