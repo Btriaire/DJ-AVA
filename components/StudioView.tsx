@@ -407,6 +407,7 @@ export function StudioView({ engine, onLoaded, stemRefresh, libRefresh }: Props)
     const ab = lastAbRef.current;
     if (!ab || !sel) return flash("Audio en cours de chargement…");
     const deck = side === "A" ? engine.deckA : engine.deckB;
+    // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
     deck.loading = true;
     try {
       await deck.load(ab.slice(0), `${sel.title}${sel.artist ? ` — ${sel.artist}` : ""}`);
@@ -594,6 +595,7 @@ export function StudioView({ engine, onLoaded, stemRefresh, libRefresh }: Props)
               </span>
             </div>
             <button
+              // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
               onClick={() => sendToDeck("A")}
               disabled={!sel}
               className="hw-btn flex items-center justify-center gap-1.5 py-1.5 text-xs font-bold text-sky-400 disabled:opacity-40"

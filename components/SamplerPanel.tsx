@@ -798,6 +798,7 @@ export function SamplerPanel({ engine }: Props) {
           </button>
           <button
             onClick={() => {
+              // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
               sampler.seqRecording = !sampler.seqRecording;
               setSeqRec(sampler.seqRecording);
             }}

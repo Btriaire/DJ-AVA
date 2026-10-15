@@ -185,9 +185,9 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
 
   // live-mode bookkeeping (kept in refs so the interval reads fresh values)
   const dataRef = useRef(data);
-  dataRef.current = data;
+  useEffect(() => { dataRef.current = data; });
   const queueSrcRef = useRef(queueSrc);
-  queueSrcRef.current = queueSrc;
+  useEffect(() => { queueSrcRef.current = queueSrc; });
   const liveIdx = useRef<{ A: number; B: number }>({ A: -1, B: -1 });
   const wasPlaying = useRef<{ A: boolean; B: boolean }>({ A: false, B: false });
   // pre-load cache: warms the next track a few seconds before the current one
@@ -460,6 +460,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   async function loadToDeck(t: LibTrack, side: "A" | "B") {
     setBusy(t.id + side);
     const deck = side === "A" ? engine.deckA : engine.deckB;
+    // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
     deck.loading = true; // the deck panel shows a loading bar until ready
     // eslint-disable-next-line react-hooks/purity -- appel dans un gestionnaire d'événement, hors rendu
     deck.loadStartedAt = performance.now();
@@ -948,6 +949,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
 
   // watch each live deck; when its single ends (position snaps back to ~0 while
   // stopped) load + play the next filed single, looping the queue forever.
+  // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
   useEffect(() => {
     if (!liveA && !liveB) return;
     const id = window.setInterval(() => {
@@ -1108,6 +1110,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
 
   // Watch the foreground deck; when a song is ~ending, start the other deck and
   // autofade across to it, then cue the next single on the deck that just freed up.
+  // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
   useEffect(() => {
     if (!relay) return;
     const id = window.setInterval(() => {
@@ -1647,6 +1650,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
               Jouer maintenant :
             </span>
             <button
+              // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
               onClick={() => playPlaylistLive("A", activePlaylist.id)}
               disabled={activePlaylist.trackIds.length === 0}
               className={`hw-btn px-2 py-1 text-[11px] font-bold disabled:opacity-40 ${queueSrc.A === activePlaylist.id && liveA ? "hw-btn-on" : ""}`}
@@ -1754,6 +1758,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
         <div className="flex flex-wrap items-center gap-1.5">
           {/* Deck A : single précédent · LIVE · single suivant */}
           <button
+            // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
             onClick={() => stepSingle("A", -1)}
             className="hw-btn px-1.5 py-1 text-xs"
             style={{ ["--led" as string]: COLOR_A, color: COLOR_A }}
@@ -1762,6 +1767,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
             ⏮
           </button>
           <button
+            // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
             onClick={() => toggleLive("A")}
             className={`hw-btn px-2 py-1 text-xs ${liveA ? "hw-btn-on" : ""}`}
             style={{ ["--led" as string]: COLOR_A, color: liveA ? undefined : COLOR_A }}

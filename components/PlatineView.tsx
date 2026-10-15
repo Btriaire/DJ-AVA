@@ -47,9 +47,9 @@ export function PlatineView({ engine }: Props) {
   const angleB = useRef(0);
   const lastT = useRef(0);
   const crossRef = useRef(cross);
-  crossRef.current = cross;
+  useEffect(() => { crossRef.current = cross; });
   const autoMixRef = useRef(autoMix);
-  autoMixRef.current = autoMix;
+  useEffect(() => { autoMixRef.current = autoMix; });
   const fadeRef = useRef<number | null>(null);
   const fadingRef = useRef(false);
   const armedRef = useRef(true);

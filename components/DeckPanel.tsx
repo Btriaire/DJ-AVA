@@ -312,6 +312,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
     const base = cur < 0 ? (dir > 0 ? -1 : 0) : cur;
     const t = q[(base + dir + q.length) % q.length];
     setStepping(true);
+    // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
     deck.loading = true;
     deck.loadStartedAt = performance.now();
     try {
@@ -822,6 +823,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
         color={color}
         side={side}
         stepping={stepping}
+        // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
         onStep={stepSingle}
         onSync={onSync}
         autoSync={autoSync}

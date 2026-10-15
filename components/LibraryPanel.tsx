@@ -96,6 +96,7 @@ export function LibraryPanel({ engine, onClose, onLoaded }: Props) {
       const deck = side === "A" ? engine.deckA : engine.deckB;
       await deck.load(buf, `${track.title} — ${track.artist}`);
       // keep the YouTube origin so the deck can send it to the MP3 converter
+      // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
       deck.sourceLink = src === "youtube" ? `https://www.youtube.com/watch?v=${track.id}` : "";
       onLoaded();
     } catch (e) {

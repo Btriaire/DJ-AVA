@@ -42,11 +42,11 @@ export function MixScope({ deckA, deckB, colorA, colorB, crossfade, onCrossfade 
   const [beats, setBeats] = useState(false); // beat-grid / sync lines on the cascade — off by default like every other DSP/analysis option
 
   const xfRef = useRef(crossfade);
-  xfRef.current = crossfade;
+  useEffect(() => { xfRef.current = crossfade; });
   const frozenRef = useRef(frozen);
-  frozenRef.current = frozen;
+  useEffect(() => { frozenRef.current = frozen; });
   const beatsRef = useRef(beats);
-  beatsRef.current = beats;
+  useEffect(() => { beatsRef.current = beats; });
   const panRef = useRef(0); // columns scrubbed back in the spectrogram
   const scrubbingRef = useRef(false); // pause auto-scroll while dragging the cascade
   const advanceRef = useRef(0); // columns to push forward when scrubbing past the live edge

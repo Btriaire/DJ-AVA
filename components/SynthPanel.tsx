@@ -171,13 +171,13 @@ export function SynthPanel({ engine }: Props) {
   const histRef = useRef<AudioBuffer[]>([]);
   const held = useRef<Set<number>>(new Set());
   const holdRef = useRef(false);
-  holdRef.current = hold;
+  useEffect(() => { holdRef.current = hold; });
 
   // --- multi-sample (one sample per key) ---
   const [assignMode, setAssignMode] = useState(false);
   const [keyVer, setKeyVer] = useState(0); // bumps to redraw per-key badges
   const assignRef = useRef(false);
-  assignRef.current = assignMode;
+  useEffect(() => { assignRef.current = assignMode; });
   // bind the currently-loaded (trimmed) sample to a key; a second click clears it
   const assignKey = (midi: number) => {
     if (synth.hasKeySample(midi)) {
@@ -218,6 +218,7 @@ export function SynthPanel({ engine }: Props) {
     setSeqPlay(synthSeq.playing);
   };
   const toggleSeqRec = () => {
+    // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
     synthSeq.recording = !synthSeq.recording;
     setSeqRec(synthSeq.recording);
   };
@@ -246,6 +247,7 @@ export function SynthPanel({ engine }: Props) {
     });
   };
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
     synthSeq.onTick = (i) => setSeqStep(i);
     synthSeq.onRecord = () => setSteps([...synthSeq.steps]); // reflect live writes
     return () => {
@@ -269,6 +271,7 @@ export function SynthPanel({ engine }: Props) {
     const sec = engine.stopSamplingToSynth();
     setRecording(false);
     setRecSec(0);
+    // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
     engine.recorder.onProgress = undefined;
     if (sec !== null) {
       setSampleName(synth.sampleName);
@@ -282,6 +285,7 @@ export function SynthPanel({ engine }: Props) {
       finishRec();
       return;
     }
+    // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
     engine.recorder.onProgress = (sec) => {
       setRecSec(sec);
       if (!engine.recorder.recording) finishRec(); // auto-stop at 30s
@@ -422,6 +426,7 @@ export function SynthPanel({ engine }: Props) {
     synth.setReso(6); setReso(6);
     synth.setDetune(10); setDetune(10);
     synth.setWidth(0.4); setWidth(0.4);
+    // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
     synth.attack = 0.01; setAttack(0.01);
     synth.decay = 0.25; setDecay(0.25);
     synth.sustain = 0.6; setSustain(0.6);
@@ -489,6 +494,7 @@ export function SynthPanel({ engine }: Props) {
 
         <div className="relative flex shrink-0 flex-col justify-center gap-1">
           <button
+            // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
             onClick={toggleRec}
             className={`opxy-iconbtn ${recording ? "opxy-iconbtn-rec" : ""}`}
             title="Échantillonner le live (max 30s)"
@@ -577,9 +583,11 @@ export function SynthPanel({ engine }: Props) {
             onChange={(v) => { setReso(v); synth.setReso(v); }} />
           <Knob variant="op1" capColor={CAP[2]} size={40} label="Attack" value={attack} min={0.001} max={1.5} defaultValue={0.01}
             format={(v) => `${(v * 1000).toFixed(0)}ms`}
+            // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
             onChange={(v) => { setAttack(v); synth.attack = v; }} />
           <Knob variant="op1" capColor={CAP[3]} size={40} label="Release" value={release} min={0.02} max={3} defaultValue={0.4}
             format={(v) => `${v.toFixed(2)}s`}
+            // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
             onChange={(v) => { setRelease(v); synth.release = v; }} />
         </div>
       </div>
@@ -608,9 +616,11 @@ export function SynthPanel({ engine }: Props) {
             onChange={(v) => { setWidth(v); synth.setWidth(v); }} />
           <Knob variant="op1" capColor={CAP[1]} size={40} label="Decay" value={decay} min={0.02} max={2} defaultValue={0.25}
             format={(v) => `${v.toFixed(2)}s`}
+            // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
             onChange={(v) => { setDecay(v); synth.decay = v; }} />
           <Knob variant="op1" capColor={CAP[2]} size={40} label="Sustain" value={sustain} min={0} max={1} defaultValue={0.6}
             format={(v) => `${Math.round(v * 100)}`}
+            // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
             onChange={(v) => { setSustain(v); synth.sustain = v; }} />
           <Knob variant="op1" capColor={CAP[3]} size={40} label="Volume" value={vol} min={0} max={3} defaultValue={0.7}
             format={(v) => `${Math.round(v * 100)}`}
@@ -650,6 +660,7 @@ export function SynthPanel({ engine }: Props) {
           <span className="text-sm leading-none">⏻</span>
           <span className="text-[7px]">OFF</span>
         </button>
+        // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
         <button onClick={resetSynth} className="opxy-tbtn" title="RAZ — réinitialiser tous les réglages du synthé">
           <span className="text-sm leading-none">⟲</span>
           <span className="text-[7px]">RAZ</span>

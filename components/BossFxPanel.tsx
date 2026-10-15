@@ -61,6 +61,7 @@ export function BossFxPanel({ engine, tick }: Props) {
   const toggleRec = () => {
     if (engine.isRecording) {
       const blob = engine.stopRecording();
+      // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
       engine.dlRecorder.onProgress = undefined;
       setRecording(false);
       setRecSec(0);
@@ -122,6 +123,7 @@ export function BossFxPanel({ engine, tick }: Props) {
           </button>
           <button
             className={`boss-tbtn boss-tbtn-rec ${recording ? "boss-tbtn-rec-on" : ""}`}
+            // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
             onClick={toggleRec}
             title="Enregistrer le mix (WAV)"
           >
