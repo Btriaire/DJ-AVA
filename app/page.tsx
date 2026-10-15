@@ -62,6 +62,7 @@ import {
 
 export default function Home() {
   const engineRef = useRef<DJEngine | null>(null);
+  const [engine, setEngine] = useState<DJEngine | null>(null); // mirrors engineRef for render
   // hidden <audio> mirroring the master mix — see DJEngine.backgroundAudioStream
   // for why: an actively-playing HTMLMediaElement is what stops iOS Safari
   // from suspending the whole page (and its AudioContext) once backgrounded.
@@ -420,7 +421,9 @@ const [showModulePicker, setShowModulePicker] = useState(false);
   // whose closure would otherwise see a stale value from whenever the effect
   // last (re)ran, not the current fader position.
   const crossfadeRef = useRef(crossfade);
-  crossfadeRef.current = crossfade;
+  useEffect(() => {
+    crossfadeRef.current = crossfade;
+  }, [crossfade]);
 
   function stopAuto() {
     autoArmedRef.current = false;
@@ -536,6 +539,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
       const next = await rebuildEngine();
       next.onFatalSilence = () => { void recoverSound(); }; // keep auto-heal wired on the new engine
       engineRef.current = next;
+      setEngine(next);
       attachBackgroundAudio(next); // fresh engine = fresh MediaStream, re-attach
       setCrossfade(0.5);
       setMaster(next.getMaster());
@@ -638,6 +642,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
       const eng = getEngine();
       eng.onFatalSilence = () => { void recoverSound(); }; // let the engine self-heal silence
       engineRef.current = eng;
+      setEngine(eng);
       setReady(true);
       // iPhone mode used to auto-close Deck B here to save width — dropped:
       // a deck vanishing right after launch, with no visible cue why, read as
@@ -800,8 +805,6 @@ const [showModulePicker, setShowModulePicker] = useState(false);
       document.removeEventListener("keydown", onKey);
     };
   }, []);
-
-  const engine = engineRef.current;
 
   return (
     <main className="hw-body min-h-screen p-4 text-neutral-100">
