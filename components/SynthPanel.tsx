@@ -1,5 +1,6 @@
 "use client";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useIsClient } from "@/lib/useIsClient";
 import { Wave } from "@/lib/audio/Synth";
 import { DJEngine, encodeWav } from "@/lib/audio/engine";
 import { idbPutBlob, idbGetBlob, idbDelBlob } from "@/lib/library";
@@ -310,10 +311,11 @@ export function SynthPanel({ engine }: Props) {
   };
 
   // --- persistent sample bank ---
-  const [bank, setBank] = useState<SampleMeta[]>([]);
+  const isClient = useIsClient();
+  const [bankOverride, setBank] = useState<SampleMeta[] | null>(null);
+  const storedBank = useMemo(() => (isClient ? loadSampleBank() : []), [isClient]);
+  const bank = bankOverride ?? storedBank;
   const [bankOpen, setBankOpen] = useState(false);
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronisation avec le stockage local ou une prop au montage/changement ; pas de cascade de rendus
-  useEffect(() => { setBank(loadSampleBank()); }, []);
 
   const persistSample = async () => {
     const buf = synth.getTrimmedSample();

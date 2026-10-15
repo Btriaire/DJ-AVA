@@ -1,5 +1,6 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useIsClient } from "@/lib/useIsClient";
 import {
   DJEngine,
   getEngine,
@@ -83,17 +84,18 @@ export default function Home() {
     });
   }
   // animated opening screen — shown once per browser session
-  const [splash, setSplash] = useState(true);
-  useEffect(() => {
+  const isClient = useIsClient();
+  const [splashDone, setSplashDone] = useState(false);
+  const splashSeen = useMemo(() => {
     try {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronisation avec le stockage local ou une prop au montage/changement ; pas de cascade de rendus
-      if (sessionStorage.getItem("djsynth.splashSeen")) setSplash(false);
+      return isClient && sessionStorage.getItem("djsynth.splashSeen") !== null;
     } catch {
-      /* ignore */
+      return false;
     }
-  }, []);
+  }, [isClient]);
+  const splash = !splashDone && !splashSeen;
   function dismissSplash() {
-    setSplash(false);
+    setSplashDone(true);
     try {
       sessionStorage.setItem("djsynth.splashSeen", "1");
     } catch {
@@ -126,7 +128,16 @@ export default function Home() {
     });
   }
   const [showConfig, setShowConfig] = useState(false);
-  const [showYouTube, setShowYouTube] = useState(false); // bottom YouTube video tool (optional)
+  function readShowYouTube(): boolean {
+    try {
+      const raw = localStorage.getItem("djsynth.config.v1");
+      return raw ? !!JSON.parse(raw).showYouTube : false;
+    } catch {
+      return false;
+    }
+  }
+  const [ytFlag, setShowYouTube] = useState<boolean | null>(null); // bottom YouTube video tool (optional)
+  const showYouTube = ytFlag ?? (isClient && readShowYouTube());
   const [resetKey, setResetKey] = useState(0);
   // fully close a deck's whole panel (not just POWER, which only mutes output
   // and hides its tools — this removes it from the layout entirely so the
@@ -556,11 +567,8 @@ const [showModulePicker, setShowModulePicker] = useState(false);
   // + master) to disk so it can be restored after closing the session.
   const [stateBusy, setStateBusy] = useState<"" | "save" | "load">("");
   const [stateFlash, setStateFlash] = useState("");
-  const [savedExists, setSavedExists] = useState(false);
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronisation avec le stockage local ou une prop au montage/changement ; pas de cascade de rendus
-    setSavedExists(hasSavedState());
-  }, [ready]);
+  const [savedFlag, setSavedExists] = useState<boolean | null>(null);
+  const savedExists = savedFlag ?? (isClient && hasSavedState());
   function flashState(m: string) {
     setStateFlash(m);
     setTimeout(() => setStateFlash((c) => (c === m ? "" : c)), 2200);
@@ -703,26 +711,14 @@ const [showModulePicker, setShowModulePicker] = useState(false);
     };
   }, [ready]);
 
-  // load saved config (YouTube video tool is hidden unless enabled)
-  useEffect(() => {
+  function toggleYouTube() {
+    const next = !showYouTube;
     try {
-      const raw = localStorage.getItem("djsynth.config.v1");
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronisation avec le stockage local ou une prop au montage/changement ; pas de cascade de rendus
-      if (raw) setShowYouTube(!!JSON.parse(raw).showYouTube);
+      localStorage.setItem("djsynth.config.v1", JSON.stringify({ showYouTube: next }));
     } catch {
       /* ignore */
     }
-  }, []);
-  function toggleYouTube() {
-    setShowYouTube((v) => {
-      const next = !v;
-      try {
-        localStorage.setItem("djsynth.config.v1", JSON.stringify({ showYouTube: next }));
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
+    setShowYouTube(next);
   }
 
   // clear the converter highlight a moment after a deck pushes a track in

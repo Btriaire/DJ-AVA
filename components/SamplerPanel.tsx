@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useIsClient } from "@/lib/useIsClient";
 import { DJEngine } from "@/lib/audio/engine";
 import { loadPadPresets, savePadPresets, type Sampler } from "@/lib/audio/Sampler";
 import { Knob } from "./Knob";
@@ -269,14 +270,11 @@ export function SamplerPanel({ engine }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
 
   // --- saved pad sequences (named presets in localStorage) ---
-  const [presets, setPresets] = useState<Record<string, ReturnType<typeof sampler.exportPattern>>>(
-    {}
-  );
+  const isClient = useIsClient();
+  const [presetsOverride, setPresets] = useState<Record<string, ReturnType<typeof sampler.exportPattern>> | null>(null);
+  const storedPresets = useMemo(() => (isClient ? loadPadPresets() : {}), [isClient]);
+  const presets = presetsOverride ?? storedPresets;
   const [seqMenu, setSeqMenu] = useState(false);
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronisation avec le stockage local ou une prop au montage/changement ; pas de cascade de rendus
-    setPresets(loadPadPresets());
-  }, []);
   function saveSeqPreset() {
     const name = prompt("Nom de la séquence :")?.trim();
     if (!name) return;

@@ -1,5 +1,6 @@
 "use client";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useIsClient } from "@/lib/useIsClient";
 import { Deck } from "@/lib/audio/Deck";
 import { Knob } from "./Knob";
 import { Fader } from "./Fader";
@@ -463,11 +464,12 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
   }
 
   // --- global STEM templates (1-5 shortcut slots) --------------------------
-  const [stemTpls, setStemTpls] = useState<(StemTpl | null)[]>(() => Array(STEM_SLOTS).fill(null));
+  const isClient = useIsClient();
+  const [stemTplsOverride, setStemTpls] = useState<(StemTpl | null)[] | null>(null);
+  const storedStemTpls = useMemo(() => (isClient ? loadStemTpls() : null), [isClient]);
+  const stemTpls = stemTplsOverride ?? storedStemTpls ?? Array<StemTpl | null>(STEM_SLOTS).fill(null);
   const [stemSaveMode, setStemSaveMode] = useState(false);
   const [stemActiveTpl, setStemActiveTpl] = useState<number | null>(null);
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronisation avec le stockage local ou une prop au montage/changement ; pas de cascade de rendus
-  useEffect(() => setStemTpls(loadStemTpls()), []);
   function saveStemSlot(n: number) {
     const loops = deck.stemNames.map((_, i) => deck.getStemLoopState(i));
     const tpl: StemTpl = {
