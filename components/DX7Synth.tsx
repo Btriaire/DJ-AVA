@@ -177,6 +177,7 @@ export default function DX7Synth({ engine, embedded = false }: Props) {
   /* (re)build instrument on voice change */
   useEffect(() => {
     let disposed = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronisation avec le stockage local ou une prop au montage/changement ; pas de cascade de rendus
     setLoading(true);
     instRef.current?.dispose();
     const chainIn = filterRef.current!;
@@ -432,6 +433,7 @@ function Wheel({ label, spring, value, onChange, onRelease }: {
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState(spring ? 0.5 : value ?? 0);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronisation avec le stockage local ou une prop au montage/changement ; pas de cascade de rendus
   useEffect(() => { if (!spring && value !== undefined) setPos(value); }, [value, spring]);
   const move = (clientY: number) => {
     const el = ref.current; if (!el) return;

@@ -120,6 +120,7 @@ export function StudioView({ engine, onLoaded, stemRefresh, libRefresh }: Props)
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronisation avec le stockage local ou une prop au montage/changement ; pas de cascade de rendus
     if (src === "local") refreshLocal();
   }, [src, refreshLocal, libRefresh]);
 

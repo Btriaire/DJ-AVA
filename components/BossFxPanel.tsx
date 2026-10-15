@@ -44,6 +44,7 @@ export function BossFxPanel({ engine, tick }: Props) {
   const [recSec, setRecSec] = useState(0);
   const [selectedFx, setSelectedFx] = useState<FxName | null>(null);
   const clockRef = useRef(new Date());
+  // eslint-disable-next-line react-hooks/refs -- valeur d'animation ou d'horloge lue au rendu ; en faire un état re-rendrait à chaque frame
   clockRef.current = new Date();
 
   const meters = engine.getMeters(8);
@@ -104,6 +105,7 @@ export function BossFxPanel({ engine, tick }: Props) {
     return () => cancelAnimationFrame(raf);
   }, [engine]);
 
+  // eslint-disable-next-line react-hooks/refs -- valeur d'animation ou d'horloge lue au rendu ; en faire un état re-rendrait à chaque frame
   const { date, time } = fmtClock(clockRef.current);
 
   return (

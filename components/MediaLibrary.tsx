@@ -253,6 +253,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   const stemsPrefetchedIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronisation avec le stockage local ou une prop au montage/changement ; pas de cascade de rendus
     setData(loadLibrary());
   }, []);
 
@@ -331,6 +332,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   // too coarse to feel "live" on a badge the DJ is actively watching)
   useEffect(() => {
     if (stemsQueued.size === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronisation avec le stockage local ou une prop au montage/changement ; pas de cascade de rendus
       setStemsProgress(new Map());
       return;
     }
@@ -949,6 +951,12 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
 
   // watch each live deck; when its single ends (position snaps back to ~0 while
   // stopped) load + play the next filed single, looping the queue forever.
+  function livePreloadSec(side: "A" | "B"): number {
+    const plId = queueSrcRef.current[side];
+    const pl = plId ? dataRef.current.playlists.find((p) => p.id === plId) : null;
+    return pl?.preloadSec ?? 5;
+  }
+
   // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
   useEffect(() => {
     if (!liveA && !liveB) return;
@@ -1102,11 +1110,6 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     return pl?.transitionType ?? "fade";
   }
   // preload lead-time for a given deck's LIVE loop, from whichever set drives it
-  function livePreloadSec(side: "A" | "B"): number {
-    const plId = queueSrcRef.current[side];
-    const pl = plId ? dataRef.current.playlists.find((p) => p.id === plId) : null;
-    return pl?.preloadSec ?? 5;
-  }
 
   // Watch the foreground deck; when a song is ~ending, start the other deck and
   // autofade across to it, then cue the next single on the deck that just freed up.

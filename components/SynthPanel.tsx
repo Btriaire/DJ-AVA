@@ -312,6 +312,7 @@ export function SynthPanel({ engine }: Props) {
   // --- persistent sample bank ---
   const [bank, setBank] = useState<SampleMeta[]>([]);
   const [bankOpen, setBankOpen] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronisation avec le stockage local ou une prop au montage/changement ; pas de cascade de rendus
   useEffect(() => { setBank(loadSampleBank()); }, []);
 
   const persistSample = async () => {
@@ -475,6 +476,7 @@ export function SynthPanel({ engine }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
 
   // grayscale level bars for the LCD, derived from the live patch
+  // eslint-disable-next-line react-hooks/refs -- valeur d'animation ou d'horloge lue au rendu ; en faire un état re-rendrait à chaque frame
   const bars = Array.from({ length: 14 }, (_, i) => {
     const t = i / 13;
     const tone = Math.sin(t * Math.PI * (1 + reso / 6)) * 0.5 + 0.5;
@@ -660,7 +662,7 @@ export function SynthPanel({ engine }: Props) {
           <span className="text-sm leading-none">⏻</span>
           <span className="text-[7px]">OFF</span>
         </button>
-        // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
+        {/* eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React */}
         <button onClick={resetSynth} className="opxy-tbtn" title="RAZ — réinitialiser tous les réglages du synthé">
           <span className="text-sm leading-none">⟲</span>
           <span className="text-[7px]">RAZ</span>
@@ -863,6 +865,7 @@ export function SynthPanel({ engine }: Props) {
         </div>
       )}
       <div className="flex gap-[3px] select-none" data-keyver={keyVer}>
+        {/* eslint-disable-next-line react-hooks/refs -- valeur d'animation ou d'horloge lue au rendu ; en faire un état re-rendrait à chaque frame */}
         {KEYS.map((k) => {
           const keyed = synth.hasKeySample(k.midi);
           const keyName = synth.keySampleName(k.midi);

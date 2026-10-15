@@ -86,6 +86,7 @@ export default function Home() {
   const [splash, setSplash] = useState(true);
   useEffect(() => {
     try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronisation avec le stockage local ou une prop au montage/changement ; pas de cascade de rendus
       if (sessionStorage.getItem("djsynth.splashSeen")) setSplash(false);
     } catch {
       /* ignore */
@@ -530,6 +531,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
   // app, without a page reload.
   const [recovering, setRecovering] = useState(false);
   const recoveringRef = useRef(false); // gesture-independent re-entry guard (engine can call this)
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- useCallback conservé : identité stable requise par engine.onFatalSilence
   const recoverSound = useCallback(async () => {
     if (recoveringRef.current) return;
     recoveringRef.current = true;
@@ -556,6 +558,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
   const [stateFlash, setStateFlash] = useState("");
   const [savedExists, setSavedExists] = useState(false);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronisation avec le stockage local ou une prop au montage/changement ; pas de cascade de rendus
     setSavedExists(hasSavedState());
   }, [ready]);
   function flashState(m: string) {
@@ -704,6 +707,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
   useEffect(() => {
     try {
       const raw = localStorage.getItem("djsynth.config.v1");
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronisation avec le stockage local ou une prop au montage/changement ; pas de cascade de rendus
       if (raw) setShowYouTube(!!JSON.parse(raw).showYouTube);
     } catch {
       /* ignore */

@@ -88,11 +88,13 @@ export function DeckTimers({ deckA, deckB, colorA, colorB }: Props) {
 
   return (
     <div className="hw-screen flex items-center gap-3 px-3 py-1.5">
+      {/* eslint-disable-next-line react-hooks/refs -- valeur d'animation ou d'horloge lue au rendu ; en faire un état re-rendrait à chaque frame */}
       {cell("Deck A", colorA, accA.current, () => {
         accA.current = 0;
         force((n) => n + 1);
       })}
       <div className="h-8 w-px bg-[#19324a]" />
+      {/* eslint-disable-next-line react-hooks/refs -- valeur d'animation ou d'horloge lue au rendu ; en faire un état re-rendrait à chaque frame */}
       {cell("Deck B", colorB, accB.current, () => {
         accB.current = 0;
         force((n) => n + 1);

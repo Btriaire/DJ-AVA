@@ -466,6 +466,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
   const [stemTpls, setStemTpls] = useState<(StemTpl | null)[]>(() => Array(STEM_SLOTS).fill(null));
   const [stemSaveMode, setStemSaveMode] = useState(false);
   const [stemActiveTpl, setStemActiveTpl] = useState<number | null>(null);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronisation avec le stockage local ou une prop au montage/changement ; pas de cascade de rendus
   useEffect(() => setStemTpls(loadStemTpls()), []);
   function saveStemSlot(n: number) {
     const loops = deck.stemNames.map((_, i) => deck.getStemLoopState(i));
@@ -623,6 +624,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                     className="h-full rounded-full transition-[width] duration-150"
                     style={{
                       width: `${Math.round(
+                        // eslint-disable-next-line react-hooks/purity -- temps de rendu pour une barre de chargement ; mis à jour à chaque rendu du composant
                         (1 - Math.exp(-(performance.now() - deck.loadStartedAt) / 900)) * 92
                       )}%`,
                       background: `linear-gradient(90deg, ${color}22 0%, ${color}88 55%, ${color} 100%)`,

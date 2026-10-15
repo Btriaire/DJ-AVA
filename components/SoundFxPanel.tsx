@@ -28,6 +28,7 @@ export function SoundFxPanel({ engine }: Props) {
     const raw = localStorage.getItem(VOL_KEY);
     if (raw != null) {
       const v = parseFloat(raw);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronisation avec le stockage local ou une prop au montage/changement ; pas de cascade de rendus
       if (!Number.isNaN(v)) { setVol(v); sfx.setVolume(v); }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

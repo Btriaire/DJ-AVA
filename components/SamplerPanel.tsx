@@ -274,6 +274,7 @@ export function SamplerPanel({ engine }: Props) {
   );
   const [seqMenu, setSeqMenu] = useState(false);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronisation avec le stockage local ou une prop au montage/changement ; pas de cascade de rendus
     setPresets(loadPadPresets());
   }, []);
   function saveSeqPreset() {
@@ -305,6 +306,7 @@ export function SamplerPanel({ engine }: Props) {
     const saved = parseFloat(localStorage.getItem("djsynth.sampler.vol") ?? "");
     if (!Number.isNaN(saved)) {
       sampler.setVolume(saved);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronisation avec le stockage local ou une prop au montage/changement ; pas de cascade de rendus
       setVol(sampler.getVolume());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -15,6 +15,7 @@ export function LcdClock() {
 
   // wall clock — refresh ~4x/s is plenty for HH:MM:SS
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronisation avec le stockage local ou une prop au montage/changement ; pas de cascade de rendus
     setNow(new Date());
     const id = setInterval(() => setNow(new Date()), 250);
     return () => clearInterval(id);

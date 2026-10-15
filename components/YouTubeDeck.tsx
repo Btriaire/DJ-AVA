@@ -49,6 +49,7 @@ interface YTPlayer {
 export function YouTubeDeck() {
   const [url, setUrl] = useState("");
   const [ready, setReady] = useState(false);
+  const [hasPlayer, setHasPlayer] = useState(false); // mirrors playerRef for render
   const [playing, setPlaying] = useState(false);
   const [vol, setVol] = useState(70);
   const [currentId, setCurrentId] = useState<string | null>(null);
@@ -84,6 +85,7 @@ export function YouTubeDeck() {
       playerVars: { playsinline: 1, rel: 0 },
       events: {
         onReady: (e: { target: YTPlayer }) => {
+          setHasPlayer(true);
           e.target.setVolume(vol);
           e.target.playVideo();
           setPlaying(true);
@@ -172,7 +174,7 @@ export function YouTubeDeck() {
           <div className="flex items-center gap-4">
             <button
               onClick={toggle}
-              disabled={!playerRef.current}
+              disabled={!hasPlayer}
               className="hw-btn px-4 py-2 text-sm text-red-300 disabled:opacity-40"
               style={{ ["--led" as string]: "#ef4444" }}
             >
