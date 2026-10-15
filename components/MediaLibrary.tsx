@@ -1,5 +1,5 @@
 "use client";
-import { memo, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { DJEngine } from "@/lib/audio/engine";
 import {
   LibraryData,
@@ -185,9 +185,9 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
 
   // live-mode bookkeeping (kept in refs so the interval reads fresh values)
   const dataRef = useRef(data);
-  useEffect(() => { dataRef.current = data; });
+  useLayoutEffect(() => { dataRef.current = data; });
   const queueSrcRef = useRef(queueSrc);
-  useEffect(() => { queueSrcRef.current = queueSrc; });
+  useLayoutEffect(() => { queueSrcRef.current = queueSrc; });
   const liveIdx = useRef<{ A: number; B: number }>({ A: -1, B: -1 });
   const wasPlaying = useRef<{ A: boolean; B: boolean }>({ A: false, B: false });
   // pre-load cache: warms the next track a few seconds before the current one

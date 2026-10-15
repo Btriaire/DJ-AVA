@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Wave } from "@/lib/audio/Synth";
 import { DJEngine, encodeWav } from "@/lib/audio/engine";
 import { idbPutBlob, idbGetBlob, idbDelBlob } from "@/lib/library";
@@ -171,13 +171,13 @@ export function SynthPanel({ engine }: Props) {
   const histRef = useRef<AudioBuffer[]>([]);
   const held = useRef<Set<number>>(new Set());
   const holdRef = useRef(false);
-  useEffect(() => { holdRef.current = hold; });
+  useLayoutEffect(() => { holdRef.current = hold; });
 
   // --- multi-sample (one sample per key) ---
   const [assignMode, setAssignMode] = useState(false);
   const [keyVer, setKeyVer] = useState(0); // bumps to redraw per-key badges
   const assignRef = useRef(false);
-  useEffect(() => { assignRef.current = assignMode; });
+  useLayoutEffect(() => { assignRef.current = assignMode; });
   // bind the currently-loaded (trimmed) sample to a key; a second click clears it
   const assignKey = (midi: number) => {
     if (synth.hasKeySample(midi)) {

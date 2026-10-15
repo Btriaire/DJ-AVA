@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { DJEngine } from "@/lib/audio/engine";
 import { Deck } from "@/lib/audio/Deck";
 import { FxName } from "@/lib/audio/FXRack";
@@ -47,9 +47,9 @@ export function PlatineView({ engine }: Props) {
   const angleB = useRef(0);
   const lastT = useRef(0);
   const crossRef = useRef(cross);
-  useEffect(() => { crossRef.current = cross; });
+  useLayoutEffect(() => { crossRef.current = cross; });
   const autoMixRef = useRef(autoMix);
-  useEffect(() => { autoMixRef.current = autoMix; });
+  useLayoutEffect(() => { autoMixRef.current = autoMix; });
   const fadeRef = useRef<number | null>(null);
   const fadingRef = useRef(false);
   const armedRef = useRef(true);
