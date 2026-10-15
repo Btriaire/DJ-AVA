@@ -328,16 +328,16 @@ export default function Solar42F({ engine, embedded = false }: Props) {
   const wrapClass = embedded ? 'w-full' : 'w-full min-h-screen flex items-center justify-center';
   const wrapStyle = embedded ? {} : { background: 'radial-gradient(circle at 50% -10%, #1c130a, #070402)', padding: '12px' };
 
-  /* knob-ish slider */
-  const S = ({ label, v, min, max, step, set, fmt }: { label: string; v: number; min: number; max: number; step: number; set: (x: number) => void; fmt?: (x: number) => string }) => (
-    <label className="flex flex-col gap-0.5 min-w-0">
-      <div className="flex justify-between items-baseline gap-1">
-        <span className="text-[8px] tracking-wider truncate" style={{ color: '#c9925a' }}>{label}</span>
-        <span className="text-[8px] font-mono shrink-0" style={{ color: '#ffb347' }}>{fmt ? fmt(v) : v.toFixed(2)}</span>
-      </div>
-      <input type="range" min={min} max={max} step={step} value={v} onChange={(e) => set(parseFloat(e.target.value))} className="w-full accent-amber-500 h-1" />
-    </label>
-  );
+/* knob-ish slider */
+const renderSlider = ({ label, v, min, max, step, set, fmt }: { label: string; v: number; min: number; max: number; step: number; set: (x: number) => void; fmt?: (x: number) => string }) => (
+  <label className="flex flex-col gap-0.5 min-w-0">
+    <div className="flex justify-between items-baseline gap-1">
+      <span className="text-[8px] tracking-wider truncate" style={{ color: '#c9925a' }}>{label}</span>
+      <span className="text-[8px] font-mono shrink-0" style={{ color: '#ffb347' }}>{fmt ? fmt(v) : v.toFixed(2)}</span>
+    </div>
+    <input type="range" min={min} max={max} step={step} value={v} onChange={(e) => set(parseFloat(e.target.value))} className="w-full accent-amber-500 h-1" />
+  </label>
+);
 
   return (
     <div className={wrapClass} style={wrapStyle}>
@@ -440,7 +440,7 @@ export default function Solar42F({ engine, embedded = false }: Props) {
                   {WAVES.map((w) => <option key={w} value={w}>{w === 'sine' ? 'SIN' : w === 'triangle' ? 'TRI' : 'SAW'}</option>)}
                 </select>
               </div>
-              <S label="NIVEAU" v={v.level} min={0} max={1} step={0.01} set={(x) => setVoices((vs) => vs.map((y, j) => (j === i ? { ...y, level: x } : y)))} fmt={(x) => `${Math.round(x * 100)}`} />
+              {renderSlider({ label: "NIVEAU", v: v.level, min: 0, max: 1, step: 0.01, set: (x) => setVoices((vs) => vs.map((y, j) => (j === i ? { ...y, level: x } : y))), fmt: (x) => `${Math.round(x * 100)}` })}
             </div>
           ))}
         </div>
@@ -470,22 +470,22 @@ export default function Solar42F({ engine, embedded = false }: Props) {
               {Object.keys(CHORDS).map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </label>
-          <S label="DETUNE" v={detune} min={0} max={40} step={1} set={setDetune} fmt={(x) => `${x}ct`} />
-          <S label="DRIVE" v={drive} min={0} max={0.8} step={0.01} set={setDrive} fmt={(x) => `${Math.round(x * 100)}`} />
-          <S label="LARGEUR" v={width} min={0} max={1} step={0.01} set={setWidth} fmt={(x) => `${Math.round(x * 100)}`} />
-          <S label="CUTOFF" v={cutoff} min={100} max={8000} step={20} set={setCutoff} fmt={(x) => `${(x / 1000).toFixed(1)}k`} />
-          <S label="RESONANCE" v={reso} min={0.3} max={12} step={0.1} set={setReso} fmt={(x) => x.toFixed(1)} />
-          <S label="CHORUS" v={chorus} min={0} max={1} step={0.01} set={setChorus} fmt={(x) => `${Math.round(x * 100)}`} />
-          <S label="DELAY TPS" v={dlyTime} min={0.1} max={2} step={0.05} set={setDlyTime} fmt={(x) => `${x.toFixed(2)}s`} />
-          <S label="DELAY FB" v={dlyFb} min={0} max={0.85} step={0.01} set={setDlyFb} fmt={(x) => `${Math.round(x * 100)}`} />
-          <S label="DELAY MIX" v={dlyMix} min={0} max={1} step={0.01} set={setDlyMix} fmt={(x) => `${Math.round(x * 100)}`} />
-          <S label="REVERB TPS" v={revDecay} min={2} max={15} step={0.5} set={setRevDecay} fmt={(x) => `${x.toFixed(0)}s`} />
-          <S label="REVERB MIX" v={revMix} min={0} max={0.9} step={0.01} set={setRevMix} fmt={(x) => `${Math.round(x * 100)}`} />
-          <S label="LFO FILTRE" v={lfo1Rate} min={0.02} max={2} step={0.01} set={setLfo1Rate} fmt={(x) => `${x.toFixed(2)}Hz`} />
-          <S label="LFO F. DEPTH" v={lfo1Depth} min={0} max={1} step={0.01} set={setLfo1Depth} fmt={(x) => `${Math.round(x * 100)}`} />
-          <S label="LFO PITCH" v={lfo2Rate} min={0.02} max={2} step={0.01} set={setLfo2Rate} fmt={(x) => `${x.toFixed(2)}Hz`} />
-          <S label="LFO P. DEPTH" v={lfo2Depth} min={0} max={30} step={1} set={setLfo2Depth} fmt={(x) => `${x}ct`} />
-          <S label="VOLUME" v={vol} min={0} max={1} step={0.01} set={setVol} fmt={(x) => `${Math.round(x * 100)}`} />
+          {renderSlider({ label: "DETUNE", v: detune, min: 0, max: 40, step: 1, set: setDetune, fmt: (x) => `${x}ct` })}
+          {renderSlider({ label: "DRIVE", v: drive, min: 0, max: 0.8, step: 0.01, set: setDrive, fmt: (x) => `${Math.round(x * 100)}` })}
+          {renderSlider({ label: "LARGEUR", v: width, min: 0, max: 1, step: 0.01, set: setWidth, fmt: (x) => `${Math.round(x * 100)}` })}
+          {renderSlider({ label: "CUTOFF", v: cutoff, min: 100, max: 8000, step: 20, set: setCutoff, fmt: (x) => `${(x / 1000).toFixed(1)}k` })}
+          {renderSlider({ label: "RESONANCE", v: reso, min: 0.3, max: 12, step: 0.1, set: setReso, fmt: (x) => x.toFixed(1) })}
+          {renderSlider({ label: "CHORUS", v: chorus, min: 0, max: 1, step: 0.01, set: setChorus, fmt: (x) => `${Math.round(x * 100)}` })}
+          {renderSlider({ label: "DELAY TPS", v: dlyTime, min: 0.1, max: 2, step: 0.05, set: setDlyTime, fmt: (x) => `${x.toFixed(2)}s` })}
+          {renderSlider({ label: "DELAY FB", v: dlyFb, min: 0, max: 0.85, step: 0.01, set: setDlyFb, fmt: (x) => `${Math.round(x * 100)}` })}
+          {renderSlider({ label: "DELAY MIX", v: dlyMix, min: 0, max: 1, step: 0.01, set: setDlyMix, fmt: (x) => `${Math.round(x * 100)}` })}
+          {renderSlider({ label: "REVERB TPS", v: revDecay, min: 2, max: 15, step: 0.5, set: setRevDecay, fmt: (x) => `${x.toFixed(0)}s` })}
+          {renderSlider({ label: "REVERB MIX", v: revMix, min: 0, max: 0.9, step: 0.01, set: setRevMix, fmt: (x) => `${Math.round(x * 100)}` })}
+          {renderSlider({ label: "LFO FILTRE", v: lfo1Rate, min: 0.02, max: 2, step: 0.01, set: setLfo1Rate, fmt: (x) => `${x.toFixed(2)}Hz` })}
+          {renderSlider({ label: "LFO F. DEPTH", v: lfo1Depth, min: 0, max: 1, step: 0.01, set: setLfo1Depth, fmt: (x) => `${Math.round(x * 100)}` })}
+          {renderSlider({ label: "LFO PITCH", v: lfo2Rate, min: 0.02, max: 2, step: 0.01, set: setLfo2Rate, fmt: (x) => `${x.toFixed(2)}Hz` })}
+          {renderSlider({ label: "LFO P. DEPTH", v: lfo2Depth, min: 0, max: 30, step: 1, set: setLfo2Depth, fmt: (x) => `${x}ct` })}
+          {renderSlider({ label: "VOLUME", v: vol, min: 0, max: 1, step: 0.01, set: setVol, fmt: (x) => `${Math.round(x * 100)}` })}
         </div>
 
         {/* ── special + sampling row ── */}
@@ -521,7 +521,7 @@ export default function Solar42F({ engine, embedded = false }: Props) {
             </select>
           </label>
           {texture !== 'OFF' && (
-            <div className="w-24"><S label="TEX NIVEAU" v={texLevel} min={0} max={1} step={0.01} set={setTexLevel} fmt={(x) => `${Math.round(x * 100)}`} /></div>
+            <div className="w-24">{renderSlider({ label: "TEX NIVEAU", v: texLevel, min: 0, max: 1, step: 0.01, set: setTexLevel, fmt: (x) => `${Math.round(x * 100)}` })}</div>
           )}
           {texLoading && <span className="animate-pulse text-[9px]" style={{ color: '#ffb347' }}>chargement…</span>}
 
