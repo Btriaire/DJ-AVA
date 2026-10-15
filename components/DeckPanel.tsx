@@ -821,6 +821,18 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
               </button>
               <button
                 className="hw-btn px-2 py-1 text-[10px] font-bold"
+                disabled={!sel || !deck.audioBuffer}
+                onClick={() => {
+                  if (!sel) return;
+                  deck.setLoopRange(Math.min(sel.start, sel.end) * deck.duration, Math.max(sel.start, sel.end) * deck.duration);
+                  rerender();
+                }}
+                title="Boucle la partie sélectionnée sur le deck"
+              >
+                BOUCLER
+              </button>
+              <button
+                className="hw-btn px-2 py-1 text-[10px] font-bold"
                 disabled={!sel || !deck.audioBuffer || loading}
                 onClick={separateSelection}
                 title="Découpe cette partie et la met en préparation des stems (seule cette partie est séparée)"

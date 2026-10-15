@@ -1585,6 +1585,25 @@ export class Deck {
     }
   }
 
+  // loop over an explicit passage [from, to] in seconds (e.g. the waveform selection)
+  setLoopRange(from: number, to: number) {
+    if (!this.buffer) return;
+    const start = Math.max(0, Math.min(from, to));
+    const end = Math.min(this.duration, Math.max(from, to));
+    if (!(end - start > 0.01)) return;
+    this.loopStart = start;
+    this.loopEnd = end;
+    this.loopActive = true;
+    if (this._playing) {
+      this.stopSources();
+      this.pausedAt = start;
+      this._playing = false;
+      this.play();
+    } else {
+      this.pausedAt = start;
+    }
+  }
+
   clearLoop() {
     if (!this.loopActive) return;
     const pos = this.position();
