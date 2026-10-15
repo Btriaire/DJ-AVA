@@ -3,12 +3,16 @@ export const ECHO_DIVS: number[] = [0.25, 0.5, 1, 2];
 
 // slice length of one key, in beats (1 beat = a quarter note)
 export const SLICE_DIVS: { label: string; beats: number }[] = [
-  { label: "1/4", beats: 1 },
-  { label: "1/8", beats: 0.5 },
-  { label: "1/16", beats: 0.25 },
   { label: "1/32", beats: 0.125 },
-  { label: "1/8T", beats: 1 / 3 },
   { label: "1/16T", beats: 1 / 6 },
+  { label: "1/16", beats: 0.25 },
+  { label: "1/8T", beats: 1 / 3 },
+  { label: "1/8", beats: 0.5 },
+  { label: "1/4", beats: 1 },
+  { label: "1/2", beats: 2 },
+  { label: "1M", beats: 4 },
+  { label: "2M", beats: 8 },
+  { label: "4M", beats: 16 },
 ];
 export const DEFAULT_SLICE_DIV = 2; // 1/16
 export const DRUM_NAMES: string[] = ["Kick", "Kick 2", "Snare", "Clap", "Hat fermé", "Hat ouvert", "Rim", "Tom bas", "Tom haut", "Crash", "Montée", "Descente", "Sub", "Stab", "Sirène", "Zap"];
