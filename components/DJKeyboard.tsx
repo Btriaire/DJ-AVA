@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { DJEngine } from "@/lib/audio/engine";
-import { PAD_SLICES, ECHO_DIVS, DRUM_NAMES, type PadBank, type PadSettings } from "@/lib/audio/SamplePad";
+import { PAD_SLICES, ECHO_DIVS, SLICE_DIVS, DRUM_NAMES, type PadBank, type PadSettings } from "@/lib/audio/SamplePad";
 import { Knob } from "./Knob";
 
 type Props = {
@@ -144,8 +144,9 @@ export const DJKeyboard = ({ engine }: Props) => {
       const position = deck.position();
       const beatOffset = deck.beatGridOffset;
       const barStart = beatOffset + Math.floor((position - beatOffset) / (4 * spb)) * 4 * spb;
-      const step = Math.floor((position - barStart) / (spb / 4));
-      setCurrentStep(Math.max(0, Math.min(15, step)));
+      const sliceSec = spb * SLICE_DIVS[engine.keyPad.settings.sliceDiv].beats;
+      const step = Math.floor((position - barStart) / sliceSec);
+      setCurrentStep(Math.max(0, step) % PAD_SLICES);
     }, 50);
 
     return () => {
@@ -429,6 +430,18 @@ export const DJKeyboard = ({ engine }: Props) => {
             led={false}
             format={(v) => ECHO_LABELS[v]}
             onChange={(v) => setSetting("echoDiv", Math.round(v))}
+          />
+          <Knob
+            label="TRANCHE"
+            value={settings.sliceDiv}
+            min={0}
+            max={SLICE_DIVS.length - 1}
+            defaultValue={2}
+            size={48}
+            color="#a3e635"
+            led={false}
+            format={(v) => SLICE_DIVS[Math.round(v)].label}
+            onChange={(v) => setSetting("sliceDiv", Math.round(v))}
           />
           <Knob
             label="VOL"

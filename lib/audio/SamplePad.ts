@@ -1,5 +1,16 @@
 export const PAD_SLICES = 16;
 export const ECHO_DIVS: number[] = [0.25, 0.5, 1, 2];
+
+// slice length of one key, in beats (1 beat = a quarter note)
+export const SLICE_DIVS: { label: string; beats: number }[] = [
+  { label: "1/4", beats: 1 },
+  { label: "1/8", beats: 0.5 },
+  { label: "1/16", beats: 0.25 },
+  { label: "1/32", beats: 0.125 },
+  { label: "1/8T", beats: 1 / 3 },
+  { label: "1/16T", beats: 1 / 6 },
+];
+export const DEFAULT_SLICE_DIV = 2; // 1/16
 export const DRUM_NAMES: string[] = ["Kick", "Kick 2", "Snare", "Clap", "Hat fermé", "Hat ouvert", "Rim", "Tom bas", "Tom haut", "Crash", "Montée", "Descente", "Sub", "Stab", "Sirène", "Zap"];
 
 export type PadBank = "slices" | "drums";
@@ -18,6 +29,7 @@ export interface PadSettings {
   filter: number;
   echo: number;
   echoDiv: number;
+  sliceDiv: number;
   gate: boolean;
   volume: number;
   reverb: number;
@@ -30,6 +42,7 @@ export const DEFAULT_PAD_SETTINGS: PadSettings = {
   filter: 1,
   echo: 0,
   echoDiv: 1,
+  sliceDiv: DEFAULT_SLICE_DIV,
   gate: false,
   volume: 0.8,
   reverb: 0.35,
@@ -403,12 +416,12 @@ export class SamplePad {
 
     const spb = 60 / src.bpm;
     const barStart = src.beatOffset + Math.floor((src.position - src.beatOffset) / (4 * spb)) * 4 * spb;
-    const sliceStart = barStart + slice * spb / 4;
+    const sliceStart = barStart + slice * this.sliceSec(spb);
     if (sliceStart >= src.buffer.duration) return;
 
     const source = this.ctx.createBufferSource();
     const buffer = this.settings.reverse ? this.getReversedBuffer(src.buffer) : src.buffer;
-    const sliceLength = Math.floor(Math.min(spb / 4, src.buffer.duration - sliceStart) * buffer.sampleRate);
+    const sliceLength = Math.floor(Math.min(this.sliceSec(spb), src.buffer.duration - sliceStart) * buffer.sampleRate);
     const sliceBuffer = this.ctx.createBuffer(
       buffer.numberOfChannels,
       sliceLength,
@@ -418,7 +431,7 @@ export class SamplePad {
     for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
       const srcData = buffer.getChannelData(ch);
       const dstData = sliceBuffer.getChannelData(ch);
-      const readTime = Math.max(0, this.settings.reverse ? src.buffer.duration - (sliceStart + spb / 4) : sliceStart);
+      const readTime = Math.max(0, this.settings.reverse ? src.buffer.duration - (sliceStart + this.sliceSec(spb)) : sliceStart);
       const startSample = Math.floor(readTime * buffer.sampleRate);
       const endSample = Math.min(startSample + sliceLength, buffer.length);
 
@@ -456,7 +469,7 @@ export class SamplePad {
         if (this.voices.get(slice) !== voice) return;
         this.stopVoice(slice);
         this.startVoice(slice);
-      }, spb / 4 * 1000);
+      }, this.sliceSec(spb) * 1000);
 
       voice.gateInterval = interval as unknown as number;
     }
@@ -496,7 +509,7 @@ export class SamplePad {
 
     const spb = 60 / src.bpm;
     const barStart = src.beatOffset + Math.floor((src.position - src.beatOffset) / (4 * spb)) * 4 * spb;
-    const sliceStart = barStart + slice * spb / 4;
+    const sliceStart = barStart + slice * this.sliceSec(spb);
     if (sliceStart >= src.buffer.duration) return;
 
     if (this.voices.has(slice)) {
@@ -519,6 +532,11 @@ export class SamplePad {
     return this.voices.has(slice);
   }
 
+  // length of one key's slice in seconds, for the current tempo and division
+  private sliceSec(spb: number): number {
+    return SLICE_DIVS[this.settings.sliceDiv].beats * spb;
+  }
+
   set(key: keyof PadSettings, value: number | boolean): void {
     if (key === "pitch") {
       this.settings.pitch = typeof value === "number" ? value : 0;
@@ -538,6 +556,8 @@ export class SamplePad {
     } else if (key === "echo") {
       this.settings.echo = typeof value === "number" ? Math.max(0, Math.min(1, value)) : 0;
       this.echoSend.gain.value = this.settings.echo;
+    } else if (key === "sliceDiv") {
+      this.settings.sliceDiv = typeof value === "number" ? Math.max(0, Math.min(SLICE_DIVS.length - 1, Math.round(value))) : DEFAULT_SLICE_DIV;
     } else if (key === "echoDiv") {
       this.settings.echoDiv = typeof value === "number" ? Math.max(0, Math.min(ECHO_DIVS.length - 1, Math.floor(value))) : 1;
       const src = this.source();
