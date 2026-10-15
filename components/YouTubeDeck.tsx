@@ -125,7 +125,11 @@ export function YouTubeDeck() {
   function toggle() {
     const p = playerRef.current;
     if (!p) return;
-    playing ? p.pauseVideo() : p.playVideo();
+    if (playing) {
+      p.pauseVideo();
+    } else {
+      p.playVideo();
+    }
   }
 
   return (

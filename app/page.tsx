@@ -49,7 +49,6 @@ import {
   IconRefresh,
   IconSave,
   IconDownload,
-  IconUpload,
   IconLayers,
   IconSettings,
   IconAlertTriangle,
@@ -545,7 +544,6 @@ const [showModulePicker, setShowModulePicker] = useState(false);
       recoveringRef.current = false;
       setRecovering(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // --- Save State: persist the whole mix (both decks + all params + crossfader

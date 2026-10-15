@@ -66,6 +66,7 @@ export class DelayModule extends BaseModule {
     }
   }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
   build(ctx: AudioContext): void {
     // Dry path
     this.input.connect(this.dryGain);
@@ -112,6 +113,7 @@ export class DelayModule extends BaseModule {
     }
   }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
   protected onFlagChange(key: string, value: boolean): void {
     if (key === "pingpong") {
       this.wireFeedback();

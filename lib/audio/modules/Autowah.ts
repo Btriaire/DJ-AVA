@@ -4,7 +4,9 @@ import * as Tone from "tone";
 export class AutowahModule extends BaseModule {
   input: Tone.Gain;
   output: Tone.Gain;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
   private filter: any; // Tone.Filter
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
   private osc: any; // Tone.LFO
 
   constructor(ctx: AudioContext) {
@@ -27,6 +29,7 @@ export class AutowahModule extends BaseModule {
     this.build(ctx);
   }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
   build(ctx: AudioContext): void {
     this.osc.start();
     this.osc.connect(this.filter.frequency);

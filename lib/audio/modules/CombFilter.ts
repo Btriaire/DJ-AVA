@@ -36,6 +36,7 @@ export class CombFilterModule extends BaseModule {
     this.build(ctx);
   }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
   build(ctx: AudioContext): void {
     // comb: input → delay + feedback loop → wet mix
     this.input.connect(this.dryGain);

@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DJEngine } from "@/lib/audio/engine";
 import { AudiusTrack } from "@/lib/audius";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { LibTrack, TrackSource, loadLibrary, saveLibrary, uid, idbGetBlob } from "@/lib/library";
 import { detectKey, KeyResult } from "@/lib/audio/key";
 
@@ -23,14 +24,6 @@ interface Props {
   stemRefresh?: number;
   libRefresh?: number;
 }
-
-const SRC = {
-  local: { label: "LOCAL", color: "#9ca3af" },
-  audius: { label: "AUDIUS", color: "#ffcc00" },
-  youtube: { label: "YOUTUBE", color: "#ef4444" },
-  soundcloud: { label: "SOUNDCLOUD", color: "#ff7700" },
-  deezer: { label: "DEEZER", color: "#a238ff" },
-} as const;
 
 const fmt = (s: number) =>
   `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
@@ -81,6 +74,7 @@ function getCamelotMatch(
   return { match: "clash", text: "Écart tonal (Mixer avec prudence)", color: "#ef4444" };
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function StudioView({ engine, onLoaded, stemRefresh, libRefresh }: Props) {
   const [src, setSrc] = useState<"youtube" | "audius" | "soundcloud" | "local">("youtube");
   const [durKey, setDurKey] = useState("all");

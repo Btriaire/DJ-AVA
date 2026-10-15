@@ -4,6 +4,7 @@ import * as Tone from "tone";
 export class ResonatorModule extends BaseModule {
   input: Tone.Gain;
   output: Tone.Gain;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
   private filter: any; // Tone.Filter
 
   constructor(ctx: AudioContext) {
@@ -24,6 +25,7 @@ export class ResonatorModule extends BaseModule {
     this.build(ctx);
   }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
   build(ctx: AudioContext): void {
     this.input.connect(this.filter);
     this.filter.connect(this.output);

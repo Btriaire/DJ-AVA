@@ -30,7 +30,6 @@ export const DJKeyboard = ({ engine }: Props) => {
     "Z", "X", "C", "V", "B", "N", "M", ","
   ];
 
-  const forceUpdate = () => setV((n) => n + 1);
 
   const toggleBank = () => {
     const next: PadBank = bank === "slices" ? "drums" : "slices";
@@ -269,7 +268,7 @@ export const DJKeyboard = ({ engine }: Props) => {
         </div>
 
         <div className="hw-recess p-2 rounded-lg text-[11px] leading-snug text-neutral-300">
-          Joue les tranches du morceau de la platine choisie : chaque touche = 1/16 de mesure, en rythme. MAINTIEN garde les notes, ROULEMENT les répète tant qu'elle est enfoncée. Pas de morceau ? Charge-le sur la platine A ou B.
+          Joue les tranches du morceau de la platine choisie : chaque touche = 1/16 de mesure, en rythme. MAINTIEN garde les notes, ROULEMENT les répète tant qu&apos;elle est enfoncée. Pas de morceau ? Charge-le sur la platine A ou B.
         </div>
         <div className="hw-recess p-2 rounded-lg space-y-2">
           {renderLCD()}
@@ -285,7 +284,7 @@ export const DJKeyboard = ({ engine }: Props) => {
               onClick={() => setSetting("reverse", !settings.reverse)}
               title="Joue les tranches à l'envers"
             >
-              À L'ENVERS
+              À L&apos;ENVERS
             </button>
             <button
               className={`hw-btn ${settings.hold ? "hw-btn-on" : ""} ${showStop && settings.hold ? "animate-pulse" : ""}`}

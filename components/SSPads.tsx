@@ -11,7 +11,6 @@ const ROW_COLORS = ["#5ef2ff", "#a78bfa", "#fbbf24", "#f472b6"] as const;
 
 export function SSPads({ onPlay, onRelease, sliceLabel }: SSPadsProps) {
   const [pressed, setPressed] = useState(new Set<number>());
-  const force = () => setPressed((s) => new Set(s));
   const ref = useRef<HTMLDivElement>(null);
 
   const handlePointerDown = (index: number) => {

@@ -4,7 +4,9 @@ import * as Tone from "tone";
 export class RobotModule extends BaseModule {
   input: Tone.Gain;
   output: Tone.Gain;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
   private crush: any; // Tone.BitCrusher
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
   private shift: any; // Tone.PitchShift
 
   constructor(ctx: AudioContext) {
@@ -27,6 +29,7 @@ export class RobotModule extends BaseModule {
     this.build(ctx);
   }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
   build(ctx: AudioContext): void {
     this.input.connect(this.crush);
     this.crush.connect(this.shift);

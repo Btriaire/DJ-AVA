@@ -35,6 +35,7 @@ export class GateModule extends BaseModule {
     this.build(ctx);
   }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
   build(ctx: AudioContext): void {
     this.input.connect(this.vca);
     this.vca.connect(this.output);

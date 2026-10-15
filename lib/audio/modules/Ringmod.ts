@@ -4,8 +4,11 @@ import * as Tone from "tone";
 export class RingmodModule extends BaseModule {
   input: Tone.Gain;
   output: Tone.Gain;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
   private osc: any; // Tone.Oscillator
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
   private mult: any; // Tone.Multiply
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
   private gain: any; // Tone.Gain
 
   constructor(ctx: AudioContext) {
@@ -28,6 +31,7 @@ export class RingmodModule extends BaseModule {
     this.build(ctx);
   }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
   build(ctx: AudioContext): void {
     this.osc.start();
     this.input.connect(this.mult);

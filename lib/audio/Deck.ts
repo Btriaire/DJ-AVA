@@ -891,7 +891,11 @@ export class Deck {
   }
 
   toggle() {
-    this._playing ? this.pause() : this.play();
+    if (this._playing) {
+      this.pause();
+    } else {
+      this.play();
+    }
   }
 
   private stopSources() {

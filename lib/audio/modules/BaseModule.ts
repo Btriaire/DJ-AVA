@@ -22,7 +22,9 @@ export abstract class BaseModule {
   protected params: Record<string, number> = {};
   protected flags: Record<string, boolean> = {};
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
   abstract input: GainNode | any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
   abstract output: GainNode | any;
 
   constructor(
@@ -72,10 +74,12 @@ export abstract class BaseModule {
     }
   }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
   protected onParamChange(key: string, value: number): void {
     // Override in subclasses to respond to param changes
   }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
   protected onFlagChange(key: string, value: boolean): void {
     // Override in subclasses to respond to flag changes
   }

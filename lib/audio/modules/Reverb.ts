@@ -55,6 +55,7 @@ export class ReverbModule extends BaseModule {
     return buffer;
   }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
   build(ctx: AudioContext): void {
     // Dry signal path
     this.input.connect(this.dryGain);

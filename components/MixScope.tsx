@@ -34,6 +34,7 @@ function magAt(data: Uint8Array, i: number, count: number) {
 // deck A upward, deck B downward — with several render modes. You can FREEZE the
 // spectra and, in Cascade (spectrogram) mode, drag slowly to scrub back through
 // what was playing. In the live views, dragging blends the crossfader instead.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function MixScope({ deckA, deckB, colorA, colorB, crossfade, onCrossfade }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [mode, setMode] = useState<Mode>("waterfall");

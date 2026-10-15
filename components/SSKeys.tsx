@@ -83,7 +83,6 @@ export function SSKeys({ baseNote, activeMask, onDown, onUp, onOctave }: SSKeysP
     const zIndex = isBlack ? 1 : 0;
     const bgGradient = isBlack ? "linear-gradient(to bottom, #34343a, #050507)" : "linear-gradient(to bottom, #fbfaf5, #d9d5c9)";
     const boxShadow = isBlack ? "0 2px 4px rgba(0, 0, 0, 0.5)" : "0 3px 6px rgba(0, 0, 0, 0.3)";
-    const activeStyle = isActive ? "border: 1px solid #5ef2ff; box-shadow: 0 0 10px #5ef2ff;" : "";
 
     return (
       <div

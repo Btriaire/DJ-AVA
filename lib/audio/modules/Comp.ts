@@ -33,6 +33,7 @@ export class CompModule extends BaseModule {
     this.build(ctx);
   }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
   build(ctx: AudioContext): void {
     this.comp.knee.value = 6;
     this.input.connect(this.comp);

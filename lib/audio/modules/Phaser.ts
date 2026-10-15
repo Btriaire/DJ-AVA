@@ -33,6 +33,7 @@ export class PhaserModule extends BaseModule {
     this.build(ctx);
   }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
   build(ctx: AudioContext): void {
     this.input.connect(this.dryGain);
     this.input.connect(this.allPass);

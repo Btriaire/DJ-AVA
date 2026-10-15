@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { BaseModule, type ParamDef } from "./BaseModule";
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -29,6 +30,7 @@ export class LoudnessModule extends BaseModule {
     this.build(ctx);
   }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
   build(ctx: AudioContext): void {
     // 1. Stage 1: soft compression for body
     this.stage1.threshold.value = -30;

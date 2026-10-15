@@ -60,6 +60,7 @@ export type ModuleId =
   | "phaser"
   | "combfilter";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function createModule(id: ModuleId, ctx: AudioContext): any {
   switch (id) {
     case "loudness":

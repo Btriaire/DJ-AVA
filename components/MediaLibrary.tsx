@@ -234,7 +234,6 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   // manual "prepare stems" button: `preparing` = the POST to launch the job is
   // in flight (fast); `queued` = the server is separating it in the background
   // and we're polling the cache list until it lands (see the effect below).
-  const [stemsPreparing, setStemsPreparing] = useState<Set<string>>(new Set());
   const [stemsQueued, setStemsQueued] = useState<Set<string>>(new Set());
   const prep = useSyncExternalStore(subscribePrep, getPrepState, getPrepState);
 
@@ -247,7 +246,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   // 0..100 per queued track id, polled from /api/stems/progress — separate
   // from stemsQueued (which only tracks membership) because progress needs
   // the hash + model/quality querystring the job was actually launched with
-  const [stemsProgress, setStemsProgress] = useState<Map<string, number>>(new Map());
+  const [, setStemsProgress] = useState<Map<string, number>>(new Map());
   const stemsRun = useRef<Map<string, { hash: string; model: string; qs: string }>>(new Map());
   // ids already prepped once per side during the LIVE preload window, so the
   // tick loop below doesn't refire the request every 400ms while it's in range

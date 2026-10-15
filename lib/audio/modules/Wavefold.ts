@@ -50,6 +50,7 @@ export class WavefoldModule extends BaseModule {
     this.waveshaper.curve = curve;
   }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
   build(ctx: AudioContext): void {
     this.input.connect(this.preGain);
     this.preGain.connect(this.waveshaper);

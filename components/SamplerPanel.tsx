@@ -325,7 +325,6 @@ export function SamplerPanel({ engine }: Props) {
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seqOn]);
 
   const trigger = (i: number) => {

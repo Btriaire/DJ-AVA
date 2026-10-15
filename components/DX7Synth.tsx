@@ -28,11 +28,13 @@ type Voice = {
   smp?: boolean;
   baseUrl?: string;
   urls?: Record<string, string>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
   fm?: any;
 };
 
 const NB = 'https://nbrosowsky.github.io/tonejs-instruments/samples/';
 const env = (a: number, d: number, s: number, r: number) => ({ attack: a, decay: d, sustain: s, release: r });
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const fm = (harmonicity: number, modulationIndex: number, e: any, me: any, osc = 'sine') =>
   ({ harmonicity, modulationIndex, oscillator: { type: osc }, envelope: e, modulationEnvelope: me });
 
@@ -157,6 +159,7 @@ export default function DX7Synth({ engine, embedded = false }: Props) {
     const inst = instRef.current;
     if (!inst) return;
     if (inst instanceof Tone.PolySynth) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
       inst.set({ harmonicity: harm, modulationIndex: modIdx, portamento: glide, envelope: { attack: atk, decay: dec, sustain: sus, release: rel } } as any);
     } else if (inst instanceof Tone.Sampler) {
       inst.attack = atk; inst.release = Math.max(0.2, rel);
@@ -167,6 +170,7 @@ export default function DX7Synth({ engine, embedded = false }: Props) {
   /* pitch-bend wheel → detune (FM voices) */
   const applyPitchBend = useCallback((semis: number) => {
     const inst = instRef.current;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (inst instanceof Tone.PolySynth) inst.set({ detune: semis * 100 } as any);
   }, []);
 
@@ -182,6 +186,7 @@ export default function DX7Synth({ engine, embedded = false }: Props) {
     };
     if (voiceId === 'user' || voiceId === 'live') {
       const buf = voiceId === 'user' ? userBufRef.current : liveBufRef.current;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
       if (buf) { const s = new Tone.Sampler(); s.add('C4' as any, buf as any); finish(s); }
       else setLoading(false);
     } else if (voice?.kind === 'sampler') {

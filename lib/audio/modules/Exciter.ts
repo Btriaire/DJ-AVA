@@ -47,6 +47,7 @@ export class ExciterModule extends BaseModule {
     this.waveshaper.curve = curve;
   }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
   build(ctx: AudioContext): void {
     // Dry path
     this.input.connect(this.dryGain);

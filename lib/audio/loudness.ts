@@ -179,7 +179,6 @@ function calculateLufs(buffer: AudioBuffer): number {
 function calculateTruePeak(buffer: AudioBuffer): number {
   const numChannels = buffer.numberOfChannels;
   const numSamples = buffer.length;
-  const fs = buffer.sampleRate;
   const upsampleFactor = 4;
   const upsampledLength = numSamples * upsampleFactor;
   const sincTableSize = 24;

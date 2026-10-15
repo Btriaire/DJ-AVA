@@ -129,7 +129,11 @@ export function PlatineView({ engine }: Props) {
       const active = side === "A" ? loopA : loopB;
       if (active !== beats) {
         deck.setBeatLoop(beats);
-        side === "A" ? setLoopA(beats) : setLoopB(beats);
+        if (side === "A") {
+          setLoopA(beats);
+        } else {
+          setLoopB(beats);
+        }
       }
       // already active → keep it; release is a long-press only
     } else if (mode === "cue") {
@@ -152,7 +156,11 @@ export function PlatineView({ engine }: Props) {
     if (!deck.name) return;
     if (mode === "loop") {
       deck.clearLoop();
-      side === "A" ? setLoopA(0) : setLoopB(0);
+      if (side === "A") {
+        setLoopA(0);
+      } else {
+        setLoopB(0);
+      }
     } else if (mode === "cue") {
       const cues = side === "A" ? cuesA.current : cuesB.current;
       cues[i] = null;

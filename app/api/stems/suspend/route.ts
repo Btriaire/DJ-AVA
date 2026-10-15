@@ -6,6 +6,10 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   const shouldSuspend = req.nextUrl.searchParams.get("on") === "1";
-  shouldSuspend ? requestSuspend() : resumeSeparations();
+  if (shouldSuspend) {
+    requestSuspend();
+  } else {
+    resumeSeparations();
+  }
   return NextResponse.json({ ok: true });
 }

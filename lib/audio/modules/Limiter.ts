@@ -22,6 +22,7 @@ export class LimiterModule extends BaseModule {
     this.build(ctx);
   }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
   build(ctx: AudioContext): void {
     this.limiter.threshold.value = -0.5;
     this.limiter.ratio.value = 20;

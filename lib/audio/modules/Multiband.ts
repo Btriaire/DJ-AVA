@@ -52,6 +52,7 @@ export class MultibandModule extends BaseModule {
     this.build(ctx);
   }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
   build(ctx: AudioContext): void {
     // Low band
     this.input.connect(this.loLP);

@@ -167,6 +167,7 @@ export default function Solar42F({ engine, embedded = false }: Props) {
     flareRef.current = flareShift; flareGainRef.current = flareGain;
     if (engine) recRef.current = engine.makeLiveRecorder(12);
     if (process.env.NODE_ENV !== 'production') {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any).__solar = { tone: Tone, out, bus, oscs: oscsRef.current };
     }
 
@@ -237,7 +238,7 @@ export default function Solar42F({ engine, embedded = false }: Props) {
         for (let i = 0; i < data.length; i++) {
           const x = (i / data.length) * w;
           const y = h / 2 + Math.max(-0.48, Math.min(0.48, (data[i] as number) * 2.2)) * h;
-          i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         }
         ctx.stroke(); ctx.shadowBlur = 0;
       }
@@ -297,6 +298,7 @@ export default function Solar42F({ engine, embedded = false }: Props) {
   const startLoop = (buf: AudioBuffer, name: string) => {
     playerRef.current?.dispose();
     const p = new Tone.Player({ loop: true, fadeIn: 0.5, fadeOut: 0.5 });
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
     p.buffer = new Tone.ToneAudioBuffer(buf as any);
     p.volume.value = Tone.gainToDb(0.5);
     if (busRef.current) p.connect(busRef.current);

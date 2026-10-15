@@ -31,6 +31,7 @@ export class TransientModule extends BaseModule {
     this.build(ctx);
   }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
   build(ctx: AudioContext): void {
     // Fast compressor (attack control)
     this.fastComp.threshold.value = -24;

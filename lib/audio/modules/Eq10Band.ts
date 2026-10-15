@@ -41,6 +41,7 @@ export class Eq10BandModule extends BaseModule {
     this.build(ctx);
   }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
   build(ctx: AudioContext): void {
     let prev: AudioNode = this.input;
     this.filters.forEach((f) => {

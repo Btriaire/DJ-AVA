@@ -155,7 +155,6 @@ export const SSScreen = ({
 
       for (let i = 0; i < waveData.length; i++) {
         const x = (i / waveData.length) * width;
-        const columnWidth = width / waveData.length;
         const minY = waveY + (1 - waveData[i].min) * waveHeight / 2;
         const maxY = waveY + (1 - waveData[i].max) * waveHeight / 2;
 

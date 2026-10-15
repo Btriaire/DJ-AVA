@@ -31,7 +31,7 @@ export function loadTemplates(): DisplayTemplate[] {
           item.deckClosed !== null
         ) {
           const modules = Object.fromEntries(
-            Object.entries(item.modules).filter(([_, v]) => typeof v === "boolean")
+            Object.entries(item.modules).filter(([, v]) => typeof v === "boolean")
           );
           const dc = item.deckClosed as { A?: unknown; B?: unknown };
           const deckClosed = { A: dc.A === true, B: dc.B === true };

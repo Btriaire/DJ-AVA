@@ -36,6 +36,7 @@ export class XyMatrixModule extends BaseModule {
     this.build(ctx);
   }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
   build(ctx: AudioContext): void {
     // wet path: input → HP → LP (with feedback) → wet mixer
     this.input.connect(this.hpFilter);

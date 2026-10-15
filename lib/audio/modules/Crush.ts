@@ -40,6 +40,7 @@ export class CrushModule extends BaseModule {
     this.waveshaper.curve = curve;
   }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
   build(ctx: AudioContext): void {
     this.input.connect(this.waveshaper);
     this.waveshaper.connect(this.antiAliasFilter);

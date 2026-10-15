@@ -4,7 +4,9 @@ import * as Tone from "tone";
 export class GlitchModule extends BaseModule {
   input: Tone.Gain;
   output: Tone.Gain;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
   private delay: any; // Tone.Delay
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
   private feedback: any; // Tone.Gain
 
   constructor(ctx: AudioContext) {
@@ -26,6 +28,7 @@ export class GlitchModule extends BaseModule {
     this.build(ctx);
   }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
   build(ctx: AudioContext): void {
     this.input.connect(this.output);
     this.input.connect(this.delay);
