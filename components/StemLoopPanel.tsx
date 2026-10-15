@@ -58,14 +58,20 @@ export function StemLoopPanel({ deck, labels, initial, color, rerender, onExport
     latest.current = { targets: sel.flatMap((s, i) => s ? [i] : []), mode };
   }, [sel, mode]);
 
+  // rerender changes identity on every DeckPanel render; keep the latest one in a ref so the
+  // cleanup below only runs on unmount / deck change, not after each MAINT. press
+  const rerenderRef = useRef(rerender);
+  useEffect(() => {
+    rerenderRef.current = rerender;
+  });
   useEffect(() => {
     return () => {
       if (latest.current.mode === "hold") {
         latest.current.targets.forEach(i => deck.clearStemLoop(i));
-        rerender();
+        rerenderRef.current();
       }
     };
-  }, [deck, rerender]);
+  }, [deck]);
 
   const targets = sel.flatMap((s, i) => s ? [i] : []);
   const firstTarget = targets[0];
