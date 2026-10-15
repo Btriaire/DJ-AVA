@@ -1214,13 +1214,13 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     const cueColor = (s: "A" | "B") => (s === "A" ? COLOR_A : COLOR_B);
     return (
       <li
-        className={`flex flex-wrap items-center gap-2 rounded bg-neutral-800/40 px-2 py-1.5 hover:bg-neutral-800/70 ${
-          nextSide ? "lib-next-blink" : ""
-        }`}
+        className={`hw-strip flex flex-wrap items-center gap-2 px-2 py-1.5 ${nextSide ? "lib-next-blink" : ""}`}
         style={{
           ...(nextSide ? { ["--cue" as string]: cueColor(nextSide) } : {}),
           ...(curSide && !nextSide
-            ? { boxShadow: `inset 3px 0 0 ${cueColor(curSide)}, 0 0 8px ${cueColor(curSide)}55` }
+            ? {
+                boxShadow: `inset 3px 0 0 ${cueColor(curSide)}, 0 0 8px ${cueColor(curSide)}55, inset 0 1px 0 rgba(255,255,255,0.07), 0 2px 5px rgba(0,0,0,0.5)`,
+              }
             : {}),
         }}
       >
@@ -1264,12 +1264,15 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
 
         {/* cover thumbnail — bigger in a set (explicit ask), a bit smaller in
             the plain library list ("Écouter") so more rows fit at once */}
-        <div className={`${inPl ? "h-24 w-24" : "h-16 w-16"} shrink-0 overflow-hidden rounded bg-neutral-900`}>
+        <div className={`${inPl ? "h-24 w-24" : "h-16 w-16"} hw-cover shrink-0 rounded-md bg-neutral-900`}>
           {t.art ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={t.art} alt="" className="h-full w-full object-cover" />
           ) : (
-            <div className="flex h-full w-full items-center justify-center text-xl text-neutral-600">
+            <div
+              className="hw-vinyl flex h-full w-full items-center justify-center text-base font-black text-white drop-shadow"
+              style={{ ["--led" as string]: "#8a8a92" }}
+            >
               ♫
             </div>
           )}
@@ -1281,7 +1284,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
         {!inPl && (
           <div className="flex shrink-0 flex-col items-center gap-0.5">
             <span className="text-[9px] uppercase leading-none text-neutral-600">Classer</span>
-            <div className="flex overflow-hidden rounded ring-1 ring-neutral-700">
+            <div className="hw-well flex overflow-hidden">
               {(["A", "B"] as const).map((d) => (
                 <button
                   key={d}
@@ -1878,11 +1881,11 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
               return (
                 <div
                   key={side}
-                  className="flex flex-1 items-center gap-3 rounded-lg bg-black/40 p-2 ring-1"
-                  style={{ ["--led" as string]: color, boxShadow: `inset 0 0 0 1px ${color}33` }}
+                  className="hw-strip flex flex-1 items-center gap-3 p-2.5"
+                  style={{ ["--led" as string]: color, boxShadow: `inset 0 0 0 1px ${color}33, inset 0 1px 0 rgba(255,255,255,0.07), 0 2px 5px rgba(0,0,0,0.5)` }}
                 >
                   <div
-                    className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md bg-neutral-800"
+                    className="hw-cover relative h-14 w-14 shrink-0 overflow-hidden rounded-md bg-neutral-800"
                     style={{ boxShadow: `0 0 12px ${color}55` }}
                   >
                     {a?.art ? (
@@ -1890,7 +1893,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                       <img src={a.art} alt="" className="h-full w-full object-cover" />
                     ) : (
                       <div
-                        className="flex h-full w-full items-center justify-center text-2xl"
+                        className="hw-vinyl flex h-full w-full items-center justify-center text-2xl font-black drop-shadow"
                         style={{ color }}
                       >
                         ♫
@@ -1947,7 +1950,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           <div className="flex flex-col gap-3">
 
           {/* tabs */}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="hw-well flex flex-wrap items-center gap-1.5 p-1.5">
             {(
               [
                 ["files", "⤓ Mes fichiers", "#9ca3af"],
