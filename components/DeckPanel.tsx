@@ -1310,7 +1310,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                       </button>
                       <button
                         className="min-w-0 flex-1 rounded px-1 py-1.5 text-[11px] font-black leading-none disabled:opacity-30"
-                        disabled={!deck.stemsActive || !deck.playing || !deck.bpm}
+                        disabled={!deck.stemsActive || !deck.bpm}
                         style={
                           stemLoopBeats[i] != null
                             ? { background: color, color: "#0a0a0a", boxShadow: `0 0 6px ${color}88` }

@@ -154,7 +154,7 @@ export function StemLoopPanel({ deck, labels, initial, color, rerender, onExport
   const handleAll = () => setSel(labels.map(() => true));
   const handleNone = () => setSel(labels.map(() => false));
 
-  const canLoop = deck.stemsActive && deck.stemReady && deck.playing && deck.bpm;
+  const canLoop = deck.stemsActive && deck.stemReady && deck.bpm;
 
   if (typeof document === "undefined") return null;
 
@@ -193,7 +193,7 @@ export function StemLoopPanel({ deck, labels, initial, color, rerender, onExport
           />
         ))}
       </div>
-      {!canLoop && <span className="text-[11px] text-neutral-400">Lance la lecture avec les stems actifs pour boucler</span>}
+      {!canLoop && <span className="text-[11px] text-neutral-400">Active les stems et attends le BPM pour boucler</span>}
 
       <div className="flex flex-wrap items-center gap-1.5">
         <button className={`hw-btn px-2.5 py-1.5 text-[11px] font-bold ${mode === "lock" ? "hw-btn-on" : ""}`} title="Un appui engage la boucle, un second appui la relâche" onClick={() => handleModeChange("lock")}>VERROU</button>

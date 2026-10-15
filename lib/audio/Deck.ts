@@ -1631,11 +1631,13 @@ export class Deck {
     if (i < 0 || i >= this.stemGains.length) return false;
     const secPerBeat = 60 / this.bpm;
     const rawStart = this.position();
-    const start = opts?.start !== undefined
+    let start = opts?.start !== undefined
       ? Math.max(0, opts.start)
       : (opts?.quantize ?? true)
         ? Math.max(0, Math.round((rawStart - this.beatGridOffset) / secPerBeat) * secPerBeat + this.beatGridOffset)
         : rawStart;
+    // at the very end of the track there is no room left for the loop: take the last bars instead
+    start = Math.max(0, Math.min(start, this.duration - secPerBeat * beats));
     const end = Math.min(start + secPerBeat * beats, this.duration);
     this.stemLoopActive[i] = true;
     this.stemLoopStart[i] = start;
