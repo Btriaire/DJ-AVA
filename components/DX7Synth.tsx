@@ -432,9 +432,9 @@ function Wheel({ label, spring, value, onChange, onRelease }: {
   label: string; spring?: boolean; value?: number; onChange: (t: number) => void; onRelease?: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState(spring ? 0.5 : value ?? 0);
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronisation avec le stockage local ou une prop au montage/changement ; pas de cascade de rendus
-  useEffect(() => { if (!spring && value !== undefined) setPos(value); }, [value, spring]);
+  const [springPos, setPos] = useState(0.5);
+  // the MOD wheel is controlled by its value prop; only the spring wheel keeps its own position
+  const pos = spring ? springPos : value ?? 0;
   const move = (clientY: number) => {
     const el = ref.current; if (!el) return;
     const r = el.getBoundingClientRect();

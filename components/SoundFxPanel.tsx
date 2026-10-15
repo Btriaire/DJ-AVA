@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useIsClient } from "@/lib/useIsClient";
 import { DJEngine } from "@/lib/audio/engine";
 import { SFX_LIST, SfxId } from "@/lib/audio/SoundFX";
 import { Knob } from "./Knob";
@@ -19,20 +20,25 @@ const GROUP_LABEL: Record<(typeof GROUPS)[number], string> = {
 
 export function SoundFxPanel({ engine }: Props) {
   const sfx = engine.soundFx;
-  const [vol, setVol] = useState(0.9);
+  const isClient = useIsClient();
+  const [volOverride, setVol] = useState<number | null>(null);
+  const storedVol = useMemo(() => {
+    if (!isClient) return null;
+    const raw = localStorage.getItem(VOL_KEY);
+    if (raw == null) return null;
+    const v = parseFloat(raw);
+    return Number.isNaN(v) ? null : v;
+  }, [isClient]);
+  const vol = volOverride ?? storedVol ?? 0.9;
   const [flash, setFlash] = useState<SfxId | null>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // restore saved volume
+
+
+  // apply the stored volume to the engine once it is known (no state update here)
   useEffect(() => {
-    const raw = localStorage.getItem(VOL_KEY);
-    if (raw != null) {
-      const v = parseFloat(raw);
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronisation avec le stockage local ou une prop au montage/changement ; pas de cascade de rendus
-      if (!Number.isNaN(v)) { setVol(v); sfx.setVolume(v); }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (storedVol != null) sfx.setVolume(storedVol);
+  }, [storedVol, sfx]);
 
   const fire = (id: SfxId) => {
     sfx.trigger(id);
