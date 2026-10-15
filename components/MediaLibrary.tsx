@@ -435,6 +435,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           deck: null,
           art,
           durationSec,
+          // eslint-disable-next-line react-hooks/purity -- appel dans un gestionnaire d'événement, hors rendu
           addedAt: Date.now(),
         });
       }
@@ -460,6 +461,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     setBusy(t.id + side);
     const deck = side === "A" ? engine.deckA : engine.deckB;
     deck.loading = true; // the deck panel shows a loading bar until ready
+    // eslint-disable-next-line react-hooks/purity -- appel dans un gestionnaire d'événement, hors rendu
     deck.loadStartedAt = performance.now();
     try {
       if (t.source === "local") {
@@ -733,6 +735,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       art: t.artwork ?? undefined,
       durationSec: t.duration || undefined,
       bpm: t.bpm ?? undefined,
+      // eslint-disable-next-line react-hooks/purity -- appel dans un gestionnaire d'événement, hors rendu
       addedAt: Date.now(),
     };
     persist((d) => ({ ...d, tracks: [lt, ...d.tracks] }));
@@ -830,6 +833,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   function saveAutoTrack(t: AudiusTrack) {
     const lt: LibTrack = {
       id: uid(), name: `${t.title} — ${t.artist}`, source: (t.source ?? "audius") as TrackSource, url: t.id,
+      // eslint-disable-next-line react-hooks/purity -- appel dans un gestionnaire d'événement, hors rendu
       deck: null, art: t.artwork ?? undefined, durationSec: t.duration || undefined, bpm: t.bpm ?? undefined, addedAt: Date.now(),
     };
     persist((d) => ({ ...d, tracks: [lt, ...d.tracks] }));
@@ -1014,6 +1018,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       relayFading.current = false;
       return;
     }
+    // eslint-disable-next-line react-hooks/purity -- appel dans un gestionnaire d'événement, hors rendu
     const t0 = performance.now();
     const step = () => {
       if (!relayRef.current) {

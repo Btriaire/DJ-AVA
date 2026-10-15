@@ -163,6 +163,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
     const fromPct = deck.pitchPct;
     const toPct = Math.max(-50, Math.min(50, (other / deck.bpm - 1) * 100));
     const ms = 6000;
+    // eslint-disable-next-line react-hooks/purity -- appel dans un gestionnaire d'événement, hors rendu
     const t0 = performance.now();
     setAutoSync(true);
     const step = (now: number) => {
@@ -188,6 +189,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
     const fromPct = deck.pitchPct;
     const toPct = 0;
     const ms = 5000;
+    // eslint-disable-next-line react-hooks/purity -- appel dans un gestionnaire d'événement, hors rendu
     const t0 = performance.now();
     setAutoReset(true);
     const step = (now: number) => {
@@ -546,6 +548,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
         url: o?.url,
         art: o?.art ?? deck.coverArt ?? undefined,
         deck: null,
+        // eslint-disable-next-line react-hooks/purity -- appel dans un gestionnaire d'événement, hors rendu
         addedAt: Date.now(),
       } as LibTrack;
       // a directly-loaded local file has no stored blob — persist its bytes so
