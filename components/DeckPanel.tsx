@@ -1,5 +1,5 @@
 "use client";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useIsClient } from "@/lib/useIsClient";
 import { Deck } from "@/lib/audio/Deck";
 import { Knob } from "./Knob";
@@ -14,7 +14,7 @@ import { DeckTransport } from "./DeckTransport";
 import { DeckHotCues } from "./DeckHotCues";
 import { DeckLoopPads } from "./DeckLoopPads";
 import { HoldButton } from "./HoldButton";
-import { saveFileToLibrary, enqueuePrep } from "@/lib/stemPrep";
+import { saveFileToLibrary, enqueuePrep, getPrepState, subscribePrep } from "@/lib/stemPrep";
 import { cropWav } from "@/lib/audio/wavEncode";
 import { Spectrum } from "./Spectrum";
 import { RackPanel } from "./RackPanel";
@@ -253,6 +253,22 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
 
   // Cuts the selected part of the track into its own library entry and queues its stems:
   // only that part is separated, and it then loads and plays like any other track.
+  const [selTrackId, setSelTrackId] = useState<string | null>(null);
+  const prep = useSyncExternalStore(subscribePrep, getPrepState, getPrepState);
+  const selJob = selTrackId ? prep.jobs.find((j) => j.trackId === selTrackId) : undefined;
+  const selReady = !!selTrackId && prep.ready.some((r) => r.trackId === selTrackId);
+  const selMsg = loading
+    ? "Découpe en cours…"
+    : selReady
+      ? "Stems prêts (dans la bibliothèque)"
+      : selJob?.status === "error"
+        ? `Échec : ${selJob.error ?? "erreur inconnue"}`
+        : selJob?.status === "running"
+          ? `Séparation ${selJob.progress} %`
+          : selJob
+            ? "En file d'attente"
+            : null;
+
   async function separateSelection() {
     if (!sel || !deck.audioBuffer || !deck.duration) return;
     const from = Math.min(sel.start, sel.end) * deck.duration;
@@ -263,6 +279,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
     try {
       const file = new File([cropWav(deck.audioBuffer, from, to)], `${name}.wav`, { type: "audio/wav" });
       const t = await saveFileToLibrary(file);
+      setSelTrackId(t.id);
       enqueuePrep([t]);
       onLibraryChange?.();
     } catch (err) {
@@ -791,6 +808,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
               rerender();
             }}
           />
+          {selMsg && <div className="mt-1 text-[11px] font-bold text-amber-300">⏳ {selMsg}</div>}
           <div className="mt-1 flex items-center justify-between gap-2 text-[11px]">
             <span className="font-mono text-neutral-400">
               {sel
