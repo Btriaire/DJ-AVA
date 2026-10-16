@@ -1278,11 +1278,12 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                           (deck.stemReverbSend[i] ?? 0) > 0.01 ||
                           (deck.stemDelaySend[i] ?? 0) > 0.01 ||
                           Math.abs(deck.stemFilterX[i] ?? 0) > 0.01 ||
-                          (deck.stemDriveAmt[i] ?? 0) > 0.01
+                          (deck.stemDriveAmt[i] ?? 0) > 0.01 ||
+                          deck.hasStemDjFx(i)
                             ? { background: color, color: "#0a0a0a" }
                             : { background: "rgba(255,255,255,0.1)", color: "#b0b0b0" }
                         }
-                        title="FX dédiés à ce stem : filtre, drive, envois Reverb/Delay — toujours actifs, pas besoin du bouton FX (qui lui splice le Rack partagé)"
+                        title="FX de ce stem seul : filtre, drive, envois Reverb/Delay et effets DJ (écho, dub, mash, vowel…)"
                         onClick={() => setOpenSendMenu(openSendMenu === i ? null : i)}
                       >
                         FX•

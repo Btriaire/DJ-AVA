@@ -176,6 +176,10 @@ export class Deck {
   stemDriveAmt: number[] = []; // 0..1 soft-clip saturation amount
   private stemFilter: BiquadFilterNode[] = [];
   private stemDrive: WaveShaperNode[] = [];
+  // per-stem output point (after the optional per-stem DJ FX rack); this is what gets routed to stemBus or the shared Rack
+  private stemOut: GainNode[] = [];
+  // per-stem DJ FX pedalboard, created on first use (see stemFxRack)
+  private stemDjFx: (FXRack | null)[] = [];
 
   private trim: GainNode;
   private low: BiquadFilterNode;
@@ -366,7 +370,11 @@ export class Deck {
       drive.oversample = "2x";
       g.connect(filt);
       filt.connect(drive);
-      drive.connect(this.stemBus);
+      const out = C();
+      drive.connect(out);
+      out.connect(this.stemBus);
+      this.stemOut.push(out);
+      this.stemDjFx.push(null);
       const synthIn = C();
       synthIn.connect(filt);
       this.stemSynthIn.push(synthIn);
@@ -1123,6 +1131,7 @@ export class Deck {
     }
     for (let i = 0; i < this.stemFilter.length; i++) this.setStemFilter(i, 0);
     for (let i = 0; i < this.stemDrive.length; i++) this.setStemDrive(i, 0);
+    for (const r of this.stemDjFx) r?.resetAll();
   }
 
   // switch analysis model (standard / fine-tuned / 6-stem). Drops any loaded
@@ -1318,7 +1327,7 @@ export class Deck {
     // splice AFTER this stem's own dedicated filter/drive, not the raw gain —
     // those always apply regardless of whether the stem is also routed through
     // the shared Rack pedalboard
-    const node = this.stemDrive[i];
+    const node = this.stemOut[i];
     if (this.stemFxTargets.has(i)) {
       disconnect(node, this.rack.input);
       node.connect(this.stemBus);
@@ -1346,6 +1355,29 @@ export class Deck {
         this.rack.output.connect(this.volume);
       }
     }
+  }
+
+  // Per-stem DJ FX pedalboard. Created on first use and spliced between the stem's
+  // drive and its output point, so stems that never use it cost nothing.
+  stemFxRack(i: number): FXRack | null {
+    if (i < 0 || i >= this.stemOut.length) return null;
+    let r = this.stemDjFx[i];
+    if (!r) {
+      r = new FXRack(this.ctx);
+      r.setClock(() => this.fxClock());
+      const drive = this.stemDrive[i];
+      drive.disconnect(this.stemOut[i]);
+      drive.connect(r.input);
+      r.output.connect(this.stemOut[i]);
+      this.stemDjFx[i] = r;
+    }
+    return r;
+  }
+
+  // true when at least one DJ effect is engaged on stem i
+  hasStemDjFx(i: number): boolean {
+    const r = this.stemDjFx[i];
+    return !!r && FX_LIST.some((fx) => r.getWet(fx.id) > 0);
   }
 
   private clearAllStemFxTargets() {

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Deck } from "../lib/audio/Deck";
 import { Knob } from "./Knob";
+import { DjFxPanel } from "./DjFxPanel";
 
 interface Props {
   deck: Deck;
@@ -150,6 +151,7 @@ function XyPad({
 }
 
 export function StemFxPanel({ deck, i, label, color, rerender, onClose }: Props) {
+  const [djRack] = useState(() => deck.stemFxRack(i));
   const filter = deck.stemFilterX[i] ?? 0;
   const drive = deck.stemDriveAmt[i] ?? 0;
   const verb = deck.stemReverbSend[i] ?? 0;
@@ -172,7 +174,7 @@ export function StemFxPanel({ deck, i, label, color, rerender, onClose }: Props)
     <>
       <div className="fixed inset-0 z-[90] bg-black/60" onClick={onClose} />
       <div
-        className="hw-panel fixed left-1/2 top-1/2 z-[100] flex max-h-[94vh] w-[min(340px,calc(100vw-1rem))] -translate-x-1/2 -translate-y-1/2 flex-col gap-2.5 overflow-y-auto p-3"
+        className="hw-panel fixed left-1/2 top-1/2 z-[100] flex max-h-[94vh] w-[min(420px,calc(100vw-1rem))] -translate-x-1/2 -translate-y-1/2 flex-col gap-2.5 overflow-y-auto p-3"
         style={{ borderColor: `${color}66`, boxShadow: `0 14px 34px rgba(0,0,0,0.8), 0 0 22px ${color}33, inset 0 1px 0 rgba(255,255,255,0.07)` }}
       >
         <div className="flex items-center gap-2">
@@ -267,6 +269,12 @@ export function StemFxPanel({ deck, i, label, color, rerender, onClose }: Props)
           />
         </div>
         <span className="text-[10px] text-neutral-500">Pad : glisse pour doser filtre et drive · double-clic : zéro</span>
+        {djRack && (
+          <div className="flex flex-col gap-1.5 border-t border-white/10 pt-2.5">
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">Effets DJ — {label} seul</span>
+            <DjFxPanel rack={djRack} color={color} />
+          </div>
+        )}
       </div>
     </>,
     document.body
