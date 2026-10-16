@@ -1,6 +1,6 @@
 import { detectBPM, buildWaveformPeaks } from "./bpm";
 import { detectKey, transposeKey, KeyResult } from "./key";
-import { FXRack, FX_LIST, FxName } from "./FXRack";
+import { FXRack, FX_LIST, FxName, DECK_FX, STEM_FX } from "./FXRack";
 import { Retouch } from "./Retouch";
 import { Rack, RackPreset } from "./Rack";
 import { sha1Hex16 } from "./stemHash";
@@ -320,7 +320,7 @@ export class Deck {
     this.filter.type = "allpass"; // bypass at center
     this.filter.frequency.value = 20000;
 
-    this.fx = new FXRack(ctx);
+    this.fx = new FXRack(ctx, DECK_FX);
     this.retouch = new Retouch(ctx);
     this.fx.setClock(() => this.fxClock());
     this.rack = new Rack(ctx);
@@ -1363,7 +1363,7 @@ export class Deck {
     if (i < 0 || i >= this.stemOut.length) return null;
     let r = this.stemDjFx[i];
     if (!r) {
-      r = new FXRack(this.ctx);
+      r = new FXRack(this.ctx, STEM_FX);
       r.setClock(() => this.fxClock());
       const drive = this.stemDrive[i];
       drive.disconnect(this.stemOut[i]);

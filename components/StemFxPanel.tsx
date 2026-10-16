@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Deck } from "../lib/audio/Deck";
 import { Knob } from "./Knob";
-import { DjFxPanel } from "./DjFxPanel";
+import { FxUnit } from "./FxUnit";
+import { STEM_FX } from "@/lib/audio/FXRack";
 
 interface Props {
   deck: Deck;
@@ -272,7 +273,7 @@ export function StemFxPanel({ deck, i, label, color, rerender, onClose }: Props)
         {djRack && (
           <div className="flex flex-col gap-1.5 border-t border-white/10 pt-2.5">
             <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">Effets DJ — {label} seul</span>
-            <DjFxPanel rack={djRack} color={color} />
+            <FxUnit rack={djRack} ids={STEM_FX} color={color} />
           </div>
         )}
       </div>

@@ -10,6 +10,7 @@ export class FXRack {
   readonly output: GainNode;
   private dry: GainNode;
   private ctx: BaseAudioContext;
+  private list: FxMeta[];
   private units = new Map<FxName, FxUnit>();
   private wets = new Map<FxName, GainNode>();
   private levels = new Map<FxName, number>();
@@ -24,7 +25,9 @@ export class FXRack {
   private bpmCheckInterval: NodeJS.Timeout | null = null;
   private releaseTimers = new Map<FxName, NodeJS.Timeout>();
 
-  constructor(ctx: BaseAudioContext) {
+  // ids: only build these effects (default: all of FX_LIST)
+  constructor(ctx: BaseAudioContext, ids?: FxName[]) {
+    this.list = ids ? FX_LIST.filter((m) => ids.includes(m.id)) : FX_LIST;
     this.ctx = ctx;
     this.input = ctx.createGain();
     this.output = ctx.createGain();
@@ -34,7 +37,7 @@ export class FXRack {
     this.input.connect(this.dry);
     this.dry.connect(this.output);
 
-    for (const meta of FX_LIST) {
+    for (const meta of this.list) {
       const unit = this.createUnit(meta.id, {
         ctx,
         beat: () => {
@@ -101,14 +104,14 @@ export class FXRack {
   }
 
   private applyGains() {
-    const insertEffects = FX_LIST.filter(fx => fx.insert).map(fx => this.effective.get(fx.id)!);
+    const insertEffects = this.list.filter(fx => fx.insert).map(fx => this.effective.get(fx.id)!);
     const dryGain = insertEffects.length > 0
       ? insertEffects.reduce((acc, level) => acc * Math.cos(level * Math.PI / 2), 1)
       : 1;
 
     this.dry.gain.setTargetAtTime(dryGain, this.ctx.currentTime, 0.01);
 
-    FX_LIST.forEach(fx => {
+    this.list.forEach(fx => {
       const name = fx.id;
       const level = this.effective.get(name)!;
       const wet = this.wets.get(name)!;
@@ -237,7 +240,7 @@ export class FXRack {
   }
 
   resetAll() {
-    FX_LIST.forEach(fx => this.setWet(fx.id, 0));
+    this.list.forEach(fx => this.setWet(fx.id, 0));
   }
 
   dispose() {

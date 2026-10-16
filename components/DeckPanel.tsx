@@ -19,7 +19,7 @@ import { cropWav } from "@/lib/audio/wavEncode";
 import { Spectrum } from "./Spectrum";
 import { RackPanel } from "./RackPanel";
 import { EqRackStrip } from "./EqRackStrip";
-import { PerfoPanel } from "./PerfoPanel";
+
 import { loadLibrary, saveLibrary, idbPutBlob, idbGetBlob, uid, LibTrack } from "@/lib/library";
 import { encodeWav } from "@/lib/audio/engine";
 
@@ -984,20 +984,19 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
       )}
       {deckOn && (
       <>
-      {/* 15-band rack EQ — independent from Rack DSP, own toggle */}
-      {activeModules?.eq !== false && <EqRackStrip deck={deck} color={color} />}
-
-      {/* FX pad */}
+      {/* all-in-one FX unit — first tool, right under the channel strip */}
       {activeModules?.fxpad !== false && <div className="hw-recess p-3">
         <FxSection
           key={fxKey}
           rack={deck.fxRack}
           retouch={deck.retouchFx}
           color={color}
-          perfo={<PerfoPanel deck={deck} color={color} />}
           dsp={<RackPanel deck={deck} color={color} activeModules={activeModules} />}
         />
       </div>}
+
+      {/* 15-band rack EQ — independent from Rack DSP, own toggle */}
+      {activeModules?.eq !== false && <EqRackStrip deck={deck} color={color} />}
 
       {deck.stemReady && <StemLanes deck={deck} color={color} />}
 
