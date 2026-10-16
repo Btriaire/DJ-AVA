@@ -12,6 +12,8 @@ export function FxXyPad({
   defX,
   defY,
   onChange,
+  onPress,
+  onRelease,
 }: {
   x: number;
   y: number;
@@ -23,6 +25,8 @@ export function FxXyPad({
   defX: number;
   defY: number;
   onChange: (x: number, y: number) => void;
+  onPress?: () => void;
+  onRelease?: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
@@ -32,6 +36,12 @@ export function FxXyPad({
     const nx = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
     const ny = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
     onChange(nx, 1 - ny);
+  }
+
+  function end() {
+    if (!dragging.current) return;
+    dragging.current = false;
+    onRelease?.();
   }
 
   const active = x !== defX || y !== defY;
@@ -49,11 +59,14 @@ export function FxXyPad({
         }}
         onPointerDown={(e) => {
           dragging.current = true;
-          (e.target as HTMLElement).setPointerCapture(e.pointerId);
+          try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch {}
+          onPress?.();
           setFromEvent(e);
         }}
         onPointerMove={(e) => dragging.current && setFromEvent(e)}
-        onPointerUp={() => (dragging.current = false)}
+        onPointerUp={end}
+        onPointerCancel={end}
+        onLostPointerCapture={end}
         onDoubleClick={() => onChange(defX, defY)}
         title="Glisse pour régler les deux paramètres. Double-clic : valeurs par défaut"
       >

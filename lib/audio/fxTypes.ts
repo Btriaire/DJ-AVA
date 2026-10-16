@@ -240,15 +240,15 @@ export const FX_LIST: FxMeta[] = [
   },
   {
     id: "noise",
-    label: "NOISE",
+    label: "RISER",
     color: "#e5e7eb",
     glyph: "░",
-    title: "Souffle blanc filtré pour monter un break (riser)",
+    title: "Montée de souffle (riser) sur la division choisie, pour monter un break",
     insert: false,
     always: false,
     trigger: false,
-    beat: null,
-    p1: { label: "Fréq.", def: 0.5, fmt: (v) => fmtHz(300 * Math.pow(40, v)) },
+    beat: 8,
+    p1: { label: "Départ", def: 0.3, fmt: (v) => fmtHz(150 * Math.pow(8, v)) },
     p2: { label: "Réso", def: 0.3, fmt: (v) => `${Math.round(0.5 + v * 11.5)}` },
     sendGain: 1.0
   },
@@ -411,5 +411,5 @@ export const FX_LIST: FxMeta[] = [
 export const FX_META = new Map<FxName, FxMeta>(FX_LIST.map((m) => [m.id, m]));
 
 // pad order (3 x 3) of the all-in-one FX unit
-export const DECK_FX: FxName[] = ["sweep", "echo", "dub", "reverb", "flanger", "gate", "roll", "brake", "noise"];
+export const DECK_FX: FxName[] = ["echo", "dub", "reverb", "flanger", "gate", "noise", "roll", "brake", "reverse"];
 export const STEM_FX: FxName[] = ["echo", "dub", "vowel", "gate", "mash", "roll", "flanger", "crush", "scatter"];

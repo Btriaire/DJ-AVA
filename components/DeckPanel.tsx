@@ -991,6 +991,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
           rack={deck.fxRack}
           retouch={deck.retouchFx}
           color={color}
+          storageKey={`deck${side}`}
           dsp={<RackPanel deck={deck} color={color} activeModules={activeModules} />}
         />
       </div>}

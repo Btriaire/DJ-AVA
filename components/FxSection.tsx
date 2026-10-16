@@ -4,12 +4,12 @@ import { RetouchPanel } from "./RetouchPanel";
 import { FXRack, DECK_FX } from "@/lib/audio/FXRack";
 import { Retouch } from "@/lib/audio/Retouch";
 
-export function FxSection({ rack, retouch, color, dsp }: { rack: FXRack; retouch: Retouch; color: string; dsp: React.ReactNode }) {
+export function FxSection({ rack, retouch, color, dsp, storageKey }: { rack: FXRack; retouch: Retouch; color: string; dsp: React.ReactNode; storageKey?: string }) {
   const [open, setOpen] = useState<"" | "retouch" | "dsp">("");
 
   return (
     <div className="flex flex-col gap-2">
-      <FxUnit rack={rack} ids={DECK_FX} color={color} />
+      <FxUnit rack={rack} ids={DECK_FX} color={color} storageKey={storageKey} />
       <div className="flex flex-wrap gap-1">
         <button
           type="button"

@@ -380,13 +380,19 @@ export function buildUnitA(name: "echo" | "reverb" | "flanger" | "phaser" | "gat
     case "noise": {
       const out = c.createGain();
       const bp = c.createBiquadFilter();
-      const input = c.createGain(); // unused
+      const input = c.createGain(); // unused: the riser is a generated sound
       const output = out;
       let src: AudioBufferSourceNode | null = null;
+      let beatIdx = 8;
+      let start = 150 * Math.pow(8, 0.3);
+      let q = 0.5 + 0.3 * 11.5;
+      const TOP = 12000;
+      const PEAK = 1.0; // top of the rise stays below full scale (measured peak ~0.76)
 
       bp.type = "bandpass";
-      bp.frequency.value = 300 * Math.pow(40, 0.6);
-      bp.Q.value = 0.5 + 0.6 * 11.5;
+      bp.frequency.value = start;
+      bp.Q.value = q;
+      out.gain.value = 0;
 
       // Create noise buffer once
       const noiseBuf = c.createBuffer(1, Math.floor(c.sampleRate * 2), c.sampleRate);
@@ -395,38 +401,47 @@ export function buildUnitA(name: "echo" | "reverb" | "flanger" | "phaser" | "gat
         noiseData[i] = Math.random() * 2 - 1;
       }
 
-      out.gain.value = 1.5;
-
-      let center = 300 * Math.pow(40, 0.6);
-      let q = 0.5 + 0.6 * 11.5;
-
       return {
         input,
         output,
         setParam(key, v) {
           if (key === "p1") {
-            center = 300 * Math.pow(40, v);
-            bp.frequency.setTargetAtTime(center, c.currentTime, 0.08);
+            start = 150 * Math.pow(8, v); // used at the next engage
           } else {
             q = 0.5 + v * 11.5;
             bp.Q.setTargetAtTime(q, c.currentTime, 0.08);
           }
         },
-        setBeat() {},
+        setBeat(idx) {
+          beatIdx = idx;
+        },
         engage() {
-          src = c.createBufferSource();
-          src.buffer = noiseBuf;
-          src.loop = true;
-          src.connect(bp).connect(out);
-          src.start();
+          if (src) {
+            try { src.stop(); } catch {}
+            src.disconnect();
+            src = null;
+          }
+          const now = c.currentTime;
+          const rise = Math.max(0.25, divSeconds(env, beatIdx));
+          const s = c.createBufferSource();
+          s.buffer = noiseBuf;
+          s.loop = true;
+          s.connect(bp).connect(out);
+          bp.frequency.cancelScheduledValues(now);
+          bp.frequency.setValueAtTime(start, now);
+          bp.frequency.exponentialRampToValueAtTime(TOP, now + rise);
+          out.gain.cancelScheduledValues(now);
+          out.gain.setValueAtTime(PEAK * 0.063, now);
+          out.gain.linearRampToValueAtTime(PEAK, now + rise);
+          s.start(now);
+          src = s;
         },
         release() {
-          if (src) {
-            src.stop(c.currentTime + 0.04);
-            src.onended = () => {
-              src?.disconnect();
-              src = null;
-            };
+          const s = src;
+          src = null;
+          if (s) {
+            s.stop(c.currentTime + 0.04);
+            s.onended = () => s.disconnect();
           }
           return 0.04;
         },

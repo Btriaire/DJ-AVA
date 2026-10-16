@@ -1,18 +1,50 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { Knob } from "./Knob";
+import { FxXyPad } from "./FxXyPad";
 import { FXRack, FX_META, BEAT_DIVS, BEAT_LABELS, type FxName } from "@/lib/audio/FXRack";
 
 const HOLD_MS = 300;
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 
-export function FxUnit({ rack, ids, color }: { rack: FXRack; ids: FxName[]; color: string }) {
+type Saved = { levels?: Record<string, number>; beats?: Record<string, number>; params?: Record<string, [number, number]> };
+function restore(rack: FXRack, ids: FxName[], storageKey?: string): Record<string, number> {
+  const levels: Record<string, number> = Object.fromEntries(ids.map((id) => [id, FX_META.get(id)!.trigger ? 1 : 0.85]));
+  if (!storageKey || typeof window === "undefined") return levels;
+  try {
+    const s = JSON.parse(localStorage.getItem(`djsynth.fxunit.${storageKey}`) || "{}") as Saved;
+    for (const id of ids) {
+      if (typeof s.levels?.[id] === "number") levels[id] = s.levels[id];
+      if (typeof s.beats?.[id] === "number") rack.setBeat(id, s.beats[id]);
+      const p = s.params?.[id];
+      if (p) { rack.setParam(id, "p1", p[0]); rack.setParam(id, "p2", p[1]); }
+    }
+  } catch {
+    /* corrupt or unavailable storage: defaults */
+  }
+  return levels;
+}
+
+export function FxUnit({ rack, ids, color, storageKey }: { rack: FXRack; ids: FxName[]; color: string; storageKey?: string }) {
   const [selected, setSelected] = useState<FxName>(ids[0]);
-  const [levels, setLevels] = useState<Record<string, number>>(() => Object.fromEntries(ids.map((id) => [id, FX_META.get(id)!.trigger ? 1 : 0.85])));
+  const [levels, setLevels] = useState<Record<string, number>>(() => restore(rack, ids, storageKey));
   const [, force] = useState(0);
   const rerender = () => force((n) => n + 1);
   const press = useRef<Map<FxName, { at: number; wasOn: boolean }>>(new Map());
+  const led = useRef<HTMLSpanElement>(null);
+  const padHeld = useRef(false);
+
+  function persist(next: Record<string, number> = levels) {
+    if (!storageKey) return;
+    try {
+      localStorage.setItem(`djsynth.fxunit.${storageKey}`, JSON.stringify({
+        levels: next,
+        beats: Object.fromEntries(ids.map((id) => [id, rack.getBeat(id)])),
+        params: Object.fromEntries(ids.map((id) => [id, [rack.getParam(id, "p1"), rack.getParam(id, "p2")]]))
+      }));
+    } catch {}
+  }
 
   const down = (id: FxName, t: number) => {
     if (press.current.has(id)) return;
@@ -45,10 +77,26 @@ export function FxUnit({ rack, ids, color }: { rack: FXRack; ids: FxName[]; colo
   const beatIdx = rack.getBeat(selected);
   const active = ids.filter((id) => rack.getWet(id) > 0).length;
 
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      const el = led.current;
+      if (el) {
+        const b = rack.beatInfo();
+        const lit = !!b && b.toNext > 0 && b.period - b.toNext < 0.09;
+        el.style.opacity = lit ? "1" : "0.18";
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [rack]);
+
   return (
     <div className="hw-panel flex flex-col gap-2.5 p-2.5">
       <div className="flex items-center gap-2">
         <span className="text-[10px] font-black uppercase tracking-[0.25em]" style={{ color }}>FX</span>
+        <span ref={led} className="h-2 w-2 rounded-full" style={{ background: color, boxShadow: `0 0 6px ${color}`, opacity: 0.18 }} title="Tempo de la platine" />
         <span className="font-mono text-[11px] text-neutral-400">♩ {rack.getBpm().toFixed(1)}</span>
         {active > 0 && <span className="text-[10px] font-bold text-neutral-300">{active} actif{active > 1 ? "s" : ""}</span>}
         <button type="button" className="hw-btn ml-auto px-2 py-1 text-[10px] font-bold" disabled={active === 0} onClick={allOff} title="Coupe tous les effets">OFF</button>
@@ -97,9 +145,9 @@ export function FxUnit({ rack, ids, color }: { rack: FXRack; ids: FxName[]; colo
           </div>
           {meta.beat !== null && (
             <div className="flex items-center gap-1.5">
-              <button type="button" className="hw-btn px-2 py-1 text-[11px] font-bold" disabled={beatIdx <= 0} onClick={() => { rack.setBeat(selected, beatIdx - 1); rerender(); }}>◀</button>
+              <button type="button" className="hw-btn px-2 py-1 text-[11px] font-bold" disabled={beatIdx <= 0} onClick={() => { rack.setBeat(selected, beatIdx - 1); persist(); rerender(); }}>◀</button>
               <span className="hw-recess min-w-[56px] rounded px-2 py-1 text-center font-mono text-[12px] font-bold" style={{ color: meta.color }}>{BEAT_LABELS[beatIdx]}</span>
-              <button type="button" className="hw-btn px-2 py-1 text-[11px] font-bold" disabled={beatIdx >= BEAT_DIVS.length - 1} onClick={() => { rack.setBeat(selected, beatIdx + 1); rerender(); }}>▶</button>
+              <button type="button" className="hw-btn px-2 py-1 text-[11px] font-bold" disabled={beatIdx >= BEAT_DIVS.length - 1} onClick={() => { rack.setBeat(selected, beatIdx + 1); persist(); rerender(); }}>▶</button>
               <span className="text-[10px] text-neutral-500">temps</span>
             </div>
           )}
@@ -115,8 +163,11 @@ export function FxUnit({ rack, ids, color }: { rack: FXRack; ids: FxName[]; colo
               led
               format={pct}
               onChange={(v) => {
-                setLevels((prev) => ({ ...prev, [selected]: v }));
-                if (rack.getWet(selected) > 0) rack.setWet(selected, v);
+                const lv = Math.max(0.05, v);
+                const next = { ...levels, [selected]: lv };
+                setLevels(next);
+                if (rack.getWet(selected) > 0) rack.setWet(selected, lv);
+                persist(next);
                 rerender();
               }}
             />
@@ -132,7 +183,7 @@ export function FxUnit({ rack, ids, color }: { rack: FXRack; ids: FxName[]; colo
                 size={46}
                 led
                 format={meta.p1.fmt}
-                onChange={(v) => { rack.setParam(selected, "p1", v); rerender(); }}
+                onChange={(v) => { rack.setParam(selected, "p1", v); persist(); rerender(); }}
               />
             )}
             {meta.p2 && (
@@ -147,13 +198,45 @@ export function FxUnit({ rack, ids, color }: { rack: FXRack; ids: FxName[]; colo
                 size={46}
                 led
                 format={meta.p2.fmt}
-                onChange={(v) => { rack.setParam(selected, "p2", v); rerender(); }}
+                onChange={(v) => { rack.setParam(selected, "p2", v); persist(); rerender(); }}
               />
             )}
           </div>
+          <FxXyPad
+            x={meta.p1 ? rack.getParam(selected, "p1") : 0.5}
+            y={levels[selected] ?? 0.85}
+            color={meta.color}
+            labelX={meta.p1?.label ?? "—"}
+            labelY="LEVEL"
+            fmtX={meta.p1?.fmt ?? pct}
+            fmtY={pct}
+            defX={meta.p1?.def ?? 0.5}
+            defY={0.85}
+            onPress={() => {
+              padHeld.current = meta.trigger || rack.getWet(selected) === 0;
+              if (padHeld.current) rack.setWet(selected, levels[selected] ?? 0.85);
+              rerender();
+            }}
+            onChange={(x, y) => {
+              const lv = Math.max(0.05, y);
+              if (meta.p1) rack.setParam(selected, "p1", x);
+              const next = { ...levels, [selected]: lv };
+              setLevels(next);
+              if (rack.getWet(selected) > 0) rack.setWet(selected, lv);
+              rerender();
+            }}
+            onRelease={() => {
+              if (padHeld.current) {
+                rack.setWet(selected, 0);
+                padHeld.current = false;
+              }
+              persist();
+              rerender();
+            }}
+          />
         </div>
       </div>
-      <span className="text-[10px] leading-snug text-neutral-500">Appui court : marche / arrêt · appui long : seulement pendant l&apos;appui (sur un effet actif : le régler sans l&apos;arrêter) · ● : effet à maintenir</span>
+      <span className="text-[10px] leading-snug text-neutral-500">Court : marche / arrêt · long : momentané · pad X/Y : toucher pour jouer</span>
     </div>
   );
 }

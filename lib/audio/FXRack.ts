@@ -234,6 +234,13 @@ export class FXRack {
     this.manualBpm = Math.max(40, Math.min(220, bpm));
   }
 
+  // beat timing for UI feedback; null when the rack has no clock
+  beatInfo(): { period: number; toNext: number } | null {
+    const clock = this.readClock();
+    if (!clock) return null;
+    return { period: 60 / this.getBpm(), toNext: clock.toNextBeat };
+  }
+
   getBpm(): number {
     const clock = this.readClock();
     return clock && clock.bpm > 0 ? clock.bpm : this.manualBpm;
