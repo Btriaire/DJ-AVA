@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Deck } from "../lib/audio/Deck";
 import { Knob } from "./Knob";
@@ -17,16 +17,12 @@ function fmtBeats(b: number): string {
 
 export function StemLoopPanel({ deck, labels, initial, color, rerender, onExport, onClose }: { deck: Deck; labels: string[]; initial: number; color: string; rerender: () => void; onExport: (i: number) => void; onClose: () => void }) {
   const [sel, setSel] = useState<boolean[]>(labels.map((_, i) => i === initial));
-  const [mode, setMode] = useState<"lock" | "hold">("lock");
   const [quant, setQuant] = useState(true);
   const [status, setStatus] = useState<(null | { phase: number; wraps: number })[]>([]);
-  const latest = useRef({ targets: [] as number[], mode: "lock" as "lock" | "hold" });
 
   useEffect(() => {
     const t0 = setTimeout(() => {
       try {
-        const savedMode = localStorage.getItem("djsynth.stemloop.mode") as "lock" | "hold" | null;
-        if (savedMode) setMode(savedMode);
         const savedQuant = localStorage.getItem("djsynth.stemloop.quant");
         if (savedQuant !== null) setQuant(savedQuant === "true");
       } catch {}
@@ -54,25 +50,6 @@ export function StemLoopPanel({ deck, labels, initial, color, rerender, onExport
     return () => cancelAnimationFrame(rafId);
   }, [deck, labels.length]);
 
-  useEffect(() => {
-    latest.current = { targets: sel.flatMap((s, i) => s ? [i] : []), mode };
-  }, [sel, mode]);
-
-  // rerender changes identity on every DeckPanel render; keep the latest one in a ref so the
-  // cleanup below only runs on unmount / deck change, not after each MAINT. press
-  const rerenderRef = useRef(rerender);
-  useEffect(() => {
-    rerenderRef.current = rerender;
-  });
-  useEffect(() => {
-    return () => {
-      if (latest.current.mode === "hold") {
-        latest.current.targets.forEach(i => deck.clearStemLoop(i));
-        rerenderRef.current();
-      }
-    };
-  }, [deck]);
-
   const targets = sel.flatMap((s, i) => s ? [i] : []);
   const firstTarget = targets[0];
   const firstLoop = firstTarget !== undefined ? deck.stemLoopBeatsVal[firstTarget] : null;
@@ -88,31 +65,14 @@ export function StemLoopPanel({ deck, labels, initial, color, rerender, onExport
 
   const handleLengthDown = (b: number) => {
     if (!targets.length) return;
-    if (mode === "lock") {
-      const allSame = targets.every(i => deck.stemLoopBeatsVal[i] === b);
-      if (allSame) {
-        targets.forEach(i => deck.clearStemLoop(i));
-      } else {
-        const start = startForLoop();
-        targets.forEach(i => deck.setStemBeatLoop(i, b, { quantize: quant, start }));
-      }
+    const allSame = targets.every(i => deck.stemLoopBeatsVal[i] === b);
+    if (allSame) {
+      targets.forEach(i => deck.clearStemLoop(i));
     } else {
       const start = startForLoop();
       targets.forEach(i => deck.setStemBeatLoop(i, b, { quantize: quant, start }));
     }
     rerender();
-  };
-
-  const handleLengthUp = () => {
-    if (mode === "hold") {
-      targets.forEach(i => deck.clearStemLoop(i));
-      rerender();
-    }
-  };
-
-  const handleModeChange = (newMode: "lock" | "hold") => {
-    setMode(newMode);
-    try { localStorage.setItem("djsynth.stemloop.mode", newMode); } catch {}
   };
 
   const handleQuantChange = () => {
@@ -195,15 +155,12 @@ export function StemLoopPanel({ deck, labels, initial, color, rerender, onExport
             height={46}
             disabled={!canLoop}
             onDown={() => handleLengthDown(b)}
-            onUp={handleLengthUp}
           />
         ))}
       </div>
       {!canLoop && <span className="text-[11px] text-neutral-400">Active les stems et attends le BPM pour boucler</span>}
 
       <div className="flex flex-wrap items-center gap-1.5">
-        <button className={`hw-btn px-2.5 py-1.5 text-[11px] font-bold ${mode === "lock" ? "hw-btn-on" : ""}`} title="Un appui engage la boucle, un second appui la relâche" onClick={() => handleModeChange("lock")}>VERROU</button>
-        <button className={`hw-btn px-2.5 py-1.5 text-[11px] font-bold ${mode === "hold" ? "hw-btn-on" : ""}`} title="La boucle dure tant que tu maintiens le pad" onClick={() => handleModeChange("hold")}>MAINT.</button>
         <button className={`hw-btn px-2.5 py-1.5 text-[11px] font-bold ${quant ? "hw-btn-on" : ""}`} title="Cale le début de la boucle sur le temps le plus proche" onClick={handleQuantChange}>QUANT</button>
         <button className="hw-btn px-2.5 py-1.5 text-[11px] font-bold min-w-[34px]" onClick={() => handleResize(0.5)}>½</button>
         <button className="hw-btn px-2.5 py-1.5 text-[11px] font-bold min-w-[34px]" onClick={() => handleResize(2)}>×2</button>
