@@ -36,6 +36,7 @@ import { StudioView } from "@/components/StudioView";
 import { PlatineView } from "@/components/PlatineView";
 import { StemPrepPanel } from "@/components/StemPrepPanel";
 import { DancePanel } from "@/components/DancePanel";
+import { AtelierView } from "@/components/atelier/AtelierView";
 import { DJKeyboard } from "@/components/DJKeyboard";
 import { SuperSampler } from "@/components/SuperSampler";
 import { HoldButton } from "@/components/HoldButton";
@@ -129,7 +130,7 @@ export default function Home() {
   const [tick, setTick] = useState(0);
   const [crossfade, setCrossfade] = useState(0.5);
   const [master, setMaster] = useState(0.9);
-  const [view, setView] = useState<"console" | "studio" | "platine" | "playlist">("console"); // top-level workspace
+  const [view, setView] = useState<"console" | "studio" | "platine" | "playlist" | "atelier">("console"); // top-level workspace
   const [showLibrary, setShowLibrary] = useState(false);
   const [sidebarLibrary, setSidebarLibrary] = useState(() => {
     try {
@@ -893,6 +894,15 @@ const [showModulePicker, setShowModulePicker] = useState(false);
               <IconPlaylist className="w-3.5 h-3.5" />
               <span>Playlist</span>
             </button>
+            <button
+              onClick={() => setView("atelier")}
+              className={`inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${view === "atelier" ? "hw-btn-on shadow-sm" : "text-neutral-400 hover:text-neutral-200"}`}
+              style={{ ["--led" as string]: "#22d3ee" }}
+              title="Atelier : récupère un single, retouche-le, découpe-le en samples, sépare les stems, sauve-les dans la banque et rejoue-les au mini clavier ou sur n'importe quel single (hors mix)"
+            >
+              <IconLayers className="w-3.5 h-3.5" />
+              <span>Atelier</span>
+            </button>
           </div>
         )}
 
@@ -1208,6 +1218,8 @@ const [showModulePicker, setShowModulePicker] = useState(false);
             stemRefresh={stemRefresh}
             libRefresh={libRefresh}
           />
+        ) : view === "atelier" ? (
+          <AtelierView engine={engine} />
         ) : view === "playlist" ? (
           <MediaLibrary
             engine={engine}

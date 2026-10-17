@@ -1,4 +1,4 @@
-export type TemplateView = "console" | "studio" | "platine" | "playlist";
+export type TemplateView = "console" | "studio" | "platine" | "playlist" | "atelier";
 
 export interface DisplayTemplate {
   id: string;

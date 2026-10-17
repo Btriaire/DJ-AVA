@@ -539,6 +539,11 @@ export class DJEngine {
     this.crossfade = x;
     this.applyCrossfade();
   }
+  // master input, for tools that play outside the decks (Atelier preview and keyboard)
+  get masterIn(): AudioNode {
+    return this.master;
+  }
+
   getCrossfade(): number {
     return this.crossfade;
   }
@@ -620,11 +625,11 @@ interface EngineState {
 }
 
 // encode an AudioBuffer to a 16-bit PCM WAV Blob
-export function encodeWav(buf: AudioBuffer): Blob {
+export function encodeWav(buf: AudioBuffer, bits: 16 | 24 = 16): Blob {
   const numCh = Math.min(2, buf.numberOfChannels);
   const len = buf.length;
   const sr = buf.sampleRate;
-  const bytesPerSample = 2;
+  const bytesPerSample = bits / 8;
   const blockAlign = numCh * bytesPerSample;
   const dataSize = len * blockAlign;
   const out = new ArrayBuffer(44 + dataSize);
@@ -642,7 +647,7 @@ export function encodeWav(buf: AudioBuffer): Blob {
   view.setUint32(24, sr, true);
   view.setUint32(28, sr * blockAlign, true);
   view.setUint16(32, blockAlign, true);
-  view.setUint16(34, 16, true);
+  view.setUint16(34, bits, true);
   writeStr(36, "data");
   view.setUint32(40, dataSize, true);
 
@@ -651,10 +656,16 @@ export function encodeWav(buf: AudioBuffer): Blob {
   let off = 44;
   for (let i = 0; i < len; i++) {
     for (let c = 0; c < numCh; c++) {
-      let s = Math.max(-1, Math.min(1, chans[c][i]));
-      s = s < 0 ? s * 0x8000 : s * 0x7fff;
-      view.setInt16(off, s, true);
-      off += 2;
+      const s = Math.max(-1, Math.min(1, chans[c][i]));
+      if (bits === 24) {
+        const v = Math.round(s < 0 ? s * 0x800000 : s * 0x7fffff);
+        view.setUint8(off, v & 0xff);
+        view.setUint8(off + 1, (v >> 8) & 0xff);
+        view.setUint8(off + 2, (v >> 16) & 0xff);
+      } else {
+        view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      }
+      off += bytesPerSample;
     }
   }
   return new Blob([out], { type: "audio/wav" });
