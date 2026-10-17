@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DJEngine } from "@/lib/audio/engine";
 import { DJ_PRESETS, ARP_DIVS } from "@/lib/audio/DjSynth";
 import { BEAT_LABELS } from "@/lib/audio/fxTypes";
@@ -10,6 +10,18 @@ import { PerfPad } from "./PerfPad";
 import { DjFxPanel } from "./DjFxPanel";
 import type { FxName } from "@/lib/audio/FXRack";
 import { STEM_INFO } from "./DeckPanel";
+import { NoteFollower, loadBassLine } from "@/lib/audio/noteFollower";
+
+// stop the bass replay (and a transcription in flight) and give the bass stem back
+function endBassReplay(follower: { current: NoteFollower | null }, loading: { current: AbortController | null }) {
+  loading.current?.abort();
+  loading.current = null;
+  const f = follower.current;
+  follower.current = null;
+  if (!f) return;
+  f.stop();
+  if (f.deck.stemSynthIndex === f.deck.stemNames.indexOf("bass")) f.deck.setStemSynth(null);
+}
 
 export function DjSynthPanel({ engine }: { engine: DJEngine }) {
   const s = engine.djSynth;
@@ -80,6 +92,49 @@ export function DjSynthPanel({ engine }: { engine: DJEngine }) {
   }, [s, scSrc, scDepth]);
   useEffect(() => () => s.setSidechain(null, 0), [s]);
 
+  // "REJOUER LA BASSE": the synth replays the track's bass line (transcribed from its bass
+  // stem) in place of that stem, so you hear your synth sound playing the same notes
+  const [bass, setBass] = useState<{ side: "A" | "B"; status: "loading" | "on" | "error"; msg?: string; notes?: number } | null>(null);
+  const follower = useRef<NoteFollower | null>(null);
+  const loading = useRef<AbortController | null>(null);
+  const bassIdx = sd.stemNames.indexOf("bass");
+
+  const stopBass = () => {
+    endBassReplay(follower, loading);
+    setBass(null);
+  };
+
+  const startBass = async () => {
+    const d = sd;
+    const side = stemSide;
+    const idx = d.stemNames.indexOf("bass");
+    if (idx < 0) return;
+    const ac = new AbortController();
+    loading.current = ac;
+    setBass({ side, status: "loading" });
+    try {
+      const notes = await loadBassLine(d, ac.signal);
+      if (ac.signal.aborted) return;
+      if (!notes || notes.length === 0) throw new Error("Pas de ligne de basse détectée dans ce morceau");
+      d.setStemSynth(idx);
+      const f = new NoteFollower(engine.ctx, s, d, notes, () => {
+        follower.current = null;
+        if (d.stemSynthIndex === d.stemNames.indexOf("bass")) d.setStemSynth(null);
+        setBass(null);
+      });
+      f.start();
+      follower.current = f;
+      setBass({ side, status: "on", notes: notes.length });
+    } catch (e) {
+      if (!ac.signal.aborted) setBass({ side, status: "error", msg: (e as Error).message });
+    } finally {
+      if (loading.current === ac) loading.current = null;
+    }
+  };
+
+  // module closed: stop the replay and give the bass stem back
+  useEffect(() => () => endBassReplay(follower, loading), []);
+
   return (
     <div className="hw-screwed hw-panel relative flex flex-col gap-3 p-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -149,6 +204,22 @@ export function DjSynthPanel({ engine }: { engine: DJEngine }) {
               led
               format={(v) => `${Math.round(v * 100)}%`}
             />
+            <span className="mx-1 h-6 w-px bg-white/10" />
+            <button
+              className={`hw-btn px-2 py-1 text-[11px] font-bold ${bass?.side === stemSide && bass.status !== "error" ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: presetColor }}
+              disabled={bassIdx < 0 || (!!bass && bass.side !== stemSide && bass.status !== "error")}
+              title="Le synthé rejoue la ligne de basse du morceau (transcrite depuis le stem basse), avec le son choisi, à la place du stem basse. La première fois, la transcription prend un moment"
+              onClick={() => (bass && bass.status !== "error" ? stopBass() : startBass())}
+            >
+              {bass?.side === stemSide && bass.status === "loading" ? "TRANSCRIPTION…" : "REJOUER LA BASSE"}
+            </button>
+            {bass?.side === stemSide && bass.status === "on" && (
+              <span className="text-[10px] text-neutral-400">{bass.notes} notes</span>
+            )}
+            {bass?.side === stemSide && bass.status === "error" && (
+              <span className="text-[10px] text-red-400">{bass.msg}</span>
+            )}
           </>
         ) : sd.stemReady ? (
           <button

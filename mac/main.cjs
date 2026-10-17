@@ -70,8 +70,8 @@ function waitForServer(url, timeoutMs) {
 }
 
 function startServer(port) {
-  const next = path.join(PROJECT, "node_modules", "next", "dist", "bin", "next");
-  server = spawn(process.execPath, [next, "start", "-p", String(port)], {
+  // server.cjs stops the server by itself if this app dies without cleaning up
+  server = spawn(process.execPath, [path.join(PROJECT, "mac", "server.cjs"), PROJECT, String(port)], {
     cwd: PROJECT,
     env: {
       ...process.env,

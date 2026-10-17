@@ -1614,6 +1614,10 @@ export class Deck {
   }
 
   get fxRack(): FXRack { return this.fx; }
+  // current playback rate (tempo × scratch), for tools that follow the deck
+  get playRate(): number { return this.effRate; }
+  // active deck loop as [start, end] in track seconds, or null
+  get loopRange(): [number, number] | null { return this.loopActive ? [this.loopStart, this.loopEnd] : null; }
   // post-fader output of stem i, to listen to it (e.g. the drums for a sidechain)
   stemTap(i: number): AudioNode | null { return this.stemOut[i] ?? null; }
   get retouchFx(): Retouch { return this.retouch; }
