@@ -707,6 +707,9 @@ const [showModulePicker, setShowModulePicker] = useState(false);
       if (now - lastTick >= interval) {
         setTick((t) => (t + 1) % 1_000_000);
         lastTick = now;
+        // a tool (MONTÉE & DROP's BASCULE) may move the crossfader: follow the engine
+        const xf = engine?.getCrossfade();
+        if (xf !== undefined && xf !== crossfadeRef.current) setCrossfade(xf);
       }
 
       raf = requestAnimationFrame(loop);

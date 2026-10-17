@@ -75,8 +75,7 @@ export class SamplePad {
   private readonly reverbOut: GainNode;
   private readonly noiseBuffer: AudioBuffer;
   private lastPlayedSlice: number | null = null;
-  private sourceBuffer: AudioBuffer | null = null;
-  private reversedBuffer: AudioBuffer | null = null;
+
   private bank: PadBank = "slices";
   private drumBuffers: AudioBuffer[] | null = null;
   private readonly outGain: GainNode;
@@ -424,25 +423,9 @@ export class SamplePad {
     if (sliceStart >= src.buffer.duration) return;
 
     const source = this.ctx.createBufferSource();
-    const buffer = this.settings.reverse ? this.getReversedBuffer(src.buffer) : src.buffer;
-    const sliceLength = Math.floor(Math.min(this.sliceSec(spb), src.buffer.duration - sliceStart) * buffer.sampleRate);
-    const sliceBuffer = this.ctx.createBuffer(
-      buffer.numberOfChannels,
-      sliceLength,
-      buffer.sampleRate
-    );
-
-    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
-      const srcData = buffer.getChannelData(ch);
-      const dstData = sliceBuffer.getChannelData(ch);
-      const readTime = Math.max(0, this.settings.reverse ? src.buffer.duration - (sliceStart + this.sliceSec(spb)) : sliceStart);
-      const startSample = Math.floor(readTime * buffer.sampleRate);
-      const endSample = Math.min(startSample + sliceLength, buffer.length);
-
-      for (let i = startSample; i < endSample; i++) {
-        dstData[i - startSample] = srcData[i];
-      }
-    }
+    const sr = src.buffer.sampleRate;
+    const sliceLength = Math.floor(Math.min(this.sliceSec(spb), src.buffer.duration - sliceStart) * sr);
+    const sliceBuffer = this.copySlice(src.buffer, Math.floor(sliceStart * sr), sliceLength, this.settings.reverse);
 
     source.buffer = sliceBuffer;
     source.playbackRate.value = 2 ** (this.settings.pitch / 12);
@@ -589,28 +572,9 @@ export class SamplePad {
 
     if (duration <= 0) return;
 
-    const reversed = this.getReversedBuffer(src.buffer);
     const source = this.track(this.ctx.createBufferSource());
-    const sliceLength = Math.floor(duration * reversed.sampleRate);
-    const sliceBuffer = this.ctx.createBuffer(
-      reversed.numberOfChannels,
-      sliceLength,
-      reversed.sampleRate
-    );
-
-    const readStart = Math.max(0, reversed.duration - dropPoint);
-    const readEnd = Math.min(readStart + duration, reversed.duration);
-
-    for (let ch = 0; ch < reversed.numberOfChannels; ch++) {
-      const srcData = reversed.getChannelData(ch);
-      const dstData = sliceBuffer.getChannelData(ch);
-      const startSample = Math.floor(readStart * reversed.sampleRate);
-      const endSample = Math.floor(readEnd * reversed.sampleRate);
-
-      for (let i = startSample; i < endSample; i++) {
-        dstData[i - startSample] = srcData[i];
-      }
-    }
+    const sr = src.buffer.sampleRate;
+    const sliceBuffer = this.copySlice(src.buffer, Math.floor(src.position * sr), Math.floor(duration * sr), true);
 
     source.buffer = sliceBuffer;
     source.playbackRate.value = 2 ** (this.settings.pitch / 12);
@@ -628,8 +592,8 @@ export class SamplePad {
     this.impactAt(this.ctx.currentTime + (dropPoint - src.position));
   }
 
-  impact(): void {
-    this.impactAt(this.ctx.currentTime);
+  impact(when?: number): void {
+    this.impactAt(Math.max(this.ctx.currentTime, when ?? 0));
   }
 
   private impactAt(when: number): void {
@@ -759,29 +723,16 @@ export class SamplePad {
     this.flushEcho();
   }
 
-  private getReversedBuffer(buffer: AudioBuffer): AudioBuffer {
-    if (this.sourceBuffer === buffer && this.reversedBuffer) {
-      return this.reversedBuffer;
+  // copy [start, start + len) of a buffer, reversed if asked: only the played slice is
+  // ever copied or reversed, never the whole track
+  private copySlice(buf: AudioBuffer, start: number, len: number, reverse: boolean): AudioBuffer {
+    const out = this.ctx.createBuffer(buf.numberOfChannels, Math.max(1, len), buf.sampleRate);
+    for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+      const dst = out.getChannelData(ch);
+      dst.set(buf.getChannelData(ch).subarray(Math.max(0, start), Math.max(0, start) + len));
+      if (reverse) dst.reverse();
     }
-
-    const reversed = this.ctx.createBuffer(
-      buffer.numberOfChannels,
-      buffer.length,
-      buffer.sampleRate
-    );
-
-    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
-      const srcData = buffer.getChannelData(ch);
-      const dstData = reversed.getChannelData(ch);
-
-      for (let i = 0; i < buffer.length; i++) {
-        dstData[i] = srcData[buffer.length - 1 - i];
-      }
-    }
-
-    this.sourceBuffer = buffer;
-    this.reversedBuffer = reversed;
-    return reversed;
+    return out;
   }
 
   private createReverbImpulse(): AudioBuffer {

@@ -219,7 +219,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
       setTrim(Math.min(1.5, Math.max(0, forceTrim)));
     }
   }, [forceTrim]);
-  const [filter, setFilter] = useState(0);
+
   const [pitch, setPitch] = useState(0);
   const [scratch, setScratch] = useState(0);
   const [loop, setLoop] = useState(0);
@@ -238,7 +238,6 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
     deck.unload();
     setEq({ low: 0, mid: 0, high: 0 });
     setTrim(1);
-    setFilter(0);
     setPitch(0);
     setScratch(0);
     setLoop(0);
@@ -446,8 +445,8 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
   // per-stem beat loop — a popover with every length the main Beat Loop row
   // offers, so you can jump straight to e.g. 1/8 or 8 without cycling through
   // everything in between. Only this one stem loops; the others play on.
-  const STEM_LOOP_BEATS = [1 / 16, 1 / 8, 1 / 4, 1 / 2, 1, 2, 4, 8, 16];
-  const STEM_LOOP_LABELS = ["1/16", "1/8", "1/4", "1/2", "1", "2", "4", "8", "16"];
+  const STEM_LOOP_BEATS = [1 / 16, 1 / 8, 1 / 4, 1 / 2, 1, 2, 4, 8, 16, 32];
+  const STEM_LOOP_LABELS = ["1/16", "1/8", "1/4", "1/2", "1", "2", "4", "8", "16", "32"];
   // read live off the deck (not a mirrored useState) so the UI can never show a
   // loop as engaged when the deck-side call actually silently no-op'd — same
   // fix pattern the earlier "ghost-loop" bug used for the outer LOOP button,
@@ -962,8 +961,8 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
             <span className="text-center text-[10px] font-bold uppercase leading-none" style={{ color }}>{b}</span>
           </div>
         ))}
-        <Knob label="Filter" value={filter} min={-1} max={1} defaultValue={0} color={color}
-          onChange={(v) => { setFilter(v); deck.setFilter(v); }}
+        <Knob label="Filter" value={deck.filterLive} min={-1} max={1} defaultValue={0} color={color}
+          onChange={(v) => deck.setFilter(v)}
         />
       </div>
 
@@ -1135,6 +1134,33 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                   ▲ ALL
                 </button>
               </div>
+              {/* bulk: every stem effect or every stem loop off */}
+              <div className={`flex gap-1 ${deck.stemReady && deck.stemsActive ? "" : "pointer-events-none opacity-40"}`}>
+                <button
+                  className="hw-btn flex-1 px-1 py-1 text-[9px] font-bold"
+                  style={{ ["--led" as string]: color, color }}
+                  disabled={!deck.hasStemFx}
+                  onClick={() => {
+                    deck.resetStemFx();
+                    rerender();
+                  }}
+                  title="Coupe tous les effets des stems : filtre, saturation, envois reverb/delay, effets DJ et routage vers le rack"
+                >
+                  FX OFF
+                </button>
+                <button
+                  className="hw-btn flex-1 px-1 py-1 text-[9px] font-bold"
+                  style={{ ["--led" as string]: color, color }}
+                  disabled={!deck.stemLoopActive.some(Boolean)}
+                  onClick={() => {
+                    deck.clearAllStemLoops();
+                    rerender();
+                  }}
+                  title="Coupe toutes les boucles de stems ; chaque stem reprend en place"
+                >
+                  LOOPS OFF
+                </button>
+              </div>
               {/* STEM templates 1-5 : réglages mémorisés, réutilisables sur tout morceau */}
               <div className={`flex flex-col gap-1 ${deck.stemReady ? "" : "pointer-events-none opacity-40"}`}>
                 <span
@@ -1278,7 +1304,10 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                             : { background: "rgba(255,255,255,0.1)", color: "#b0b0b0" }
                         }
                         title="FX de ce stem seul : filtre, drive, envois Reverb/Delay et effets DJ (écho, dub, mash, vowel…)"
-                        onClick={() => setOpenSendMenu(openSendMenu === i ? null : i)}
+                        onClick={() => {
+                          setOpenStemLoopMenu(null);
+                          setOpenSendMenu(openSendMenu === i ? null : i);
+                        }}
                       >
                         FX•
                       </button>
@@ -1316,7 +1345,10 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                             ? "BPM pas encore détecté — attends la fin de l'analyse pour boucler ce stem"
                             : "Boucle ce stem seul — choisis une longueur, les autres stems continuent normalement"
                         }
-                        onClick={() => setOpenStemLoopMenu(openStemLoopMenu === i ? null : i)}
+                        onClick={() => {
+                          setOpenSendMenu(null);
+                          setOpenStemLoopMenu(openStemLoopMenu === i ? null : i);
+                        }}
                       >
                         {stemLoopBeats[i] != null
                           ? `⟳${STEM_LOOP_LABELS[STEM_LOOP_BEATS.indexOf(stemLoopBeats[i]!)]}`

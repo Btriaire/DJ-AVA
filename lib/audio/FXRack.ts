@@ -24,6 +24,7 @@ export class FXRack {
   private lastBpm = 120;
   private bpmCheckInterval: NodeJS.Timeout | null = null;
   private releaseTimers = new Map<FxName, NodeJS.Timeout>();
+  private env: FxEnv;
 
   // ids: only build these effects (default: all of FX_LIST)
   constructor(ctx: BaseAudioContext, ids?: FxName[]) {
@@ -37,21 +38,18 @@ export class FXRack {
     this.input.connect(this.dry);
     this.dry.connect(this.output);
 
+    this.env = {
+      ctx,
+      beat: () => {
+        const bpm = this.getBpm();
+        const clock = this.readClock();
+        return { period: 60 / bpm, toNext: clock ? clock.toNextBeat : 0 };
+      }
+    };
+
     for (const meta of this.list) {
-      const unit = this.createUnit(meta.id, {
-        ctx,
-        beat: () => {
-          const bpm = this.getBpm();
-          const clock = this.readClock();
-          return { period: 60 / bpm, toNext: clock ? clock.toNextBeat : 0 };
-        }
-      });
       const wet = ctx.createGain();
       wet.gain.value = 0;
-
-      this.input.connect(unit.input);
-      unit.output.connect(wet);
-      this.units.set(meta.id, unit);
       this.wets.set(meta.id, wet);
       this.levels.set(meta.id, 0);
       this.effective.set(meta.id, 0);
@@ -62,11 +60,8 @@ export class FXRack {
         p2: meta.p2?.def ?? 0
       });
 
-      if (meta.p1) unit.setParam("p1", meta.p1.def);
-      if (meta.p2) unit.setParam("p2", meta.p2.def);
-      if (meta.beat !== null) unit.setBeat(meta.beat);
-
       if (meta.always) {
+        this.ensureUnit(meta.id);
         wet.connect(this.output);
         this.wetLive.add(meta.id);
       }
@@ -89,6 +84,25 @@ export class FXRack {
 
   private readClock(): { bpm: number; toNextBeat: number } | null {
     return this.clock?.() ?? null;
+  }
+
+  // Build an effect the first time it is needed (most are never used): saves its
+  // nodes, delay lines and buffers. Its stored settings are applied on creation.
+  private ensureUnit(name: FxName): FxUnit | null {
+    const existing = this.units.get(name);
+    if (existing) return existing;
+    const meta = FX_META.get(name);
+    const wet = this.wets.get(name);
+    if (!meta || !wet) return null;
+    const unit = this.createUnit(name, this.env);
+    this.input.connect(unit.input);
+    unit.output.connect(wet);
+    const p = this.params.get(name);
+    if (meta.p1 && p) unit.setParam("p1", p.p1);
+    if (meta.p2 && p) unit.setParam("p2", p.p2);
+    if (meta.beat !== null) unit.setBeat(this.beats.get(name) ?? meta.beat);
+    this.units.set(name, unit);
+    return unit;
   }
 
   private createUnit(name: FxName, env: FxEnv): FxUnit {
@@ -148,12 +162,13 @@ export class FXRack {
     if (!meta) return;
 
     const wet = this.wets.get(name);
-    const unit = this.units.get(name);
-    if (!wet || !unit) return;
+    if (!wet) return;
 
     const clamped = Math.max(0, Math.min(1, v));
     const prevLevel = this.levels.get(name)!;
     this.levels.set(name, clamped);
+    const unit = clamped > 0 ? this.ensureUnit(name) : this.units.get(name);
+    if (!unit) return; // never built and asked to stay off: nothing to do
 
     if (clamped > 0) {
       const timer = this.releaseTimers.get(name);
@@ -200,11 +215,9 @@ export class FXRack {
   }
 
   setBeat(name: FxName, idx: number) {
-    const unit = this.units.get(name);
-    if (unit) {
-      this.beats.set(name, idx);
-      unit.setBeat(idx);
-    }
+    if (!this.beats.has(name)) return;
+    this.beats.set(name, idx);
+    this.units.get(name)?.setBeat(idx);
   }
 
   getBeat(name: FxName): number {
@@ -212,13 +225,11 @@ export class FXRack {
   }
 
   setParam(name: FxName, key: "p1" | "p2", v: number) {
-    const unit = this.units.get(name);
     const params = this.params.get(name);
-    if (unit && params) {
-      const clamped = Math.max(0, Math.min(1, v));
-      params[key] = clamped;
-      unit.setParam(key, clamped);
-    }
+    if (!params) return;
+    const clamped = Math.max(0, Math.min(1, v));
+    params[key] = clamped;
+    this.units.get(name)?.setParam(key, clamped);
   }
 
   getParam(name: FxName, key: "p1" | "p2"): number {

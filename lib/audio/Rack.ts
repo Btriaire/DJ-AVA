@@ -377,7 +377,8 @@ class RackSlot {
   readonly output: GainNode;
   private dry: GainNode;
   private wet: GainNode;
-  private built: BuiltModule;
+  private built: BuiltModule | null = null;
+  private ctx: AudioContext;
   on = false;
   // every module starts at 0% intensity — the "INT" fader must be raised by
   // hand before an enabled effect is audible, no exceptions. (EQ is the one
@@ -401,12 +402,10 @@ class RackSlot {
     this.output = ctx.createGain();
     this.dry = ctx.createGain();
     this.wet = ctx.createGain();
-    this.built = buildModule(ctx, id);
+    this.ctx = ctx;
 
     this.input.connect(this.dry);
     this.dry.connect(this.output);
-    this.input.connect(this.built.fxIn);
-    this.built.fxOut.connect(this.wet);
     // NB: wet -> output is wired lazily (setWetLive) — the slot starts off, so
     // the effect stays idle and unpulled until it is first enabled.
 
@@ -415,19 +414,30 @@ class RackSlot {
     // (0 dB, the default) are already transparent, so this doesn't add any
     // sound — it just means moving a band fader is audible immediately,
     // instead of being silently masked by a 0% INT mix.
+    const def = RACK_DEF.get(id)!;
+    for (const p of def.params) this.params[p.key] = p.def;
+    for (const f of def.flags ?? []) this.flags[f.key] = false;
+
     if (id === "eq") {
+      this.ensureBuilt();
       this.on = true;
       this.mix = 1;
       this.setWetLive(true); // Constructor bypasses setOn, so must connect wet branch manually
     }
-
-    const def = RACK_DEF.get(id)!;
-    for (const p of def.params) this.params[p.key] = p.def;
-    for (const f of def.flags ?? []) this.flags[f.key] = false;
-    // push defaults into the DSP
-    for (const p of def.params) this.built.onParam(p.key, p.def);
-    for (const f of def.flags ?? []) this.built.onFlag?.(f.key, false);
     this.refresh();
+  }
+
+  // Build the module's DSP the first time it is switched on (most modules are never
+  // used): saves its nodes and buffers. The stored params and flags are pushed into it.
+  private ensureBuilt(): BuiltModule {
+    if (this.built) return this.built;
+    const b = buildModule(this.ctx, this.id);
+    this.input.connect(b.fxIn);
+    b.fxOut.connect(this.wet);
+    for (const [k, v] of Object.entries(this.params)) b.onParam(k, v);
+    for (const [k, v] of Object.entries(this.flags)) b.onFlag?.(k, v);
+    this.built = b;
+    return b;
   }
 
   // connect / disconnect the wet branch from the output. Disconnecting it lets
@@ -458,6 +468,7 @@ class RackSlot {
   setOn(on: boolean) {
     this.on = on;
     if (on) {
+      this.ensureBuilt();
       // reconnect the wet branch *before* the fade so the ramp is heard
       if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null; }
       this.setWetLive(true);
@@ -478,19 +489,19 @@ class RackSlot {
   }
   setParam(key: string, v: number) {
     this.params[key] = v;
-    this.built.onParam(key, v);
+    this.built?.onParam(key, v);
   }
   setFlag(key: string, on: boolean) {
     this.flags[key] = on;
-    this.built.onFlag?.(key, on);
+    this.built?.onFlag?.(key, on);
   }
 
   eqResponse(freqs: Float32Array, out: Float32Array) {
-    this.built.eq?.response(freqs, out);
+    this.built?.eq?.response(freqs, out);
   }
 
   eqAnalyser(which: "pre" | "post"): AnalyserNode | null {
-    return this.built.eq ? this.built.eq[which] : null;
+    return this.built?.eq ? this.built.eq[which] : null;
   }
 }
 

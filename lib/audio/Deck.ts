@@ -121,6 +121,7 @@ export class Deck {
   private stemMeterBuf = new Float32Array(256); // reusable scratch for RMS reads
   private stemEnv: number[] = []; // smoothed per-stem meter level (VU-style ballistics)
   private stemBus!: GainNode; // sum of the stem gains, carries the makeup gain
+  private fxInGate!: GainNode; // what enters the FX unit; muted for an echo-out drop
   private pumpLast = -1; // ctx time of the last beat already pumped
   private pumpTimer: ReturnType<typeof setInterval> | null = null;
   stemMakeup = true; // auto-compensate level when stem faders are pulled down
@@ -466,7 +467,9 @@ export class Deck {
     this.mid.connect(this.high);
     this.high.connect(this.filter);
     this.filter.connect(this.retouch.input);
-    this.retouch.output.connect(this.fx.input);
+    this.fxInGate = C();
+    this.retouch.output.connect(this.fxInGate);
+    this.fxInGate.connect(this.fx.input);
     this.fx.output.connect(this.rack.input);
     this.rack.output.connect(this.volume);
     this.volume.connect(this.crowdIn);
@@ -1014,6 +1017,24 @@ export class Deck {
     this.filter.Q.value = 1 + Math.abs(x) * 6;
   }
 
+  // live filter position, following a rampFilter sweep (for the FILTER knob)
+  get filterLive(): number {
+    const f = this.filter.frequency.value;
+    if (this.filter.type === "highpass") return Math.min(1, Math.max(0, Math.log(f / 20) / Math.log(600)));
+    if (this.filter.type === "lowpass") return -Math.min(1, Math.max(0, Math.log(20000 / f) / Math.log(500)));
+    return 0;
+  }
+
+  // Momentary mutes for MONTÉE & DROP right before a drop: "out" silences the whole deck
+  // (pre-drop gap), "fxin" silences what enters the FX unit so only its echoes ring out.
+  setHold(which: "out" | "fxin", on: boolean) {
+    const g = (which === "out" ? this.output : this.fxInGate).gain;
+    const now = this.ctx.currentTime;
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(g.value, now);
+    g.linearRampToValueAtTime(on ? 0 : 1, now + (on ? 0.006 : 0.003));
+  }
+
   get filterPos(): number {
     return this.filterX;
   }
@@ -1410,6 +1431,30 @@ export class Deck {
     for (const i of Array.from(this.stemFxTargets)) this.toggleStemFxTarget(i);
   }
 
+  // every stem back to a dry sound: filter, drive, reverb/delay sends, DJ FX, Rack routing
+  resetStemFx() {
+    for (let i = 0; i < this.stemFilter.length; i++) {
+      this.setStemFilter(i, 0);
+      this.setStemDrive(i, 0);
+      this.setStemReverbSend(i, 0);
+      this.setStemDelaySend(i, 0);
+      this.stemDjFx[i]?.resetAll();
+    }
+    this.clearAllStemFxTargets();
+  }
+
+  // whether any stem effect is on (drives the FX OFF button)
+  get hasStemFx(): boolean {
+    return (
+      this.stemFilterX.some((x) => Math.abs(x) > 0.01) ||
+      this.stemDriveAmt.some((v) => v > 0.01) ||
+      this.stemReverbSend.some((v) => v > 0.01) ||
+      this.stemDelaySend.some((v) => v > 0.01) ||
+      this.stemFxTargets.size > 0 ||
+      this.stemDjFx.some((_, i) => this.hasStemDjFx(i))
+    );
+  }
+
   // ---- shared per-stem Reverb/Delay sends (see field comments above) ----
   setStemReverbSend(i: number, v: number) {
     if (i < 0 || i >= this.stemReverbSendGain.length) return;
@@ -1734,6 +1779,44 @@ export class Deck {
       g.gain.cancelScheduledValues(this.ctx.currentTime);
       g.gain.value = this.stemVol[i] ?? 1;
     }
+    this.resyncStem(i);
+  }
+
+  // every stem loop off, each stem back in place
+  clearAllStemLoops() {
+    for (let i = 0; i < this.stemLoopActive.length; i++) this.clearStemLoop(i);
+  }
+
+  // Slip: once a stem loop is released, restart that stem at the deck's timeline position
+  // so it plays in time with the other stems again (a 10 ms dip hides the jump).
+  private resyncStem(i: number) {
+    const old = this.activeSources[i];
+    const buf = this.stemBuffers[i];
+    if (!this._playing || !this.stemsActive || !old || !buf) return;
+    const DIP = 0.01;
+    const now = this.ctx.currentTime;
+    const when = now + DIP;
+    let pos = this.startOffset + (when - this.startCtxTime) * this.effRate;
+    if (this.loopActive && pos >= this.loopEnd) {
+      const len = this.loopEnd - this.loopStart;
+      pos = this.loopStart + ((pos - this.loopStart) % len);
+    }
+    if (pos >= this.duration - 0.02) return;
+    const src = this.buildSource(buf, this.stemGains[i], i === 0, i);
+    src.start(when, pos);
+    old.onended = () => old.disconnect();
+    try {
+      old.stop(when);
+    } catch {
+      /* already stopped */
+    }
+    this.activeSources[i] = src;
+    const g = this.stemGains[i].gain;
+    const base = this.stemVol[i] ?? 1;
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(base, now);
+    g.linearRampToValueAtTime(0, when);
+    g.linearRampToValueAtTime(base, when + DIP);
   }
 
   // halve/double the CURRENT loop length live, keeping the same start point —
@@ -1977,6 +2060,17 @@ export class Deck {
 
   // hard clear: stop playback, drop the loaded track entirely (so the deck is
   // "— vide —" again) and return every control to neutral. Per-deck PANIC.
+  // stop every timer and source of this deck so a replaced engine can be garbage-collected
+  dispose() {
+    this.setStemPump(false);
+    this.stopStemProgressPoll();
+    for (let i = 0; i < this.stemLoopWrapTimer.length; i++) this.clearStemLoopTimer(i);
+    this.stopSources();
+    this.cleanupMediaEl();
+    this.fx.dispose();
+    for (const r of this.stemDjFx) r?.dispose();
+  }
+
   unload() {
     this.hotCues = [null, null, null, null];
     this.cleanupMediaEl();

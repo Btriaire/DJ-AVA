@@ -53,6 +53,8 @@ export class DJEngine {
   private master: GainNode;
   private meterAnalyser: AnalyserNode;
   private meterBuf: Uint8Array<ArrayBuffer>;
+  private life = new AbortController(); // removes every window listener of this engine on dispose
+  private healTimer: ReturnType<typeof setInterval> | null = null;
   private crossfade = 0.5;
   // iOS Safari suspends a page's AudioContext as soon as the tab backgrounds
   // (screen lock, app switch) — that's what kills playback, not the Wake
@@ -205,6 +207,22 @@ export class DJEngine {
     return true;
   }
 
+  // Stop everything that keeps this engine alive (timers, window listeners) so the old
+  // engine can be garbage-collected after rebuildEngine().
+  dispose() {
+    if (this.healTimer) clearInterval(this.healTimer);
+    this.healTimer = null;
+    this.life.abort();
+    this.ctx.onstatechange = null;
+    this.deckA.dispose();
+    this.deckB.dispose();
+    this.djSynth.dispose();
+    this.drums.dispose();
+    this.masterFx.dispose();
+    this.synthSeq.stop();
+    this.sampler.stopSeq();
+  }
+
   private installAutoRecovery() {
     // 1. context falling out of "running" → bring it straight back
     this.ctx.onstatechange = () => {
@@ -220,13 +238,13 @@ export class DJEngine {
       if (this.ctx.state !== "running") this.ctx.resume().catch(() => {});
     };
     ["pointerdown", "keydown", "touchstart"].forEach((e) =>
-      window.addEventListener(e, wake, { capture: true, passive: true })
+      window.addEventListener(e, wake, { capture: true, passive: true, signal: this.life.signal })
     );
 
     // 3. coming back to the tab — resume if the OS suspended us while hidden
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") wake();
-    });
+    }, { signal: this.life.signal });
 
     // 4. output device changed → re-bind to it with the suspend→resume kick. A
     //    real device switch genuinely needs the re-bind, so recover() runs here.
@@ -243,7 +261,7 @@ export class DJEngine {
             this.maybeRebuild();
           }
         }, 300); // debounce the burst of events
-      });
+      }, { signal: this.life.signal });
     }
 
     // 5. last-resort watchdog (every 2 s). Outside "running" → cheap nudge. The
@@ -253,7 +271,7 @@ export class DJEngine {
     //    consecutive ticks (~4 s) to rule out a momentary buffer gap or an
     //    intentional drop, then recover(), and rebuild only if it's still dead.
     let silentTicks = 0;
-    setInterval(async () => {
+    this.healTimer = setInterval(async () => {
       if (this.ctx.state !== "running") {
         this.ctx.resume().catch(() => {});
         return;
@@ -669,6 +687,7 @@ export async function rebuildEngine(): Promise<DJEngine> {
   }
   engine = next;
   if (old) {
+    old.dispose();
     try {
       await old.ctx.close();
     } catch {
