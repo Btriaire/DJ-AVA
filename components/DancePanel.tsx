@@ -1,454 +1,331 @@
 import { useEffect, useRef, useState } from "react";
 import type { DJEngine } from "@/lib/audio/engine";
-import type { DjPresetId } from "@/lib/audio/DjSynth";
-import { EQ_PRESETS, presetGains } from "@/lib/audio/eqPresets";
-import { EQ_FREQS } from "@/lib/audio/Rack";
 import { Knob } from "./Knob";
+import { PerfPad } from "./PerfPad";
 
 type Deck = DJEngine["deckA"];
-type Genre = {
-  id: string;
-  label: string;
-  description: string;
-  eqId: string;
-  synth: DjPresetId;
-  color: string;
-};
-
-const GENRES: Genre[] = [
-  { id: "house", label: "HOUSE", description: "Basse ronde, médium chaud", eqId: "club", synth: "sub", color: "#fbbf24" },
-  { id: "techno", label: "TECHNO", description: "Grave punchy, médium creusé", eqId: "techno", synth: "acid", color: "#a3e635" },
-  { id: "electro", label: "ÉLECTRO", description: "Aigus brillants, son large", eqId: "brillant", synth: "reese", color: "#38bdf8" },
-  { id: "hiphop", label: "HIP-HOP", description: "Grave profond, boom", eqId: "sub", synth: "sub", color: "#f472b6" },
-  { id: "disco", label: "DISCO", description: "Médium chaud, aigus doux", eqId: "chaud", synth: "stab", color: "#fb923c" },
-  { id: "dub", label: "DUB", description: "Grave lourd, aigus coupés", eqId: "sub", synth: "wobble", color: "#a78bfa" },
+type Side = "A" | "B";
+type Ingredients = { filter: boolean; riser: boolean; bass: boolean; roll: boolean };
+const LENGTHS = [4, 8, 16] as const;
+type Len = (typeof LENGTHS)[number];
+const RISER_BEAT: Record<Len, number> = { 4: 7, 8: 8, 16: 9 };
+const FILTER_TOP = 0.7;
+const RISER_LEVEL = 0.7;
+const RELEASES = [0.25, 0.5, 1] as const;
+const SIDE_COLOR: Record<Side, string> = { A: "#38bdf8", B: "#f59e0b" };
+const INGREDIENTS: { id: keyof Ingredients; label: string; title: string }[] = [
+  { id: "filter", label: "FILTRE", title: "Le filtre de la platine monte en passe-haut : le grave s'en va" },
+  { id: "riser", label: "SOUFFLE", title: "Un souffle (riser) monte en fréquence et en volume jusqu'au drop" },
+  { id: "bass", label: "BASSE", title: "Le stem basse est coupé pendant la montée et revient sur le drop (stems actifs)" },
+  { id: "roll", label: "ROULEMENT", title: "Les 2 derniers temps se répètent en accélérant (1/8 puis 1/16)" },
 ];
+type Snapshot = { filter: number; riserBeat: number; rollBeat: number; bassIdx: number; bassVol: number };
+type Run = { deck: Deck; t0: number; spb: number; beats: number; snap: Snapshot; timers: number[] };
 
-const RELEASE_BEATS = [0.25, 0.5, 1] as const;
-const RAMP_LENGTHS = [2, 4, 8, 16] as const;
-const TRANSITION_STEPS = ["MONTÉE", "DROP", "RETOUR"] as const;
+function restore(run: Run) {
+  run.timers.forEach((t) => clearTimeout(t));
+  run.timers = [];
+  const { deck, snap } = run;
+  const rack = deck.fxRack;
+  deck.setFilter(snap.filter);
+  rack.setWet("noise", 0);
+  rack.setBeat("noise", snap.riserBeat);
+  rack.setWet("roll", 0);
+  rack.setBeat("roll", snap.rollBeat);
+  if (snap.bassIdx >= 0) deck.setStemVol(snap.bassIdx, snap.bassVol);
+}
+
+function stopRun(ref: { current: Run | null }) {
+  const r = ref.current;
+  if (!r) return;
+  ref.current = null;
+  restore(r);
+}
+
+function segColor(k: number, n: number): string {
+  const t = n > 1 ? k / (n - 1) : 1;
+  const mix = (a: number, b: number) => Math.round(a + (b - a) * t);
+  return `rgb(${mix(245, 239)}, ${mix(158, 68)}, ${mix(11, 68)})`;
+}
 
 export function DancePanel({ engine }: { engine: DJEngine }) {
-  const [deck, setDeck] = useState<Deck | null>(engine.deckA);
-  const [activeGenre, setActiveGenre] = useState<Genre | null>(null);
+  const [side, setSide] = useState<Side>("A");
+  const [len, setLen] = useState<Len>(8);
+  const [ing, setIng] = useState<Ingredients>({ filter: true, riser: true, bass: true, roll: false });
+  const [autoDrop, setAutoDrop] = useState(true);
   const [pumpOn, setPumpOn] = useState(false);
-  const [pumpDepth, setPumpDepth] = useState(80);
-  const [releaseBeats, setReleaseBeats] = useState<typeof RELEASE_BEATS[number]>(0.5);
-  const [beatIdx, setBeatIdx] = useState(0);
-  const [rampLength, setRampLength] = useState<typeof RAMP_LENGTHS[number]>(8);
-  const [rampProgress, setRampProgress] = useState(0);
-  const [filterActive, setFilterActive] = useState(true);
-  const [transitionStep, setTransitionStep] = useState<typeof TRANSITION_STEPS[number] | null>(null);
-  const [transitionProgress, setTransitionProgress] = useState(0);
-  const [pumpLevel, setPumpLevel] = useState(0);
+  const [pumpDepth, setPumpDepth] = useState(0.6);
+  const [pumpRel, setPumpRel] = useState<typeof RELEASES[number]>(0.5);
+  const [phase, setPhase] = useState<"idle" | "armed" | "build" | "top" | "drop">("idle");
+  const [view, setView] = useState({ done: 0, beat: -1, playing: false, bpm: 0 });
+  const run = useRef<Run | null>(null);
+  const deck = side === "A" ? engine.deckA : engine.deckB;
+  const color = SIDE_COLOR[side];
 
-  const beatIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const rampIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const transitionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const pumpIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const [rampActive, setRampActive] = useState(false);
-
-  const handleDeckChange = (d: Deck | null) => {
-    stopRamp();
-    setDeck(d);
-    setPumpOn(false);
-    setActiveGenre(null);
-    stopTransition();
-  };
-
-  const applyGenre = (genre: Genre) => {
-    if (!deck) return;
-
-    const preset = EQ_PRESETS.find(p => p.id === genre.eqId);
-    if (preset) {
-      const gains = presetGains(preset.pts, EQ_FREQS);
-      EQ_FREQS.forEach((_, i) => deck.rack.setParam("eq", `g${i}`, gains[i]));
-      engine.djSynth.setPreset(genre.synth);
-      setActiveGenre(genre);
-    }
-  };
-
-  const togglePump = () => {
-    if (!deck || !deck.stemsActive) return;
-    const newState = !pumpOn;
-    setPumpOn(newState);
-    deck.setStemPump(newState, pumpDepth / 100, releaseBeats);
-  };
-
-  const updatePumpDepth = (value: number) => {
-    setPumpDepth(value);
-    if (pumpOn && deck) deck.setStemPump(true, value / 100, releaseBeats);
-  };
-
-  const updateReleaseBeats = (value: typeof RELEASE_BEATS[number]) => {
-    setReleaseBeats(value);
-    if (pumpOn && deck) deck.setStemPump(true, pumpDepth / 100, value);
-  };
-
-  const startRamp = () => {
-    if (!deck || rampIntervalRef.current) return;
-    setRampActive(true);
-
-    const bpm = deck.fxClock()?.bpm || deck.bpm || 120;
-    const durMs = (60000 / bpm) * rampLength;
-    const t0 = performance.now();
-
-    deck.setFxWet("noise", 0);
-    if (filterActive) {
-      deck.setFxWet("sweep", 1);
-      deck.setFxParam("sweep", "p1", 0);
-    }
-
-    rampIntervalRef.current = setInterval(() => {
-      const p = Math.min(1, (performance.now() - t0) / durMs);
-      deck.setFxWet("noise", p * p);
-      if (filterActive) deck.setFxParam("sweep", "p1", p * 0.5);
-      setRampProgress(p);
-
-      if (p >= 1) {
-        clearInterval(rampIntervalRef.current!);
-        rampIntervalRef.current = null;
-        setRampActive(false);
-      }
-    }, 50);
-  };
-
-  const stopRamp = () => {
-    setRampActive(false);
-    if (rampIntervalRef.current) {
-      clearInterval(rampIntervalRef.current);
-      rampIntervalRef.current = null;
-    }
-    if (deck) {
-      deck.setFxWet("noise", 0);
-      deck.setFxWet("sweep", 0);
-    }
-    setRampProgress(0);
-  };
-
-  const startTransition = () => {
-    if (!deck || transitionStep) return;
-
-    const bpm = deck.fxClock()?.bpm || deck.bpm || 120;
-    const durMs = (60000 / bpm) * rampLength;
-    const wasPumping = pumpOn;
-
-    setTransitionStep("MONTÉE");
-    setTransitionProgress(0);
-
-    // Step 1: Ramp up
-    const t0 = performance.now();
-    deck.setFxWet("noise", 0);
-    if (filterActive) {
-      deck.setFxWet("sweep", 1);
-      deck.setFxParam("sweep", "p1", 0);
-    }
-
-    const rampInterval = setInterval(() => {
-      const p = Math.min(1, (performance.now() - t0) / durMs);
-      deck.setFxWet("noise", p * p);
-      if (filterActive) deck.setFxParam("sweep", "p1", p * 0.5);
-      setTransitionProgress(p);
-
-      if (p >= 1) {
-        clearInterval(rampInterval);
-        setTransitionStep("DROP");
-        setTransitionProgress(0);
-
-        // Step 2: Drop
-        deck.setFxWet("noise", 0);
-        deck.setFxWet("sweep", 0);
-        deck.setStemPump(false);
-
-        transitionTimeoutRef.current = setTimeout(() => {
-          // Step 3: Return
-          setTransitionStep("RETOUR");
-          setTransitionProgress(0);
-
-          if (wasPumping) {
-            deck.setStemPump(true, pumpDepth / 100, releaseBeats);
-          }
-
-          setTimeout(() => {
-            setTransitionStep(null);
-            setTransitionProgress(0);
-          }, 1000);
-        }, (60000 / bpm) * 2);
-      }
-    }, 50);
-
-    rampIntervalRef.current = rampInterval;
-  };
-
-  // stop everything this panel started on a deck when the deck changes or the panel closes
   useEffect(() => {
-    const previous = deck;
-    return () => {
-      if (!previous) return;
-      previous.setStemPump(false);
-      previous.setFxWet("noise", 0);
-      previous.setFxWet("sweep", 0);
-      if (rampIntervalRef.current) clearInterval(rampIntervalRef.current);
-      rampIntervalRef.current = null;
-      if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
-      transitionTimeoutRef.current = null;
-      if (pumpIntervalRef.current) clearInterval(pumpIntervalRef.current);
-      pumpIntervalRef.current = null;
-    };
+    const id = window.setInterval(() => {
+      const c = deck.fxClock();
+      const r = run.current;
+      setView({
+        done: r ? Math.max(0, Math.min(r.beats, (performance.now() - r.t0) / (r.spb * 1000))) : 0,
+        beat: c && c.playing ? ((((c.nextBeat ?? 1) - 1) % 4) + 4) % 4 : -1,
+        playing: !!c?.playing,
+        bpm: c ? c.bpm : 0,
+      });
+    }, 60);
+    return () => clearInterval(id);
   }, [deck]);
 
-  const stopTransition = () => {
-    if (rampIntervalRef.current) {
-      clearInterval(rampIntervalRef.current);
-      rampIntervalRef.current = null;
-    }
-    if (transitionTimeoutRef.current) {
-      clearTimeout(transitionTimeoutRef.current);
-      transitionTimeoutRef.current = null;
-    }
-    if (deck) {
-      deck.setFxWet("noise", 0);
-      deck.setFxWet("sweep", 0);
-    }
-    setTransitionStep(null);
-    setTransitionProgress(0);
+  useEffect(() => {
+    deck.setStemPump(pumpOn, pumpDepth, pumpRel);
+    return () => deck.setStemPump(false);
+  }, [deck, pumpOn, pumpDepth, pumpRel]);
+
+  useEffect(() => () => stopRun(run), [deck]);
+
+  const dropNow = () => {
+    stopRun(run);
+    setPhase("drop");
+    window.setTimeout(() => setPhase((p) => (p === "drop" ? "idle" : p)), 600);
   };
 
-  useEffect(() => {
-    if (!deck) return;
-
-    // Beat indicator
-    beatIntervalRef.current = setInterval(() => {
-      const clock = deck.fxClock();
-      if (clock?.playing && clock.nextBeat) {
-        const beat = Math.max(0, (clock.nextBeat - 1) % 4);
-        setBeatIdx(beat);
-      } else {
-        setBeatIdx(-1);
-      }
-    }, 100);
-
-    // Pump level indicator
-    pumpIntervalRef.current = setInterval(() => {
-      const clock = deck.fxClock();
-      if (!clock?.playing || !pumpOn) {
-        setPumpLevel(0);
-        return;
-      }
-
-      const bpm = clock.bpm || deck.bpm || 120;
-      const spb = 60 / bpm;
-      const tSince = spb - (clock.toNextBeat || 0);
-      const release = releaseBeats * spb;
-      const level = 1 - (pumpDepth / 100) * Math.max(0, 1 - tSince / release);
-      setPumpLevel(1 - level);
-    }, 50);
-
-    return () => {
-      if (beatIntervalRef.current) clearInterval(beatIntervalRef.current);
-      if (rampIntervalRef.current) clearInterval(rampIntervalRef.current);
-      if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
-      if (pumpIntervalRef.current) clearInterval(pumpIntervalRef.current);
+  const startBuild = () => {
+    const c = deck.fxClock();
+    if (!c || !c.playing || !c.bpm) return;
+    const spb = 60 / c.bpm;
+    const rack = deck.fxRack;
+    const bassIdx = deck.stemsActive ? deck.stemNames.indexOf("bass") : -1;
+    const r: Run = {
+      deck,
+      t0: performance.now() + c.toNextBeat * 1000,
+      spb,
+      beats: len,
+      snap: { filter: deck.filterPos, riserBeat: rack.getBeat("noise"), rollBeat: rack.getBeat("roll"), bassIdx, bassVol: bassIdx >= 0 ? (deck.stemVol[bassIdx] ?? 1) : 1 },
+      timers: [],
     };
-  }, [deck, pumpOn, pumpDepth, releaseBeats]);
+    const use = { ...ing };
+    const auto = autoDrop;
+    const n = len;
+    const at = (beats: number, fn: () => void) => {
+      r.timers.push(window.setTimeout(fn, Math.max(0, c.toNextBeat + beats * spb) * 1000));
+    };
+    if (use.roll) rack.setBeat("roll", 1);
+    at(0, () => {
+      if (use.bass && bassIdx >= 0) deck.setStemVol(bassIdx, 0);
+      if (use.riser) {
+        rack.setBeat("noise", RISER_BEAT[n]);
+        rack.setWet("noise", 0);
+        rack.setWet("noise", RISER_LEVEL);
+      }
+      if (use.filter) deck.rampFilter(FILTER_TOP, n * spb);
+      setPhase("build");
+    });
+    if (use.roll) {
+      at(n - 2, () => rack.setWet("roll", 1));
+      at(n - 1, () => {
+        rack.setBeat("roll", 0);
+        rack.setWet("roll", 0);
+        rack.setWet("roll", 1);
+      });
+    }
+    at(n, () => (auto ? dropNow() : setPhase("top")));
+    run.current = r;
+    setPhase("armed");
+  };
+
+  const cancelBuild = () => {
+    stopRun(run);
+    setPhase("idle");
+  };
+
+  const dropOnBeat = () => {
+    const r = run.current;
+    if (!r) return;
+    r.timers.forEach(clearTimeout);
+    const c = r.deck.fxClock();
+    r.timers = [window.setTimeout(dropNow, (c && c.playing ? c.toNextBeat : 0) * 1000)];
+  };
+
+  const changeSide = (s: Side) => {
+    cancelBuild();
+    setPumpOn(false);
+    setSide(s);
+  };
+
+  const running = phase === "armed" || phase === "build" || phase === "top";
+  const canBuild = view.playing && view.bpm > 0;
+  const beatsShown = running ? view.done : 0;
+
+  const stateText = (() => {
+    switch (phase) {
+      case "idle": return canBuild ? "Prêt" : "Lance la platine (tempo requis)";
+      case "armed": return "Départ au prochain temps";
+      case "build": return `Montée · temps ${Math.min(len, Math.floor(view.done) + 1)} / ${len}`;
+      case "top": return "En haut · appuie sur DROP";
+      case "drop": return "DROP";
+      default: return "";
+    }
+  })();
 
   return (
-    <div className="hw-panel">
-      <div className="hw-brushed p-2 flex justify-between">
-        <div className="text-xs font-bold">DANSE</div>
-        <div className="flex items-center gap-1">
-          {deck ? (
-            <>
-              <span className={`text-[11px] font-bold ${deck === engine.deckA ? "text-[#38bdf8]" : "text-[#f59e0b]"}`}>
-                {deck.name || "sans titre"}
-              </span>
-              <span className="text-[10px] text-neutral-400">{Math.round(deck.bpm) || "--"} BPM</span>
-            </>
-          ) : (
-            <span className="text-[10px] text-neutral-400">Choisis une platine</span>
-          )}
-          <div className={`hw-led ${pumpOn || rampActive ? "bg-[#22c55e]" : "bg-neutral-700"}`} />
+    <div className="hw-panel hw-screwed flex flex-col gap-3 p-3">
+      <div className="hw-brushed rounded-lg flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+        <div>
+          <div className="text-xs font-black tracking-[0.25em]" style={{ color }}>MONTÉE & DROP</div>
+          <div className="text-[10px] text-neutral-400">Monte la tension sur N temps, puis le drop retombe pile sur le temps.</div>
         </div>
-      </div>
-
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-        <div className="hw-recess p-3 space-y-3">
-          <div className="text-[10px] tracking-[0.2em] text-neutral-400">PLATINE</div>
-          <div className="flex gap-2">
-            <button
-              className={`hw-btn ${deck === engine.deckA ? "hw-btn-on" : ""}`}
-              onClick={() => handleDeckChange(engine.deckA)}
-            >
-              PLATINE A
-            </button>
-            <button
-              className={`hw-btn ${deck === engine.deckB ? "hw-btn-on" : ""}`}
-              onClick={() => handleDeckChange(engine.deckB)}
-            >
-              PLATINE B
-            </button>
-          </div>
-
-          <div className="text-[10px] tracking-[0.2em] text-neutral-400">GENRE</div>
-          <div className="grid grid-cols-2 gap-2">
-            {GENRES.map((genre) => (
-              <button
-                key={genre.id}
-                className={`hw-btn h-12 px-2 flex-col items-start justify-center ${activeGenre?.id === genre.id ? "hw-btn-on" : ""}`}
-                style={{ backgroundColor: genre.color }}
-                onClick={() => applyGenre(genre)}
-              >
-                <div className="font-bold text-[11px]">{genre.label}</div>
-                <div className="text-[9px] opacity-80 truncate">{genre.description}</div>
-              </button>
+        <div className="flex items-center gap-2">
+          <button
+            className={`hw-btn px-2 py-1 text-[11px] font-bold ${side === "A" ? "hw-btn-on" : ""}`}
+            style={{ ["--led" as string]: SIDE_COLOR.A }}
+            onClick={() => changeSide("A")}
+          >
+            PLATINE A
+          </button>
+          <button
+            className={`hw-btn px-2 py-1 text-[11px] font-bold ${side === "B" ? "hw-btn-on" : ""}`}
+            style={{ ["--led" as string]: SIDE_COLOR.B }}
+            onClick={() => changeSide("B")}
+          >
+            PLATINE B
+          </button>
+          <div className="text-[10px] font-mono text-neutral-400">{view.bpm ? view.bpm.toFixed(1) : "--"} BPM</div>
+          <div className="flex gap-1">
+            {[0, 1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className={`rounded-full ${i === 0 ? "h-2.5 w-2.5" : "h-2 w-2"}`}
+                style={{
+                  backgroundColor: view.beat === i ? color : "#26262b",
+                  boxShadow: view.beat === i ? `0 0 6px ${color}` : "none",
+                }}
+              />
             ))}
           </div>
-
-          <div className="text-[10px] text-neutral-400">
-            {activeGenre ? (
-              <>Appliqué : EQ {activeGenre.eqId} · synthé {activeGenre.synth}</>
-            ) : (
-              "Choisis un genre pour régler l'EQ et la basse"
-            )}
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          <div className="hw-recess p-3">
-            <div className="text-[10px] tracking-[0.2em] text-neutral-400 mb-2">PUMP</div>
-            <div className="flex items-center gap-3">
-              <button
-                className={`hw-btn ${pumpOn ? "hw-btn-on" : ""}`}
-                onClick={togglePump}
-                disabled={!deck?.stemsActive}
-              >
-                {pumpOn ? "PUMP ON" : "PUMP OFF"}
-              </button>
-              <Knob
-                label="PROFONDEUR"
-                value={pumpDepth}
-                min={0}
-                max={100}
-                defaultValue={80}
-                size={56}
-                led={false}
-                format={(v) => `${Math.round(v)}%`}
-                onChange={(v) => updatePumpDepth(Math.round(v))}
-              />
-              <div className="hw-recess w-2 h-14 rounded-full overflow-hidden">
-                <div
-                  className="bg-neutral-200 rounded-full"
-                  style={{ height: `${pumpLevel * 100}%` }}
-                />
-              </div>
-            </div>
-            {!deck?.stemsActive && (
-              <div className="text-[10px] text-neutral-400 mt-2">Active le mode stems sur la platine pour utiliser le pump.</div>
-            )}
-          </div>
-
-          <div className="hw-recess p-3 space-y-3">
-            <div className="text-[10px] tracking-[0.2em] text-neutral-400">MONTÉE</div>
-            <div className="flex gap-1">
-              {RAMP_LENGTHS.map((len) => (
-                <button
-                  key={len}
-                  className={`hw-btn ${rampLength === len ? "hw-btn-on" : ""}`}
-                  onClick={() => setRampLength(len)}
-                >
-                  {len}
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <button
-                className="hw-btn"
-                onClick={startRamp}
-                disabled={!deck || rampActive}
-              >
-                MONTÉE
-              </button>
-              <button
-                className="hw-btn bg-red-600"
-                onClick={stopRamp}
-              >
-                DROP
-              </button>
-              <button
-                className={`hw-btn ${filterActive ? "hw-btn-on" : ""}`}
-                onClick={() => setFilterActive(!filterActive)}
-              >
-                FILTRE
-              </button>
-            </div>
-            <div className="h-2 hw-recess rounded-full overflow-hidden">
-              <div
-                className="h-full bg-neutral-200"
-                style={{ width: `${rampProgress * 100}%` }}
-              />
-            </div>
-            <div className="text-[10px] text-neutral-400">DROP coupe la montée et le souffle.</div>
-            {rampProgress > 0 && (
-              <div className="text-[10px] text-neutral-400">Montée : {rampLength} temps</div>
-            )}
-          </div>
-
-          <div className="hw-recess p-3 space-y-3">
-            <div className="text-[10px] tracking-[0.2em] text-neutral-400">RELÂCHE</div>
-            <div className="flex gap-2">
-              {RELEASE_BEATS.map((beat) => (
-                <button
-                  key={beat}
-                  className={`hw-btn ${releaseBeats === beat ? "hw-btn-on" : ""}`}
-                  onClick={() => updateReleaseBeats(beat)}
-                >
-                  {beat === 0.25 ? "1/4" : beat === 0.5 ? "1/2" : "1"}
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              {[0, 1, 2, 3].map((i) => (
-                <div
-                  key={i}
-                  className={`hw-led ${beatIdx === i ? "bg-[#e879f9]" : "bg-neutral-700"}`}
-                />
-              ))}
-            </div>
-          </div>
         </div>
       </div>
 
-      <div className="hw-recess p-3 mt-3">
+      <div className="hw-recess p-2 flex flex-wrap items-center gap-2">
+        <div className="text-[10px] font-bold tracking-[0.2em] text-neutral-500">LONGUEUR</div>
+        {LENGTHS.map((l) => (
+          <button
+            key={l}
+            className={`hw-btn px-2 py-1 text-[11px] font-bold ${len === l ? "hw-btn-on" : ""}`}
+            style={{ ["--led" as string]: color }}
+            disabled={running}
+            onClick={() => setLen(l)}
+          >
+            {l}
+          </button>
+        ))}
+        <div className="text-[11px]">temps</div>
+        <div className="h-6 w-px bg-white/10" />
+        <div className="text-[10px] font-bold tracking-[0.2em] text-neutral-500">INGRÉDIENTS</div>
+        {INGREDIENTS.map(({ id, label, title }) => (
+          <button
+            key={id}
+            className={`hw-btn px-2 py-1 text-[11px] font-bold ${ing[id] ? "hw-btn-on" : ""}`}
+            style={{ ["--led" as string]: color }}
+            disabled={running || (id === "bass" && !deck.stemsActive)}
+            title={id === "bass" && !deck.stemsActive ? "Active les stems de la platine pour couper la basse" : title}
+            onClick={() => setIng({ ...ing, [id]: !ing[id] })}
+          >
+            {label}
+          </button>
+        ))}
+        <div className="h-6 w-px bg-white/10" />
         <button
-          className="hw-btn w-full"
-          onClick={transitionStep ? stopTransition : startTransition}
-          disabled={!deck}
+          className={`hw-btn px-2 py-1 text-[11px] font-bold ${autoDrop ? "hw-btn-on" : ""}`}
+          style={{ ["--led" as string]: color }}
+          title="À la fin de la montée, le drop part tout seul sur le temps"
+          onClick={() => setAutoDrop(!autoDrop)}
         >
-          {transitionStep ? "ARRÊTER" : "TRANSITION"}
+          DROP AUTO
         </button>
+      </div>
 
-        {transitionStep && (
-          <>
-            <div className="flex justify-between text-[10px] mt-2">
-              {TRANSITION_STEPS.map((step) => (
-                <div
-                  key={step}
-                  className={`flex-1 text-center ${transitionStep === step ? "text-neutral-100 font-bold" : "text-neutral-500"}`}
-                >
-                  {step}
-                </div>
-              ))}
-            </div>
-            <div className="h-2 hw-recess rounded-full overflow-hidden mt-1">
-              <div
-                className="h-full bg-neutral-200"
-                style={{ width: `${transitionProgress * 100}%` }}
-              />
-            </div>
-            {transitionStep === "RETOUR" && (
-              <div className="text-[10px] text-neutral-400 text-center mt-1">Transition terminée</div>
-            )}
-          </>
+      <div className="flex gap-[3px]">
+        {Array.from({ length: len }).map((_, k) => (
+          <div
+            key={k}
+            className="h-3 flex-1 rounded-sm"
+            style={{
+              backgroundColor: segColor(k, len),
+              opacity: k < Math.floor(beatsShown) ? 1 : k === Math.floor(beatsShown) && running ? 0.55 : 0.1,
+            }}
+          />
+        ))}
+        <div className="text-[11px] font-bold w-44 text-right" style={{ color }}>{stateText}</div>
+      </div>
+
+      <div className="grid grid-cols-[2fr_1fr] gap-2">
+        <PerfPad
+          label={running ? "ANNULER" : "MONTÉE"}
+          sub={running ? "tout revient" : `${len} temps`}
+          color={color}
+          active={running}
+          height={54}
+          disabled={!running && !canBuild}
+          onDown={running ? cancelBuild : startBuild}
+        />
+        <PerfPad
+          label="DROP"
+          sub="sur le temps"
+          color="#ef4444"
+          lit={phase === "top"}
+          active={phase === "drop"}
+          height={54}
+          disabled={!running}
+          onDown={dropOnBeat}
+        />
+      </div>
+
+      <div className="hw-recess p-2 flex flex-wrap items-center gap-3">
+        <div className="text-[11px] font-bold">POMPE</div>
+        <div className="text-[10px] text-neutral-400">Les stems (sauf la batterie) respirent sur chaque temps</div>
+        <button
+          className={`hw-btn px-2 py-1 text-[11px] font-bold ${pumpOn ? "hw-btn-on" : ""}`}
+          style={{ ["--led" as string]: color }}
+          disabled={!deck.stemsActive}
+          onClick={() => setPumpOn(!pumpOn)}
+        >
+          {pumpOn ? "MARCHE" : "ARRÊT"}
+        </button>
+        <Knob
+          label="Profondeur"
+          value={pumpDepth}
+          min={0}
+          max={1}
+          defaultValue={0.6}
+          onChange={setPumpDepth}
+          color={color}
+          size={40}
+          led
+          format={(v) => `${Math.round(v * 100)}%`}
+        />
+        <div className="text-[10px] font-bold tracking-[0.2em] text-neutral-500">RELÂCHE</div>
+        {RELEASES.map((r) => (
+          <button
+            key={r}
+            className={`hw-btn px-2 py-1 text-[11px] font-bold ${pumpRel === r ? "hw-btn-on" : ""}`}
+            style={{ ["--led" as string]: color }}
+            onClick={() => setPumpRel(r)}
+          >
+            {r === 0.25 ? "1/4" : r === 0.5 ? "1/2" : "1"}
+          </button>
+        ))}
+        {!deck.stemsActive && (
+          deck.stemReady ? (
+            <button
+              className="hw-btn px-2 py-1 text-[11px] font-bold"
+              style={{ ["--led" as string]: color }}
+              onClick={() => deck.setStemsActive(true)}
+            >
+              ACTIVER LES STEMS
+            </button>
+          ) : (
+            <div className="text-[10px] text-amber-300">Prépare les stems de la platine {side} pour la pompe et la basse</div>
+          )
         )}
       </div>
     </div>

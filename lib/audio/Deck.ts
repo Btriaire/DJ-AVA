@@ -116,11 +116,11 @@ export class Deck {
   private synthRoute: { src: AudioNode; dst: AudioNode } | null = null; // synth output and its master bus
   private synthStem: number | null = null; // stem currently replaced by the synth
   private static synthHolder: Deck | null = null; // only one deck can hold the synth at a time
+  private synthStemVol = 1; // volume the replaced stem had before the synth took its place
   private stemAnalysers: AnalyserNode[] = []; // per-stem level taps for the LED meters
   private stemMeterBuf = new Float32Array(256); // reusable scratch for RMS reads
   private stemEnv: number[] = []; // smoothed per-stem meter level (VU-style ballistics)
   private stemBus!: GainNode; // sum of the stem gains, carries the makeup gain
-  private stemPump!: GainNode; // dips on every beat while the stem pump is on
   private pumpLast = -1; // ctx time of the last beat already pumped
   private pumpTimer: ReturnType<typeof setInterval> | null = null;
   stemMakeup = true; // auto-compensate level when stem faders are pulled down
@@ -331,9 +331,7 @@ export class Deck {
     // shouldn't make the whole deck quieter). The rest of the chain — EQ, filter,
     // FX, volume — is identical whether we play the full mix or N stems.
     this.stemBus = C();
-    this.stemPump = C();
-    this.stemBus.connect(this.stemPump);
-    this.stemPump.connect(this.trim);
+    this.stemBus.connect(this.trim);
 
     // shared reverb/delay send buses — built once per deck, always present;
     // each stem's SEND gain (below) starts at 0 so this is silent until raised.
@@ -996,6 +994,8 @@ export class Deck {
 
   // bipolar filter: -1..0 = lowpass sweep, 0 = bypass, 0..1 = highpass sweep
   setFilter(x: number) {
+    this.filter.frequency.cancelScheduledValues(0);
+    this.filter.Q.cancelScheduledValues(0);
     this.filterX = x;
     if (Math.abs(x) < 0.02) {
       this.filter.type = "allpass";
@@ -1012,6 +1012,28 @@ export class Deck {
       this.filter.frequency.value = f;
     }
     this.filter.Q.value = 1 + Math.abs(x) * 6;
+  }
+
+  get filterPos(): number {
+    return this.filterX;
+  }
+
+  // Sweep the high-pass from its current position up to x over dur seconds on the audio
+  // clock (smooth, no zipper noise) for build-ups; setFilter() cancels it.
+  rampFilter(x: number, dur: number) {
+    const now = this.ctx.currentTime;
+    const from = Math.max(0, this.filterX);
+    const hz = (v: number) => 20 * Math.pow(12000 / 20, v);
+    const fq = this.filter.frequency;
+    const q = this.filter.Q;
+    fq.cancelScheduledValues(now);
+    q.cancelScheduledValues(now);
+    this.filter.type = "highpass";
+    fq.setValueAtTime(hz(from), now);
+    q.setValueAtTime(1 + from * 6, now);
+    fq.exponentialRampToValueAtTime(hz(x), now + Math.max(0.05, dur));
+    q.linearRampToValueAtTime(1 + x * 6, now + Math.max(0.05, dur));
+    this.filterX = x;
   }
 
   // effective playback rate = tempo (pitch) × momentary scratch bend
@@ -1278,8 +1300,9 @@ export class Deck {
     return this.synthStem;
   }
 
-  // Replace stem i with the DJ synth (it then goes through this stem's filter and FX),
-  // or give the stem back when i is null. One replacement at a time across both decks.
+  // Replace stem i with the DJ synth (the stem is muted and the synth goes through its
+  // filter and FX), or give the stem back, at its volume, when i is null.
+  // One replacement at a time across both decks.
   setStemSynth(i: number | null) {
     const route = this.synthRoute;
     if (!route) return;
@@ -1289,6 +1312,8 @@ export class Deck {
     route.src.disconnect(route.dst);
     route.src.connect(this.stemSynthIn[i]);
     this.synthStem = i;
+    this.synthStemVol = this.stemVol[i] ?? 1;
+    this.setStemVol(i, 0);
     Deck.synthHolder = this;
   }
 
@@ -1297,6 +1322,7 @@ export class Deck {
     if (!route || this.synthStem === null) return;
     route.src.disconnect(this.stemSynthIn[this.synthStem]);
     route.src.connect(route.dst);
+    this.setStemVol(this.synthStem, this.synthStemVol);
     this.synthStem = null;
     if (Deck.synthHolder === this) Deck.synthHolder = null;
   }
@@ -1543,6 +1569,8 @@ export class Deck {
   }
 
   get fxRack(): FXRack { return this.fx; }
+  // post-fader output of stem i, to listen to it (e.g. the drums for a sidechain)
+  stemTap(i: number): AudioNode | null { return this.stemOut[i] ?? null; }
   get retouchFx(): Retouch { return this.retouch; }
 
   public fxClock(): ClockInfo | null {
@@ -1557,16 +1585,19 @@ export class Deck {
     };
   }
 
-  // Pump the stem bus on the beat: it dips to (1 - depth) on each beat and comes back
-  // over releaseBeats. Scheduled on the audio clock, looking ahead a quarter second.
+  // Pump the stems on the beat (sidechain feel): every stem but the drums dips to
+  // (1 - depth) on each beat and comes back over releaseBeats, so the kick stays punchy.
+  // Scheduled on the audio clock, looking ahead a quarter second.
   setStemPump(on: boolean, depth = 0.8, releaseBeats = 0.5): void {
     if (this.pumpTimer) {
       clearInterval(this.pumpTimer);
       this.pumpTimer = null;
     }
     const now = this.ctx.currentTime;
-    this.stemPump.gain.cancelScheduledValues(now);
-    this.stemPump.gain.setValueAtTime(1, now);
+    for (const o of this.stemOut) {
+      o.gain.cancelScheduledValues(now);
+      o.gain.setValueAtTime(1, now);
+    }
     this.pumpLast = -1;
     if (!on) return;
     this.pumpTimer = setInterval(() => {
@@ -1578,9 +1609,12 @@ export class Deck {
       let t = t0 + c.toNextBeat;
       while (t < horizon) {
         if (t > this.pumpLast + spb * 0.5) {
-          const g = this.stemPump.gain;
-          g.setValueAtTime(1 - depth, t);
-          g.linearRampToValueAtTime(1, t + releaseBeats * spb);
+          this.stemNames.forEach((name, i) => {
+            if (name === "drums" || !this.stemOut[i]) return;
+            const g = this.stemOut[i].gain;
+            g.setValueAtTime(1 - depth, t);
+            g.linearRampToValueAtTime(1, t + releaseBeats * spb);
+          });
           this.pumpLast = t;
         }
         t += spb;

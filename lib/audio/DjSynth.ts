@@ -82,6 +82,10 @@ export class DjSynth {
   private driveShaper: WaveShaperNode;
   private clip: WaveShaperNode;
   private volGain: GainNode;
+  private duck: GainNode; // output gain pulled down by the sidechain detector
+  private scIn: BiquadFilterNode; // sidechain detector input (kick band)
+  private scAmt: GainNode; // detector envelope x -depth, summed into duck.gain
+  private scSrc: AudioNode | null = null;
   private lfo: AudioBufferSourceNode;
   private lfoShape: WaveShaperNode;
   private lfoDepth: GainNode;
@@ -115,7 +119,28 @@ export class DjSynth {
     this.driveShaper.connect(this.fx.input);
     this.fx.output.connect(this.volGain);
     this.volGain.connect(this.clip);
-    this.clip.connect(this.out = ctx.createGain());
+    this.duck = ctx.createGain();
+    this.clip.connect(this.duck);
+    this.duck.connect(this.out = ctx.createGain());
+
+    // sidechain detector: kick band -> |x| (soft-saturated) -> 20 Hz smoothing -> -depth into duck.gain
+    this.scIn = ctx.createBiquadFilter();
+    this.scIn.type = "lowpass";
+    this.scIn.frequency.value = 150;
+    const rect = ctx.createWaveShaper();
+    const rectCurve = new Float32Array(513) as Float32Array<ArrayBuffer>;
+    for (let i = 0; i < 513; i++) rectCurve[i] = Math.tanh(8 * Math.abs((i - 256) / 256));
+    rect.curve = rectCurve;
+    const smooth = ctx.createBiquadFilter();
+    smooth.type = "lowpass";
+    smooth.frequency.value = 20;
+    smooth.Q.value = -3; // dB: Butterworth, no overshoot
+    this.scAmt = ctx.createGain();
+    this.scAmt.gain.value = 0;
+    this.scIn.connect(rect);
+    rect.connect(smooth);
+    smooth.connect(this.scAmt);
+    this.scAmt.connect(this.duck.gain);
 
     this.env = {
       ctx,
@@ -195,6 +220,21 @@ export class DjSynth {
     } else if (k === "vol") {
       this.volGain.gain.setTargetAtTime(v, this.ctx.currentTime, 0.01);
     }
+  }
+
+  // Duck the synth on the kicks of another signal (e.g. a deck's drums stem); null stops it.
+  setSidechain(src: AudioNode | null, depth: number): void {
+    if (this.scSrc && this.scSrc !== src) {
+      try {
+        this.scSrc.disconnect(this.scIn);
+      } catch {
+        /* already disconnected */
+      }
+    }
+    if (src && src !== this.scSrc) src.connect(this.scIn);
+    this.scSrc = src;
+    const d = Math.min(1, Math.max(0, depth));
+    this.scAmt.gain.setTargetAtTime(src ? -d : 0, this.ctx.currentTime, 0.02);
   }
 
   setKey(root: number, scale: ScaleId): void {

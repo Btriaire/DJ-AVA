@@ -9,12 +9,16 @@ import { FxXyPad } from "./FxXyPad";
 import { PerfPad } from "./PerfPad";
 import { DjFxPanel } from "./DjFxPanel";
 import type { FxName } from "@/lib/audio/FXRack";
+import { STEM_INFO } from "./DeckPanel";
 
 export function DjSynthPanel({ engine }: { engine: DJEngine }) {
   const s = engine.djSynth;
   const [held, setHeld] = useState(new Set<number>());
   const [auto, setAuto] = useState(true);
   const [fxOpen, setFxOpen] = useState(false);
+  const [stemSide, setStemSide] = useState<"A" | "B">("A");
+  const [scOn, setScOn] = useState(false);
+  const [scDepth, setScDepth] = useState(0.6);
   const [, setV] = useState(0);
   const force = () => setV((n) => n + 1);
 
@@ -64,6 +68,18 @@ export function DjSynthPanel({ engine }: { engine: DJEngine }) {
   const currentScale = SCALES.find((x) => x.id === s.scale)!;
   const presetColor = DJ_PRESETS.find((p) => p.id === s.preset)!.color;
 
+  // stems of one deck: play in place of a stem, and duck on its drums (sidechain)
+  const sd = stemSide === "A" ? engine.deckA : engine.deckB;
+  const replaced = sd.stemSynthIndex;
+  const drumsIdx = sd.stemNames.indexOf("drums");
+  // no sidechain while the synth replaces the drums itself: it would duck on its own sound
+  const scSrc = scOn && drumsIdx >= 0 && replaced !== drumsIdx ? sd.stemTap(drumsIdx) : null;
+
+  useEffect(() => {
+    s.setSidechain(scSrc, scDepth);
+  }, [s, scSrc, scDepth]);
+  useEffect(() => () => s.setSidechain(null, 0), [s]);
+
   return (
     <div className="hw-screwed hw-panel relative flex flex-col gap-3 p-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -77,6 +93,78 @@ export function DjSynthPanel({ engine }: { engine: DJEngine }) {
         >
           AUTO
         </button>
+      </div>
+
+      <div className="hw-recess flex flex-wrap items-center gap-1.5 p-1.5">
+        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500">STEMS</span>
+        {(["A", "B"] as const).map((k) => (
+          <button
+            key={k}
+            className={`hw-btn px-2 py-1 text-[11px] font-bold ${stemSide === k ? "hw-btn-on" : ""}`}
+            style={{ ["--led" as string]: k === "A" ? "#38bdf8" : "#f59e0b" }}
+            onClick={() => setStemSide(k)}
+          >
+            PLATINE {k}
+          </button>
+        ))}
+        {sd.stemsActive ? (
+          <>
+            <span className="text-[10px] text-neutral-400">Jouer à la place de</span>
+            {sd.stemNames.map((n, i) => {
+              const info = STEM_INFO[n] ?? { label: n.toUpperCase(), title: n };
+              return (
+                <button
+                  key={n}
+                  className={`hw-btn px-2 py-1 text-[11px] font-bold ${replaced === i ? "hw-btn-on" : ""}`}
+                  style={{ ["--led" as string]: presetColor }}
+                  title={`Le synthé joue à la place du stem ${info.title} (il passe par son fader, son filtre et ses effets). Rappuie pour rendre le stem`}
+                  onClick={() => {
+                    sd.setStemSynth(replaced === i ? null : i);
+                    force();
+                  }}
+                >
+                  {info.label}
+                </button>
+              );
+            })}
+            <span className="mx-1 h-6 w-px bg-white/10" />
+            <button
+              className={`hw-btn px-2 py-1 text-[11px] font-bold ${scSrc ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: presetColor }}
+              disabled={drumsIdx < 0 || replaced === drumsIdx}
+              title="Le synthé baisse sur chaque kick de la batterie de cette platine (sidechain)"
+              onClick={() => setScOn(!scOn)}
+            >
+              SIDECHAIN
+            </button>
+            <Knob
+              label="Prof."
+              value={scDepth}
+              min={0}
+              max={1}
+              defaultValue={0.6}
+              onChange={setScDepth}
+              color={presetColor}
+              size={36}
+              led
+              format={(v) => `${Math.round(v * 100)}%`}
+            />
+          </>
+        ) : sd.stemReady ? (
+          <button
+            className="hw-btn px-2 py-1 text-[11px] font-bold"
+            onClick={() => {
+              sd.setStemsActive(true);
+              force();
+            }}
+          >
+            ACTIVER LES STEMS
+          </button>
+        ) : (
+          <span className="text-[10px] text-neutral-400">
+            Prépare les stems de la platine {stemSide} pour jouer à la place d&apos;un stem
+          </span>
+        )}
       </div>
 
       <div className="hw-recess flex flex-wrap gap-1 p-1">

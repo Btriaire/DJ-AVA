@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useIsClient } from "@/lib/useIsClient";
 import {
   DJEngine,
@@ -60,6 +60,29 @@ import {
   IconChevronLeft,
   IconChevronRight,
 } from "@/components/Icons";
+
+// One row of the instrument rack: up to two columns that share the row height (the last
+// module of each column stretches to it); a lone column takes the whole width.
+function RackRow({ left, right }: { left: [string, ReactNode][]; right: [string, ReactNode][] }) {
+  const cols = [
+    { k: "L", mods: left.filter(([, node]) => node) },
+    { k: "R", mods: right.filter(([, node]) => node) },
+  ].filter((c) => c.mods.length > 0);
+  if (!cols.length) return null;
+  return (
+    <div className="grid grid-cols-1 gap-4 @[1280px]:grid-cols-2">
+      {cols.map((c) => (
+        <div key={c.k} className={`hw-rack-col ${cols.length === 1 ? "@[1280px]:col-span-2" : ""}`}>
+          {c.mods.map(([id, node]) => (
+            <div key={id} className="@container min-w-0">
+              {node}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function Home() {
   const engineRef = useRef<DJEngine | null>(null);
@@ -371,7 +394,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
     { key: "soundfx", label: "FX Sonores", scope: "global", category: "Instruments & Sources" },
     { key: "djsynth", label: "Synthé DJ · Basse & Stab", scope: "global", category: "Instruments & Sources" },
     { key: "drums", label: "Boîte à rythmes", scope: "global", category: "Instruments & Sources" },
-    { key: "dance", label: "Danse · Genres, pompage des stems, montée et drop", scope: "global", category: "Instruments & Sources" },
+    { key: "dance", label: "Montée & Drop · Build-up sur 4, 8 ou 16 temps, drop sur le temps, pompe des stems", scope: "global", category: "Performance DJ" },
     { key: "djkbd", label: "Clavier DJ · Tranches du morceau, effets, drops", scope: "global", category: "Instruments & Sources" },
     { key: "supersampler", label: "Super Sampler · Carbone, LCD, stems, YouTube, WAV 24 bits", scope: "global", category: "Instruments & Sources" },
     // Mixer & EQ
@@ -1485,71 +1508,27 @@ const [showModulePicker, setShowModulePicker] = useState(false);
               </div>
             )}
 
-            {/* DX7 synth + sampler — full-width connectable module */}
-            {modules.dx7 && (
-              <div className={deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}>
-                <DX7Synth key={`dx7-${resetKey}`} engine={engine} embedded />
-              </div>
-            )}
-
-            {/* Solar 42F drone ambient machine — full-width connectable module */}
-            {modules.solar42 && (
-              <div className={deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}>
-                <Solar42F key={`solar42-${resetKey}`} engine={engine} embedded />
-              </div>
-            )}
-
-            {modules.dance && (
-              <div className={deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}>
-                <DancePanel engine={engine} />
-              </div>
-            )}
-
-            {(modules.djkbd || modules.supersampler) && (
-              <div className={`grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] ${deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}`}>
-                {modules.djkbd && (
-                  <div className="@container min-w-0">
-                    <DJKeyboard engine={engine} />
-                  </div>
-                )}
-                {modules.supersampler && (
-                  <div className="@container min-w-0">
-                    <SuperSampler engine={engine} onLibraryChange={bumpLib} />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* DJ instruments: beat-synced drum machine + key-locked DJ synth */}
-            {(modules.drums || modules.djsynth) && (
-              <div className={`grid grid-cols-1 gap-4 lg:grid-cols-2 ${deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}`}>
-                {modules.drums && <DrumMachinePanel engine={engine} />}
-                {modules.djsynth && <DjSynthPanel engine={engine} />}
-              </div>
-            )}
-
-            {/* DJ performance modifiers: bar slicer + harmonic key tools */}
-            {(modules.slicer || modules.harmony) && (
-              <div className={`grid grid-cols-1 gap-4 lg:grid-cols-2 ${deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}`}>
-                {modules.slicer && <SlicerPanel engine={engine} />}
-                {modules.harmony && <HarmonyPanel engine={engine} />}
-              </div>
-            )}
-
-            {/* Auxiliary instruments & creative FX rack */}
-            {(modules.synth || modules.sampler || modules.soundfx) && (
-              <div className={`grid grid-cols-1 gap-4 lg:grid-cols-2 ${deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}`}>
-                {modules.synth && (
-                  <div className="flex flex-col gap-4">
-                    <SynthPanel key={`synth-${resetKey}`} engine={engine} />
-                  </div>
-                )}
-                {(modules.sampler || modules.soundfx) && (
-                  <div className="flex flex-col gap-4">
-                    {modules.sampler && <SamplerPanel engine={engine} />}
-                    {modules.soundfx && <SoundFxPanel engine={engine} />}
-                  </div>
-                )}
+            {/* instrument rack: optional modules side by side, aligned and the same height per row */}
+            {(modules.djkbd || modules.dance || modules.supersampler || modules.drums || modules.djsynth || modules.slicer || modules.harmony || modules.synth || modules.sampler || modules.soundfx || modules.dx7 || modules.solar42) && (
+              <div className={`hw-rack @container flex flex-col gap-4 ${deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}`}>
+                <RackRow
+                  left={[["djkbd", modules.djkbd && <DJKeyboard engine={engine} />], ["dance", modules.dance && <DancePanel engine={engine} />]]}
+                  right={[["supersampler", modules.supersampler && <SuperSampler engine={engine} onLibraryChange={bumpLib} />]]}
+                />
+                <RackRow
+                  left={[["drums", modules.drums && <DrumMachinePanel engine={engine} />]]}
+                  right={[["djsynth", modules.djsynth && <DjSynthPanel engine={engine} />]]}
+                />
+                <RackRow
+                  left={[["slicer", modules.slicer && <SlicerPanel engine={engine} />]]}
+                  right={[["harmony", modules.harmony && <HarmonyPanel engine={engine} />]]}
+                />
+                <RackRow
+                  left={[["synth", modules.synth && <SynthPanel key={`synth-${resetKey}`} engine={engine} />]]}
+                  right={[["sampler", modules.sampler && <SamplerPanel engine={engine} />], ["soundfx", modules.soundfx && <SoundFxPanel engine={engine} />]]}
+                />
+                <RackRow left={[["dx7", modules.dx7 && <DX7Synth key={`dx7-${resetKey}`} engine={engine} embedded />]]} right={[]} />
+                <RackRow left={[["solar42", modules.solar42 && <Solar42F key={`solar42-${resetKey}`} engine={engine} embedded />]]} right={[]} />
               </div>
             )}
 

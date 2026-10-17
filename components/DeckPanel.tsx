@@ -72,7 +72,7 @@ function fmtTime(s: number) {
 }
 
 // short label + French title per Demucs stem name (4- and 6-stem models)
-const STEM_INFO: Record<string, { label: string; title: string }> = {
+export const STEM_INFO: Record<string, { label: string; title: string }> = {
   drums: { label: "BAT", title: "Batterie" },
   bass: { label: "BAS", title: "Basse" },
   other: { label: "AUT", title: "Autres instruments" },
@@ -1242,13 +1242,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                         }
                         title="Remplace ce stem par le Synthé DJ (il passe par les filtres et effets de ce stem). Clique à nouveau pour rendre le stem"
                         onClick={() => {
-                          if (deck.stemSynthIndex === i) {
-                            deck.setStemSynth(null);
-                            deck.setStemVol(i, 1);
-                          } else {
-                            deck.setStemSynth(i);
-                            deck.setStemVol(i, 0);
-                          }
+                          deck.setStemSynth(deck.stemSynthIndex === i ? null : i);
                           rerender();
                         }}
                       >

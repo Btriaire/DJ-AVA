@@ -49,6 +49,72 @@ body {
     inset 0 -2px 6px rgba(0, 0, 0, 0.6),
     0 6px 18px rgba(0, 0, 0, 0.55);
 }
+/* ---- instrument rack: dark chassis with side rails; modules in a row share its height ---- */
+.hw-rack {
+  position: relative;
+  padding: 14px 30px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(0, 0, 0, 0.25)), #08080a;
+  border: 1px solid #000;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 0 24px rgba(0, 0, 0, 0.8),
+    0 6px 18px rgba(0, 0, 0, 0.55);
+}
+/* rack rails: brushed metal strips with oval mounting holes */
+.hw-rack::before,
+.hw-rack::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  width: 16px;
+  border-radius: 3px;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 4px 3px at 50% 50%, #000 0 70%, rgba(255, 255, 255, 0.12) 80%, transparent 90%) 0 0 / 100% 44px repeat-y,
+    linear-gradient(90deg, #1c1c20, #3a3a40 45%, #2a2a2f 55%, #18181b);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.7);
+}
+.hw-rack::before {
+  left: 7px;
+}
+.hw-rack::after {
+  right: 7px;
+}
+/* a thin rail line between two rows */
+.hw-rack > * + * {
+  border-top: 1px solid #000;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  padding-top: 16px;
+}
+/* a rack column: its last module stretches so both columns end at the same height */
+.hw-rack-col {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+.hw-rack-col > * {
+  display: flex;
+  flex-direction: column;
+}
+.hw-rack-col > :last-child {
+  flex: 1 1 auto;
+}
+.hw-rack-col > * > * {
+  flex: 1 1 auto;
+}
+@media (max-width: 640px) {
+  .hw-rack {
+    padding: 10px 8px;
+  }
+  .hw-rack::before,
+  .hw-rack::after {
+    display: none;
+  }
+}
+
 /* recessed inner area for knob banks / screens */
 .hw-recess {
   background: linear-gradient(180deg, #08080a, #101014);
