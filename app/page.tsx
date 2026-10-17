@@ -131,6 +131,9 @@ export default function Home() {
   const [crossfade, setCrossfade] = useState(0.5);
   const [master, setMaster] = useState(0.9);
   const [view, setView] = useState<"console" | "studio" | "platine" | "playlist" | "atelier">("console"); // top-level workspace
+  const [atelierSeen, setAtelierSeen] = useState(false); // the Atelier stays mounted (hidden) once opened, so its session survives tab switches
+  const [engineGen, setEngineGen] = useState(0); // bumps on each new engine: remounts the Atelier on fresh audio objects
+  if (view === "atelier" && !atelierSeen) setAtelierSeen(true);
   const [showLibrary, setShowLibrary] = useState(false);
   const [sidebarLibrary, setSidebarLibrary] = useState(() => {
     try {
@@ -577,6 +580,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
       next.onFatalSilence = () => { void recoverSound(); }; // keep auto-heal wired on the new engine
       engineRef.current = next;
       setEngine(next);
+      setEngineGen((g) => g + 1);
       attachBackgroundAudio(next); // fresh engine = fresh MediaStream, re-attach
       setCrossfade(0.5);
       setMaster(next.getMaster());
@@ -678,6 +682,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
       eng.onFatalSilence = () => { void recoverSound(); }; // let the engine self-heal silence
       engineRef.current = eng;
       setEngine(eng);
+      setEngineGen((g) => g + 1);
       setReady(true);
       // iPhone mode used to auto-close Deck B here to save width — dropped:
       // a deck vanishing right after launch, with no visible cue why, read as
@@ -1209,7 +1214,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
           </div>
         </div>
       ) : (
-        engine && (view === "platine" ? (
+        engine && (<>{atelierSeen && (<div hidden={view !== "atelier"}><AtelierView key={engineGen} engine={engine} active={view === "atelier"} /></div>)}{view === "platine" ? (
           <PlatineView engine={engine} />
         ) : view === "studio" ? (
           <StudioView
@@ -1218,9 +1223,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
             stemRefresh={stemRefresh}
             libRefresh={libRefresh}
           />
-        ) : view === "atelier" ? (
-          <AtelierView engine={engine} />
-        ) : view === "playlist" ? (
+        ) : view === "atelier" ? null : view === "playlist" ? (
           <MediaLibrary
             engine={engine}
             onLoaded={bumpTick}
@@ -1551,7 +1554,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
             {showYouTube && <YouTubeDeck />}
             </div>
           </div>
-        ))
+        )}</>)
       )}
 
       <footer className="mt-6 text-center text-xs text-neutral-600">

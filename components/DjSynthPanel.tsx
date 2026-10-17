@@ -10,17 +10,16 @@ import { PerfPad } from "./PerfPad";
 import { DjFxPanel } from "./DjFxPanel";
 import type { FxName } from "@/lib/audio/FXRack";
 import { STEM_INFO } from "./DeckPanel";
-import { NoteFollower, loadBassLine } from "@/lib/audio/noteFollower";
+import { NoteFollower, loadStemLine, MIDI_TRACK } from "@/lib/audio/noteFollower";
 
-// stop the bass replay (and a transcription in flight) and give the bass stem back
-function endBassReplay(follower: { current: NoteFollower | null }, loading: { current: AbortController | null }) {
+// stop a note replay (and a transcription in flight); the synth stays where it is
+function endReplay(follower: { current: NoteFollower | null }, loading: { current: AbortController | null }) {
   loading.current?.abort();
   loading.current = null;
   const f = follower.current;
   follower.current = null;
   if (!f) return;
   f.stop();
-  if (f.deck.stemSynthIndex === f.deck.stemNames.indexOf("bass")) f.deck.setStemSynth(null);
 }
 
 export function DjSynthPanel({ engine }: { engine: DJEngine }) {
@@ -92,48 +91,80 @@ export function DjSynthPanel({ engine }: { engine: DJEngine }) {
   }, [s, scSrc, scDepth]);
   useEffect(() => () => s.setSidechain(null, 0), [s]);
 
-  // "REJOUER LA BASSE": the synth replays the track's bass line (transcribed from its bass
-  // stem) in place of that stem, so you hear your synth sound playing the same notes
-  const [bass, setBass] = useState<{ side: "A" | "B"; status: "loading" | "on" | "error"; msg?: string; notes?: number } | null>(null);
+  const [keep, setKeep] = useState(false);
+  const replacedName = replaced !== null ? (sd.stemNames[replaced] ?? null) : null;
+  const otherDeck = stemSide === "A" ? engine.deckB : engine.deckA;
+  const elsewhere = replaced === null && otherDeck.stemSynthIndex !== null;
+  const info = (n: string) => STEM_INFO[n] ?? { label: n.toUpperCase(), title: n };
+  const xf = engine.getCrossfade();
+  const deckGain = stemSide === "A" ? Math.cos((xf * Math.PI) / 2) : Math.cos(((1 - xf) * Math.PI) / 2);
+  const deckCut = replaced !== null && (deckGain < 0.05 || sd.volumeValue < 0.05);
+  const modeOn = (k: boolean) => (replaced !== null ? sd.stemSynthKeep === k : keep === k);
+
+  const [replay, setReplay] = useState<{ side: "A" | "B"; stem: string; status: "loading" | "on" | "error"; msg?: string; notes?: number } | null>(null);
   const follower = useRef<NoteFollower | null>(null);
   const loading = useRef<AbortController | null>(null);
-  const bassIdx = sd.stemNames.indexOf("bass");
+  const replayHere = replay && replay.side === stemSide ? replay : null;
+  const canReplay = replacedName !== null && !!MIDI_TRACK[replacedName];
 
-  const stopBass = () => {
-    endBassReplay(follower, loading);
-    setBass(null);
+  const stopReplay = () => {
+    endReplay(follower, loading);
+    setReplay(null);
   };
 
-  const startBass = async () => {
+  const choose = (i: number | null) => {
+    stopReplay();
+    sd.setStemSynth(i, keep);
+    force();
+  };
+
+  const chooseMode = (k: boolean) => {
+    setKeep(k);
+    if (replaced !== null) {
+      sd.setStemSynth(replaced, k);
+      force();
+    }
+  };
+
+  const startReplay = async () => {
+    endReplay(follower, loading);
+    if (replacedName === null) return;
     const d = sd;
     const side = stemSide;
-    const idx = d.stemNames.indexOf("bass");
-    if (idx < 0) return;
+    const stem = replacedName;
     const ac = new AbortController();
     loading.current = ac;
-    setBass({ side, status: "loading" });
+    setReplay({ side, stem, status: "loading" });
     try {
-      const notes = await loadBassLine(d, ac.signal);
+      const notes = await loadStemLine(d, stem, ac.signal);
       if (ac.signal.aborted) return;
-      if (!notes || notes.length === 0) throw new Error("Pas de ligne de basse détectée dans ce morceau");
-      d.setStemSynth(idx);
+      if (!notes || notes.length === 0) throw new Error("Pas de notes détectées dans ce stem");
       const f = new NoteFollower(engine.ctx, s, d, notes, () => {
         follower.current = null;
-        if (d.stemSynthIndex === d.stemNames.indexOf("bass")) d.setStemSynth(null);
-        setBass(null);
+        setReplay(null);
       });
       f.start();
       follower.current = f;
-      setBass({ side, status: "on", notes: notes.length });
+      setReplay({ side, stem, status: "on", notes: notes.length });
     } catch (e) {
-      if (!ac.signal.aborted) setBass({ side, status: "error", msg: (e as Error).message });
+      if (!ac.signal.aborted) setReplay({ side, stem, status: "error", msg: (e as Error).message });
     } finally {
       if (loading.current === ac) loading.current = null;
     }
   };
 
-  // module closed: stop the replay and give the bass stem back
-  useEffect(() => () => endBassReplay(follower, loading), []);
+  const prepare = async () => {
+    await sd.ensureStems();
+    if (sd.stemReady) sd.setStemsActive(true);
+    force();
+  };
+
+  // module closed: stop the replay and give the replaced stems back
+  useEffect(() => () => {
+    endReplay(follower, loading);
+    engine.deckA.releaseStemSynth();
+    engine.deckB.releaseStemSynth();
+  }, [engine]);
 
   return (
     <div className="hw-screwed hw-panel relative flex flex-col gap-3 p-3">
@@ -150,78 +181,68 @@ export function DjSynthPanel({ engine }: { engine: DJEngine }) {
         </button>
       </div>
 
-      <div className="hw-recess flex flex-wrap items-center gap-1.5 p-1.5">
-        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500">STEMS</span>
-        {(["A", "B"] as const).map((k) => (
-          <button
-            key={k}
-            className={`hw-btn px-2 py-1 text-[11px] font-bold ${stemSide === k ? "hw-btn-on" : ""}`}
-            style={{ ["--led" as string]: k === "A" ? "#38bdf8" : "#f59e0b" }}
-            onClick={() => setStemSide(k)}
-          >
-            PLATINE {k}
-          </button>
-        ))}
-        {sd.stemsActive ? (
+      <div className="hw-recess flex flex-col gap-1.5 p-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500">SYNTHÉ DANS LES STEMS</span>
+          {(["A", "B"] as const).map((k) => (
+            <button
+              key={k}
+              className={`hw-btn px-2 py-1 text-[11px] font-bold ${stemSide === k ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: k === "A" ? "#38bdf8" : "#f59e0b" }}
+              onClick={() => {
+                stopReplay();
+                setStemSide(k);
+              }}
+            >
+              PLATINE {k}
+            </button>
+          ))}
+          <span className="text-[10px] text-neutral-300">
+            {elsewhere
+              ? `Le synthé joue dans un stem de la platine ${stemSide === "A" ? "B" : "A"} : choisis MASTER ou un stem ici pour le ramener.`
+              : replacedName === null
+              ? "Le synthé joue sur le master : joue les pads ci-dessous."
+              : `Le synthé ${sd.stemSynthKeep ? "joue avec" : "remplace"} ${info(replacedName).title} (platine ${stemSide}) : il passe par son filtre, ses effets et le fader de la platine. ${
+                  replayHere?.status === "on" ? "Il rejoue les notes du stem." : "Joue les pads ou lance REJOUER."
+                }`}
+          </span>
+        </div>
+
+        {!sd.audioBuffer ? (
+          <span className="text-[10px] text-neutral-400">Charge un morceau sur la platine {stemSide} pour jouer dans ses stems.</span>
+        ) : sd.stemStatus === "working" ? (
+          <span className="text-[10px] text-neutral-400">Séparation des stems… {sd.stemProgress ?? 0} %</span>
+        ) : sd.stemStatus === "blocked" ? (
           <>
-            <span className="text-[10px] text-neutral-400">Jouer à la place de</span>
-            {sd.stemNames.map((n, i) => {
-              const info = STEM_INFO[n] ?? { label: n.toUpperCase(), title: n };
-              return (
-                <button
-                  key={n}
-                  className={`hw-btn px-2 py-1 text-[11px] font-bold ${replaced === i ? "hw-btn-on" : ""}`}
-                  style={{ ["--led" as string]: presetColor }}
-                  title={`Le synthé joue à la place du stem ${info.title} (il passe par son fader, son filtre et ses effets). Rappuie pour rendre le stem`}
-                  onClick={() => {
-                    sd.setStemSynth(replaced === i ? null : i);
-                    force();
-                  }}
-                >
-                  {info.label}
-                </button>
-              );
-            })}
-            <span className="mx-1 h-6 w-px bg-white/10" />
             <button
-              className={`hw-btn px-2 py-1 text-[11px] font-bold ${scSrc ? "hw-btn-on" : ""}`}
+              className="hw-btn px-2 py-1 text-[11px] font-bold"
               style={{ ["--led" as string]: presetColor }}
-              disabled={drumsIdx < 0 || replaced === drumsIdx}
-              title="Le synthé baisse sur chaque kick de la batterie de cette platine (sidechain)"
-              onClick={() => setScOn(!scOn)}
+              onClick={prepare}
             >
-              SIDECHAIN
+              PRÉPARER LES STEMS
             </button>
-            <Knob
-              label="Prof."
-              value={scDepth}
-              min={0}
-              max={1}
-              defaultValue={0.6}
-              onChange={setScDepth}
-              color={presetColor}
-              size={36}
-              led
-              format={(v) => `${Math.round(v * 100)}%`}
-            />
-            <span className="mx-1 h-6 w-px bg-white/10" />
-            <button
-              className={`hw-btn px-2 py-1 text-[11px] font-bold ${bass?.side === stemSide && bass.status !== "error" ? "hw-btn-on" : ""}`}
-              style={{ ["--led" as string]: presetColor }}
-              disabled={bassIdx < 0 || (!!bass && bass.side !== stemSide && bass.status !== "error")}
-              title="Le synthé rejoue la ligne de basse du morceau (transcrite depuis le stem basse), avec le son choisi, à la place du stem basse. La première fois, la transcription prend un moment"
-              onClick={() => (bass && bass.status !== "error" ? stopBass() : startBass())}
-            >
-              {bass?.side === stemSide && bass.status === "loading" ? "TRANSCRIPTION…" : "REJOUER LA BASSE"}
-            </button>
-            {bass?.side === stemSide && bass.status === "on" && (
-              <span className="text-[10px] text-neutral-400">{bass.notes} notes</span>
-            )}
-            {bass?.side === stemSide && bass.status === "error" && (
-              <span className="text-[10px] text-red-400">{bass.msg}</span>
-            )}
+            <span className="text-[10px] text-amber-400">mets les platines en pause pour séparer</span>
           </>
-        ) : sd.stemReady ? (
+        ) : sd.stemStatus === "error" ? (
+          <>
+            <button
+              className="hw-btn px-2 py-1 text-[11px] font-bold"
+              style={{ ["--led" as string]: presetColor }}
+              onClick={prepare}
+            >
+              PRÉPARER LES STEMS
+            </button>
+            <span className="text-[10px] text-red-400">échec — réessaie</span>
+          </>
+        ) : !sd.stemReady ? (
+          <button
+            className="hw-btn px-2 py-1 text-[11px] font-bold"
+            style={{ ["--led" as string]: presetColor }}
+            onClick={prepare}
+          >
+            PRÉPARER LES STEMS
+          </button>
+        ) : !sd.stemsActive ? (
           <button
             className="hw-btn px-2 py-1 text-[11px] font-bold"
             onClick={() => {
@@ -232,9 +253,112 @@ export function DjSynthPanel({ engine }: { engine: DJEngine }) {
             ACTIVER LES STEMS
           </button>
         ) : (
-          <span className="text-[10px] text-neutral-400">
-            Prépare les stems de la platine {stemSide} pour jouer à la place d&apos;un stem
-          </span>
+          <>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] font-bold text-neutral-400">1 · OÙ JOUE LE SYNTHÉ</span>
+              <button
+                className={`hw-btn px-2 py-1 text-[11px] font-bold ${replaced === null && !elsewhere ? "hw-btn-on" : ""}`}
+                style={{ ["--led" as string]: presetColor }}
+                onClick={() => choose(null)}
+                title="Le synthé sort directement sur le master, sans passer par une platine"
+              >
+                MASTER
+              </button>
+              {sd.stemNames.map((n, i) => (
+                <button
+                  key={n}
+                  className={`hw-btn px-2 py-1 text-[11px] font-bold ${replaced === i ? "hw-btn-on" : ""}`}
+                  style={{ ["--led" as string]: presetColor }}
+                  onClick={() => choose(replaced === i ? null : i)}
+                  title={`Le synthé joue dans le stem ${info(n).title} : son filtre, ses effets, le fader de la platine`}
+                >
+                  {info(n).label}
+                </button>
+              ))}
+              <span className="mx-1 h-6 w-px bg-white/10" />
+              <button
+                className={`hw-btn px-2 py-1 text-[11px] font-bold ${modeOn(false) ? "hw-btn-on" : ""}`}
+                style={{ ["--led" as string]: presetColor }}
+                onClick={() => chooseMode(false)}
+                title="Le stem se tait, le synthé prend sa place"
+              >
+                REMPLACER
+              </button>
+              <button
+                className={`hw-btn px-2 py-1 text-[11px] font-bold ${modeOn(true) ? "hw-btn-on" : ""}`}
+                style={{ ["--led" as string]: presetColor }}
+                onClick={() => chooseMode(true)}
+                title="Le stem continue, le synthé joue par-dessus"
+              >
+                DOUBLER
+              </button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] font-bold text-neutral-400">2 · QUI JOUE LES NOTES</span>
+              <span className={`hw-btn px-2 py-1 text-[11px] font-bold ${!replayHere ? "hw-btn-on" : ""}`} style={{ ["--led" as string]: presetColor }}>TOI · PADS</span>
+              <button
+                className={`hw-btn px-2 py-1 text-[11px] font-bold ${replayHere && replayHere.status !== "error" ? "hw-btn-on" : ""}`}
+                style={{ ["--led" as string]: presetColor }}
+                disabled={!canReplay || (!!replay && replay.side !== stemSide && replay.status !== "error")}
+                onClick={() => (replayHere && replayHere.status !== "error" ? stopReplay() : startReplay())}
+                title={replacedName === null ? "Choisis d'abord un stem à l'étape 1" : !MIDI_TRACK[replacedName] ? "La batterie n'a pas de notes à rejouer" : "Le synthé rejoue les notes de ce stem (transcrites du morceau), avec le son choisi. La première fois, la transcription prend un moment"}
+              >
+                {replayHere?.status === "loading" ? "TRANSCRIPTION…" : `REJOUER ${replacedName ? info(replacedName).label : "LE STEM"}`}
+              </button>
+              {replayHere?.status === "on" && (
+                <span className="text-[10px] text-neutral-400">{replayHere.notes} notes</span>
+              )}
+              {replayHere?.status === "error" && (
+                <span className="text-[10px] text-red-400">{replayHere.msg}</span>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] font-bold text-neutral-400">3 · SIDECHAIN</span>
+              <button
+                className={`hw-btn px-2 py-1 text-[11px] font-bold ${scSrc ? "hw-btn-on" : ""}`}
+                style={{ ["--led" as string]: presetColor }}
+                disabled={drumsIdx < 0 || replaced === drumsIdx}
+                title="Le synthé baisse sur chaque kick de la batterie de cette platine (sidechain)"
+                onClick={() => setScOn(!scOn)}
+              >
+                SIDECHAIN
+              </button>
+              <Knob
+                label="Prof."
+                value={scDepth}
+                min={0}
+                max={1}
+                defaultValue={0.6}
+                onChange={setScDepth}
+                color={presetColor}
+                size={36}
+                led
+                format={(v) => `${Math.round(v * 100)}%`}
+              />
+            </div>
+
+            {deckCut && (
+              <div className="rounded-md bg-amber-500/10 p-1.5 text-[10px] text-amber-300 ring-1 ring-amber-500/30 flex flex-wrap items-center gap-2">
+                <span>La platine {stemSide} est coupée (crossfader ou volume) : le synthé ne s&apos;entend pas.</span>
+                <button
+                  className="hw-btn px-2 py-1 text-[11px] font-bold"
+                  onClick={() => {
+                    engine.setCrossfade(0.5);
+                    force();
+                  }}
+                >
+                  CROSSFADER AU CENTRE
+                </button>
+              </div>
+            )}
+            {replayHere?.status === "on" && !sd.playing && (
+              <div className="rounded-md bg-amber-500/10 p-1.5 text-[10px] text-amber-300 ring-1 ring-amber-500/30 flex flex-wrap items-center gap-2">
+                <span>Lance la platine {stemSide} : le synthé suit sa lecture.</span>
+              </div>
+            )}
+          </>
         )}
       </div>
 

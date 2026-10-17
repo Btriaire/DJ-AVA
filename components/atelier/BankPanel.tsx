@@ -15,13 +15,22 @@ const STEM_NAMES: Record<string, string> = {
   piano: "PIANO",
 };
 
-export function BankPanel({ engine, version, onChanged, toKeys, preview, color }: {
+export function BankPanel({
+  engine,
+  version,
+  onChanged,
+  toKeys,
+  preview,
+  color,
+  onOpen,
+}: {
   engine: DJEngine;
   version: number;
   onChanged: () => void;
   toKeys: (buf: AudioBuffer, name: string) => void;
   preview: Previewer;
   color: string;
+  onOpen: (buf: AudioBuffer, item: BankItem) => void;
 }) {
   const [items, setItems] = useState(() => listBank());
   const [seen, setSeen] = useState(version);
@@ -66,6 +75,14 @@ export function BankPanel({ engine, version, onChanged, toKeys, preview, color }
   const handlePlay = async (item: BankItem) => {
     const buf = await decode(item);
     if (buf) preview.play(buf);
+  };
+
+  const handleOpen = async (item: BankItem) => {
+    const buf = await decode(item);
+    if (buf) {
+      onOpen(buf, item);
+      showMessage("Ouvert dans l'éditeur");
+    }
   };
 
   const handleToKeys = async (item: BankItem) => {
@@ -205,6 +222,14 @@ export function BankPanel({ engine, version, onChanged, toKeys, preview, color }
                 placeholder="tags"
                 className="hw-btn px-2 py-1 text-[10px] font-bold"
               />
+              <button
+                className="hw-btn px-2 py-1 text-[11px] font-bold"
+                onClick={() => handleOpen(item)}
+                title="Ouvrir ce son dans l&apos;éditeur de l&apos;atelier"
+                style={{ ["--led" as string]: color }}
+              >
+                OUVRIR
+              </button>
               <button
                 className="hw-btn px-2 py-1 text-[11px] font-bold"
                 onClick={() => handlePlay(item)}

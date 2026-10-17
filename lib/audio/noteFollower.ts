@@ -102,9 +102,20 @@ export class NoteFollower {
   }
 }
 
-// The bass line of the deck's track, transcribed on the server from its bass stem
-// (basic-pitch; cached there per track). Null when the transcription has no bass track.
-export async function loadBassLine(deck: Deck, signal: AbortSignal): Promise<MidiNote[] | null> {
+// MIDI track name of each melodic stem in the server's transcription (scripts/stems_to_midi.py)
+export const MIDI_TRACK: Record<string, string> = {
+  bass: "Bass",
+  vocals: "Vocals",
+  other: "Other",
+  guitar: "Guitar",
+  piano: "Piano",
+};
+
+// The notes of one melodic stem of the deck's track, transcribed on the server (basic-pitch;
+// cached there per track). Null when the stem has no melodic track.
+export async function loadStemLine(deck: Deck, stem: string, signal: AbortSignal): Promise<MidiNote[] | null> {
+  const track = MIDI_TRACK[stem];
+  if (!track) return null;
   const model = deck.stemModel;
   const get = (hash: string) => fetch(`/api/stems/midi?hash=${hash}&model=${model}`, { signal });
   let r = deck.stemHash ? await get(deck.stemHash) : null;
@@ -117,5 +128,5 @@ export async function loadBassLine(deck: Deck, signal: AbortSignal): Promise<Mid
     r = await get(hash);
   }
   if (!r.ok) throw new Error("Transcription impossible");
-  return readMidiTrack(new Uint8Array(await r.arrayBuffer()), "Bass");
+  return readMidiTrack(new Uint8Array(await r.arrayBuffer()), track);
 }

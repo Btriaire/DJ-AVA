@@ -10,7 +10,7 @@ import { guess as guessBeat } from "web-audio-beat-detector";
 
 // synthesized white-noise impulse response for the shared per-stem reverb
 // send bus — same technique as the Rack's own "reverb" module.
-function makeReverbImpulse(ctx: AudioContext, decay: number): AudioBuffer {
+export function makeReverbImpulse(ctx: BaseAudioContext, decay: number): AudioBuffer {
   const rate = ctx.sampleRate;
   const len = Math.max(1, Math.floor(rate * decay));
   const buf = ctx.createBuffer(2, len, rate);
@@ -24,7 +24,7 @@ function makeReverbImpulse(ctx: AudioContext, decay: number): AudioBuffer {
 // WaveShaper curve for the per-stem Drive knob: tanh soft-clip, normalized so
 // the loudest sample stays at unity gain even as drive increases. amt<=0 is
 // exactly transparent (identity curve) so a stem at 0% drive is untouched.
-function driveCurve(amt: number): Float32Array<ArrayBuffer> {
+export function driveCurve(amt: number): Float32Array<ArrayBuffer> {
   const n = 256;
   const curve = new Float32Array(n);
   const k = 1 + amt * 30;
@@ -34,6 +34,23 @@ function driveCurve(amt: number): Float32Array<ArrayBuffer> {
     curve[i] = amt <= 0.001 ? x : Math.tanh(k * x) / norm;
   }
   return curve;
+}
+
+// bipolar stem filter: -1..0 lowpass, 0 neutral, 0..1 highpass
+export function applyStemFilter(filt: BiquadFilterNode, x: number): void {
+  if (Math.abs(x) < 0.02) {
+    filt.type = "allpass";
+    filt.frequency.value = 20000;
+    return;
+  }
+  if (x < 0) {
+    filt.type = "lowpass";
+    filt.frequency.value = 20000 * Math.pow(40 / 20000, -x);
+  } else {
+    filt.type = "highpass";
+    filt.frequency.value = 20 * Math.pow(12000 / 20, x);
+  }
+  filt.Q.value = 1 + Math.abs(x) * 6;
 }
 
 export interface DeckState {
@@ -117,6 +134,7 @@ export class Deck {
   private synthStem: number | null = null; // stem currently replaced by the synth
   private static synthHolder: Deck | null = null; // only one deck can hold the synth at a time
   private synthStemVol = 1; // volume the replaced stem had before the synth took its place
+  private synthKeep = false; // DOUBLER: the stem keeps playing under the synth
   private stemAnalysers: AnalyserNode[] = []; // per-stem level taps for the LED meters
   private stemMeterBuf = new Float32Array(256); // reusable scratch for RMS reads
   private stemEnv: number[] = []; // smoothed per-stem meter level (VU-style ballistics)
@@ -988,6 +1006,10 @@ export class Deck {
   setVolume(v: number) {
     this.volume.gain.value = v;
   }
+
+  get volumeValue(): number {
+    return this.volume.gain.value;
+  }
   setEQ(band: "low" | "mid" | "high", db: number) {
     this[band].gain.value = db;
   }
@@ -1149,6 +1171,7 @@ export class Deck {
   // wipe any loaded stems (called when a new track is loaded / deck is cleared /
   // the model changes). Does NOT reset stemModel (user's chosen quality sticks).
   clearStems() {
+    this.releaseStemSynth(); // a new track: give the synth back to the master before the stem indices go stale
     this.clearAllStemFxTargets(); // un-splice before the stem indices go stale
     this.stopStemProgressPoll();
     this.stemsActive = false;
@@ -1321,10 +1344,14 @@ export class Deck {
     return this.synthStem;
   }
 
-  // Replace stem i with the DJ synth (the stem is muted and the synth goes through its
-  // filter and FX), or give the stem back, at its volume, when i is null.
-  // One replacement at a time across both decks.
-  setStemSynth(i: number | null) {
+  get stemSynthKeep(): boolean {
+    return this.synthKeep;
+  }
+
+  // The DJ synth goes through stem i's chain (filter, drive, FX, then the deck fader and crossfader):
+  // keep=false mutes the stem (REMPLACER), keep=true keeps it under the synth (DOUBLER);
+  // null gives the synth back to the master. One deck at a time.
+  setStemSynth(i: number | null, keep = false) {
     const route = this.synthRoute;
     if (!route) return;
     if (Deck.synthHolder && Deck.synthHolder !== this) Deck.synthHolder.releaseStemSynth();
@@ -1334,7 +1361,8 @@ export class Deck {
     route.src.connect(this.stemSynthIn[i]);
     this.synthStem = i;
     this.synthStemVol = this.stemVol[i] ?? 1;
-    this.setStemVol(i, 0);
+    this.synthKeep = keep;
+    if (!keep) this.setStemVol(i, 0);
     Deck.synthHolder = this;
   }
 
@@ -1343,8 +1371,9 @@ export class Deck {
     if (!route || this.synthStem === null) return;
     route.src.disconnect(this.stemSynthIn[this.synthStem]);
     route.src.connect(route.dst);
-    this.setStemVol(this.synthStem, this.synthStemVol);
+    if (!this.synthKeep) this.setStemVol(this.synthStem, this.synthStemVol);
     this.synthStem = null;
+    this.synthKeep = false;
     if (Deck.synthHolder === this) Deck.synthHolder = null;
   }
 
@@ -1491,20 +1520,7 @@ export class Deck {
   setStemFilter(i: number, x: number) {
     if (i < 0 || i >= this.stemFilter.length) return;
     this.stemFilterX[i] = x;
-    const filt = this.stemFilter[i];
-    if (Math.abs(x) < 0.02) {
-      filt.type = "allpass";
-      filt.frequency.value = 20000;
-      return;
-    }
-    if (x < 0) {
-      filt.type = "lowpass";
-      filt.frequency.value = 20000 * Math.pow(40 / 20000, -x);
-    } else {
-      filt.type = "highpass";
-      filt.frequency.value = 20 * Math.pow(12000 / 20, x);
-    }
-    filt.Q.value = 1 + Math.abs(x) * 6;
+    applyStemFilter(this.stemFilter[i], x);
   }
   setStemDrive(i: number, amt: number) {
     if (i < 0 || i >= this.stemDrive.length) return;

@@ -11,7 +11,9 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { MODEL_STEMS, StemModel, separate, stemPath, ffmpegPath, hashBytes } from "./stems";
 
-const PYTHON = process.env.PYTHON3_PATH || "python3";
+// the project venv has basic-pitch + pretty_midi; a bare system python3 usually has neither
+const VENV_PY = join(process.cwd(), ".venv-stems", "bin", "python");
+const PYTHON = process.env.PYTHON3_PATH || (existsSync(VENV_PY) ? VENV_PY : "python3");
 
 function scriptPath(): string {
   // present in dev (repo root) and copied into the standalone image at /app/scripts

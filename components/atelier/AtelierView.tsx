@@ -1,592 +1,815 @@
 "use client";
-import { useState, useRef, useCallback, useMemo, useEffect } from "react";
-import { DJEngine } from "@/lib/audio/engine";
-import { encodeWav } from "@/lib/audio/engine";
-import type { Region, WorkSample } from "@/lib/atelier/types";
+
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { Knob } from "../Knob";
+import { SourcePanel } from "./SourcePanel";
+import { BankPanel } from "./BankPanel";
+import { SessionStrip } from "./SessionStrip";
+import { WaveEditor } from "./WaveEditor";
+import { EditTools } from "./EditTools";
+import { AtelierStems } from "./AtelierStems";
+import { MiniKeys } from "./MiniKeys";
 import { Previewer, SampleKeys } from "@/lib/atelier/players";
+import { StemMixer } from "@/lib/atelier/stemMixer";
+import { separateStems } from "@/lib/atelier/separate";
 import { addToBank } from "@/lib/atelier/bank";
 import * as ed from "@/lib/atelier/edit";
 import { downloadBlob } from "@/lib/atelier/download";
-import { Knob } from "../Knob";
+import { DJEngine, encodeWav } from "@/lib/audio/engine";
 import { detectBPM } from "@/lib/audio/bpm";
 import { detectKey } from "@/lib/audio/key";
-import { loadLibrary, idbGetBlob } from "@/lib/library";
-import { WaveEditor } from "./WaveEditor";
-import { EditTools, type ApplyResult } from "./EditTools";
-import { SampleList } from "./SampleList";
-import { StemWorkbench } from "./StemWorkbench";
-import { BankPanel } from "./BankPanel";
-import { MiniKeys } from "./MiniKeys";
+import {
+  DEFAULT_CTL,
+  KIND_FR,
+  type Region,
+  type SoundKind,
+  type StemModel,
+  type WorkSample,
+} from "@/lib/atelier/types";
 
 const COLOR = "#22d3ee";
 
-export function AtelierView({ engine }: { engine: DJEngine }) {
+function newId() {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+export function AtelierView({ engine, active }: { engine: DJEngine; active: boolean }) {
   const [preview] = useState(() => new Previewer(engine.ctx, engine.masterIn));
   const [keys] = useState(() => new SampleKeys(engine.ctx, engine.masterIn));
-  const [track, setTrack] = useState<{
-    name: string;
-    buf: AudioBuffer;
-    bpm: number;
-    key: string;
-    offset: number;
-  } | null>(null);
-  const [undo, setUndo] = useState<{ buf: AudioBuffer; bpm: number }[]>([]);
-  const [sel, setSel] = useState<Region | null>(null);
-  const [samples, setSamples] = useState<WorkSample[]>([]);
+  const [mixer] = useState(() => new StemMixer(engine.ctx, engine.masterIn));
+  const [sounds, setSounds] = useState<WorkSample[]>([]);
   const [curId, setCurId] = useState<string | null>(null);
-  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [sel, setSel] = useState<Region | null>(null);
+  const [cursor, setCursor] = useState(0);
+  const [loop, setLoop] = useState(false);
+  const [listen, setListen] = useState<"mix" | "orig">("mix");
+  const [playing, setPlaying] = useState<"none" | "orig" | "mix">("none");
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
+  const [note, setNote] = useState("");
   const [bankVersion, setBankVersion] = useState(0);
-  const [loop, setLoop] = useState(false);
   const [sens, setSens] = useState(0.5);
-  const [libId, setLibId] = useState("");
-  const [trackPlaying, setTrackPlaying] = useState(false);
-  const [, setKeysVersion] = useState(0);
-  const toKeys = useCallback((buf: AudioBuffer, name: string) => {
-    keys.setSample(buf, name);
-    setKeysVersion((v) => v + 1);
-  }, [keys]);
-  const [clearConfirm, setClearConfirm] = useState(false);
-  const playingTrack = useRef(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [sep, setSep] = useState<{ id: string; pct: number | null } | null>(null);
+  const [model, setModel] = useState<StemModel>("htdemucs");
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const sepAbort = useRef<AbortController | null>(null);
+  const curRef = useRef<WorkSample | null>(null);
+  const noteTimer = useRef<NodeJS.Timeout | null>(null);
 
-  const playhead = useCallback(() => (trackPlaying ? preview.position() : null), [preview, trackPlaying]);
+  const cur = sounds.find((s) => s.id === curId) ?? null;
+  const hasStems = !!cur?.stems?.length;
+  const useMix = hasStems && listen === "mix";
+  const marks = cur ? sounds.filter((s) => s.from === cur.name).map((s) => s.at ?? 0) : [];
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (clearConfirm) setClearConfirm(false);
-    }, 3000);
-    return () => clearTimeout(timer);
-  }, [clearConfirm]);
+    curRef.current = cur;
+  });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const p = mixer.playing ? "mix" : preview.playing ? "orig" : "none";
+      setPlaying((x) => (x === p ? x : p));
+    }, 200);
+    return () => clearInterval(interval);
+  }, [mixer, preview]);
+
+  useEffect(() => {
+    const c = curRef.current;
+    mixer.load(c?.stems ?? [], c?.ctls ?? [], c?.bpm ?? 0);
+  }, [mixer, cur?.stems, curId]);
+
+  useEffect(() => {
+    if (active) return;
+    preview.stop();
+    mixer.stop();
+    keys.allOff();
+  }, [active, preview, mixer, keys]);
 
   useEffect(() => {
     return () => {
       preview.stop();
       keys.allOff();
+      mixer.dispose();
+      sepAbort.current?.abort();
     };
-  }, [preview, keys]);
+  }, [preview, keys, mixer]);
 
-  const open = useCallback(async (name: string, buf: AudioBuffer, bpm?: number) => {
+  const playhead = useCallback(() => {
+    return mixer.playing ? mixer.position() : preview.playing ? preview.position() : null;
+  }, [mixer, preview]);
+
+  const stopAll = () => {
     preview.stop();
-    setBusy("Analyse…");
-    try {
-      const detectedBpm = bpm || detectBPM(buf);
-      const keyInfo = await detectKey(buf);
-      const keyText = keyInfo ? `${keyInfo.camelot} · ${keyInfo.name}` : "";
-      const onsets = ed.onsets(buf, 0.5);
-      const offset = onsets[0] ?? 0;
+    mixer.stop();
+    setPlaying("none");
+  };
 
-      setTrack({ name, buf, bpm: detectedBpm, key: keyText, offset });
-      setUndo([]);
+  const addSound = (
+    p: {
+      name: string;
+      buf: AudioBuffer;
+      kind: SoundKind;
+      from?: string;
+      bpm?: number;
+      key?: string;
+      offset?: number;
+      at?: number;
+      info?: { label: string; value: string }[];
+    },
+    select = true
+  ): WorkSample => {
+    const bpm = p.buf.duration >= 4 ? p.bpm || detectBPM(p.buf) : p.bpm ?? 0;
+    const key = p.buf.duration >= 4 ? detectKey(p.buf) : null;
+    const offset = p.offset ?? (ed.onsets(p.buf, 0.5)[0] ?? 0);
+    const sound: WorkSample = {
+      id: newId(),
+      name: p.name,
+      buf: p.buf,
+      kind: p.kind,
+      from: p.from ?? "",
+      bpm,
+      key: p.key ?? (key ? `${key.camelot} · ${key.name}` : ""),
+      offset,
+      at: p.at,
+      info: p.info,
+    };
+    setSounds((prev) => [...prev, sound]);
+    if (select) {
+      stopAll();
+      setCurId(sound.id);
       setSel(null);
-    } catch {
-      setErr("Analyse impossible");
-    } finally {
-      setBusy("");
+      setCursor(0);
     }
-  }, [preview]);
+    return sound;
+  };
 
-  const loadBytes = useCallback(async (name: string, bytes: ArrayBuffer) => {
-    setBusy("Décodage…");
+  const update = (id: string, patch: Partial<WorkSample>) => {
+    setSounds((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  };
+
+  const openBytes = async (name: string, bytes: ArrayBuffer, info?: { label: string; value: string }[]) => {
     try {
+      setBusy("Décodage…");
       const buf = await engine.ctx.decodeAudioData(bytes);
-      await open(name, buf);
+      addSound({ name, buf, kind: "track", info });
     } catch {
       setErr("Décodage impossible");
     } finally {
       setBusy("");
     }
-  }, [engine.ctx, open]);
+  };
 
-  const apply = useCallback(async (label: string, run: () => Promise<ApplyResult>) => {
-    if (!track) return;
+  const openBuffer = async (name: string, buf: AudioBuffer, bpm: number) => {
+    addSound({ name, buf, kind: "track", bpm });
+  };
+
+  const openBank = (buf: AudioBuffer, item: { name: string; from: string; bpm: number; key: string }) => {
+    addSound({ name: item.name, buf, kind: "bank", from: item.from, bpm: item.bpm, key: item.key });
+  };
+
+  const toKeys = (buf: AudioBuffer, name: string) => {
+    keys.setSample(buf, name);
+    setNote("Chargé dans le clavier");
+  };
+
+  const select = (id: string) => {
+    stopAll();
+    setCurId(id);
+    setSel(null);
+    setCursor(0);
+  };
+
+  const remove = (id: string) => {
+    if (curId === id) {
+      stopAll();
+      setCurId(null);
+    }
+    setSounds((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const clearAll = () => {
+    stopAll();
+    setSounds([]);
+    setCurId(null);
+  };
+
+  const playChip = (s: WorkSample) => {
+    mixer.stop();
+    preview.play(s.buf);
+    setPlaying("orig");
+  };
+
+  const play = (from = cursor) => {
+    if (!cur) return;
     preview.stop();
-    setBusy(`${label}…`);
+    mixer.stop();
+    if (useMix) {
+      mixer.play(from, sel, loop);
+      setPlaying("mix");
+    } else {
+      preview.play(cur.buf, sel ? sel.a : from, sel ? sel.b : cur.buf.duration, loop);
+      setPlaying("orig");
+    }
+  };
+
+  const playFrom = (from: number, region: Region | null, lp: boolean, only: number | null) => {
+    preview.stop();
+    mixer.play(from, region, lp, only);
+    setPlaying("mix");
+  };
+
+  const seek = (t: number) => {
+    setCursor(t);
+    if (playing !== "none") play(t);
+  };
+
+  const apply = async (label: string, run: () => Promise<{ buf: AudioBuffer; sel?: Region | null; bpm?: number }>) => {
+    if (!cur) return;
     try {
+      stopAll();
+      setBusy(`${label}…`);
       const res = await run();
-      setUndo(prev => [{ buf: track.buf, bpm: track.bpm }, ...prev].slice(0, 5));
-      setTrack(prev => ({
-        ...prev!,
+      update(cur.id, {
         buf: res.buf,
-        bpm: res.bpm !== undefined ? res.bpm : prev!.bpm
-      }));
+        bpm: res.bpm ?? cur.bpm,
+        undo: [{ buf: cur.buf, bpm: cur.bpm }, ...(cur.undo ?? [])].slice(0, 5),
+        stems: undefined,
+        ctls: undefined,
+        stemModel: undefined,
+      });
       if (res.sel !== undefined) setSel(res.sel);
+      if (cur.stems) setNote("Le son a changé : sépare-le à nouveau pour retrouver ses stems.");
     } catch {
       setErr(`${label} impossible`);
     } finally {
       setBusy("");
     }
-  }, [track, preview]);
+  };
 
-  const undoLast = useCallback(() => {
-    if (!track || undo.length === 0) return;
-    const last = undo[0];
-    setUndo(prev => prev.slice(1));
-    setTrack(prev => ({ ...prev!, buf: last.buf, bpm: last.bpm }));
-  }, [track, undo]);
+  const undoLast = () => {
+    if (!cur || !cur.undo?.length) return;
+    const [last, ...rest] = cur.undo;
+    update(cur.id, {
+      buf: last.buf,
+      bpm: last.bpm,
+      undo: rest,
+      stems: undefined,
+      ctls: undefined,
+      stemModel: undefined,
+    });
+  };
 
-  const exportTrack = useCallback(async (fmt: "wav" | "mp3") => {
-    if (!track) return;
-    preview.stop();
-    const buf = sel ? ed.slice(track.buf, sel) : track.buf;
-    if (fmt === "wav") {
-      downloadBlob(encodeWav(buf, 24), `${track.name}${sel ? "-selection" : ""}.wav`);
-    } else {
-      setBusy("Encodage MP3…");
-      try {
-        const wav = encodeWav(buf, 24);
+  const exportSound = async (fmt: "wav" | "mp3") => {
+    if (!cur) return;
+    try {
+      const buf = sel ? ed.slice(cur.buf, sel) : cur.buf;
+      if (fmt === "wav") {
+        downloadBlob(encodeWav(buf, 24), `${cur.name}${sel ? "-selection" : ""}.wav`);
+      } else {
+        setBusy("Encodage MP3…");
         const res = await fetch("/api/audio/mp3", {
           method: "POST",
-          body: wav
+          body: encodeWav(buf, 16),
         });
-        if (res.ok) {
-          downloadBlob(await res.blob(), `${track.name}${sel ? "-selection" : ""}.mp3`);
-        } else {
-          setErr("Export MP3 impossible");
-        }
-      } catch {
-        setErr("Export MP3 impossible");
-      } finally {
-        setBusy("");
+        if (!res.ok) throw new Error("Export MP3 impossible");
+        downloadBlob(await res.blob(), `${cur.name}${sel ? "-selection" : ""}.mp3`);
       }
-    }
-  }, [track, sel, preview]);
-
-  const addSample = useCallback((buf: AudioBuffer, name: string, at?: number) => {
-    setSamples(prev => [...prev, {
-      id: Math.random().toString(36).slice(2, 10),
-      name,
-      buf,
-      from: track?.name ?? "",
-      bpm: track?.bpm ?? 0,
-      key: buf.duration >= 4 ? (detectKey(buf)?.name ?? "") : (track?.key ?? ""),
-      at
-    }]);
-  }, [track]);
-
-  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setBusy("Chargement…");
-    try {
-      const bytes = await file.arrayBuffer();
-      await loadBytes(file.name, bytes);
-      e.target.value = "";
-    } catch {
-      setErr("Chargement impossible");
-    } finally {
-      setBusy("");
-    }
-  }, [loadBytes]);
-
-  const tracks = useMemo(() => loadLibrary().tracks, []);
-
-  const handleLibOpen = useCallback(async () => {
-    const t = tracks.find((x) => x.id === libId);
-    if (!t) return;
-    setBusy("Chargement…");
-    try {
-      let bytes: ArrayBuffer;
-      if (t.source === "local") {
-        const blob = await idbGetBlob(t.id);
-        if (!blob) throw new Error("Morceau local introuvable");
-        bytes = await blob.arrayBuffer();
-      } else {
-        const res = await fetch(`/api/${t.source}/stream?id=${encodeURIComponent(t.url ?? "")}`);
-        if (!res.ok) throw new Error("Téléchargement impossible");
-        bytes = await res.arrayBuffer();
-      }
-      await loadBytes(t.name, bytes);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Chargement impossible");
+      setErr(e instanceof Error ? e.message : "Export impossible");
     } finally {
       setBusy("");
     }
-  }, [tracks, libId, loadBytes]);
+  };
 
-  const handleDeckOpen = useCallback(async (side: "A" | "B") => {
-    const d = side === "A" ? engine.deckA : engine.deckB;
-    if (!d.audioBuffer) {
-      setErr(`Pas de morceau sur la platine ${side}`);
-      return;
-    }
-    await open(d.name, d.audioBuffer, d.bpm);
-  }, [engine.deckA, engine.deckB, open]);
+  const part = () => (sel ? ed.slice(cur!.buf, sel) : cur!.buf);
+  const partName = () => `${cur!.name}${sel ? " (sélection)" : ""}`;
 
-  const handlePlay = useCallback(() => {
-    if (!track) return;
-    playingTrack.current = true;
-    setTrackPlaying(true);
-    preview.play(
-      track.buf,
-      sel ? sel.a : 0,
-      sel ? sel.b : track.buf.duration,
-      loop
+  const addSample = () => {
+    if (!cur || !sel) return;
+    const n = sounds.filter((s) => s.from === cur.name).length + 1;
+    addSound(
+      {
+        name: `${cur.name} ${n}`,
+        buf: ed.slice(cur.buf, sel),
+        kind: "sample",
+        from: cur.name,
+        bpm: cur.bpm,
+        key: cur.key,
+        offset: 0,
+        at: sel.a,
+      },
+      false
     );
-  }, [track, sel, loop, preview]);
+    setNote("Sample ajouté à la session");
+  };
 
-  const handleStop = useCallback(() => {
-    playingTrack.current = false;
-    setTrackPlaying(false);
-    preview.stop();
-  }, [preview]);
+  const sliceBars = (bars: number) => {
+    if (!cur || cur.bpm <= 0) return;
+    const regions = ed.barRegions(cur.buf.duration, cur.bpm, sel ? sel.a : cur.offset, bars).slice(0, 64);
+    regions.forEach((r, i) => {
+      addSound(
+        {
+          name: `${cur.name} ${i + 1}`,
+          buf: ed.slice(cur.buf, r),
+          kind: "sample",
+          from: cur.name,
+          bpm: cur.bpm,
+          key: cur.key,
+          offset: 0,
+          at: r.a,
+        },
+        false
+      );
+    });
+    setNote(`${regions.length} samples ajoutés à la session`);
+  };
 
-  const handleSlice = useCallback(async (bars: number) => {
-    if (!track || track.bpm <= 0) return;
-    setBusy("Découpage…");
-    try {
-      const regions = ed.barRegions(
-        track.buf.duration,
-        track.bpm,
-        sel ? sel.a : track.offset,
-        bars
-      ).slice(0, 64);
-      const cuts = regions.map((r, i) => {
-        const buf = ed.slice(track.buf, r);
-        return {
-          buf,
-          name: `${track.name} ${samples.length + i + 1}`,
-          at: r.a
-        };
-      });
-      cuts.forEach(s => addSample(s.buf, s.name, s.at));
-    } catch {
-      setErr("Découpage impossible");
-    } finally {
-      setBusy("");
+  const addOnsets = () => {
+    if (!cur) return;
+    const onsets = ed.onsets(cur.buf, sens);
+    const regions: Region[] = [];
+    for (let i = 0; i < onsets.length; i++) {
+      regions.push({ a: onsets[i], b: i === onsets.length - 1 ? cur.buf.duration : onsets[i + 1] });
     }
-  }, [track, sel, samples, addSample]);
+    regions.filter(r => r.b - r.a >= 0.05 && r.b - r.a <= 64).slice(0, 64).forEach((r, i) => {
+      addSound(
+        {
+          name: `${cur.name} ${i + 1}`,
+          buf: ed.slice(cur.buf, r),
+          kind: "sample",
+          from: cur.name,
+          bpm: cur.bpm,
+          key: cur.key,
+          offset: 0,
+          at: r.a,
+        },
+        false
+      );
+    });
+    setNote(`${regions.length} samples ajoutés à la session`);
+  };
 
-  const handleOnsets = useCallback(async () => {
-    if (!track) return;
-    setBusy("Recherche d&apos;attaques…");
+  const separate = async () => {
+    if (sep || !cur) return;
     try {
-      const onsets = ed.onsets(track.buf, sens);
-      const regions = [];
-      for (let i = 0; i < onsets.length; i++) {
-        const a = onsets[i];
-        const b = i < onsets.length - 1 ? onsets[i + 1] : track.buf.duration;
-        if (b - a >= 0.05) {
-          regions.push({ a, b });
-        }
+      stopAll();
+      const id = cur.id;
+      const buf = cur.buf;
+      const ac = new AbortController();
+      sepAbort.current = ac;
+      setSep({ id, pct: 0 });
+      const stems = await separateStems(engine.ctx, buf, model, ac.signal, (pct) =>
+        setSep((s) => (s && s.id === id ? { id, pct } : s))
+      );
+      update(id, { stems, stemModel: model, ctls: stems.map(() => DEFAULT_CTL) });
+      setListen("mix");
+      setNote("Stems prêts : chaque piste se règle comme sur les platines.");
+    } catch (e) {
+      if (!(e instanceof DOMException && e.name === "AbortError")) {
+        setErr(e instanceof Error ? e.message : "Séparation impossible");
       }
-      const cuts = regions.slice(0, 64).map((r, i) => {
-        const buf = ed.slice(track.buf, r);
-        return {
-          buf,
-          name: `${track.name} ${samples.length + i + 1}`,
-          at: r.a
-        };
+    } finally {
+      setSep(null);
+      sepAbort.current = null;
+    }
+  };
+
+  const cancelSep = () => {
+    sepAbort.current?.abort();
+  };
+
+  const saveToBank = async () => {
+    if (!cur || busy) return;
+    try {
+      setBusy("Sauvegarde…");
+      await addToBank(encodeWav(part(), 24), {
+        name: partName(),
+        kind: cur.kind === "stem" ? "stem" : "sample",
+        from: cur.from || cur.name,
+        bpm: cur.bpm,
+        key: cur.key,
+        dur: part().duration,
+        tags: "",
       });
-      cuts.forEach(s => addSample(s.buf, s.name, s.at));
+      setSavedIds((prev) => new Set(prev).add(cur.id));
+      setBankVersion((v) => v + 1);
+      setNote("Sauvé dans la banque");
     } catch {
-      setErr("Recherche d&apos;attaques impossible");
+      setErr("Sauvegarde impossible");
     } finally {
       setBusy("");
     }
-  }, [track, sens, samples, addSample]);
+  };
 
-  const handleClearSamples = useCallback(() => {
-    if (clearConfirm) {
-      setSamples([]);
-      setCurId(null);
-      setClearConfirm(false);
-    } else {
-      setClearConfirm(true);
+  const loadToDeck = async (side: "A" | "B") => {
+    if (!cur) return;
+    try {
+      const bytes = await encodeWav(part(), 16).arrayBuffer();
+      await (side === "A" ? engine.deckA : engine.deckB).load(bytes, partName());
+      setNote(`Chargé sur la platine ${side}`);
+    } catch {
+      setErr(`Chargement sur platine ${side} impossible`);
     }
-  }, [clearConfirm]);
+  };
 
-  const currentSample = useMemo(() => samples.find(s => s.id === curId) || null, [samples, curId]);
+  const loadToSampler = () => {
+    if (!cur) return;
+    engine.superSampler.setSource(part(), partName());
+    setNote("Chargé dans le Super Sampler");
+  };
 
-  const sampleMarks = useMemo(() => {
-    if (!track) return [];
-    return samples
-      .filter(s => s.from === track.name && s.at !== undefined)
-      .map(s => s.at!);
-  }, [track, samples]);
+  const pauseDecks = () => {
+    engine.deckA.pause();
+    engine.deckB.pause();
+  };
 
-  const selDuration = useMemo(() => {
-    if (!sel) return "";
-    const dur = sel.b - sel.a;
-    const mins = Math.floor(dur / 60);
-    const secs = Math.floor(dur % 60);
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  }, [sel]);
-
-  const trackDuration = useMemo(() => {
-    if (!track) return "";
-    const dur = track.buf.duration;
-    const mins = Math.floor(dur / 60);
-    const secs = Math.floor(dur % 60);
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  }, [track]);
+  useEffect(() => {
+    if (note) {
+      noteTimer.current = setTimeout(() => setNote(""), 3000);
+      return () => clearTimeout(noteTimer.current!);
+    }
+  }, [note]);
 
   return (
-    <div className="flex flex-col gap-3 pb-48">
+    <div className="flex flex-col gap-3 pb-[260px]">
       <div className="hw-panel p-3">
-        <h1 className="text-sm font-black tracking-[0.25em]" style={{ color: COLOR }}>ATELIER</h1>
-        <p className="text-[11px] text-neutral-400">
-          Prépare tes samples et tes stems hors mix : récupère un single, retouche le son, découpe, sépare en stems, sauve dans la banque et rejoue au clavier ou sur n&apos;importe quel single.
-        </p>
-        {(engine.deckA.playing || engine.deckB.playing) && (
-          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md bg-amber-500/10 p-2 text-[11px] text-amber-300 ring-1 ring-amber-500/30">
-            <p>Une platine joue : l&apos;atelier est fait pour préparer hors mix (la séparation de stems charge beaucoup le processeur).</p>
-            <button
-              className="hw-btn mt-1"
-              onClick={() => {
-                engine.deckA.pause();
-                engine.deckB.pause();
-              }}
-            >
+        <div className="text-sm font-black tracking-[0.25em]" style={{ color: COLOR }}>
+          ATELIER
+        </div>
+        <div className="text-[11px] text-neutral-400">
+          1 · choisis une source · 2 · travaille le son (sélection, découpe, retouches) · 3 · sépare-le en stems et règle
+          chaque piste · le clavier en bas joue n&apos;importe quel son.
+        </div>
+        {engine.deckA.playing || engine.deckB.playing ? (
+          <div className="mt-2 flex items-center gap-2 rounded bg-amber-900/20 p-1.5 text-[11px]">
+            <div className="font-bold">Une platine joue : l&apos;atelier est fait pour préparer hors mix (la séparation de stems charge beaucoup le processeur).</div>
+            <button className="hw-btn px-2 py-1 text-[11px] font-bold" onClick={pauseDecks}>
               PAUSE DES PLATINES
             </button>
           </div>
-        )}
+        ) : null}
       </div>
 
-      <div className="hw-panel flex flex-wrap items-center gap-2 p-3">
-        <h2 className="text-[10px] font-bold uppercase tracking-[0.25em] text-neutral-500">Source</h2>
-        <select
-          className="hw-btn px-2 py-1 text-[11px] font-bold"
-          value={libId}
-          onChange={(e) => setLibId(e.target.value)}
-        >
-          <option value="">Choisir un morceau</option>
-          {tracks.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </select>
-        <button className="hw-btn px-2 py-1 text-[11px] font-bold" disabled={!libId || !!busy} onClick={handleLibOpen}>
-          OUVRIR
-        </button>
-        <label className="hw-btn px-2 py-1 text-[11px] font-bold cursor-pointer">
-          FICHIER…
-          <input
-            type="file"
-            accept="audio/*"
-            className="hidden"
-            onChange={handleFileChange}
+      <SourcePanel
+        engine={engine}
+        color={COLOR}
+        busy={!!busy || !!sep}
+        onOpenBytes={openBytes}
+        onOpenBuffer={openBuffer}
+        bank={
+          <BankPanel
+            engine={engine}
+            version={bankVersion}
+            onChanged={() => setBankVersion((v) => v + 1)}
+            toKeys={toKeys}
+            preview={preview}
+            color={COLOR}
+            onOpen={openBank}
           />
-        </label>
-        <button
-          className="hw-btn px-2 py-1 text-[11px] font-bold"
-          onClick={() => handleDeckOpen("A")}
-        >
-          PLATINE A
-        </button>
-        <button
-          className="hw-btn px-2 py-1 text-[11px] font-bold"
-          onClick={() => handleDeckOpen("B")}
-        >
-          PLATINE B
-        </button>
-        {track && (
-          <div className="ml-auto flex items-center gap-2 text-[11px]">
-            <span className="font-bold">{track.name}</span>
-            <span>{trackDuration}</span>
-            <span>BPM {track.bpm.toFixed(1)}</span>
-            {track.key && <span>{track.key}</span>}
-          </div>
-        )}
-      </div>
+        }
+      />
 
-      <div className="flex items-center gap-2">
-        {busy && <span className="text-[11px]" style={{ color: COLOR }}>{busy}</span>}
-        {err && (
-          <div className="flex items-center gap-1 text-[11px] text-red-500">
-            <span>✕ {err}</span>
-            <button className="text-[11px]" onClick={() => setErr("")}>✕</button>
-          </div>
-        )}
-      </div>
+      {(busy || err || note) && (
+        <div className="flex items-center gap-2">
+          {busy && (
+            <div className="flex-1 rounded bg-neutral-800 px-2 py-1 text-[11px]" style={{ color: COLOR }}>
+              {busy}
+            </div>
+          )}
+          {err && (
+            <div className="flex-1 rounded bg-red-900/20 px-2 py-1 text-[11px] text-red-300">
+              {err}
+              <button className="ml-2" onClick={() => setErr("")}>
+                ✕
+              </button>
+            </div>
+          )}
+          {note && <div className="flex-1 text-[11px] text-emerald-300">{note}</div>}
+        </div>
+      )}
 
-      {track && (
-        <div className="hw-panel p-3">
-          <h2 className="text-[10px] font-bold uppercase tracking-[0.25em] text-neutral-500">Morceau</h2>
+      <SessionStrip
+        sounds={sounds}
+        curId={curId}
+        savedIds={savedIds}
+        color={COLOR}
+        onSelect={select}
+        onRemove={remove}
+        onPlay={playChip}
+        onClear={clearAll}
+      />
+
+      {cur ? (
+        <div className="hw-panel flex flex-col gap-2 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-[12px] font-bold" style={{ color: COLOR }}>
+              2 · SON
+            </div>
+            <input
+              type="text"
+              value={cur.name}
+              onChange={(e) => update(cur.id, { name: e.target.value })}
+              className="bg-transparent text-[12px] font-bold"
+              style={{ color: COLOR }}
+            />
+            <div className="hw-btn px-1.5 py-0.5 text-[9px] font-black">{KIND_FR[cur.kind]}</div>
+            {cur.from && <div className="text-[10px] text-neutral-400">de {cur.from}</div>}
+            <div className="text-[10px] text-neutral-400">
+              {Math.floor(cur.buf.duration / 60)
+                .toString()
+                .padStart(2, "0")}
+              :{Math.floor(cur.buf.duration % 60)
+                .toString()
+                .padStart(2, "0")}
+              .{Math.floor((cur.buf.duration % 1) * 10)}
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="text-[10px] text-neutral-400">BPM</div>
+              <input
+                key={`${cur.id}-${cur.bpm}`}
+                type="number"
+                defaultValue={cur.bpm ? cur.bpm.toFixed(1) : ""}
+                placeholder="?"
+                min={40}
+                max={240}
+                step={0.1}
+                className="w-16 rounded bg-neutral-800 px-1 py-0.5 text-[10px]"
+                onBlur={(e) => {
+                  const v = parseFloat(e.currentTarget.value);
+                  if (Number.isFinite(v) && v >= 40 && v <= 240) update(cur.id, { bpm: v });
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.currentTarget.blur();
+                  }
+                }}
+              />
+            </div>
+            {cur.key && <div className="text-[10px] text-neutral-400">{cur.key}</div>}
+            {cur.info && (
+              <button
+                className="hw-btn px-2 py-1 text-[11px] font-bold"
+                onClick={() => setInfoOpen((x) => !x)}
+              >
+                INFOS {infoOpen ? "▴" : "▾"}
+              </button>
+            )}
+            <div className="ml-auto text-[10px] text-neutral-400">
+              {playhead() !== null
+                ? `${Math.floor(playhead()! / 60)
+                    .toString()
+                    .padStart(2, "0")}:${Math.floor(playhead()! % 60)
+                    .toString()
+                    .padStart(2, "0")}.${Math.floor((playhead()! % 1) * 10)}`
+                : `${Math.floor(cursor / 60)
+                    .toString()
+                    .padStart(2, "0")}:${Math.floor(cursor % 60)
+                    .toString()
+                    .padStart(2, "0")}.${Math.floor((cursor % 1) * 10)}`}
+              {sel && (
+                <span className="ml-1">
+                  · {Math.floor((sel.b - sel.a) / 60)
+                    .toString()
+                    .padStart(2, "0")}:{Math.floor((sel.b - sel.a) % 60)
+                    .toString()
+                    .padStart(2, "0")}.{Math.floor(((sel.b - sel.a) % 1) * 10)}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {infoOpen && cur.info && (
+            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[10px]">
+              {cur.info.map((item) => (
+                <Fragment key={item.label}>
+                  <div className="text-neutral-400">{item.label}</div>
+                  <div className="break-all">{item.value}</div>
+                </Fragment>
+              ))}
+            </div>
+          )}
+
           <WaveEditor
-            buf={track.buf}
+            buf={cur.buf}
             sel={sel}
             onSel={setSel}
+            onSeek={seek}
             playhead={playhead}
-            grid={{ bpm: track.bpm, offset: track.offset }}
-            marks={sampleMarks}
+            grid={cur.bpm > 0 ? { bpm: cur.bpm, offset: cur.offset } : null}
+            marks={marks}
             color={COLOR}
+            height={140}
           />
-          <div className="flex items-center gap-2 mt-2">
+          <div className="text-[10px] text-neutral-500">
+            Clic : placer la lecture · glisser : sélectionner (les actions portent alors sur la sélection).
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
             <button
-              className={`hw-btn px-2 py-1 text-[11px] font-bold ${trackPlaying && preview.playing ? "hw-btn-on" : ""}`}
-              onClick={handlePlay}
+              className={`hw-btn px-2 py-1 text-[11px] font-bold ${playing !== "none" ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: playing !== "none" ? COLOR : undefined }}
+              onClick={() => (playing !== "none" ? stopAll() : play())}
             >
-              ▶ LIRE
-            </button>
-            <button
-              className="hw-btn px-2 py-1 text-[11px] font-bold"
-              onClick={handleStop}
-            >
-              ■ STOP
+              {playing !== "none" ? "■ STOP" : "▶ LIRE"}
             </button>
             <button
               className={`hw-btn px-2 py-1 text-[11px] font-bold ${loop ? "hw-btn-on" : ""}`}
-              onClick={() => setLoop(!loop)}
+              style={{ ["--led" as string]: loop ? COLOR : undefined }}
+              onClick={() => setLoop((x) => !x)}
             >
               BOUCLE
             </button>
-            {sel && <span className="text-[11px]">{selDuration}</span>}
+            {hasStems && (
+              <>
+                <div className="text-[10px] text-neutral-400">ÉCOUTE</div>
+                <button
+                  className={`hw-btn px-2 py-1 text-[11px] font-bold ${listen === "mix" ? "hw-btn-on" : ""}`}
+                  style={{ ["--led" as string]: listen === "mix" ? COLOR : undefined }}
+                  onClick={() => {
+                    stopAll();
+                    setListen("mix");
+                  }}
+                >
+                  STEMS
+                </button>
+                <button
+                  className={`hw-btn px-2 py-1 text-[11px] font-bold ${listen === "orig" ? "hw-btn-on" : ""}`}
+                  style={{ ["--led" as string]: listen === "orig" ? COLOR : undefined }}
+                  onClick={() => {
+                    stopAll();
+                    setListen("orig");
+                  }}
+                >
+                  ORIGINAL
+                </button>
+              </>
+            )}
+            {mixer.busy && <div className="text-[10px] text-neutral-400">CALCUL…</div>}
           </div>
-          <EditTools
-            buf={track.buf}
-            sel={sel}
-            bpm={track.bpm}
-            color={COLOR}
-            busy={!!busy}
-            canUndo={undo.length > 0}
-            onApply={apply}
-            onUndo={undoLast}
-            onExport={exportTrack}
-          />
-        </div>
-      )}
 
-      <div className="hw-panel flex flex-col gap-2 p-3">
-        <div className="flex items-center gap-2">
-          <h2 className="text-[10px] font-bold uppercase tracking-[0.25em] text-neutral-500">Samples</h2>
-          <span className="text-[11px]">{samples.length}</span>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {track && sel && (
+          <div className="hw-recess flex flex-wrap items-center gap-1.5 p-1.5">
             <button
               className="hw-btn px-2 py-1 text-[11px] font-bold"
-              onClick={() => {
-                if (!track) return;
-                const buf = ed.slice(track.buf, sel);
-                addSample(buf, `${track.name} ${samples.length + 1}`, sel.a);
-              }}
+              onClick={addSample}
+              disabled={!sel}
             >
               + SAMPLE
             </button>
-          )}
-          {track && track.bpm > 0 && (
-            <>
+            {cur.bpm > 0 && (
+              <>
+                <div className="text-[10px] text-neutral-400">DÉCOUPER</div>
+                <button className="hw-btn px-2 py-1 text-[11px] font-bold" onClick={() => sliceBars(1)}>
+                  1
+                </button>
+                <button className="hw-btn px-2 py-1 text-[11px] font-bold" onClick={() => sliceBars(2)}>
+                  2
+                </button>
+                <button className="hw-btn px-2 py-1 text-[11px] font-bold" onClick={() => sliceBars(4)}>
+                  4
+                </button>
+                <button className="hw-btn px-2 py-1 text-[11px] font-bold" onClick={() => sliceBars(8)}>
+                  8
+                </button>
+                <div className="text-[10px] text-neutral-400">MESURES</div>
+              </>
+            )}
+            <button className="hw-btn px-2 py-1 text-[11px] font-bold" onClick={addOnsets}>
+              ATTAQUES
+            </button>
+            <Knob
+              label="SENSIBILITÉ"
+              value={sens}
+              min={0}
+              max={1}
+              defaultValue={0.5}
+              onChange={setSens}
+              color={COLOR}
+              size={32}
+            />
+            <span className="mx-1 h-6 w-px bg-white/10" />
+            <button
+              className={`hw-btn px-2 py-1 text-[11px] font-bold ${model === "htdemucs" ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: model === "htdemucs" ? COLOR : undefined }}
+              onClick={() => setModel("htdemucs")}
+              disabled={!!sep}
+            >
+              4 PISTES
+            </button>
+            <button
+              className={`hw-btn px-2 py-1 text-[11px] font-bold ${model === "htdemucs_6s" ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: model === "htdemucs_6s" ? COLOR : undefined }}
+              onClick={() => setModel("htdemucs_6s")}
+              disabled={!!sep}
+            >
+              6 PISTES
+            </button>
+            {sep && sep.id === cur.id ? (
               <button
                 className="hw-btn px-2 py-1 text-[11px] font-bold"
-                onClick={() => handleSlice(1)}
+                onClick={cancelSep}
+                title="Sépare tout le son (ou fais d'abord un sample de la partie voulue). Un morceau entier prend une à trois minutes"
               >
-                DÉCOUPER EN 1 MESURE
+                ANNULER · {sep.pct ?? 0} %
               </button>
+            ) : sep ? (
+              <div className="text-[10px] text-neutral-400">séparation en cours…</div>
+            ) : (
               <button
                 className="hw-btn px-2 py-1 text-[11px] font-bold"
-                onClick={() => handleSlice(2)}
+                style={{ ["--led" as string]: COLOR }}
+                onClick={separate}
+                title="Sépare tout le son (ou fais d'abord un sample de la partie voulue). Un morceau entier prend une à trois minutes"
               >
-                DÉCOUPER EN 2 MESURES
+                SÉPARER EN STEMS
               </button>
-              <button
-                className="hw-btn px-2 py-1 text-[11px] font-bold"
-                onClick={() => handleSlice(4)}
-              >
-                DÉCOUPER EN 4 MESURES
-              </button>
-              <button
-                className="hw-btn px-2 py-1 text-[11px] font-bold"
-                onClick={() => handleSlice(8)}
-              >
-                DÉCOUPER EN 8 MESURES
-              </button>
-            </>
-          )}
-          <button
-            className="hw-btn px-2 py-1 text-[11px] font-bold"
-            onClick={handleOnsets}
-            disabled={!track}
-          >
-            ATTAQUES
-          </button>
-          <Knob
-            label="SENSIBILITÉ"
-            value={sens}
-            min={0}
-            max={1}
-            defaultValue={0.5}
-            onChange={setSens}
-            color={COLOR}
-            size={32}
-            format={(v) => v.toFixed(2)}
-          />
-          <button
-            className={`hw-btn px-2 py-1 text-[11px] font-bold ml-auto ${clearConfirm ? "bg-red-500 text-white" : ""}`}
-            onClick={handleClearSamples}
-          >
-            {clearConfirm ? "SÛR ?" : "VIDER LA LISTE"}
-          </button>
-        </div>
-        <SampleList
-          samples={samples}
-          curId={curId}
-          savedIds={savedIds}
-          color={COLOR}
-          onSelect={setCurId}
-          onRename={(id, name) => {
-            setSamples(prev => prev.map(s => s.id === id ? { ...s, name } : s));
-          }}
-          onRemove={(id) => {
-            setSamples(prev => prev.filter(s => s.id !== id));
-            if (id === curId) setCurId(null);
-          }}
-          onPlay={(s, loop) => {
-            playingTrack.current = false;
-            setTrackPlaying(false);
-            preview.play(s.buf, 0, s.buf.duration, loop);
-          }}
-          onSave={async (s) => {
-            try {
-              const wav = encodeWav(s.buf, 24);
-              await addToBank(wav, {
-                name: s.name,
-                kind: "sample",
-                from: s.from,
-                bpm: s.bpm,
-                key: s.key,
-                dur: s.buf.duration,
-                tags: ""
-              });
-              setSavedIds(prev => new Set(prev).add(s.id));
-              setBankVersion(v => v + 1);
-            } catch {
-              setErr("Sauvegarde impossible");
-            }
-          }}
-          onKeys={(s) => toKeys(s.buf, s.name)}
-          onWav={(s) => {
-            downloadBlob(encodeWav(s.buf, 24), `${s.name}.wav`);
-          }}
-        />
-      </div>
+            )}
+            <span className="mx-1 h-6 w-px bg-white/10" />
+            <button className="hw-btn px-2 py-1 text-[11px] font-bold" onClick={() => toKeys(part(), partName())}>
+              CLAVIER
+            </button>
+            <button className="hw-btn px-2 py-1 text-[11px] font-bold" onClick={saveToBank} disabled={!!busy}>
+              {savedIds.has(cur.id) ? "SAUVÉ" : "SAUVER"}
+            </button>
+            <button className="hw-btn px-2 py-1 text-[11px] font-bold" onClick={() => loadToDeck("A")}>
+              → A
+            </button>
+            <button className="hw-btn px-2 py-1 text-[11px] font-bold" onClick={() => loadToDeck("B")}>
+              → B
+            </button>
+            <button className="hw-btn px-2 py-1 text-[11px] font-bold" onClick={loadToSampler}>
+              → SAMPLER
+            </button>
+            <button className="hw-btn px-2 py-1 text-[11px] font-bold" onClick={() => exportSound("wav")}>
+              ⤓ WAV
+            </button>
+            <button className="hw-btn px-2 py-1 text-[11px] font-bold" onClick={() => exportSound("mp3")}>
+              ⤓ MP3
+            </button>
+            <span className="mx-1 h-6 w-px bg-white/10" />
+            <button
+              className="hw-btn px-2 py-1 text-[11px] font-bold"
+              onClick={() => setToolsOpen((x) => !x)}
+            >
+              OUTILS {toolsOpen ? "▴" : "▾"}
+            </button>
+          </div>
 
-      {currentSample && (
-        <StemWorkbench
-          key={currentSample.id}
-          engine={engine}
-          sample={currentSample}
-          color={COLOR}
-          preview={preview}
-          onNewSample={addSample}
-          onSaved={() => setBankVersion(v => v + 1)}
-          toKeys={toKeys}
-        />
+          {toolsOpen && (
+            <EditTools
+              buf={cur.buf}
+              sel={sel}
+              bpm={cur.bpm}
+              color={COLOR}
+              busy={!!busy}
+              canUndo={(cur.undo?.length ?? 0) > 0}
+              onApply={apply}
+              onUndo={undoLast}
+              onExport={exportSound}
+            />
+          )}
+
+          {hasStems && (
+            <AtelierStems
+              sound={cur}
+              mixer={mixer}
+              color={COLOR}
+              playhead={playhead}
+              cursor={cursor}
+              playing={playing === "mix"}
+              loop={loop}
+              sel={sel}
+              onCtls={(ctls) => update(cur.id, { ctls })}
+              onPlay={playFrom}
+              onStop={stopAll}
+              onSeek={seek}
+              toKeys={toKeys}
+              onNewSound={(buf, name, kind) => {
+                addSound(
+                  { name, buf, kind, from: cur.name, bpm: cur.bpm, key: cur.key, offset: cur.offset },
+                  false
+                );
+                setNote("Ajouté à la session");
+              }}
+              onSaved={() => setBankVersion((v) => v + 1)}
+            />
+          )}
+        </div>
+      ) : (
+        <div className="hw-panel p-6 text-center text-[11px] text-neutral-400">
+          Choisis un son dans les sources ci-dessus : une recherche YouTube, un morceau de la bibliothèque, un fichier,
+          une platine ou la banque.
+        </div>
       )}
 
-      <BankPanel
-        engine={engine}
-        version={bankVersion}
-        onChanged={() => setBankVersion(v => v + 1)}
-        toKeys={toKeys}
-        preview={preview}
-        color={COLOR}
-      />
-
       <div className="fixed inset-x-0 bottom-0 z-40 px-3 pb-3">
-        <MiniKeys keys={keys} color={COLOR} active />
+        <MiniKeys
+          keys={keys}
+          color={COLOR}
+          active={active}
+          current={cur ? { name: partName(), load: () => toKeys(part(), partName()) } : null}
+        />
       </div>
     </div>
   );

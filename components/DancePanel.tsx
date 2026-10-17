@@ -1,12 +1,15 @@
+"use client";
+
 import { useEffect, useRef, useState } from "react";
 import type { DJEngine } from "@/lib/audio/engine";
+import type { SfxId } from "@/lib/audio/SoundFX";
 import { Knob } from "./Knob";
 import { PerfPad } from "./PerfPad";
 
 type Deck = DJEngine["deckA"];
 type Side = "A" | "B";
-type Ingredients = { filter: boolean; riser: boolean; bass: boolean; kick: boolean; roll: boolean };
-type DropStyle = "classic" | "silence" | "brake" | "echo" | "reverse" | "swap";
+type Ingredients = { filter: boolean; riser: boolean; bass: boolean; kick: boolean; roll: boolean; vocal: boolean; wash: boolean; gate: boolean; cymbal: boolean; snare: boolean };
+type DropStyle = "classic" | "silence" | "brake" | "echo" | "reverse" | "stutter" | "slam" | "swap" | "double";
 const KICK_HP = 0.42;
 const STORE = "djsynth.montee.v1";
 const INGREDIENTS: { id: keyof Ingredients; label: string; title: string; stems?: boolean }[] = [
@@ -15,6 +18,11 @@ const INGREDIENTS: { id: keyof Ingredients; label: string; title: string; stems?
   { id: "bass", label: "BASSE", title: "Le stem basse est coupé pendant la montée et revient sur le drop", stems: true },
   { id: "kick", label: "KICK", title: "Le kick disparaît pendant la montée (passe-haut sur le stem batterie) et revient sur le drop", stems: true },
   { id: "roll", label: "ROULEMENT", title: "Fin de montée en roulement qui accélère : la batterie seule si les stems sont actifs, sinon tout le son" },
+  { id: "vocal", label: "VOIX", title: "La voix se répète en boucles de plus en plus courtes sur la fin de la montée", stems: true },
+  { id: "wash", label: "LAVAGE", title: "La réverbération monte jusqu'au drop puis se coupe net (sa queue continue)" },
+  { id: "gate", label: "HACHÉ", title: "Le son est haché en doubles-croches sur la deuxième moitié de la montée" },
+  { id: "cymbal", label: "CYMBALE", title: "Une cymbale inversée qui monte et finit pile sur le drop" },
+  { id: "snare", label: "CAISSE CLAIRE", title: "Un roulement de caisse claire qui accélère jusqu'au drop" },
 ];
 const DROPS: { id: DropStyle; label: string; title: string }[] = [
   { id: "classic", label: "CLASSIQUE", title: "Tout revient d'un coup, pile sur le temps" },
@@ -22,41 +30,67 @@ const DROPS: { id: DropStyle; label: string; title: string }[] = [
   { id: "brake", label: "FREIN", title: "Frein vinyle sur le dernier temps, puis le drop" },
   { id: "echo", label: "ÉCHO", title: "Le son s'arrête et ses échos remplissent le dernier temps" },
   { id: "reverse", label: "REVERSE", title: "Le dernier temps est rejoué à l'envers, comme un rembobinage" },
+  { id: "stutter", label: "BÉGAIEMENT", title: "Le dernier temps bégaie en doubles-croches, puis le drop" },
+  { id: "slam", label: "SLAM", title: "Le son s'étouffe sur le dernier temps puis s'ouvre d'un coup sur le drop" },
   { id: "swap", label: "BASCULE", title: "Le drop part sur l'autre platine : crossfader d'un coup ; elle démarre à son CUE si elle est arrêtée" },
+  { id: "double", label: "DOUBLE", title: "L'autre platine part en même temps (à son CUE si elle est arrêtée), crossfader au centre" },
 ];
-const LENGTHS = [4, 8, 16] as const;
+const LENGTHS = [4, 8, 16, 32] as const;
 type Len = (typeof LENGTHS)[number];
-const RISER_BEAT: Record<Len, number> = { 4: 7, 8: 8, 16: 9 };
+const RISER_BEAT: Record<Len, number> = { 4: 7, 8: 8, 16: 9, 32: 9 };
 const FILTER_TOP = 0.7;
 const RISER_LEVEL = 0.7;
 const RELEASES = [0.25, 0.5, 1] as const;
 const SIDE_COLOR: Record<Side, string> = { A: "#38bdf8", B: "#f59e0b" };
-type Settings = { len: Len; ing: Ingredients; drop: DropStyle; impact: boolean; autoDrop: boolean; pumpDepth: number; pumpRel: (typeof RELEASES)[number] };
-const DEFAULTS: Settings = { len: 8, ing: { filter: true, riser: true, bass: true, kick: false, roll: false }, drop: "classic", impact: false, autoDrop: true, pumpDepth: 0.6, pumpRel: 0.5 };
+type DropFx = "none" | "impact" | Extract<SfxId, "subdrop" | "explosion" | "airhorn" | "siren" | "laser">;
+type Settings = { len: Len; ing: Ingredients; drop: DropStyle; dropFx: DropFx; autoDrop: boolean; pumpDepth: number; pumpRel: (typeof RELEASES)[number]; pumpOnDrop: boolean };
+const DROP_FX: { id: DropFx; label: string; title: string }[] = [
+  { id: "none", label: "AUCUN", title: "Pas de son ajouté sur le drop" },
+  { id: "impact", label: "IMPACT", title: "Boum de sub et souffle pile sur le drop" },
+  { id: "subdrop", label: "SUB", title: "Sub qui plonge" },
+  { id: "explosion", label: "EXPLOSION", title: "Explosion de bruit" },
+  { id: "airhorn", label: "CORNE", title: "Corne de brume" },
+  { id: "siren", label: "SIRÈNE", title: "Sirène" },
+  { id: "laser", label: "LASER", title: "Laser" },
+];
+const OFF_ING: Ingredients = { filter: false, riser: false, bass: false, kick: false, roll: false, vocal: false, wash: false, gate: false, cymbal: false, snare: false };
+const RECIPES: { id: string; label: string; title: string; len: Len; ing: Partial<Ingredients>; drop: DropStyle; dropFx: DropFx }[] = [
+  { id: "house", label: "HOUSE", title: "Filtre, souffle et basse coupée sur 8 temps, retour classique avec impact", len: 8, ing: { filter: true, riser: true, bass: true }, drop: "classic", dropFx: "impact" },
+  { id: "techno", label: "TECHNO", title: "Kick coupé, son haché et souffle sur 16 temps, dernier temps muet, sub", len: 16, ing: { kick: true, gate: true, riser: true }, drop: "silence", dropFx: "subdrop" },
+  { id: "edm", label: "EDM", title: "Filtre, souffle, roulement, caisse claire et basse coupée sur 8 temps, explosion", len: 8, ing: { filter: true, riser: true, roll: true, snare: true, bass: true }, drop: "classic", dropFx: "explosion" },
+  { id: "trance", label: "TRANCE", title: "Lavage de réverbération, souffle, filtre et cymbale sur 32 temps, slam", len: 32, ing: { wash: true, riser: true, filter: true, cymbal: true }, drop: "slam", dropFx: "impact" },
+  { id: "hiphop", label: "HIP-HOP", title: "Voix en boucle et basse coupée sur 4 temps, frein vinyle et corne", len: 4, ing: { vocal: true, bass: true }, drop: "brake", dropFx: "airhorn" },
+];
+const DEFAULTS: Settings = { len: 8, ing: { filter: true, riser: true, bass: true, kick: false, roll: false, vocal: false, wash: false, gate: false, cymbal: false, snare: false }, drop: "classic", dropFx: "none", autoDrop: true, pumpDepth: 0.6, pumpRel: 0.5, pumpOnDrop: false };
 function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(STORE);
     if (!raw) return DEFAULTS;
-    const s = JSON.parse(raw) as Partial<Settings>;
-    return { ...DEFAULTS, ...s, ing: { ...DEFAULTS.ing, ...(s.ing ?? {}) } };
+    const s = JSON.parse(raw) as Partial<Settings> & { impact?: boolean };
+    const len: Len = s.len !== undefined && (LENGTHS as readonly number[]).includes(s.len) ? s.len : DEFAULTS.len;
+    const dropFx = s.impact && !s.dropFx ? "impact" : s.dropFx ?? DEFAULTS.dropFx;
+    return { ...DEFAULTS, ...s, len, dropFx, ing: { ...DEFAULTS.ing, ...(s.ing ?? {}) } };
   } catch {
     return DEFAULTS;
   }
 }
-type Snapshot = { filter: number; riserBeat: number; rollBeat: number; bassIdx: number; bassVol: number; drumsIdx: number; drumsFilter: number; echoBeat: number; echoP1: number; brakeP1: number; reverseBeat: number };
-type Run = { deck: Deck; other: Deck; t0: number; spb: number; beats: number; snap: Snapshot; timers: number[]; use: Ingredients; drop: DropStyle; impact: boolean; stemRoll: boolean; fxRoll: boolean };
+type Snapshot = { filter: number; riserBeat: number; rollBeat: number; bassIdx: number; bassVol: number; drumsIdx: number; drumsFilter: number; echoBeat: number; echoP1: number; brakeP1: number; reverseBeat: number; vocalsIdx: number; washWet: number; gateWet: number; gateBeat: number };
+type Run = { deck: Deck; other: Deck; t0: number; spb: number; beats: number; snap: Snapshot; timers: number[]; use: Ingredients; drop: DropStyle; dropFx: DropFx; pumpOnDrop: boolean; stemRoll: boolean; fxRoll: boolean; vocalRoll: boolean };
+
+const hasPreDrop = (d: DropStyle) => d !== "classic" && d !== "swap" && d !== "double";
+const sameIng = (a: Ingredients, b: Ingredients) => INGREDIENTS.every(({ id }) => a[id] === b[id]);
 
 function restore(run: Run) {
   run.timers.forEach((t) => clearTimeout(t));
   run.timers = [];
   const { deck, snap, use } = run;
   const rack = deck.fxRack;
-  if (use.filter) deck.setFilter(snap.filter);
+  if (use.filter || run.drop === "slam") deck.setFilter(snap.filter);
   if (use.riser) {
     rack.setWet("noise", 0);
     rack.setBeat("noise", snap.riserBeat);
   }
-  if (run.fxRoll) {
+  if (run.fxRoll || run.drop === "stutter") {
     rack.setWet("roll", 0);
     rack.setBeat("roll", snap.rollBeat);
   }
@@ -64,6 +98,12 @@ function restore(run: Run) {
   if (snap.drumsIdx >= 0) {
     if (use.kick) deck.setStemFilter(snap.drumsIdx, snap.drumsFilter);
     if (run.stemRoll) deck.clearStemLoop(snap.drumsIdx);
+  }
+  if (run.vocalRoll && snap.vocalsIdx >= 0) deck.clearStemLoop(snap.vocalsIdx);
+  if (use.wash) rack.setWet("reverb", snap.washWet);
+  if (use.gate) {
+    rack.setWet("gate", snap.gateWet);
+    rack.setBeat("gate", snap.gateBeat);
   }
   if (run.drop === "silence") deck.setHold("out", false);
   if (run.drop === "brake") {
@@ -97,6 +137,11 @@ function preDrop(run: Run) {
   } else if (run.drop === "reverse") {
     rack.setBeat("reverse", 5);
     rack.setWet("reverse", 1);
+  } else if (run.drop === "stutter") {
+    rack.setBeat("roll", 0);
+    rack.setWet("roll", 1);
+  } else if (run.drop === "slam") {
+    deck.rampFilter(-0.85, run.spb);
   }
 }
 
@@ -126,7 +171,7 @@ export function DancePanel({ engine }: { engine: DJEngine }) {
 
   const update = (patch: Partial<Settings>) => setCfg((c) => ({ ...c, ...patch }));
   const toggleIng = (id: keyof Ingredients) => setCfg((c) => ({ ...c, ing: { ...c.ing, [id]: !c.ing[id] } }));
-  const flip = (k: "impact" | "autoDrop") => setCfg((c) => ({ ...c, [k]: !c[k] }));
+  const flip = (k: "autoDrop") => setCfg((c) => ({ ...c, [k]: !c[k] }));
 
   // remember the settings
   useEffect(() => {
@@ -159,14 +204,18 @@ export function DancePanel({ engine }: { engine: DJEngine }) {
   const dropNow = () => {
     const r = run.current;
     stopRun(run);
-    if (r?.impact) engine.keyPad.impact();
-    if (r?.drop === "swap" && r.other.audioBuffer) {
+    if (r && r.dropFx !== "none") {
+      if (r.dropFx === "impact") engine.keyPad.impact();
+      else engine.soundFx.trigger(r.dropFx);
+    }
+    if ((r?.drop === "swap" || r?.drop === "double") && r.other.audioBuffer) {
       if (!r.other.playing) {
         r.other.seek(r.other.cuePoint);
         r.other.play();
       }
-      engine.setCrossfade(r.deck === engine.deckA ? 1 : 0);
+      engine.setCrossfade(r.drop === "double" ? 0.5 : r.deck === engine.deckA ? 1 : 0);
     }
+    if (r?.pumpOnDrop && r.deck.stemsActive) setPumpOn(true);
     setPhase("drop");
     window.setTimeout(() => setPhase((p) => (p === "drop" ? "idle" : p)), 600);
   };
@@ -178,6 +227,7 @@ export function DancePanel({ engine }: { engine: DJEngine }) {
     const rack = deck.fxRack;
     const bassIdx = deck.stemsActive ? deck.stemNames.indexOf("bass") : -1;
     const drumsIdx = deck.stemsActive ? deck.stemNames.indexOf("drums") : -1;
+    const vocalsIdx = deck.stemsActive ? deck.stemNames.indexOf("vocals") : -1;
     const r: Run = {
       deck,
       other,
@@ -196,13 +246,19 @@ export function DancePanel({ engine }: { engine: DJEngine }) {
         echoP1: rack.getParam("echo", "p1"),
         brakeP1: rack.getParam("brake", "p1"),
         reverseBeat: rack.getBeat("reverse"),
+        vocalsIdx,
+        washWet: rack.getWet("reverb"),
+        gateWet: rack.getWet("gate"),
+        gateBeat: rack.getBeat("gate"),
       },
       timers: [],
       use: { ...cfg.ing },
       drop: cfg.drop,
-      impact: cfg.impact,
+      dropFx: cfg.dropFx,
+      pumpOnDrop: cfg.pumpOnDrop,
       stemRoll: cfg.ing.roll && drumsIdx >= 0,
       fxRoll: cfg.ing.roll && drumsIdx < 0,
+      vocalRoll: cfg.ing.vocal && vocalsIdx >= 0,
     };
     const auto = cfg.autoDrop;
     const n = cfg.len;
@@ -213,14 +269,37 @@ export function DancePanel({ engine }: { engine: DJEngine }) {
     at(0, () => {
       if (r.use.bass && bassIdx >= 0) deck.setStemVol(bassIdx, 0);
       if (r.use.kick && drumsIdx >= 0) deck.setStemFilter(drumsIdx, KICK_HP);
-      if (r.use.riser) {
-        rack.setBeat("noise", RISER_BEAT[n]);
-        rack.setWet("noise", 0);
-        rack.setWet("noise", RISER_LEVEL);
-      }
       if (r.use.filter) deck.rampFilter(FILTER_TOP, n * spb);
       setPhase("build");
     });
+
+    if (r.use.riser) {
+      const riserAt = n > 16 ? n - 16 : 0;
+      at(riserAt, () => {
+        rack.setBeat("noise", RISER_BEAT[n]);
+        rack.setWet("noise", 0);
+        rack.setWet("noise", RISER_LEVEL);
+      });
+    }
+
+    if (r.use.wash) {
+      for (let k = 0; k < n; k++) {
+        at(k, () => rack.setWet("reverb", 0.15 + (0.6 * k) / n));
+      }
+    }
+
+    if (r.use.gate) {
+      at(Math.floor(n / 2), () => {
+        rack.setBeat("gate", 0);
+        rack.setWet("gate", 0.9);
+      });
+    }
+
+    if (r.vocalRoll) {
+      const vStages = n >= 8 ? [1, 0.5, 0.25] : [0.5, 0.25];
+      vStages.forEach((b, k) => at(n - vStages.length + k, () => deck.setStemBeatLoop(vocalsIdx, b, { quantize: true })));
+    }
+
     if (r.use.roll) {
       if (r.stemRoll) {
         const stages = n >= 8 ? [0.5, 0.25, 0.125] : [0.25, 0.125];
@@ -235,12 +314,24 @@ export function DancePanel({ engine }: { engine: DJEngine }) {
         });
       }
     }
-    if (r.use && auto && r.drop !== "classic" && r.drop !== "swap") {
+
+    if (r.use.cymbal) {
+      const dropAt = (c.toNextBeat + n * spb) * 1000;
+      r.timers.push(window.setTimeout(() => engine.soundFx.trigger("revcymbal"), Math.max(0, dropAt - 1500)));
+    }
+
+    if (r.use.snare) {
+      const dropAt = (c.toNextBeat + n * spb) * 1000;
+      r.timers.push(window.setTimeout(() => engine.soundFx.trigger("snarebuild"), Math.max(0, dropAt - 2000)));
+    }
+
+    if (r.use && auto && hasPreDrop(r.drop)) {
       at(n - 1, () => {
         preDrop(r);
         setPhase("pre");
       });
     }
+
     at(n, () => (auto ? dropNow() : setPhase("top")));
     run.current = r;
     setPhase("armed");
@@ -258,7 +349,7 @@ export function DancePanel({ engine }: { engine: DJEngine }) {
     const c = r.deck.fxClock();
     let wait = c && c.playing ? c.toNextBeat : 0;
     if (wait < 0.15 * r.spb) wait += r.spb;
-    if (r.drop !== "classic" && r.drop !== "swap") {
+    if (hasPreDrop(r.drop)) {
       preDrop(r);
       setPhase("pre");
     }
@@ -326,6 +417,21 @@ export function DancePanel({ engine }: { engine: DJEngine }) {
       </div>
 
       <div className="hw-recess p-2 flex flex-wrap items-center gap-2">
+        <div className="text-[10px] font-bold tracking-[0.2em] text-neutral-500">RECETTES</div>
+        {RECIPES.map((x) => (
+          <button
+            key={x.id}
+            className={`hw-btn px-2 py-1 text-[11px] font-bold ${cfg.len === x.len && cfg.drop === x.drop && cfg.dropFx === x.dropFx && sameIng(cfg.ing, { ...OFF_ING, ...x.ing }) ? "hw-btn-on" : ""}`}
+            style={{ ["--led" as string]: color }}
+            disabled={running}
+            title={x.title}
+            onClick={() => setCfg((c) => ({ ...c, len: x.len, ing: { ...OFF_ING, ...x.ing }, drop: x.drop, dropFx: x.dropFx }))}
+          >
+            {x.label}
+          </button>
+        ))}
+      </div>
+      <div className="hw-recess p-2 flex flex-wrap items-center gap-2">
         <div className="text-[10px] font-bold tracking-[0.2em] text-neutral-500">LONGUEUR</div>
         {LENGTHS.map((l) => (
           <button
@@ -362,22 +468,14 @@ export function DancePanel({ engine }: { engine: DJEngine }) {
             key={id}
             className={`hw-btn px-2 py-1 text-[11px] font-bold ${cfg.drop === id ? "hw-btn-on" : ""}`}
             style={{ ["--led" as string]: color }}
-            disabled={running || (id === "swap" && !other.audioBuffer)}
-            title={id === "swap" && !other.audioBuffer ? `Charge un morceau sur la platine ${side === "A" ? "B" : "A"} pour basculer dessus` : title}
+            disabled={running || ((id === "swap" || id === "double") && !other.audioBuffer)}
+            title={(id === "swap" || id === "double") && !other.audioBuffer ? `Charge un morceau sur la platine ${side === "A" ? "B" : "A"} pour ${id === "swap" ? "basculer" : "doubler"}` : title}
             onClick={() => update({ drop: id })}
           >
             {label}
           </button>
         ))}
         <div className="h-6 w-px bg-white/10" />
-        <button
-          className={`hw-btn px-2 py-1 text-[11px] font-bold ${cfg.impact ? "hw-btn-on" : ""}`}
-          style={{ ["--led" as string]: color }}
-          title="Boum de sub et souffle pile sur le drop"
-          onClick={() => flip("impact")}
-        >
-          IMPACT
-        </button>
         <button
           className={`hw-btn px-2 py-1 text-[11px] font-bold ${cfg.autoDrop ? "hw-btn-on" : ""}`}
           style={{ ["--led" as string]: color }}
@@ -386,6 +484,21 @@ export function DancePanel({ engine }: { engine: DJEngine }) {
         >
           DROP AUTO
         </button>
+      </div>
+
+      <div className="hw-recess p-2 flex flex-wrap items-center gap-2">
+        <div className="text-[10px] font-bold tracking-[0.2em] text-neutral-500">SON AU DROP</div>
+        {DROP_FX.map(({ id, label, title }) => (
+          <button
+            key={id}
+            className={`hw-btn px-2 py-1 text-[11px] font-bold ${cfg.dropFx === id ? "hw-btn-on" : ""}`}
+            style={{ ["--led" as string]: color }}
+            onClick={() => update({ dropFx: id })}
+            title={title}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       <div className="flex gap-[3px]">
@@ -434,6 +547,14 @@ export function DancePanel({ engine }: { engine: DJEngine }) {
           onClick={() => setPumpOn(!pumpOn)}
         >
           {pumpOn ? "MARCHE" : "ARRÊT"}
+        </button>
+        <button
+          className={`hw-btn px-2 py-1 text-[11px] font-bold ${cfg.pumpOnDrop ? "hw-btn-on" : ""}`}
+          style={{ ["--led" as string]: color }}
+          title="La pompe s'allume toute seule sur le drop"
+          onClick={() => setCfg((c) => ({ ...c, pumpOnDrop: !c.pumpOnDrop }))}
+        >
+          AU DROP
         </button>
         <Knob
           label="Profondeur"
