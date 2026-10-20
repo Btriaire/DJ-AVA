@@ -26,6 +26,7 @@ export interface LibTrack {
   camelot?: string; // key in Camelot notation, from the server analysis
   abr?: number; // audio bitrate in kbps (yt-dlp for youtube, file size / duration for local files)
   quality?: QualityLevel; // HQ / STD / LQ, from abr — see lib/quality.ts
+  height?: number; // video height in pixels (720, 1080, 2160…) from yt-dlp, for the video quality filter
   addedAt: number;
 }
 

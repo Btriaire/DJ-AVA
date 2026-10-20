@@ -52,11 +52,25 @@ export async function GET(request: Request) {
     const abr = data.abr ? Number(data.abr) : undefined;
     const quality = abr ? qualityFromKbps(abr) : undefined;
 
+    // Find the maximum height among video formats
+    let height: number | null = null;
+    if (data.formats) {
+      for (const format of data.formats) {
+        if (format.vcodec && format.vcodec !== "none" && format.height) {
+          const h = Number(format.height);
+          if (!isNaN(h) && (height === null || h > height)) {
+            height = h;
+          }
+        }
+      }
+    }
+
     const responseData = {
       abr: data.abr ?? null,
       codec: data.acodec ?? null,
       sampleRate: data.asr ?? null,
-      quality: quality ?? null
+      quality: quality ?? null,
+      height: height ?? null
     };
 
     cache.set(id, { value: responseData, at: Date.now() });

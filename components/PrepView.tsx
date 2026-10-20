@@ -8,16 +8,19 @@ import { qualityFromKbps, kbpsFromSize, QUALITY_LABEL, QUALITY_HINT, QUALITY_RAN
 import { buildSmartSet } from "@/lib/setBuilder";
 import { pickNext } from "@/lib/setPicker";
 import { getCachedQuality, probeQualities } from "@/lib/ytQuality";
+import { VIDEO_LABEL, VIDEO_RANK, videoLevelFromHeight, effectiveVideoLevel } from "@/lib/videoQuality";
 import type { LibTrack, LibraryData, Playlist } from "@/lib/library";
 import type { AudiusTrack } from "@/lib/audius";
 import type { PrepReady } from "@/lib/stemPrep";
 import type { QualityLevel } from "@/lib/quality";
+import type { VideoLevel } from "@/lib/videoQuality";
 import type { Cue } from "@/lib/setPicker";
 
 type SortOption = "recent" | "title" | "bpm" | "camelot" | "theme" | "group";
 type DurationFilterKey = "all" | "1" | "3" | "5" | "8" | "15" | "15+";
 type QualityFilter = "all" | "HR" | "HQ" | "STD" | "LQ" | "unknown";
 type ResultQualityFilter = "all" | "HQ" | "HR";
+type VideoFilter = "all" | "HD" | "FHD" | "4K";
 
 const DUR_FILTERS: { key: DurationFilterKey; label: string; min: number; max: number }[] = [
   { key: "all", label: "Toutes", min: 0, max: 0 },
@@ -45,6 +48,14 @@ const QUALITY_COLORS: Record<QualityLevel | "unknown", string> = {
   unknown: "#9ca3af"
 };
 
+const VIDEO_COLORS: Record<VideoLevel | "unknown", string> = {
+  "4K": "#a78bfa",
+  FHD: "#34d399",
+  HD: "#ffcc00",
+  SD: "#ef4444",
+  unknown: "#9ca3af"
+};
+
 type TrackRow = {
   id: string;
   name: string;
@@ -57,6 +68,7 @@ type TrackRow = {
   camelot?: string;
   quality?: QualityLevel;
   abr?: number;
+  height?: number;
   theme?: string;
   group?: string;
   addedAt?: number;
@@ -76,6 +88,7 @@ const toRow = (track: LibTrack | AudiusTrack): TrackRow => {
       camelot: track.camelot,
       quality: track.quality,
       abr: track.abr,
+      height: track.height,
       theme: track.theme,
       group: track.group,
       addedAt: track.addedAt
@@ -105,10 +118,11 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [durationFilter, setDurationFilter] = useState<DurationFilterKey>("all");
   const [qualityFilter, setQualityFilter] = useState<QualityFilter>("all");
+  const [videoFilter, setVideoFilter] = useState<VideoFilter>("all");
   const [selectedGroup, setSelectedGroup] = useState("");
   const [setOrder, setSetOrder] = useState<string[]>([]);
   const [resultQualityMin, setResultQualityMin] = useState<ResultQualityFilter>("all");
-  const [probed, setProbed] = useState<Record<string, { abr?: number; quality?: QualityLevel } | null>>({});
+  const [probed, setProbed] = useState<Record<string, { abr?: number; quality?: QualityLevel; height?: number } | null>>({});
   const [checking, setChecking] = useState(false);
 
   const persist = (fn: (d: LibraryData) => LibraryData) => {
@@ -179,7 +193,8 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
         later: true,
         addedAt: Date.now(),
         abr: probeResult?.abr,
-        quality: probeResult?.quality
+        quality: probeResult?.quality,
+        height: probeResult?.height
       };
       return { ...data, tracks: [...data.tracks, newTrack] };
     });
@@ -266,16 +281,18 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
 
     try {
       const res = await fetch(`/api/youtube/quality?id=${encodeURIComponent(track.url ?? "")}`);
-      const q: { abr?: number | null; quality?: QualityLevel | null } = await res.json();
+      const q: { abr?: number | null; quality?: QualityLevel | null; height?: number | null } = await res.json();
       const abr = q.abr ?? undefined;
       const quality = q.quality ?? undefined;
+      const height = q.height ?? undefined;
 
       persist(lib => ({
         ...lib,
         tracks: lib.tracks.map(t => t.id === track.id ? {
           ...t,
           abr,
-          quality
+          quality,
+          height
         } : t)
       }));
     } catch (err) {
@@ -419,6 +436,11 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
     return QUALITY_LABEL[quality];
   };
 
+  const getVideoLabel = (height?: number) => {
+    const level = videoLevelFromHeight(height);
+    return level ? VIDEO_LABEL[level] : "?";
+  };
+
   const getTempoRelation = (current: LibTrack, next: LibTrack): string => {
     if (!current.bpm || !next.bpm) return "tempo inconnu";
     const percent = ((next.bpm / current.bpm - 1) * 100).toFixed(1);
@@ -468,6 +490,17 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
       });
     }
 
+    if (videoFilter !== "all") {
+      result = result.filter(t => {
+        const level = videoLevelFromHeight(t.height);
+        if (!level) return false;
+
+        const rank = VIDEO_RANK[level];
+        const minRank = videoFilter === "HD" ? 1 : videoFilter === "FHD" ? 2 : 3;
+        return rank >= minRank;
+      });
+    }
+
     switch (sortBy) {
       case "title":
         return result.sort((a, b) => a.name.localeCompare(b.name));
@@ -499,10 +532,10 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
       default:
         return result.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
     }
-  }, [laterTracks, sortBy, filterTheme, filterGroup, durationFilter, qualityFilter]);
+  }, [laterTracks, sortBy, filterTheme, filterGroup, durationFilter, qualityFilter, videoFilter]);
 
   const filteredSearchResults = useMemo(() => {
-    if (durationFilter === "all" && resultQualityMin === "all") return searchResults;
+    if (durationFilter === "all" && resultQualityMin === "all" && videoFilter === "all") return searchResults;
 
     return searchResults.filter(t => {
       const durationOk = durationFilter === "all" || (() => {
@@ -520,9 +553,21 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
         return rank >= (resultQualityMin === "HQ" ? 2 : 3);
       })();
 
-      return durationOk && qualityOk;
+      const videoOk = videoFilter === "all" || (() => {
+        const probeResult = probed[t.id];
+        if (!probeResult?.height) return false;
+
+        const level = videoLevelFromHeight(probeResult.height);
+        if (!level) return false;
+
+        const rank = VIDEO_RANK[level];
+        const minRank = videoFilter === "HD" ? 1 : videoFilter === "FHD" ? 2 : 3;
+        return rank >= minRank;
+      })();
+
+      return durationOk && qualityOk && videoOk;
     });
-  }, [searchResults, durationFilter, resultQualityMin, probed]);
+  }, [searchResults, durationFilter, resultQualityMin, videoFilter, probed]);
 
   const groupInfo = useMemo(() => {
     if (!selectedGroup) return { count: 0, duration: 0 };
@@ -541,11 +586,14 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
     const isCheckingQuality = isLater ? checkingQualityIds.has(track.id) : false;
     const quality = isLater ? track.quality : undefined;
     const abr = isLater ? track.abr : undefined;
+    const height = isLater ? track.height : undefined;
     const source = isLater ? track.source : "youtube";
     const duration = isLater ? track.duration : undefined;
 
     const badge = SRC_BADGE[source] || { label: source.toUpperCase(), color: "#9ca3af" };
     const qualityColor = quality ? QUALITY_COLORS[quality] : QUALITY_COLORS.unknown;
+    const videoLevel = videoLevelFromHeight(height);
+    const videoColor = videoLevel ? VIDEO_COLORS[videoLevel] : VIDEO_COLORS.unknown;
 
     return (
       <div className="hw-strip flex flex-wrap items-center gap-2 px-2 py-1.5">
@@ -586,6 +634,14 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
             >
               {getQualityLabel(quality)}
             </span>
+            {videoLevel && (
+              <span
+                className="text-[9px] font-black"
+                style={{ color: videoColor }}
+              >
+                {VIDEO_LABEL[videoLevel]}
+              </span>
+            )}
             {stemStatus && (
               <span>
                 Stems: {stemStatus === "queued" ? "en attente" :
@@ -659,6 +715,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
     const probeResult = probed[track.id];
     const quality = probeResult?.quality;
     const abr = probeResult?.abr;
+    const height = probeResult?.height;
 
     if (checking && !probeResult) {
       return (
@@ -679,12 +736,23 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
     const qualityColor = quality ? QUALITY_COLORS[quality] : QUALITY_COLORS.unknown;
     const qualityLabel = quality ? QUALITY_LABEL[quality] : "?";
 
+    const videoInfo = effectiveVideoLevel(height, track.title);
+    const videoLabel = videoInfo ? VIDEO_LABEL[videoInfo.level] : "?";
+    const videoColor = videoInfo ? VIDEO_COLORS[videoInfo.level] : VIDEO_COLORS.unknown;
+
     return (
       <>
         <span className="text-[9px] font-black" style={{ color: qualityColor }}>
           {qualityLabel}
         </span>
         {abr && <span className="text-[9px]">{Math.round(abr)} kbps</span>}
+        <span
+          className={`text-[9px] font-black ${videoInfo?.fromTitle ? "opacity-60" : ""}`}
+          style={{ color: videoColor }}
+        >
+          {videoLabel}
+          {videoInfo?.fromTitle && " (d'après le titre)"}
+        </span>
       </>
     );
   };
@@ -693,6 +761,11 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
     const probeResult = probed[track.id];
     const quality = probeResult?.quality;
     const abr = probeResult?.abr;
+    const height = probeResult?.height;
+
+    const videoInfo = effectiveVideoLevel(height, track.title);
+    const videoLabel = videoInfo ? VIDEO_LABEL[videoInfo.level] : "?";
+    const videoColor = videoInfo ? VIDEO_COLORS[videoInfo.level] : VIDEO_COLORS.unknown;
 
     return (
       <div className="hw-strip flex flex-wrap items-center gap-2 px-2 py-1.5">
@@ -747,6 +820,11 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
     return { total, verified };
   }, [searchResults, probed]);
 
+  const visibleResultsCount = useMemo(() => {
+    const visible = filteredSearchResults.length;
+    return { visible, total: searchResults.length };
+  }, [filteredSearchResults, searchResults]);
+
   return (
     <div className="zoom-zone hw-screwed hw-panel flex flex-1 flex-col gap-3 p-4">
       <div className="flex items-center justify-between">
@@ -775,6 +853,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
         </div>
         {searchError && <p className="text-[10px] text-red-500 mb-2">{searchError}</p>}
         <div className="flex flex-wrap gap-1 mb-2">
+          <span className="text-[9px] text-neutral-400 mr-2">Durée :</span>
           {DUR_FILTERS.map(filter => (
             <button
               key={filter.key}
@@ -788,6 +867,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
         </div>
         <div className="flex flex-wrap gap-2 items-center mb-2">
           <div className="flex flex-wrap gap-1">
+            <span className="text-[9px] text-neutral-400 mr-2">Audio :</span>
             <button
               onClick={() => setResultQualityMin("all")}
               className={`hw-btn px-2 py-1 text-xs ${resultQualityMin === "all" ? "hw-btn-on" : ""}`}
@@ -810,8 +890,41 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
               HiRes
             </button>
           </div>
-          <span className="text-[10px] text-neutral-400 ml-2">
-            {resultCount.total} résultats · {resultCount.verified} vérifiés
+          <div className="flex flex-wrap gap-1 ml-4">
+            <span className="text-[9px] text-neutral-400 mr-2">Vidéo :</span>
+            <button
+              onClick={() => setVideoFilter("all")}
+              className={`hw-btn px-2 py-1 text-xs ${videoFilter === "all" ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: "#ffcc00", color: "#ffcc00" }}
+            >
+              Toutes
+            </button>
+            <button
+              onClick={() => setVideoFilter("HD")}
+              className={`hw-btn px-2 py-1 text-xs ${videoFilter === "HD" ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: "#ffcc00", color: "#ffcc00" }}
+            >
+              HD et plus
+            </button>
+            <button
+              onClick={() => setVideoFilter("FHD")}
+              className={`hw-btn px-2 py-1 text-xs ${videoFilter === "FHD" ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: "#34d399", color: "#34d399" }}
+            >
+              Full HD et plus
+            </button>
+            <button
+              onClick={() => setVideoFilter("4K")}
+              className={`hw-btn px-2 py-1 text-xs ${videoFilter === "4K" ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: "#a78bfa", color: "#a78bfa" }}
+            >
+              4K
+            </button>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2 items-center mb-2">
+          <span className="text-[10px] text-neutral-400">
+            {visibleResultsCount.visible} sur {visibleResultsCount.total} résultats
           </span>
           <span className="text-[9px] text-neutral-500 ml-auto">
             YouTube n'indique pas la qualité dans sa recherche : chaque résultat est vérifié à l'ouverture (environ 3 s par vidéo, 3 en parallèle).
@@ -962,6 +1075,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
             </button>
           </div>
           <div className="flex flex-wrap gap-1">
+            <span className="text-[9px] text-neutral-400 mr-2">Durée :</span>
             {DUR_FILTERS.map(filter => (
               <button
                 key={filter.key}
@@ -973,7 +1087,11 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2 mb-2">
           <div className="flex flex-wrap gap-1">
+            <span className="text-[9px] text-neutral-400 mr-2">Audio :</span>
             <button
               onClick={() => setQualityFilter("all")}
               className={`hw-btn px-2 py-1 text-xs ${qualityFilter === "all" ? "hw-btn-on" : ""}`}
@@ -1015,6 +1133,37 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
               style={{ ["--led" as string]: "#9ca3af", color: "#9ca3af" }}
             >
               Inconnue
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1 ml-4">
+            <span className="text-[9px] text-neutral-400 mr-2">Vidéo :</span>
+            <button
+              onClick={() => setVideoFilter("all")}
+              className={`hw-btn px-2 py-1 text-xs ${videoFilter === "all" ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: "#ffcc00", color: "#ffcc00" }}
+            >
+              Toutes
+            </button>
+            <button
+              onClick={() => setVideoFilter("HD")}
+              className={`hw-btn px-2 py-1 text-xs ${videoFilter === "HD" ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: "#ffcc00", color: "#ffcc00" }}
+            >
+              HD et plus
+            </button>
+            <button
+              onClick={() => setVideoFilter("FHD")}
+              className={`hw-btn px-2 py-1 text-xs ${videoFilter === "FHD" ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: "#34d399", color: "#34d399" }}
+            >
+              Full HD et plus
+            </button>
+            <button
+              onClick={() => setVideoFilter("4K")}
+              className={`hw-btn px-2 py-1 text-xs ${videoFilter === "4K" ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: "#a78bfa", color: "#a78bfa" }}
+            >
+              4K
             </button>
           </div>
         </div>
@@ -1135,6 +1284,14 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
                   >
                     {getQualityLabel(track.quality)}
                   </span>
+                  {track.height && (
+                    <span
+                      className="font-black"
+                      style={{ color: VIDEO_COLORS[videoLevelFromHeight(track.height) || "unknown"] }}
+                    >
+                      {getVideoLabel(track.height)}
+                    </span>
+                  )}
                   <span
                     className="font-black"
                     style={{ color: SRC_BADGE[track.source]?.color || "#9ca3af" }}
