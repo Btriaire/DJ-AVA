@@ -23,6 +23,16 @@ type FileInfo = {
   key: string;
 };
 
+const DUR_FILTERS = [
+  { key: "all", label: "Toutes", min: 0, max: 0 },
+  { key: "1", label: "<1min", min: 0, max: 60 },
+  { key: "3", label: "<3min", min: 0, max: 180 },
+  { key: "5", label: "<5min", min: 0, max: 300 },
+  { key: "8", label: "<8min", min: 0, max: 480 },
+  { key: "15", label: "<15min", min: 0, max: 900 },
+  { key: "15+", label: ">15min", min: 900, max: 0 }
+];
+
 function fmt(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
@@ -94,6 +104,7 @@ export function YouTubeSearch({ ctx, color, busy, onOpen }: {
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<YTTrack[]>([]);
+  const [filteredResults, setFilteredResults] = useState<YTTrack[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [previewId, setPreviewId] = useState("");
@@ -102,6 +113,7 @@ export function YouTubeSearch({ ctx, color, busy, onOpen }: {
   const [downloadProgress, setDownloadProgress] = useState<Record<string, boolean>>({});
   const [artworkFallback, setArtworkFallback] = useState(0);
   const [analysing, setAnalysing] = useState("");
+  const [durKey, setDurKey] = useState("all");
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const cacheRef = useRef<Map<string, { bytes: ArrayBuffer; type: string }>>(new Map());
@@ -119,16 +131,42 @@ export function YouTubeSearch({ ctx, color, busy, onOpen }: {
     if (!query.trim()) return;
     setLoading(true);
     setError("");
+
     try {
-      const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}&n=24`);
+      const filter = DUR_FILTERS.find(f => f.key === durKey);
+      const n = durKey === "all" ? 24 : 40;
+      let url = `/api/youtube/search?q=${encodeURIComponent(query)}&n=${n}`;
+
+      if (filter) {
+        if (filter.min > 0) url += `&min=${filter.min}`;
+        if (filter.max > 0) url += `&max=${filter.max}`;
+      }
+
+      const res = await fetch(url);
       const data = (await res.json()) as { tracks?: YTTrack[]; error?: string };
+
       if (data.error) {
         setError(data.error);
+        setResults([]);
+        setFilteredResults([]);
       } else {
-        setResults(data.tracks ?? []);
+        const tracks = data.tracks ?? [];
+        setResults(tracks);
+
+        if (filter && filter.key !== "all") {
+          const filtered = tracks.filter(t =>
+            (!t.duration || t.duration === 0) ||
+            (filter.min <= t.duration && (filter.max === 0 || t.duration <= filter.max))
+          );
+          setFilteredResults(filtered);
+        } else {
+          setFilteredResults(tracks);
+        }
       }
     } catch {
       setError("Erreur de connexion");
+      setResults([]);
+      setFilteredResults([]);
     } finally {
       setLoading(false);
     }
@@ -258,6 +296,13 @@ export function YouTubeSearch({ ctx, color, busy, onOpen }: {
     return () => window.removeEventListener("keydown", onKey);
   }, [selectedTrack]);
 
+  const handleDurationFilter = (key: string) => {
+    setDurKey(key);
+    if (query.trim()) {
+      handleSearch();
+    }
+  };
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex gap-2">
@@ -282,8 +327,31 @@ export function YouTubeSearch({ ctx, color, busy, onOpen }: {
         Clic sur OUVRIR pour travailler le morceau ; double-clic sur la pochette pour la voir en grand avec tous ses paramètres.
       </div>
 
+      <div className="flex flex-wrap gap-1 mb-2">
+        <div className="text-[10px] text-neutral-500 mr-2">Durée :</div>
+        {DUR_FILTERS.map(filter => (
+          <button
+            key={filter.key}
+            onClick={() => handleDurationFilter(filter.key)}
+            className={`hw-btn px-2 py-1 text-[10px] ${durKey === filter.key ? "hw-btn-on" : ""}`}
+            style={durKey === filter.key ? { ["--led" as string]: color } : {}}
+          >
+            {filter.label}
+          </button>
+        ))}
+      </div>
+
+      {results.length > 0 && (
+        <div className="text-[10px] text-neutral-500 mb-2">
+          {filteredResults.length} résultat{filteredResults.length !== 1 ? "s" : ""}
+          {filteredResults.length === 0 && results.length > 0 && (
+            <span className="text-red-400 ml-2">Aucun morceau dans cette durée — essaie un autre filtre</span>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
-        {results.map((t) => (
+        {filteredResults.map((t) => (
           <div key={t.id} className="hw-strip flex gap-2 p-1.5">
             <div
               className="hw-cover shrink-0 cursor-zoom-in"
