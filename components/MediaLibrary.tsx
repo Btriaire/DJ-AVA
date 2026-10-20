@@ -20,6 +20,7 @@ import {
   type LibraryAudit,
 } from "@/lib/library";
 import { enqueuePrep, getPrepState, subscribePrep } from "@/lib/stemPrep";
+import { queueAnalysis } from "@/lib/analyze";
 import { AudiusTrack } from "@/lib/audius";
 import { CdPlayerFace } from "./CdPlayerFace";
 
@@ -408,7 +409,28 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   }
 
   // --- import local files into the collection (blob → IndexedDB) ---
-  async function importFiles(files: FileList) {
+  // "à jouer plus tard": file a YouTube/Audius search result in the library, flagged for later
+  function markLater(t: AudiusTrack, source: "youtube" | "audius") {
+    persist((d) => {
+      if (d.tracks.some((x) => x.later && x.url === t.id)) return d;
+      const track: LibTrack = {
+        id: uid(),
+        name: t.title,
+        source,
+        url: t.id,
+        deck: null,
+        art: t.artwork ?? undefined,
+        durationSec: t.duration || undefined,
+        bpm: t.bpm ?? undefined,
+        later: true,
+        addedAt: Date.now(),
+      };
+      return { ...d, tracks: [track, ...d.tracks] };
+    });
+  }
+  async function importFiles(fileList: FileList) {
+    // snapshot now: the input is cleared after this call, which empties a live FileList
+    const files = Array.from(fileList);
     const added: LibTrack[] = [];
     const existingNames = new Set(
       dataRef.current.tracks
@@ -450,6 +472,21 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       if (added.length) {
         persist((d) => ({ ...d, tracks: [...added, ...d.tracks] }));
         enqueuePrep(added);
+        for (const t of added) {
+          const file = files.find((f) => f.name.replace(/\.[^.]+$/, "") === t.name);
+          if (!file) continue;
+          queueAnalysis(file, (r) => {
+            if (!r) return;
+            persist((d) => ({
+              ...d,
+              tracks: d.tracks.map((x) =>
+                x.id === t.id && x.bpm == null
+                  ? { ...x, bpm: r.bpm, bpmEstimated: true, bpmConfidence: r.bpmConfidence, camelot: r.camelot || undefined }
+                  : x
+              ),
+            }));
+          });
+        }
       }
       flash(
         `${added.length} fichier(s) ajouté(s)` +
@@ -1321,8 +1358,14 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
               <span className="font-mono text-neutral-400">{fmt(t.durationSec)}</span>
             )}
             {typeof t.bpm === "number" && (
-              <span className="font-mono text-amber-400">{Math.round(t.bpm)} BPM</span>
+              <span
+                className="font-mono text-amber-400"
+                title={t.bpmEstimated ? `BPM estimé (confiance ${Math.round((t.bpmConfidence ?? 0) * 100)} %)` : "BPM de la source"}
+              >
+                {t.bpmEstimated ? "≈ " : ""}{Math.round(t.bpm)} BPM
+              </span>
             )}
+            {t.camelot && <span className="font-mono text-cyan-300">{t.camelot}</span>}
             {curSide && (
               <span className="font-black" style={{ color: cueColor(curSide) }}>
                 ▶ EN COURS {curSide}
@@ -2062,6 +2105,18 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           )}
 
           {/* ===== FILES ===== */}
+          {tab === "files" && data.tracks.some((t) => t.later) && (
+            <div className="flex items-center gap-2 px-1 py-1 text-xs text-neutral-400">
+              <span>{data.tracks.filter((t) => t.later).length} à jouer plus tard</span>
+              <button
+                onClick={() => enqueuePrep(data.tracks.filter((t) => t.later))}
+                className="hw-btn px-2 py-1 text-xs"
+                title="Séparer en stems tous les morceaux marqués à jouer plus tard"
+              >
+                PRÉPARER LES STEMS
+              </button>
+            </div>
+          )}
           {tab === "files" && (
             <ul className={`flex flex-col gap-1 overflow-y-auto ${splitLayout ? "max-h-[34rem]" : "max-h-80"}`}>
               {data.tracks.length === 0 && (
@@ -2158,6 +2213,13 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                         {t.bpm ? ` · ${t.bpm} BPM` : ""}
                       </div>
                     </div>
+                    <button
+                      onClick={() => markLater(t, tab === "youtube" ? "youtube" : "audius")}
+                      className="hw-btn shrink-0 px-2 py-1 text-xs"
+                      title="Garder ce morceau pour plus tard (préparer ses stems en lot)"
+                    >
+                      + PLUS TARD
+                    </button>
                     <button
                       onClick={() =>
                         generateAuto({

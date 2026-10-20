@@ -17,6 +17,10 @@ export interface LibTrack {
   stemHash?: string; // content hash of the audio; if its stems are cached server-side, badge it
   durationSec?: number; // track length — lets a set be built by ear-length, not guesswork
   bpm?: number; // tempo captured from the source search result (Audius/YouTube), if any
+  bpmEstimated?: boolean; // true when bpm came from the server analysis (lib/analyze.ts), not the source
+  later?: boolean; // marked "to play later" from a search result, to prepare its stems in batch
+  bpmConfidence?: number; // 0..1 confidence of the estimated bpm
+  camelot?: string; // key in Camelot notation, from the server analysis
   addedAt: number;
 }
 
