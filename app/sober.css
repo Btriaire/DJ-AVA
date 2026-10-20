@@ -1,0 +1,121 @@
+:root {
+  --sober-bg: #0b0d10;
+  --sober-panel: #13161b;
+  --sober-line: #232831;
+  --sober-line-2: #2e3540;
+  --sober-text: #cfd6df;
+  --sober-dim: #7b8494;
+}
+
+body,
+.hw-carbon,
+.hw-body {
+  background-color: var(--sober-bg);
+  background-image: none;
+}
+
+.hw-brushed {
+  background-image: none;
+}
+
+.hw-panel,
+.hw-rack-col,
+.hw-recess,
+.hw-screen {
+  background-color: var(--sober-panel);
+  background-image: none;
+  border: 1px solid var(--sober-line);
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.hw-screwed::after {
+  display: none;
+}
+
+.hw-btn {
+  background-color: #161a20;
+  background-image: none;
+  border: 1px solid var(--sober-line-2);
+  border-radius: 6px;
+  color: var(--sober-text);
+  box-shadow: none;
+  transition: color 0.2s ease;
+}
+
+.hw-btn:hover {
+  border-color: #3b4350;
+}
+
+.hw-btn:active {
+  transform: translateY(0);
+}
+
+.hw-btn-on {
+  background-color: color-mix(in srgb, var(--led) 16%, #13161b);
+  background-image: none;
+  border: 1px solid var(--led);
+  color: var(--led) !important;
+  box-shadow: none;
+  font-weight: bold;
+}
+
+.hw-well {
+  background-color: #0e1115;
+  background-image: none;
+  border: 1px solid #1d222a;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.hw-strip {
+  background-color: transparent;
+  background-image: none;
+  border-bottom: 1px solid #1d222a;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.hw-panic {
+  background-color: #3a1416;
+  background-image: none;
+  border: 1px solid #ef4444;
+  color: #fca5a5;
+}
+
+.hw-led {
+  box-shadow: 0 0 4px currentColor;
+}
+
+.hw-transport,
+.hw-jog,
+.hw-jog-knob,
+.hw-pad,
+.hw-knob,
+.hw-cfader,
+.hw-vinyl,
+.hw-cover {
+  color: var(--sober-text);
+}
+
+.stem-trait {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  pointer-events: none;
+  background: currentColor;
+  box-shadow: 0 0 6px currentColor;
+  animation-name: stem-trait-sweep;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+@keyframes stem-trait-sweep {
+  from {
+    left: 0%;
+  }
+  to {
+    left: 100%;
+  }
+}

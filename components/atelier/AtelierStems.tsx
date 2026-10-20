@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Knob } from "../Knob";
 import { WaveEditor } from "./WaveEditor";
 import { StemZoom } from "./StemZoom";
@@ -10,6 +10,7 @@ import { downloadBlob } from "@/lib/atelier/download";
 import type { StemMixer } from "@/lib/atelier/stemMixer";
 import type { Region, StemCtl, WorkSample, SoundKind } from "@/lib/atelier/types";
 import { DEFAULT_CTL, STEM_FR, STEM_COLOR } from "@/lib/atelier/types";
+import type { SampleKeys } from "@/lib/atelier/players";
 
 export function AtelierStems({
   sound,
@@ -27,6 +28,7 @@ export function AtelierStems({
   toKeys,
   onNewSound,
   onSaved,
+  keys,
 }: {
   sound: WorkSample;
   mixer: StemMixer;
@@ -43,6 +45,7 @@ export function AtelierStems({
   toKeys: (buf: AudioBuffer, name: string) => void;
   onNewSound: (buf: AudioBuffer, name: string, kind: SoundKind) => void;
   onSaved: () => void;
+  keys?: SampleKeys;
 }) {
   const stems = sound.stems ?? [];
   const ctls = stems.map((_, i) => sound.ctls?.[i] ?? DEFAULT_CTL);
@@ -53,9 +56,23 @@ export function AtelierStems({
   const [working, setWorking] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [saved, setSaved] = useState<number | null>(null);
+  const [trigger, setTrigger] = useState<{ stem: number; id: number; duration: number } | null>(null);
+  const [triggerCounter, setTriggerCounter] = useState(0);
 
   const nameOf = (i: number) => STEM_FR[stems[i].name] ?? stems[i].name.toUpperCase();
   const colorOf = (i: number) => STEM_COLOR[stems[i].name] ?? color;
+
+  useEffect(() => {
+    if (!keys) return;
+    const unsubscribe = keys.onNote((ev) => {
+      const stemIndex = stems.findIndex((_, i) => `${sound.name} · ${nameOf(i)}` === keys.name);
+      if (stemIndex !== -1) {
+        setTriggerCounter(prev => prev + 1);
+        setTrigger({ stem: stemIndex, id: triggerCounter + 1, duration: ev.duration });
+      }
+    });
+    return () => unsubscribe();
+  }, [keys, stems, sound.name]);
 
   const change = (i: number, patch: Partial<StemCtl>) => {
     const next = ctls.map((c, j) => (j === i ? { ...c, ...patch } : c));
@@ -248,9 +265,15 @@ export function AtelierStems({
         const audible = !c.mute && (!anySolo || c.solo);
         const stemColor = colorOf(i);
         const stemName = nameOf(i);
+        const isKeysStem = keys && `${sound.name} · ${stemName}` === keys.name;
 
         return (
-          <div key={i} className="hw-recess flex flex-col gap-1 p-1.5">
+          <div key={i} className="hw-recess flex flex-col gap-1 p-1.5 relative">
+            {isKeysStem && (
+              <div className="absolute top-1 right-1 px-1.5 py-0.5 text-[9px] font-bold text-neutral-100 bg-neutral-800 rounded">
+                CLAVIER
+              </div>
+            )}
             <div className="flex flex-wrap items-center gap-1.5">
               <span
                 className="text-[11px] font-black w-[76px]"
@@ -445,19 +468,33 @@ export function AtelierStems({
               </button>
             </div>
 
-            <WaveEditor
-              buf={stem.buf}
-              sel={null}
-              part={c.part ? { a: c.part.a, b: c.part.b } : null}
-              playhead={playhead}
-              grid={grid}
-              color={stemColor}
-              height={56}
-              dim={!audible}
-              label={stemName}
-              onSeek={onSeek}
-              onDoubleClick={() => setZoom(i)}
-            />
+            <div className="relative" style={{ position: 'relative' }}>
+              <WaveEditor
+                buf={stem.buf}
+                sel={null}
+                part={c.part ? { a: c.part.a, b: c.part.b } : null}
+                playhead={playhead}
+                grid={grid}
+                color={stemColor}
+                height={56}
+                dim={!audible}
+                label={stemName}
+                onSeek={onSeek}
+                onDoubleClick={() => setZoom(i)}
+              />
+              {trigger && trigger.stem === i && (
+                <div
+                  key={trigger.id}
+                  className="stem-trait"
+                  style={{
+                    animationDuration: `${trigger.duration}s`,
+                    backgroundColor: stemColor,
+                    boxShadow: `0 0 6px ${stemColor}`
+                  }}
+                  onAnimationEnd={() => setTrigger(null)}
+                />
+              )}
+            </div>
           </div>
         );
       })}

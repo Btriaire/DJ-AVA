@@ -118,6 +118,8 @@ export class SampleKeys {
   private sampleBuffer: AudioBuffer | null = null;
   private reversedBuffer: AudioBuffer | null = null;
   private filter: BiquadFilterNode;
+  private noteListeners = new Set<(ev: { midi: number; at: number; duration: number }) => void>();
+  private loadListeners = new Set<(name: string) => void>();
 
   constructor(ctx: BaseAudioContext, dest: AudioNode) {
     this.ctx = ctx;
@@ -131,11 +133,39 @@ export class SampleKeys {
     this.filter.connect(this.out);
   }
 
+  onNote(cb: (ev: { midi: number; at: number; duration: number }) => void): () => void {
+    this.noteListeners.add(cb);
+    return () => this.noteListeners.delete(cb);
+  }
+
+  onLoad(cb: (name: string) => void): () => void {
+    this.loadListeners.add(cb);
+    return () => this.loadListeners.delete(cb);
+  }
+
+  private notifyNote(midi: number, at: number, duration: number): void {
+    const ev = { midi, at, duration };
+    this.noteListeners.forEach(cb => {
+      try {
+        cb(ev);
+      } catch {}
+    });
+  }
+
+  private notifyLoad(name: string): void {
+    this.loadListeners.forEach(cb => {
+      try {
+        cb(name);
+      } catch {}
+    });
+  }
+
   setSample(buf: AudioBuffer | null, name = ''): void {
     this.allOff();
     this.sampleBuffer = buf;
     this.reversedBuffer = null;
     this.name = name;
+    this.notifyLoad(name);
   }
 
   get loaded(): boolean {
@@ -240,6 +270,7 @@ export class SampleKeys {
     env.gain.setTargetAtTime(boundedVel * this.sustain, now + Math.max(0.001, this.attack), this.decay / 3);
 
     this.voices.set(midi, { src, env });
+    this.notifyNote(midi, now, buf.duration);
 
     src.onended = () => {
       src.disconnect();

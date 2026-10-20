@@ -18,7 +18,7 @@ export function MiniKeys({
   active: boolean;
   current?: { name: string; load: () => void } | null;
 }) {
-  const [octs] = useState(() => (typeof window !== "undefined" && window.innerWidth < 640 ? 2 : 4)); // phones get 2 octaves of usable keys
+  const [octs] = useState(() => (typeof window !== "undefined" && window.innerWidth < 640 ? 2 : 4));
   const keyWidth = 100 / (octs * 7 + 1);
   const [base, setBase] = useState(() => (octs === 2 ? 48 : 36));
   const [transpose, setTranspose] = useState(0);
@@ -40,6 +40,13 @@ export function MiniKeys({
   useEffect(() => {
     cfg.current = { base, kbOct, transpose, vel, octs };
   });
+
+  useEffect(() => {
+    const unsubscribe = keys.onLoad((name) => {
+      setFolded(false);
+    });
+    return () => unsubscribe();
+  }, [keys]);
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (!keys.loaded) return;

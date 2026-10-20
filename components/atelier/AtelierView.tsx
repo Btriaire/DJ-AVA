@@ -773,6 +773,7 @@ export function AtelierView({ engine, active }: { engine: DJEngine; active: bool
           {hasStems && (
             <AtelierStems
               sound={cur}
+              keys={keys}
               mixer={mixer}
               color={COLOR}
               playhead={playhead}
