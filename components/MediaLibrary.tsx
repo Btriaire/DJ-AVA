@@ -18,9 +18,11 @@ import {
   storageUsage,
   wasLastSaveSlim,
   type LibraryAudit,
+  type Playlist,
 } from "@/lib/library";
 import { enqueuePrep, getPrepState, subscribePrep } from "@/lib/stemPrep";
 import { queueAnalysis } from "@/lib/analyze";
+import { pickNext, type Cue } from "@/lib/setPicker";
 import { AudiusTrack } from "@/lib/audius";
 import { CdPlayerFace } from "./CdPlayerFace";
 
@@ -190,6 +192,8 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   const queueSrcRef = useRef(queueSrc);
   useLayoutEffect(() => { queueSrcRef.current = queueSrc; });
   const liveIdx = useRef<{ A: number; B: number }>({ A: -1, B: -1 });
+  // tracks already played in the current pass of each deck's set (reset when the set is exhausted)
+  const playedRef = useRef<{ A: Set<string>; B: Set<string> }>({ A: new Set(), B: new Set() });
   const wasPlaying = useRef<{ A: boolean; B: boolean }>({ A: false, B: false });
   // pre-load cache: warms the next track a few seconds before the current one
   // ends, so the LIVE loop's hand-off has no audible loading gap — local blobs
@@ -900,6 +904,37 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     flash(`Playlist « ${name} » créée (${newTracks.length} titres)`);
   }
 
+  // --- classement : tri, filtres thème/groupe, édition, liste depuis la vue ---
+  const [libSort, setLibSort] = useState<"recent" | "title" | "bpm" | "key" | "theme" | "group">("recent");
+  const [libTheme, setLibTheme] = useState("");
+  const [libGroup, setLibGroup] = useState("");
+  function setTrackField(id: string, field: "theme" | "group", value: string) {
+    persist((d) => ({
+      ...d,
+      tracks: d.tracks.map((x) => (x.id === id ? { ...x, [field]: value.trim() || undefined } : x)),
+    }));
+  }
+  function visibleLibTracks(): LibTrack[] {
+    const list = data.tracks.filter(
+      (t) => (!libTheme || t.theme === libTheme) && (!libGroup || t.group === libGroup)
+    );
+    const cmp: Record<string, (a: LibTrack, b: LibTrack) => number> = {
+      recent: (a, b) => b.addedAt - a.addedAt,
+      title: (a, b) => a.name.localeCompare(b.name),
+      bpm: (a, b) => (a.bpm ? a.bpm : Infinity) - (b.bpm ? b.bpm : Infinity) || 0, // unknown BPM last
+      key: (a, b) => (a.camelot ?? "").localeCompare(b.camelot ?? ""),
+      theme: (a, b) => (a.theme ?? "").localeCompare(b.theme ?? ""),
+      group: (a, b) => (a.group ?? "").localeCompare(b.group ?? ""),
+    };
+    return [...list].sort(cmp[libSort]);
+  }
+  function createListFromView(vis: LibTrack[]) {
+    if (!vis.length) return;
+    const base = libTheme || libGroup || "Sélection";
+    const pl: Playlist = { id: uid(), name: `${base} · ${vis.length}`, trackIds: vis.map((t) => t.id) };
+    persist((d) => ({ ...d, playlists: [...d.playlists, pl] }));
+    flash(`Liste « ${pl.name} » créée`);
+  }
   // --- LIVE: the consecutive-play queue for a deck ---
   // If a playlist is assigned to this side, play through it IN ORDER (many
   // titles back-to-back). Otherwise fall back to the singles filed for the deck.
@@ -921,12 +956,28 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       flash(`Live ${side} : aucun single classé pour ce deck`);
       return;
     }
-    liveIdx.current[side] = (liveIdx.current[side] + 1) % q.length;
-    setLiveCur((c) => ({ ...c, [side]: liveIdx.current[side] }));
-    const t = q[liveIdx.current[side]];
     const deck = side === "A" ? engine.deckA : engine.deckB;
+    const other = side === "A" ? engine.deckB : engine.deckA;
+    // smart pick: the track that best matches the one playing on the other deck (tempo, then key)
+    const curT = other.origin ? q.find((x) => x.id === other.origin?.id) : undefined;
+    const played = playedRef.current[side];
+    let idx = (liveIdx.current[side] + 1) % q.length;
+    if (curT) {
+      const toCue = (x: LibTrack): Cue => ({ id: x.id, bpm: x.bpm ?? 0, camelot: x.camelot ?? "" });
+      const pick = pickNext(toCue(curT), q.map(toCue), played);
+      if (pick) {
+        idx = q.findIndex((x) => x.id === pick.id);
+      } else {
+        played.clear(); // every track of the set was played: start a new pass
+      }
+    }
+    played.add(q[idx].id);
+    liveIdx.current[side] = idx;
+    setLiveCur((c) => ({ ...c, [side]: idx }));
+    const t = q[idx];
     await loadToDeck(t, side);
-    deck.play();
+    if (curT) engine.sync(side); // match the incoming deck's tempo to the one already playing
+    if (deck.audioBuffer) deck.play(); // a failed load leaves nothing to play
     wasPlaying.current[side] = true;
   }
   function toggleLive(side: "A" | "B", startIdx?: number) {
@@ -2118,6 +2169,33 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
             </div>
           )}
           {tab === "files" && (
+            <div className="flex flex-wrap items-center gap-2 px-1 py-1 text-xs text-neutral-300">
+              <select value={libSort} onChange={(e) => setLibSort(e.target.value as typeof libSort)} className="rounded bg-neutral-800 px-1 py-0.5">
+                <option value="recent">Récents</option>
+                <option value="title">Titre</option>
+                <option value="bpm">BPM</option>
+                <option value="key">Tonalité</option>
+                <option value="theme">Thème</option>
+                <option value="group">Groupe</option>
+              </select>
+              <select value={libTheme} onChange={(e) => setLibTheme(e.target.value)} className="rounded bg-neutral-800 px-1 py-0.5">
+                <option value="">Tous thèmes</option>
+                {[...new Set(data.tracks.map((t) => t.theme).filter((x): x is string => !!x))].map((x) => (
+                  <option key={x} value={x}>{x}</option>
+                ))}
+              </select>
+              <select value={libGroup} onChange={(e) => setLibGroup(e.target.value)} className="rounded bg-neutral-800 px-1 py-0.5">
+                <option value="">Tous groupes</option>
+                {[...new Set(data.tracks.map((t) => t.group).filter((x): x is string => !!x))].map((x) => (
+                  <option key={x} value={x}>{x}</option>
+                ))}
+              </select>
+              <button onClick={() => createListFromView(visibleLibTracks())} className="hw-btn px-2 py-1 text-xs" title="Enregistrer la vue filtrée comme liste">
+                CRÉER UNE LISTE
+              </button>
+            </div>
+          )}
+          {tab === "files" && (
             <ul className={`flex flex-col gap-1 overflow-y-auto ${splitLayout ? "max-h-[34rem]" : "max-h-80"}`}>
               {data.tracks.length === 0 && (
                 <p className="py-6 text-center text-sm text-neutral-600">
@@ -2125,9 +2203,37 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                   enregistre des trouvailles Audius / YouTube.
                 </p>
               )}
-              {data.tracks.map((t) => (
-                <TrackRow key={t.id} t={t} />
+              {visibleLibTracks().map((t) => (
+                <li key={t.id} className="flex flex-col gap-1">
+                  <TrackRow t={t} />
+                  <div className="flex items-center gap-2 px-2 pb-1 text-[11px] text-neutral-400">
+                    <input
+                      defaultValue={t.theme ?? ""}
+                      onBlur={(e) => setTrackField(t.id, "theme", e.target.value)}
+                      placeholder="thème"
+                      list="lib-themes"
+                      className="w-32 rounded bg-neutral-900 px-1 py-0.5 text-neutral-200"
+                    />
+                    <input
+                      defaultValue={t.group ?? ""}
+                      onBlur={(e) => setTrackField(t.id, "group", e.target.value)}
+                      placeholder="groupe"
+                      list="lib-groups"
+                      className="w-32 rounded bg-neutral-900 px-1 py-0.5 text-neutral-200"
+                    />
+                  </div>
+                </li>
               ))}
+              <datalist id="lib-themes">
+                {[...new Set(data.tracks.map((t) => t.theme).filter((x): x is string => !!x))].map((x) => (
+                  <option key={x} value={x} />
+                ))}
+              </datalist>
+              <datalist id="lib-groups">
+                {[...new Set(data.tracks.map((t) => t.group).filter((x): x is string => !!x))].map((x) => (
+                  <option key={x} value={x} />
+                ))}
+              </datalist>
             </ul>
           )}
 

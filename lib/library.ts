@@ -19,6 +19,8 @@ export interface LibTrack {
   bpm?: number; // tempo captured from the source search result (Audius/YouTube), if any
   bpmEstimated?: boolean; // true when bpm came from the server analysis (lib/analyze.ts), not the source
   later?: boolean; // marked "to play later" from a search result, to prepare its stems in batch
+  theme?: string; // free-text theme (e.g. "warm-up", "peak") used to classify and filter
+  group?: string; // free-text group / label / family of records (e.g. "Detroit", "Berlin")
   bpmConfidence?: number; // 0..1 confidence of the estimated bpm
   camelot?: string; // key in Camelot notation, from the server analysis
   addedAt: number;
