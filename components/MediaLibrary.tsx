@@ -1020,6 +1020,24 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     const n = liveQueue(side).length;
     flash(`File Deck ${side} : playlist (${n} titre${n > 1 ? "s" : ""})`);
   }
+  // A set launched from the Préparation tab: start it on the chosen deck once.
+  useEffect(() => {
+    let raw: string | null = null;
+    try {
+      raw = localStorage.getItem("djsynth.pendingSet");
+      localStorage.removeItem("djsynth.pendingSet");
+    } catch {
+      return;
+    }
+    if (!raw) return;
+    try {
+      const { side, id } = JSON.parse(raw) as { side: "A" | "B"; id: string };
+      playPlaylistLive(side, id);
+    } catch {
+      // malformed request: ignore it
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot on mount
+  }, []);
   // Run the A→B→A relay through one playlist on both decks (long automix set).
   // `startIdx` (default 0) picks up the set from any track — B cues the very
   // next track after it, and the relay continues in order from there, looping.

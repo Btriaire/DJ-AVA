@@ -5,10 +5,13 @@ import { loadLibrary, saveLibrary, uid, idbGetBlob } from "@/lib/library";
 import { enqueuePrep, getPrepState, subscribePrep, forgetPrep } from "@/lib/stemPrep";
 import { queueAnalysis } from "@/lib/analyze";
 import { qualityFromKbps, kbpsFromSize, QUALITY_LABEL, QUALITY_HINT } from "@/lib/quality";
+import { buildSmartSet } from "@/lib/setBuilder";
+import { pickNext } from "@/lib/setPicker";
 import type { LibTrack, LibraryData, Playlist } from "@/lib/library";
 import type { AudiusTrack } from "@/lib/audius";
 import type { PrepReady } from "@/lib/stemPrep";
 import type { QualityLevel } from "@/lib/quality";
+import type { Cue } from "@/lib/setPicker";
 
 type SortOption = "recent" | "title" | "bpm" | "camelot" | "theme" | "group";
 type DurationFilterKey = "all" | "1" | "3" | "5" | "8" | "15" | "15+";
@@ -88,7 +91,7 @@ const toRow = (track: LibTrack | AudiusTrack): TrackRow => {
   }
 };
 
-export default function PrepView() {
+export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "B", playlistId: string) => void } = {}) {
   const [lib, setLib] = useState(() => loadLibrary());
   const libRef = useRef(lib);
   const prepState = useSyncExternalStore(subscribePrep, getPrepState, getPrepState);
@@ -99,6 +102,8 @@ export default function PrepView() {
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [durationFilter, setDurationFilter] = useState<DurationFilterKey>("all");
   const [qualityFilter, setQualityFilter] = useState<QualityFilter>("all");
+  const [selectedGroup, setSelectedGroup] = useState("");
+  const [setOrder, setSetOrder] = useState<string[]>([]);
 
   const persist = (fn: (d: LibraryData) => LibraryData) => {
     const next = fn(libRef.current);
@@ -311,6 +316,65 @@ export default function PrepView() {
     }));
   };
 
+  const createSetForGroup = () => {
+    if (!selectedGroup) return;
+
+    const groupTracks = lib.tracks.filter(t => t.group === selectedGroup && t.later);
+    if (groupTracks.length < 2) return;
+
+    const cues: Cue[] = groupTracks.map(t => ({
+      id: t.id,
+      bpm: t.bpm ?? 0,
+      camelot: t.camelot ?? ""
+    }));
+
+    const setOrder = buildSmartSet(cues);
+    setSetOrder(setOrder);
+
+    // Create or update playlist
+    const playlistName = `Set · ${selectedGroup}`;
+    persist(data => {
+      const existingPlaylist = data.playlists.find(p => p.name === playlistName);
+      if (existingPlaylist) {
+        return {
+          ...data,
+          playlists: data.playlists.map(p =>
+            p.id === existingPlaylist.id
+              ? { ...p, trackIds: setOrder, transitionType: "smooth", transitionSec: 8, preloadSec: 15 }
+              : p
+          )
+        };
+      } else {
+        const newPlaylist: Playlist = {
+          id: uid(),
+          name: playlistName,
+          trackIds: setOrder,
+          transitionType: "smooth",
+          transitionSec: 8,
+          preloadSec: 15
+        };
+        return { ...data, playlists: [...data.playlists, newPlaylist] };
+      }
+    });
+  };
+
+  const launchSet = (side: "A" | "B") => {
+    if (!selectedGroup || !onLaunchSet) return;
+
+    const playlistName = `Set · ${selectedGroup}`;
+    const playlist = lib.playlists.find(p => p.name === playlistName);
+
+    if (!playlist) {
+      createSetForGroup();
+      const newPlaylist = lib.playlists.find(p => p.name === playlistName);
+      if (newPlaylist) {
+        onLaunchSet(side, newPlaylist.id);
+      }
+    } else {
+      onLaunchSet(side, playlist.id);
+    }
+  };
+
   const fmt = (s: number) => {
     const m = Math.floor(s / 60);
     const r = Math.floor(s % 60);
@@ -332,6 +396,25 @@ export default function PrepView() {
   const getQualityLabel = (quality?: QualityLevel) => {
     if (!quality) return "?";
     return QUALITY_LABEL[quality];
+  };
+
+  const getTempoRelation = (current: LibTrack, next: LibTrack): string => {
+    if (!current.bpm || !next.bpm) return "tempo inconnu";
+    const percent = ((next.bpm / current.bpm - 1) * 100).toFixed(1);
+    return `${percent}%`;
+  };
+
+  const getKeyRelation = (current: LibTrack, next: LibTrack): string => {
+    if (!current.camelot || !next.camelot) return "clé inconnue";
+
+    const currentNum = parseInt(current.camelot);
+    const nextNum = parseInt(next.camelot);
+
+    if (currentNum === nextNum) return "même clé";
+    if (Math.abs(currentNum - nextNum) === 1) return "clé voisine";
+    if (Math.abs(currentNum - nextNum) <= 6) return "clé différente";
+
+    return "clé différente";
   };
 
   const filteredTracks = useMemo((): LibTrack[] => {
@@ -410,6 +493,16 @@ export default function PrepView() {
       return t.duration >= filter.min && t.duration <= filter.max;
     });
   }, [searchResults, durationFilter]);
+
+  const groupInfo = useMemo(() => {
+    if (!selectedGroup) return { count: 0, duration: 0 };
+
+    const groupTracks = lib.tracks.filter(t => t.group === selectedGroup && t.later);
+    const count = groupTracks.length;
+    const duration = groupTracks.reduce((sum, t) => sum + (t.durationSec || 0), 0);
+
+    return { count, duration };
+  }, [lib.tracks, selectedGroup]);
 
   const renderTrackCard = (track: TrackRow, isLater: boolean) => {
     const stemStatus = isLater ? getStemStatus(track.id) : undefined;
@@ -609,6 +702,91 @@ export default function PrepView() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* SETS PAR GROUPE */}
+      <div className="hw-well p-2">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-neutral-400">Sets par groupe</h2>
+        </div>
+        <div className="flex flex-wrap gap-2 mb-2">
+          <div className="hw-well px-2 py-1 text-xs">
+            <label className="text-[9px] text-neutral-400">Groupe</label>
+            <select
+              value={selectedGroup}
+              onChange={(e) => setSelectedGroup(e.target.value)}
+              className="hw-well bg-transparent text-xs text-neutral-200 outline-none"
+            >
+              <option value="">Choisir un groupe</option>
+              {groups.map(group => (
+                <option key={group} value={group}>{group}</option>
+              ))}
+            </select>
+          </div>
+          {selectedGroup && (
+            <div className="text-xs text-neutral-400">
+              {groupInfo.count} morceaux · {fmt(groupInfo.duration)}
+            </div>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2 mb-2">
+          <button
+            onClick={createSetForGroup}
+            disabled={!selectedGroup || groupInfo.count < 2}
+            className="hw-btn px-2 py-1 text-xs"
+            style={{ ["--led" as string]: "#a78bfa", color: "#a78bfa" }}
+          >
+            Créer le set
+          </button>
+          <button
+            onClick={() => launchSet("A")}
+            disabled={!selectedGroup || groupInfo.count < 2 || !onLaunchSet}
+            className="hw-btn px-2 py-1 text-xs"
+            style={{ ["--led" as string]: "#ffcc00", color: "#ffcc00" }}
+          >
+            Lancer sur A
+          </button>
+          <button
+            onClick={() => launchSet("B")}
+            disabled={!selectedGroup || groupInfo.count < 2 || !onLaunchSet}
+            className="hw-btn px-2 py-1 text-xs"
+            style={{ ["--led" as string]: "#ffcc00", color: "#ffcc00" }}
+          >
+            Lancer sur B
+          </button>
+        </div>
+        {setOrder.length > 0 && (
+          <div className="mt-2">
+            <h3 className="text-xs font-bold uppercase tracking-wide text-neutral-400 mb-1">Aperçu du set</h3>
+            <ol className="space-y-1 max-h-40 overflow-y-auto">
+              {setOrder.map((trackId, index) => {
+                const track = lib.tracks.find(t => t.id === trackId);
+                if (!track) return null;
+
+                const nextTrack = index < setOrder.length - 1
+                  ? lib.tracks.find(t => t.id === setOrder[index + 1])
+                  : null;
+
+                return (
+                  <li key={trackId} className="hw-strip px-2 py-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold w-6 text-right">{index + 1}.</span>
+                      <div className="flex-1">
+                        <p className="text-xs font-medium truncate">{track.name}</p>
+                        {nextTrack && (
+                          <div className="text-[10px] text-neutral-400">
+                            <span className="mr-2">{getTempoRelation(track, nextTrack)}</span>
+                            <span>{getKeyRelation(track, nextTrack)}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        )}
       </div>
 
       {/* À préparer */}

@@ -1245,7 +1245,16 @@ const [showModulePicker, setShowModulePicker] = useState(false);
             libRefresh={libRefresh}
           />
         ) : view === "atelier" ? null : view === "preparation" ? (
-          <PrepView />
+          <PrepView
+            onLaunchSet={(side, id) => {
+              try {
+                localStorage.setItem("djsynth.pendingSet", JSON.stringify({ side, id }));
+              } catch {
+                // storage blocked: the set is still saved, just not auto-started
+              }
+              setView("playlist");
+            }}
+          />
         ) : view === "playlist" ? (
           <MediaLibrary
             engine={engine}
