@@ -21,6 +21,7 @@ import { DjSynthPanel } from "@/components/DjSynthPanel";
 import { SlicerPanel } from "@/components/SlicerPanel";
 import { HarmonyPanel } from "@/components/HarmonyPanel";
 import { MediaLibrary } from "@/components/MediaLibrary";
+import PrepView from "@/components/PrepView";
 import { BossFxPanel } from "@/components/BossFxPanel";
 import { LibraryPanel } from "@/components/LibraryPanel";
 import { YouTubeDeck } from "@/components/YouTubeDeck";
@@ -139,7 +140,7 @@ export default function Home() {
   const [tick, setTick] = useState(0);
   const [crossfade, setCrossfade] = useState(0.5);
   const [master, setMaster] = useState(0.9);
-  const [view, setView] = useState<"console" | "studio" | "platine" | "playlist" | "atelier">("console"); // top-level workspace
+  const [view, setView] = useState<"console" | "studio" | "platine" | "playlist" | "preparation" | "atelier">("console"); // top-level workspace
   const [atelierSeen, setAtelierSeen] = useState(false); // the Atelier stays mounted (hidden) once opened, so its session survives tab switches
   const [engineGen, setEngineGen] = useState(0); // bumps on each new engine: remounts the Atelier on fresh audio objects
   if (view === "atelier" && !atelierSeen) setAtelierSeen(true);
@@ -911,6 +912,15 @@ const [showModulePicker, setShowModulePicker] = useState(false);
               <span>Playlist</span>
             </button>
             <button
+              onClick={() => { setView("preparation"); setShowLibrary(false); }}
+              className={`inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${view === "preparation" ? "hw-btn-on shadow-sm" : "text-neutral-400 hover:text-neutral-200"}`}
+              style={{ ["--led" as string]: "#34d399" }}
+              title="Préparation : recherche YouTube, morceaux à jouer plus tard, stems, BPM, thèmes et listes"
+            >
+              <IconPlaylist className="w-3.5 h-3.5" />
+              <span>Préparation</span>
+            </button>
+            <button
               onClick={() => setView("atelier")}
               className={`inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${view === "atelier" ? "hw-btn-on shadow-sm" : "text-neutral-400 hover:text-neutral-200"}`}
               style={{ ["--led" as string]: "#22d3ee" }}
@@ -1234,7 +1244,9 @@ const [showModulePicker, setShowModulePicker] = useState(false);
             stemRefresh={stemRefresh}
             libRefresh={libRefresh}
           />
-        ) : view === "atelier" ? null : view === "playlist" ? (
+        ) : view === "atelier" ? null : view === "preparation" ? (
+          <PrepView />
+        ) : view === "playlist" ? (
           <MediaLibrary
             engine={engine}
             onLoaded={bumpTick}
