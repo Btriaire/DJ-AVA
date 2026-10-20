@@ -125,7 +125,11 @@ async function startSeparation(bytes: ArrayBuffer): Promise<{ hash: string }> {
     `/api/stems/separate?prefetch=1&model=${PREP_MODEL}&shifts=${PREP_SHIFTS}&ultra=1&wav=1`,
     { method: "POST", body: bytes }
   );
-  if (!res.ok) throw new Error(`erreur ${res.status}`);
+  if (!res.ok) {
+    // the server explains why (e.g. a too-heavy GPU job): show that text, not just the status
+    const detail = await res.json().then((j: { error?: string }) => j.error).catch(() => undefined);
+    throw new Error(detail || `erreur ${res.status}`);
+  }
   return await res.json() as { hash: string };
 }
 

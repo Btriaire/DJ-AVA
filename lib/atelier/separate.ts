@@ -29,7 +29,8 @@ export async function separateStems(
     });
 
     if (!res.ok) {
-      throw new Error(`Séparation impossible (${res.status})`);
+      const detail = await res.json().then((j: { error?: string }) => j.error).catch(() => undefined);
+      throw new Error(detail || `Séparation impossible (${res.status})`);
     }
 
     const data = await res.json() as { hash?: string; stems: string[] };

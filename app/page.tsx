@@ -64,7 +64,7 @@ import {
 
 // One row of the instrument rack: up to two columns that share the row height (the last
 // module of each column stretches to it); a lone column takes the whole width.
-function RackRow({ left, right }: { left: [string, ReactNode][]; right: [string, ReactNode][] }) {
+function RackRow({ left, right, onClose }: { left: [string, ReactNode][]; right: [string, ReactNode][]; onClose: (id: string) => void }) {
   const cols = [
     { k: "L", mods: left.filter(([, node]) => node) },
     { k: "R", mods: right.filter(([, node]) => node) },
@@ -75,8 +75,17 @@ function RackRow({ left, right }: { left: [string, ReactNode][]; right: [string,
       {cols.map((c) => (
         <div key={c.k} className={`hw-rack-col ${cols.length === 1 ? "@[1280px]:col-span-2" : ""}`}>
           {c.mods.map(([id, node]) => (
-            <div key={id} className="@container min-w-0">
+            <div key={id} className="@container relative min-w-0">
               {node}
+              <button
+                type="button"
+                onClick={() => onClose(id)}
+                title="Fermer ce module"
+                aria-label="Fermer ce module"
+                className="hw-btn absolute right-2 top-2 z-20 flex h-6 w-6 items-center justify-center text-[11px] font-bold leading-none"
+              >
+                ✕
+              </button>
             </div>
           ))}
         </div>
@@ -379,6 +388,8 @@ function deleteTemplate(id: string) {
   persistTemplates(templates.filter((t) => t.id !== id));
 }
 const [showModulePicker, setShowModulePicker] = useState(false);
+  // the rack's ✕ switches the module off, same as its ON/OFF in the Modules picker
+  const closeRackModule = (id: string) => toggleModule(id as keyof Modules);
   function toggleModule(k: keyof Modules) {
     setModules((m) => {
       const next = { ...m, [k]: !m[k] };
@@ -1530,23 +1541,27 @@ const [showModulePicker, setShowModulePicker] = useState(false);
             {(modules.djkbd || modules.dance || modules.supersampler || modules.drums || modules.djsynth || modules.slicer || modules.harmony || modules.synth || modules.sampler || modules.soundfx || modules.dx7 || modules.solar42) && (
               <div className={`hw-rack @container flex flex-col gap-4 ${deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}`}>
                 <RackRow
+                  onClose={closeRackModule}
                   left={[["djkbd", modules.djkbd && <DJKeyboard engine={engine} />], ["dance", modules.dance && <DancePanel engine={engine} />]]}
                   right={[["supersampler", modules.supersampler && <SuperSampler engine={engine} onLibraryChange={bumpLib} />]]}
                 />
                 <RackRow
+                  onClose={closeRackModule}
                   left={[["drums", modules.drums && <DrumMachinePanel engine={engine} />]]}
                   right={[["djsynth", modules.djsynth && <DjSynthPanel engine={engine} />]]}
                 />
                 <RackRow
+                  onClose={closeRackModule}
                   left={[["slicer", modules.slicer && <SlicerPanel engine={engine} />]]}
                   right={[["harmony", modules.harmony && <HarmonyPanel engine={engine} />]]}
                 />
                 <RackRow
+                  onClose={closeRackModule}
                   left={[["synth", modules.synth && <SynthPanel key={`synth-${resetKey}`} engine={engine} />]]}
                   right={[["sampler", modules.sampler && <SamplerPanel engine={engine} />], ["soundfx", modules.soundfx && <SoundFxPanel engine={engine} />]]}
                 />
-                <RackRow left={[["dx7", modules.dx7 && <DX7Synth key={`dx7-${resetKey}`} engine={engine} embedded />]]} right={[]} />
-                <RackRow left={[["solar42", modules.solar42 && <Solar42F key={`solar42-${resetKey}`} engine={engine} embedded />]]} right={[]} />
+                <RackRow onClose={closeRackModule} left={[["dx7", modules.dx7 && <DX7Synth key={`dx7-${resetKey}`} engine={engine} embedded />]]} right={[]} />
+                <RackRow onClose={closeRackModule} left={[["solar42", modules.solar42 && <Solar42F key={`solar42-${resetKey}`} engine={engine} embedded />]]} right={[]} />
               </div>
             )}
 

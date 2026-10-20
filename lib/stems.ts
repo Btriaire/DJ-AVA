@@ -311,7 +311,7 @@ async function separateWithTorch(a: SepArgs): Promise<string> {
   return join(a.out, a.model, "source");
 }
 
-async function separateWithMlx(a: SepArgs): Promise<string> {
+async function separateWithMlx(a: SepArgs, maxOps: string): Promise<string> {
   const mlxOut = join(a.out, "mlx");
   if (existsSync(mlxOut)) await rm(mlxOut, { recursive: true, force: true });
   const overlap = a.opts.ultra ? "0.25" : process.env.STEMS_OVERLAP || "0.1";
@@ -322,7 +322,7 @@ async function separateWithMlx(a: SepArgs): Promise<string> {
     if (!matches || !matches.length) return;
     const pct = parseInt(matches[matches.length - 1], 10);
     if (!isNaN(pct)) progress.set(a.pKey, Math.min(99, pct)); // 100 reserved for "done"
-  }, { MLX_MAX_OPS_PER_BUFFER: process.env.MLX_MAX_OPS_PER_BUFFER || "8" });
+  }, { MLX_MAX_OPS_PER_BUFFER: maxOps });
 
   const produced = join(mlxOut, "source");
   const ext = stemExt(a.opts);
@@ -385,20 +385,32 @@ async function doSeparate(
     };
 
     let produced: string | null = null;
+    let mlxError = "";
     if (USE_MLX) {
-      for (let attempt = 1; attempt <= 2 && !produced; attempt++) {
+      // Metal's GPU watchdog kills long command buffers: a 3-minute+ track times out
+      // with 8 ops per buffer but separates fine with 2 (measured: 200 s in 39 s).
+      // So the retry uses the lighter setting instead of repeating the same failure.
+      const opsPerBuffer = [process.env.MLX_MAX_OPS_PER_BUFFER || "8", "2"];
+      for (const maxOps of opsPerBuffer) {
+        if (produced) break;
         try {
-          produced = await separateWithMlx(sepArgs);
+          produced = await separateWithMlx(sepArgs, maxOps);
         } catch (e) {
           const msg = (e as Error).message;
-          // a GPU watchdog timeout repeats on retry, and torch on CPU is far slower: fail fast
-          if (/GPU Timeout/.test(msg)) throw new Error("calcul trop lourd pour le GPU : essaie une qualité plus légère");
-          console.warn(`[stems] MLX tentative ${attempt}/2 échouée : ${msg.slice(0, 200)}`);
+          console.warn(`[stems] MLX (ops=${maxOps}) échoué : ${msg.slice(0, 200)}`);
+          mlxError = msg.slice(0, 200);
         }
       }
     }
 
-    const producedDir: string = produced ?? (await separateWithTorch(sepArgs));
+    // when the CPU fallback fails too, keep the GPU reason so the user sees why
+    let producedDir: string;
+    try {
+      producedDir = produced ?? (await separateWithTorch(sepArgs));
+    } catch (e) {
+      const torchMsg = (e as Error).message;
+      throw new Error(mlxError ? `${torchMsg} (MLX : ${mlxError})` : torchMsg);
+    }
 
     // 3. optional vocal cleanup: ffmpeg's afftdn adaptive noise-reduction filter
     //    on the vocals stem only (there's no true de-reverb filter in ffmpeg —
