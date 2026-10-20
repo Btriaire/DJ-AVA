@@ -10,6 +10,13 @@ export function StemPrepPanel({ engine }: { engine: DJEngine }) {
   const prep = useSyncExternalStore(subscribePrep, getPrepState, getPrepState);
   const [library, setLibrary] = useState<LibTrack[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
+  const [isFolded, setIsFolded] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("djsynth.stemPrep.folded") === "1";
+    } catch {
+      return false;
+    }
+  });
 
   useEffect(() => {
     const t0 = setTimeout(() => setLibrary(loadLibrary().tracks), 0);
@@ -43,6 +50,14 @@ export function StemPrepPanel({ engine }: { engine: DJEngine }) {
     }
   };
 
+  const toggleFold = () => {
+    const newFolded = !isFolded;
+    setIsFolded(newFolded);
+    try {
+      localStorage.setItem("djsynth.stemPrep.folded", newFolded ? "1" : "0");
+    } catch {}
+  };
+
   return (
     <div className="hw-screwed hw-panel relative flex flex-col gap-3 p-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -54,151 +69,163 @@ export function StemPrepPanel({ engine }: { engine: DJEngine }) {
         >
           Qualité élevée · WAV
         </div>
-        <span className="text-[10px] text-neutral-400">
+        <span className="text-[10px] text-neutral-400 ml-auto">
           {prep.jobs.length} en file · {prep.ready.length} prêts
         </span>
-      </div>
-      <div className="hw-recess flex flex-col gap-1 p-2 text-[11px] text-neutral-300">
-        <span>1. Chaque morceau de ta bibliothèque est séparé en 4 pistes : voix, batterie, basse et autres.</span>
-        <span>2. La préparation tourne aussi pendant la lecture : le son peut saccader pendant les calculs.</span>
-        <span>3. Quand un morceau est prêt, charge-le sur la platine A ou B : ses pistes sont disponibles tout de suite.</span>
-      </div>
-
-      <div className="flex flex-wrap gap-1.5">
         <button
-          className="hw-btn px-2.5 py-1.5 text-[11px] font-bold"
-          onClick={() => {
-            const n = enqueuePrep(library.filter((t) => t.source === "local" || !!t.url));
-            flash(n ? `${n} morceau(x) mis en préparation` : `Tout est déjà prêt`);
-          }}
+          className="hw-btn px-2 py-1 text-[10px] font-bold"
+          onClick={toggleFold}
+          title="Replier / déplier la préparation des stems"
         >
-          PRÉPARER TOUTE LA BIBLIOTHÈQUE
-        </button>
-        <button
-          className="hw-btn px-2.5 py-1.5 text-[11px] font-bold"
-          title="Retire de la file les morceaux qui n'ont pas encore commencé"
-          onClick={() => prep.jobs.filter((j) => j.status === "queued").forEach((j) => cancelPrep(j.trackId))}
-        >
-          VIDER L&apos;ATTENTE
+          {isFolded ? "▾ déplier" : "▴ replier"}
         </button>
       </div>
 
-      {msg && <div className="text-[11px] text-emerald-300">{msg}</div>}
-
-      <div>
-        <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500">À PRÉPARER</span>
-        {prep.jobs.length === 0 ? (
-          <p className="text-[11px] text-neutral-400">Aucun morceau en attente.</p>
-        ) : (
-          <div className="mt-1.5 flex flex-col gap-1.5">
-            {prep.jobs.map((job) => (
-              <div key={job.trackId} className="hw-recess flex items-center gap-2 p-2">
-                <div
-                  className={`h-2.5 w-2.5 rounded-full ${job.status === "running" ? "animate-pulse bg-amber-400" : job.status === "error" ? "bg-red-400" : "bg-neutral-500"}`}
-                />
-                <span className="text-[11px] font-bold truncate flex-1">{job.name}</span>
-                <div className="h-1.5 w-28 rounded bg-black ring-1 ring-white/5">
-                  <div className="h-full rounded" style={{ width: `${job.progress}%`, background: "#34d399" }} />
-                </div>
-                <span className="text-[10px] text-neutral-400">
-                  {job.status === "queued" ? "dans la file" : job.status === "running" ? `séparation ${job.progress} %` : job.error === "fichier introuvable" ? "fichier absent : réimporte le morceau" : `échec : ${job.error}`}
-                </span>
-                {job.status === "error" && job.error !== "fichier introuvable" && (
-                  <button
-                    className="hw-btn px-2 py-1 text-[10px] font-bold"
-                    title="Relancer la préparation de ce morceau"
-                    onClick={() => {
-                      cancelPrep(job.trackId);
-                      const t = library.find((x) => x.id === job.trackId);
-                      if (t) enqueuePrep([t]);
-                    }}
-                  >
-                    RELANCER
-                  </button>
-                )}
-                <button
-                  className="hw-btn px-2 py-1 text-[10px]"
-                  title={job.status === "queued" ? "Retirer de la file" : "Annuler la préparation de ce morceau"}
-                  disabled={job.status === "running"}
-                  onClick={() => cancelPrep(job.trackId)}
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
+      {!isFolded && (
+        <>
+          <div className="hw-recess flex flex-col gap-1 p-2 text-[11px] text-neutral-300">
+            <span>1. Chaque morceau de ta bibliothèque est séparé en 4 pistes : voix, batterie, basse et autres.</span>
+            <span>2. La préparation tourne aussi pendant la lecture : le son peut saccader pendant les calculs.</span>
+            <span>3. Quand un morceau est prêt, charge-le sur la platine A ou B : ses pistes sont disponibles tout de suite.</span>
           </div>
-        )}
-      </div>
 
-      <div>
-        <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500">PRÊTS · {prep.ready.length}</span>
-        {prep.ready.length === 0 ? (
-          <p className="text-[11px] text-neutral-400">
-            Aucun stem préparé pour l&apos;instant. Les morceaux que tu charges sont préparés automatiquement.
-          </p>
-        ) : (
-          <div className="mt-1.5 flex flex-col gap-1.5">
-            {prep.ready
-              .sort((a, b) => b.preparedAt - a.preparedAt)
-              .map((r) => (
-                <div key={r.trackId} className="hw-recess flex flex-wrap items-center gap-2 p-2">
-                  <div className="h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#34d399]" />
-                  <span className="text-[12px] font-bold truncate min-w-0 flex-1">{r.name}</span>
-                  {r.durationSec && (
-                    <span className="font-mono text-[10px] text-neutral-400">
-                      {Math.floor(r.durationSec / 60)}:{String(Math.floor(r.durationSec % 60)).padStart(2, "0")}
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              className="hw-btn px-2.5 py-1.5 text-[11px] font-bold"
+              onClick={() => {
+                const n = enqueuePrep(library.filter((t) => t.source === "local" || !!t.url));
+                flash(n ? `${n} morceau(x) mis en préparation` : `Tout est déjà prêt`);
+              }}
+            >
+              PRÉPARER TOUTE LA BIBLIOTHÈQUE
+            </button>
+            <button
+              className="hw-btn px-2.5 py-1.5 text-[11px] font-bold"
+              title="Retire de la file les morceaux qui n'ont pas encore commencé"
+              onClick={() => prep.jobs.filter((j) => j.status === "queued").forEach((j) => cancelPrep(j.trackId))}
+            >
+              VIDER L&apos;ATTENTE
+            </button>
+          </div>
+
+          {msg && <div className="text-[11px] text-emerald-300">{msg}</div>}
+
+          <div>
+            <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500">À PRÉPARER</span>
+            {prep.jobs.length === 0 ? (
+              <p className="text-[11px] text-neutral-400">Aucun morceau en attente.</p>
+            ) : (
+              <div className="mt-1.5 flex flex-col gap-1.5">
+                {prep.jobs.map((job) => (
+                  <div key={job.trackId} className="hw-recess flex items-center gap-2 p-2">
+                    <div
+                      className={`h-2.5 w-2.5 rounded-full ${job.status === "running" ? "animate-pulse bg-amber-400" : job.status === "error" ? "bg-red-400" : "bg-neutral-500"}`}
+                    />
+                    <span className="text-[11px] font-bold truncate flex-1">{job.name}</span>
+                    <div className="h-1.5 w-28 rounded bg-black ring-1 ring-white/5">
+                      <div className="h-full rounded" style={{ width: `${job.progress}%`, background: "#34d399" }} />
+                    </div>
+                    <span className="text-[10px] text-neutral-400">
+                      {job.status === "queued" ? "dans la file" : job.status === "running" ? `séparation ${job.progress} %` : job.error === "fichier introuvable" ? "fichier absent : réimporte le morceau" : `échec : ${job.error}`}
                     </span>
-                  )}
-                  <div className="flex gap-1">
-                    {PREP_STEMS.map((stem) => (
-                      <span
-                        key={stem}
-                        className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded"
-                        style={{
-                          background:
-                            stem === "drums" ? "#fb923c" :
-                            stem === "bass" ? "#a78bfa" :
-                            stem === "other" ? "#38bdf8" :
-                            "#f472b6",
+                    {job.status === "error" && job.error !== "fichier introuvable" && (
+                      <button
+                        className="hw-btn px-2 py-1 text-[10px] font-bold"
+                        title="Relancer la préparation de ce morceau"
+                        onClick={() => {
+                          cancelPrep(job.trackId);
+                          const t = library.find((x) => x.id === job.trackId);
+                          if (t) enqueuePrep([t]);
                         }}
                       >
-                        {STEM_FR[stem] ?? stem}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="flex gap-1">
-                    <button
-                      className="hw-btn px-2.5 py-1.5 text-[11px] font-bold"
-                      style={{ ["--led" as string]: "#38bdf8" }}
-                      title="Charge ce morceau et ses pistes sur la platine A"
-                      onClick={() => loadPrepared(r, "A")}
-                    >
-                      CHARGER A
-                    </button>
-                    <button
-                      className="hw-btn px-2.5 py-1.5 text-[11px] font-bold"
-                      style={{ ["--led" as string]: "#f59e0b" }}
-                      onClick={() => loadPrepared(r, "B")}
-                    >
-                      CHARGER B
-                    </button>
+                        RELANCER
+                      </button>
+                    )}
                     <button
                       className="hw-btn px-2 py-1 text-[10px]"
-                      title="Retirer de la liste (le calcul reste en cache sur le serveur)"
-                      onClick={() => forgetPrep(r.trackId)}
+                      title={job.status === "queued" ? "Retirer de la file" : "Annuler la préparation de ce morceau"}
+                      disabled={job.status === "running"}
+                      onClick={() => cancelPrep(job.trackId)}
                     >
                       ✕
                     </button>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-      <p className="text-[9px] text-neutral-600">
-        Les stems sont lus depuis le cache serveur : aucun recalcul au chargement.
-      </p>
+          <div>
+            <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500">PRÊTS · {prep.ready.length}</span>
+            {prep.ready.length === 0 ? (
+              <p className="text-[11px] text-neutral-400">
+                Aucun stem préparé pour l&apos;instant. Les morceaux que tu charges sont préparés automatiquement.
+              </p>
+            ) : (
+              <div className="mt-1.5 flex flex-col gap-1.5">
+                {prep.ready
+                  .sort((a, b) => b.preparedAt - a.preparedAt)
+                  .map((r) => (
+                    <div key={r.trackId} className="hw-recess flex flex-wrap items-center gap-2 p-2">
+                      <div className="h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#34d399]" />
+                      <span className="text-[12px] font-bold truncate min-w-0 flex-1">{r.name}</span>
+                      {r.durationSec && (
+                        <span className="font-mono text-[10px] text-neutral-400">
+                          {Math.floor(r.durationSec / 60)}:{String(Math.floor(r.durationSec % 60)).padStart(2, "0")}
+                        </span>
+                      )}
+                      <div className="flex gap-1">
+                        {PREP_STEMS.map((stem) => (
+                          <span
+                            key={stem}
+                            className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded"
+                            style={{
+                              background:
+                                stem === "drums" ? "#fb923c" :
+                                stem === "bass" ? "#a78bfa" :
+                                stem === "other" ? "#38bdf8" :
+                                "#f472b6",
+                            }}
+                          >
+                            {STEM_FR[stem] ?? stem}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="flex gap-1">
+                        <button
+                          className="hw-btn px-2.5 py-1.5 text-[11px] font-bold"
+                          style={{ ["--led" as string]: "#38bdf8" }}
+                          title="Charge ce morceau et ses pistes sur la platine A"
+                          onClick={() => loadPrepared(r, "A")}
+                        >
+                          CHARGER A
+                        </button>
+                        <button
+                          className="hw-btn px-2.5 py-1.5 text-[11px] font-bold"
+                          style={{ ["--led" as string]: "#f59e0b" }}
+                          onClick={() => loadPrepared(r, "B")}
+                        >
+                          CHARGER B
+                        </button>
+                        <button
+                          className="hw-btn px-2 py-1 text-[10px]"
+                          title="Retirer de la liste (le calcul reste en cache sur le serveur)"
+                          onClick={() => forgetPrep(r.trackId)}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+
+          <p className="text-[9px] text-neutral-600">
+            Les stems sont lus depuis le cache serveur : aucun recalcul au chargement.
+          </p>
+        </>
+      )}
     </div>
   );
 }
