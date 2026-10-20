@@ -1,8 +1,14 @@
 import { QualityLevel } from "@/lib/quality";
+import { VideoMeta } from "@/lib/videoMeta";
 
-export type ProbeResult = { abr?: number; quality?: QualityLevel; height?: number };
+export type ProbeResult = {
+  abr?: number;
+  quality?: QualityLevel;
+  height?: number;
+  meta?: VideoMeta;
+};
 
-const CACHE_KEY = "djsynth.ytquality.v2";
+const CACHE_KEY = "djsynth.ytquality.v3";
 const activeProbes = new Set<string>();
 
 const getCache = (): Record<string, ProbeResult> => {
@@ -53,11 +59,18 @@ export async function probeQualities(
         const res = await fetch(`/api/youtube/quality?id=${encodeURIComponent(id)}`);
         if (!res.ok) throw new Error("HTTP error");
 
-        const data: { abr?: number | null; quality?: QualityLevel | null; height?: number | null } = await res.json();
+        const data: {
+          abr?: number | null;
+          quality?: QualityLevel | null;
+          height?: number | null;
+          meta?: VideoMeta | null;
+        } = await res.json();
+
         const result: ProbeResult = {
           abr: data.abr ?? undefined,
           quality: data.quality ?? undefined,
-          height: data.height ?? undefined
+          height: data.height ?? undefined,
+          meta: data.meta && Object.keys(data.meta).length > 0 ? data.meta : undefined
         };
 
         cache[id] = result;

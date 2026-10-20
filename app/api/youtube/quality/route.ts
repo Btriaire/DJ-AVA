@@ -1,5 +1,6 @@
 import { spawn } from "child_process";
 import { qualityFromKbps } from "@/lib/quality";
+import { metaFromYtDlp } from "@/lib/videoMeta";
 
 const cache = new Map<string, { value: object; at: number }>();
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
@@ -65,12 +66,15 @@ export async function GET(request: Request) {
       }
     }
 
+    const meta = metaFromYtDlp(data);
+
     const responseData = {
       abr: data.abr ?? null,
       codec: data.acodec ?? null,
       sampleRate: data.asr ?? null,
       quality: quality ?? null,
-      height: height ?? null
+      height: height ?? null,
+      meta: Object.keys(meta).length > 0 ? meta : null
     };
 
     cache.set(id, { value: responseData, at: Date.now() });

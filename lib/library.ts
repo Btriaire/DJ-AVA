@@ -1,3 +1,4 @@
+import type { VideoMeta } from "@/lib/videoMeta";
 import type { QualityLevel } from "@/lib/quality";
 // Persistent media library for the DJ app.
 // - Track/playlist metadata lives in localStorage (small, synchronous).
@@ -26,6 +27,7 @@ export interface LibTrack {
   camelot?: string; // key in Camelot notation, from the server analysis
   abr?: number; // audio bitrate in kbps (yt-dlp for youtube, file size / duration for local files)
   quality?: QualityLevel; // HQ / STD / LQ, from abr — see lib/quality.ts
+  meta?: VideoMeta; // parsed video description / yt-dlp metadata (label, format, tracklist…), shown in the details block
   height?: number; // video height in pixels (720, 1080, 2160…) from yt-dlp, for the video quality filter
   addedAt: number;
 }

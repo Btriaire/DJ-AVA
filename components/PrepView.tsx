@@ -15,6 +15,7 @@ import type { PrepReady } from "@/lib/stemPrep";
 import type { QualityLevel } from "@/lib/quality";
 import type { VideoLevel } from "@/lib/videoQuality";
 import type { Cue } from "@/lib/setPicker";
+import type { VideoMeta } from "@/lib/videoMeta";
 
 type SortOption = "recent" | "title" | "bpm" | "camelot" | "theme" | "group";
 type DurationFilterKey = "all" | "1" | "3" | "5" | "8" | "15" | "15+";
@@ -72,6 +73,7 @@ type TrackRow = {
   theme?: string;
   group?: string;
   addedAt?: number;
+  meta?: VideoMeta;
 };
 
 const toRow = (track: LibTrack | AudiusTrack): TrackRow => {
@@ -91,7 +93,8 @@ const toRow = (track: LibTrack | AudiusTrack): TrackRow => {
       height: track.height,
       theme: track.theme,
       group: track.group,
-      addedAt: track.addedAt
+      addedAt: track.addedAt,
+      meta: track.meta
     };
   } else {
     return {
@@ -122,8 +125,9 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
   const [selectedGroup, setSelectedGroup] = useState("");
   const [setOrder, setSetOrder] = useState<string[]>([]);
   const [resultQualityMin, setResultQualityMin] = useState<ResultQualityFilter>("all");
-  const [probed, setProbed] = useState<Record<string, { abr?: number; quality?: QualityLevel; height?: number } | null>>({});
+  const [probed, setProbed] = useState<Record<string, { abr?: number; quality?: QualityLevel; height?: number; meta?: VideoMeta } | null>>({});
   const [checking, setChecking] = useState(false);
+  const [openDetailsIds, setOpenDetailsIds] = useState<Set<string>>(new Set());
 
   const persist = (fn: (d: LibraryData) => LibraryData) => {
     const next = fn(libRef.current);
@@ -194,7 +198,8 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
         addedAt: Date.now(),
         abr: probeResult?.abr,
         quality: probeResult?.quality,
-        height: probeResult?.height
+        height: probeResult?.height,
+        meta: probeResult?.meta
       };
       return { ...data, tracks: [...data.tracks, newTrack] };
     });
@@ -281,10 +286,11 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
 
     try {
       const res = await fetch(`/api/youtube/quality?id=${encodeURIComponent(track.url ?? "")}`);
-      const q: { abr?: number | null; quality?: QualityLevel | null; height?: number | null } = await res.json();
+      const q: { abr?: number | null; quality?: QualityLevel | null; height?: number | null; meta?: VideoMeta | null } = await res.json();
       const abr = q.abr ?? undefined;
       const quality = q.quality ?? undefined;
       const height = q.height ?? undefined;
+      const meta = q.meta && Object.keys(q.meta).length > 0 ? q.meta : undefined;
 
       persist(lib => ({
         ...lib,
@@ -292,7 +298,8 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
           ...t,
           abr,
           quality,
-          height
+          height,
+          meta
         } : t)
       }));
     } catch (err) {
@@ -460,6 +467,59 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
     return "clé différente";
   };
 
+  const toggleDetails = (id: string) => {
+    setOpenDetailsIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const renderMetaDetails = (meta: VideoMeta) => {
+    const fields: { label: string; value: string }[] = [];
+
+    if (meta.label) fields.push({ label: "Label", value: meta.label });
+    if (meta.format) fields.push({ label: "Format", value: meta.format });
+    if (meta.country) fields.push({ label: "Pays", value: meta.country });
+    if (meta.released) fields.push({ label: "Sortie", value: meta.released });
+    if (meta.genre) fields.push({ label: "Genre", value: meta.genre });
+    if (meta.style) fields.push({ label: "Style", value: meta.style });
+    if (meta.artist) fields.push({ label: "Artiste", value: meta.artist });
+    if (meta.album) fields.push({ label: "Album", value: meta.album });
+    if (meta.track) fields.push({ label: "Titre", value: meta.track });
+    if (meta.channel) fields.push({ label: "Chaîne", value: meta.channel });
+    if (meta.uploadDate) fields.push({ label: "Envoyée le", value: meta.uploadDate });
+
+    if (meta.tags && meta.tags.length > 0) {
+      fields.push({ label: "Tags", value: meta.tags.join(", ") });
+    }
+
+    return (
+      <div className="mt-2 grid grid-cols-2 gap-1 text-[10px]">
+        {fields.map((field, index) => (
+          <div key={index} className="flex">
+            <span className="font-bold mr-1">{field.label}:</span>
+            <span>{field.value}</span>
+          </div>
+        ))}
+        {meta.tracklist && meta.tracklist.length > 0 && (
+          <div className="col-span-2 mt-1">
+            <span className="font-bold">Liste des titres:</span>
+            <ol className="list-decimal list-inside pl-2 text-[9px]">
+              {meta.tracklist.map((track, i) => (
+                <li key={i}>{track}</li>
+              ))}
+            </ol>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const filteredTracks = useMemo((): LibTrack[] => {
     let result = [...laterTracks];
 
@@ -589,11 +649,13 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
     const height = isLater ? track.height : undefined;
     const source = isLater ? track.source : "youtube";
     const duration = isLater ? track.duration : undefined;
+    const meta = isLater ? track.meta : undefined;
 
     const badge = SRC_BADGE[source] || { label: source.toUpperCase(), color: "#9ca3af" };
     const qualityColor = quality ? QUALITY_COLORS[quality] : QUALITY_COLORS.unknown;
     const videoLevel = videoLevelFromHeight(height);
     const videoColor = videoLevel ? VIDEO_COLORS[videoLevel] : VIDEO_COLORS.unknown;
+    const hasMeta = meta && Object.keys(meta).length > 0;
 
     return (
       <div className="hw-strip flex flex-wrap items-center gap-2 px-2 py-1.5">
@@ -686,6 +748,15 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
                   {isCheckingQuality ? "Vérif..." : "Qualité"}
                 </button>
               )}
+              {hasMeta && (
+                <button
+                  onClick={() => toggleDetails(track.id)}
+                  className={`hw-btn px-2 py-1 text-xs ${openDetailsIds.has(track.id) ? "hw-btn-on" : ""}`}
+                  style={{ ["--led" as string]: "#a78bfa", color: "#a78bfa" }}
+                >
+                  {openDetailsIds.has(track.id) ? "Masquer" : "Détails"}
+                </button>
+              )}
               <button
                 onClick={() => removeLaterTrack(track.id)}
                 className="hw-btn px-2 py-1 text-xs"
@@ -707,6 +778,11 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
             </button>
           )}
         </div>
+        {isLater && hasMeta && openDetailsIds.has(track.id) && (
+          <div className="w-full mt-2">
+            {renderMetaDetails(meta!)}
+          </div>
+        )}
       </div>
     );
   };
@@ -762,6 +838,8 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
     const quality = probeResult?.quality;
     const abr = probeResult?.abr;
     const height = probeResult?.height;
+    const meta = probeResult?.meta;
+    const hasMeta = meta && Object.keys(meta).length > 0;
 
     const videoInfo = effectiveVideoLevel(height, track.title);
     const videoLabel = videoInfo ? VIDEO_LABEL[videoInfo.level] : "?";
@@ -800,6 +878,15 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
           </div>
         </div>
         <div className="flex flex-wrap gap-1">
+          {hasMeta && (
+            <button
+              onClick={() => toggleDetails(track.id)}
+              className={`hw-btn px-2 py-1 text-xs ${openDetailsIds.has(track.id) ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: "#a78bfa", color: "#a78bfa" }}
+            >
+              {openDetailsIds.has(track.id) ? "Masquer" : "Détails"}
+            </button>
+          )}
           <button
             onClick={() => addLaterTrack(track)}
             className="hw-btn px-2 py-1 text-xs"
@@ -810,6 +897,11 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
               : "Mettre de côté"}
           </button>
         </div>
+        {hasMeta && openDetailsIds.has(track.id) && (
+          <div className="w-full mt-2">
+            {renderMetaDetails(meta!)}
+          </div>
+        )}
       </div>
     );
   };
@@ -1325,6 +1417,15 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
                       {checkingQualityIds.has(track.id) ? "Vérif..." : "Qualité"}
                     </button>
                   )}
+                  {track.meta && Object.keys(track.meta).length > 0 && (
+                    <button
+                      onClick={() => toggleDetails(track.id)}
+                      className={`hw-btn px-2 py-1 text-xs ${openDetailsIds.has(track.id) ? "hw-btn-on" : ""}`}
+                      style={{ ["--led" as string]: "#a78bfa", color: "#a78bfa" }}
+                    >
+                      {openDetailsIds.has(track.id) ? "Masquer" : "Détails"}
+                    </button>
+                  )}
                   <button
                     onClick={() => removeLaterTrack(track.id)}
                     className="hw-btn px-2 py-1 text-xs"
@@ -1333,6 +1434,11 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
                     Retirer
                   </button>
                 </div>
+                {track.meta && Object.keys(track.meta).length > 0 && openDetailsIds.has(track.id) && (
+                  <div className="mt-2">
+                    {renderMetaDetails(track.meta)}
+                  </div>
+                )}
               </div>
             ))}
           </div>
