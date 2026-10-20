@@ -4,9 +4,10 @@ import { useState, useRef, useMemo, useSyncExternalStore } from "react";
 import { loadLibrary, saveLibrary, uid, idbGetBlob } from "@/lib/library";
 import { enqueuePrep, getPrepState, subscribePrep, forgetPrep } from "@/lib/stemPrep";
 import { queueAnalysis } from "@/lib/analyze";
-import { qualityFromKbps, kbpsFromSize, QUALITY_LABEL, QUALITY_HINT } from "@/lib/quality";
+import { qualityFromKbps, kbpsFromSize, QUALITY_LABEL, QUALITY_HINT, QUALITY_RANK } from "@/lib/quality";
 import { buildSmartSet } from "@/lib/setBuilder";
 import { pickNext } from "@/lib/setPicker";
+import { getCachedQuality, probeQualities } from "@/lib/ytQuality";
 import type { LibTrack, LibraryData, Playlist } from "@/lib/library";
 import type { AudiusTrack } from "@/lib/audius";
 import type { PrepReady } from "@/lib/stemPrep";
@@ -15,7 +16,8 @@ import type { Cue } from "@/lib/setPicker";
 
 type SortOption = "recent" | "title" | "bpm" | "camelot" | "theme" | "group";
 type DurationFilterKey = "all" | "1" | "3" | "5" | "8" | "15" | "15+";
-type QualityFilter = "all" | "HQ" | "STD" | "LQ" | "unknown";
+type QualityFilter = "all" | "HR" | "HQ" | "STD" | "LQ" | "unknown";
+type ResultQualityFilter = "all" | "HQ" | "HR";
 
 const DUR_FILTERS: { key: DurationFilterKey; label: string; min: number; max: number }[] = [
   { key: "all", label: "Toutes", min: 0, max: 0 },
@@ -36,6 +38,7 @@ const SRC_BADGE: Record<string, { label: string; color: string }> = {
 };
 
 const QUALITY_COLORS: Record<QualityLevel | "unknown", string> = {
+  HR: "#a78bfa",
   HQ: "#34d399",
   STD: "#ffcc00",
   LQ: "#ef4444",
@@ -104,6 +107,9 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
   const [qualityFilter, setQualityFilter] = useState<QualityFilter>("all");
   const [selectedGroup, setSelectedGroup] = useState("");
   const [setOrder, setSetOrder] = useState<string[]>([]);
+  const [resultQualityMin, setResultQualityMin] = useState<ResultQualityFilter>("all");
+  const [probed, setProbed] = useState<Record<string, { abr?: number; quality?: QualityLevel } | null>>({});
+  const [checking, setChecking] = useState(false);
 
   const persist = (fn: (d: LibraryData) => LibraryData) => {
     const next = fn(libRef.current);
@@ -130,13 +136,24 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
     if (!searchQuery.trim()) return;
     setIsSearching(true);
     setSearchError("");
+    setProbed({});
+    setChecking(false);
+
     try {
       const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(searchQuery)}&n=40&min=0&max=100000`);
       const data = await res.json();
-      setSearchResults(data.tracks.map((track: any) => ({
+      const results = data.tracks.map((track: any) => ({
         ...track,
         bpm: track.bpm ? Number(track.bpm) || undefined : undefined
-      })));
+      }));
+      setSearchResults(results);
+
+      // Start quality probing
+      setChecking(true);
+      const ids = results.map((t: AudiusTrack) => t.id);
+      probeQualities(ids, (id, result) => {
+        setProbed(prev => ({ ...prev, [id]: result }));
+      }, 3).finally(() => setChecking(false));
     } catch (err) {
       setSearchError("Échec de la recherche");
     } finally {
@@ -149,6 +166,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
       const exists = data.tracks.some(t => t.source === "youtube" && t.url === track.id && t.later);
       if (exists) return data;
 
+      const probeResult = probed[track.id];
       const newTrack: LibTrack = {
         id: uid(),
         name: track.title,
@@ -159,7 +177,9 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
         durationSec: track.duration,
         bpm: track.bpm ?? undefined,
         later: true,
-        addedAt: Date.now()
+        addedAt: Date.now(),
+        abr: probeResult?.abr,
+        quality: probeResult?.quality
       };
       return { ...data, tracks: [...data.tracks, newTrack] };
     });
@@ -246,15 +266,16 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
 
     try {
       const res = await fetch(`/api/youtube/quality?id=${encodeURIComponent(track.url ?? "")}`);
-      const q: { abr?: number | null } = await res.json();
+      const q: { abr?: number | null; quality?: QualityLevel | null } = await res.json();
       const abr = q.abr ?? undefined;
+      const quality = q.quality ?? undefined;
 
       persist(lib => ({
         ...lib,
         tracks: lib.tracks.map(t => t.id === track.id ? {
           ...t,
           abr,
-          quality: qualityFromKbps(abr)
+          quality
         } : t)
       }));
     } catch (err) {
@@ -381,7 +402,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
     return `${m}:${r.toString().padStart(2, "0")}`;
   };
 
-  const formatBPM = (bpm?: number | string, estimated?: boolean) => {
+  const formatBPM = (bpm?: number | string | null, estimated?: boolean) => {
     if (typeof bpm === "string") return bpm;
     if (!bpm) return "—";
     return estimated ? `≈ ${bpm}` : `${bpm}`;
@@ -481,18 +502,27 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
   }, [laterTracks, sortBy, filterTheme, filterGroup, durationFilter, qualityFilter]);
 
   const filteredSearchResults = useMemo(() => {
-    if (durationFilter === "all") return searchResults;
-
-    const filter = DUR_FILTERS.find(f => f.key === durationFilter);
-    if (!filter) return searchResults;
+    if (durationFilter === "all" && resultQualityMin === "all") return searchResults;
 
     return searchResults.filter(t => {
-      if (!t.duration) return false;
-      if (filter.max === 0) return t.duration >= filter.min;
-      if (filter.min === 0) return t.duration <= filter.max;
-      return t.duration >= filter.min && t.duration <= filter.max;
+      const durationOk = durationFilter === "all" || (() => {
+        const filter = DUR_FILTERS.find(f => f.key === durationFilter);
+        if (!filter || !t.duration) return false;
+        if (filter.max === 0) return t.duration >= filter.min;
+        if (filter.min === 0) return t.duration <= filter.max;
+        return t.duration >= filter.min && t.duration <= filter.max;
+      })();
+
+      const qualityOk = resultQualityMin === "all" || (() => {
+        const probeResult = probed[t.id];
+        if (!probeResult) return false;
+        const rank = probeResult.quality ? QUALITY_RANK[probeResult.quality] : -1;
+        return rank >= (resultQualityMin === "HQ" ? 2 : 3);
+      })();
+
+      return durationOk && qualityOk;
     });
-  }, [searchResults, durationFilter]);
+  }, [searchResults, durationFilter, resultQualityMin, probed]);
 
   const groupInfo = useMemo(() => {
     if (!selectedGroup) return { count: 0, duration: 0 };
@@ -549,7 +579,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
               <span>Camelot: {track.camelot}</span>
             )}
             {duration && <span>{fmt(duration)}</span>}
-            {abr && <span>{abr} kbps</span>}
+            {abr && <span>{Math.round(abr)} kbps</span>}
             <span
               className="text-[9px] font-black"
               style={{ color: qualityColor }}
@@ -625,6 +655,98 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
     );
   };
 
+  const renderResultQualityBadge = (track: AudiusTrack) => {
+    const probeResult = probed[track.id];
+    const quality = probeResult?.quality;
+    const abr = probeResult?.abr;
+
+    if (checking && !probeResult) {
+      return (
+        <span className="text-[9px] font-black" style={{ color: QUALITY_COLORS.unknown }}>
+          vérification…
+        </span>
+      );
+    }
+
+    if (!probeResult) {
+      return (
+        <span className="text-[9px] font-black" style={{ color: QUALITY_COLORS.unknown }}>
+          qualité inconnue
+        </span>
+      );
+    }
+
+    const qualityColor = quality ? QUALITY_COLORS[quality] : QUALITY_COLORS.unknown;
+    const qualityLabel = quality ? QUALITY_LABEL[quality] : "?";
+
+    return (
+      <>
+        <span className="text-[9px] font-black" style={{ color: qualityColor }}>
+          {qualityLabel}
+        </span>
+        {abr && <span className="text-[9px]">{Math.round(abr)} kbps</span>}
+      </>
+    );
+  };
+
+  const renderSearchResultCard = (track: AudiusTrack) => {
+    const probeResult = probed[track.id];
+    const quality = probeResult?.quality;
+    const abr = probeResult?.abr;
+
+    return (
+      <div className="hw-strip flex flex-wrap items-center gap-2 px-2 py-1.5">
+        {track.artwork && (
+          <img
+            src={track.artwork}
+            alt=""
+            className="w-10 h-10 object-cover rounded"
+            loading="lazy"
+            referrerPolicy="no-referrer"
+          />
+        )}
+        {!track.artwork && (
+          <div className="hw-vinyl w-10 h-10 flex items-center justify-center text-xs font-bold">
+            {track.title.charAt(0).toUpperCase()}
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <p className="font-medium truncate">{track.title}</p>
+          <div className="flex flex-wrap gap-2 text-[10px] text-neutral-400">
+            <span>
+              {formatBPM(track.bpm)} BPM
+            </span>
+            {track.duration && <span>{fmt(track.duration)}</span>}
+            {renderResultQualityBadge(track)}
+            <span
+              className="text-[9px] font-black"
+              style={{ color: SRC_BADGE.youtube.color }}
+            >
+              {SRC_BADGE.youtube.label}
+            </span>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          <button
+            onClick={() => addLaterTrack(track)}
+            className="hw-btn px-2 py-1 text-xs"
+            style={{ ["--led" as string]: "#ffcc00", color: "#ffcc00" }}
+          >
+            {lib.tracks.some(t => t.source === "youtube" && t.url === track.id && t.later)
+              ? "Déjà en préparation"
+              : "Mettre de côté"}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const resultCount = useMemo(() => {
+    const total = searchResults.length;
+    const verified = Object.values(probed).filter(r => r !== undefined).length;
+    return { total, verified };
+  }, [searchResults, probed]);
+
   return (
     <div className="zoom-zone hw-screwed hw-panel flex flex-1 flex-col gap-3 p-4">
       <div className="flex items-center justify-between">
@@ -664,10 +786,41 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
             </button>
           ))}
         </div>
+        <div className="flex flex-wrap gap-2 items-center mb-2">
+          <div className="flex flex-wrap gap-1">
+            <button
+              onClick={() => setResultQualityMin("all")}
+              className={`hw-btn px-2 py-1 text-xs ${resultQualityMin === "all" ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: "#ffcc00", color: "#ffcc00" }}
+            >
+              Toutes
+            </button>
+            <button
+              onClick={() => setResultQualityMin("HQ")}
+              className={`hw-btn px-2 py-1 text-xs ${resultQualityMin === "HQ" ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: "#34d399", color: "#34d399" }}
+            >
+              HQ et plus
+            </button>
+            <button
+              onClick={() => setResultQualityMin("HR")}
+              className={`hw-btn px-2 py-1 text-xs ${resultQualityMin === "HR" ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: "#a78bfa", color: "#a78bfa" }}
+            >
+              HiRes
+            </button>
+          </div>
+          <span className="text-[10px] text-neutral-400 ml-2">
+            {resultCount.total} résultats · {resultCount.verified} vérifiés
+          </span>
+          <span className="text-[9px] text-neutral-500 ml-auto">
+            YouTube n'indique pas la qualité dans sa recherche : chaque résultat est vérifié à l'ouverture (environ 3 s par vidéo, 3 en parallèle).
+          </span>
+        </div>
         <div className="space-y-1 max-h-60 overflow-y-auto">
           {filteredSearchResults.map((track) => (
             <div key={track.id}>
-              {renderTrackCard(toRow(track), false)}
+              {renderSearchResultCard(track)}
             </div>
           ))}
         </div>
@@ -829,6 +982,13 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
               Toutes qualités
             </button>
             <button
+              onClick={() => setQualityFilter("HR")}
+              className={`hw-btn px-2 py-1 text-xs ${qualityFilter === "HR" ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: "#a78bfa", color: "#a78bfa" }}
+            >
+              HiRes
+            </button>
+            <button
               onClick={() => setQualityFilter("HQ")}
               className={`hw-btn px-2 py-1 text-xs ${qualityFilter === "HQ" ? "hw-btn-on" : ""}`}
               style={{ ["--led" as string]: "#34d399", color: "#34d399" }}
@@ -968,7 +1128,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
                   <span>{formatBPM(track.bpm, track.bpmEstimated)} BPM</span>
                   {track.camelot && <span>Camelot: {track.camelot}</span>}
                   {track.durationSec && <span>{fmt(track.durationSec)}</span>}
-                  {track.abr && <span>{track.abr} kbps</span>}
+                  {track.abr && <span>{Math.round(track.abr)} kbps</span>}
                   <span
                     className="font-black"
                     style={{ color: track.quality ? QUALITY_COLORS[track.quality] : QUALITY_COLORS.unknown }}
