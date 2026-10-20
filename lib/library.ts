@@ -1,3 +1,4 @@
+import type { QualityLevel } from "@/lib/quality";
 // Persistent media library for the DJ app.
 // - Track/playlist metadata lives in localStorage (small, synchronous).
 // - The actual audio for imported files lives in IndexedDB (blobs, survives reload).
@@ -23,6 +24,8 @@ export interface LibTrack {
   group?: string; // free-text group / label / family of records (e.g. "Detroit", "Berlin")
   bpmConfidence?: number; // 0..1 confidence of the estimated bpm
   camelot?: string; // key in Camelot notation, from the server analysis
+  abr?: number; // audio bitrate in kbps (yt-dlp for youtube, file size / duration for local files)
+  quality?: QualityLevel; // HQ / STD / LQ, from abr — see lib/quality.ts
   addedAt: number;
 }
 

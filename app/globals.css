@@ -150,7 +150,7 @@ body {
   transform: translateY(1px);
 }
 .hw-btn-on {
-  color: #061018;
+  color: #061018 !important; /* beats inline colour props so an active LED button always reads dark */
   background: linear-gradient(180deg, color-mix(in srgb, var(--led) 90%, #fff) 0%, var(--led) 100%);
   border-color: color-mix(in srgb, var(--led) 60%, #000);
   box-shadow:
