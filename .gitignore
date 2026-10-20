@@ -57,3 +57,4 @@ __pycache__/
 .env*.local
 .bench-*
 .venv-mlx
+.analysis-cache/
