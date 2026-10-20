@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useMemo, useSyncExternalStore } from "react";
+import { useState, useRef, useMemo, useSyncExternalStore, useEffect } from "react";
 import { loadLibrary, saveLibrary, uid, idbGetBlob } from "@/lib/library";
 import { enqueuePrep, getPrepState, subscribePrep, forgetPrep } from "@/lib/stemPrep";
 import { queueAnalysis } from "@/lib/analyze";
@@ -22,6 +22,8 @@ type DurationFilterKey = "all" | "1" | "3" | "5" | "8" | "15" | "15+";
 type QualityFilter = "all" | "HR" | "HQ" | "STD" | "LQ" | "unknown";
 type ResultQualityFilter = "all" | "HQ" | "HR";
 type VideoFilter = "all" | "HD" | "FHD" | "4K";
+
+const LONG_TRACK_SEC = 1200; // 20 minutes
 
 const DUR_FILTERS: { key: DurationFilterKey; label: string; min: number; max: number }[] = [
   { key: "all", label: "Toutes", min: 0, max: 0 },
@@ -128,6 +130,8 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
   const [probed, setProbed] = useState<Record<string, { abr?: number; quality?: QualityLevel; height?: number; meta?: VideoMeta } | null>>({});
   const [checking, setChecking] = useState(false);
   const [openDetailsIds, setOpenDetailsIds] = useState<Set<string>>(new Set());
+  const [notice, setNotice] = useState<string | null>(null);
+  const noticeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const persist = (fn: (d: LibraryData) => LibraryData) => {
     const next = fn(libRef.current);
@@ -149,6 +153,49 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
   const [sortBy, setSortBy] = useState<SortOption>("recent");
   const [filterTheme, setFilterTheme] = useState("");
   const [filterGroup, setFilterGroup] = useState("");
+
+  useEffect(() => {
+    return () => {
+      if (noticeTimeoutRef.current) {
+        clearTimeout(noticeTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const queueStems = (tracks: LibTrack[]) => {
+    const longTracks = tracks.filter(t => t.durationSec && t.durationSec > LONG_TRACK_SEC);
+
+    if (longTracks.length > 0) {
+      const duration = Math.floor(longTracks[0].durationSec! / 60);
+      const minutes = duration % 60;
+      const hours = Math.floor(duration / 60);
+
+      const message = longTracks.length === 1
+        ? `« ${longTracks[0].name} » dure ${hours > 0 ? `${hours}h` : ''}${minutes}min. Le téléchargement et la séparation peuvent prendre plusieurs heures. Continuer ?`
+        : `${longTracks.length} morceaux dépassent 20 minutes (téléchargement et séparation très longs). Continuer ?`;
+
+      if (!window.confirm(message)) {
+        return;
+      }
+    }
+
+    const count = enqueuePrep(tracks);
+    if (count > 0) {
+      const message = tracks.length === 1
+        ? `Préparation lancée : ${tracks[0].name}`
+        : `Préparation lancée : ${tracks.length} morceaux`;
+
+      setNotice(message);
+      noticeTimeoutRef.current = setTimeout(() => {
+        setNotice(null);
+      }, 6000);
+    } else {
+      setNotice("Déjà en préparation ou déjà prêt");
+      noticeTimeoutRef.current = setTimeout(() => {
+        setNotice(null);
+      }, 6000);
+    }
+  };
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
@@ -435,7 +482,14 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
   const getStemStatus = (trackId: string) => {
     const job = prepState.jobs.find(j => j.trackId === trackId);
     if (!job) return prepState.ready.some(r => r.trackId === trackId) ? "done" : "queued";
-    return job.status === "error" ? "error" : job.status === "running" ? `running ${job.progress}%` : job.status;
+
+    if (job.status === "error") return "error";
+    if (job.status === "running") {
+      if (job.phase === "download") return "download";
+      if (job.phase === "separate") return `separate ${Math.round(job.progress)}`;
+      return `running ${Math.round(job.progress)}`;
+    }
+    return job.status;
   };
 
   const getQualityLabel = (quality?: QualityLevel) => {
@@ -708,8 +762,10 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
               <span>
                 Stems: {stemStatus === "queued" ? "en attente" :
                         stemStatus === "done" ? "prêt" :
-                        stemStatus === "error" ? "erreur" :
-                        stemStatus.startsWith("running") ? `en cours ${stemStatus.split(" ")[1]}` : "—"}
+                        stemStatus === "error" ? <span style={{ color: "#ef4444" }}>erreur : {prepState.jobs.find(j => j.trackId === track.id)?.error?.substring(0, 80) ?? "inconnue"}</span> :
+                        stemStatus === "download" ? <span className="animate-pulse">téléchargement…</span> :
+                        stemStatus.startsWith("separate") ? `séparation ${stemStatus.split(" ")[1]}%` :
+                        stemStatus.startsWith("running") ? `en cours ${stemStatus.split(" ")[1]}%` : "—"}
               </span>
             )}
             <span
@@ -719,12 +775,20 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
               {badge.label}
             </span>
           </div>
+          {stemStatus && stemStatus.startsWith("separate") && (
+            <div className="hw-well mt-1 h-1.5">
+              <div
+                className="h-full bg-[#ffcc00]"
+                style={{ width: `${stemStatus.split(" ")[1]}%` }}
+              />
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap gap-1">
           {isLater && (
             <>
               <button
-                onClick={() => enqueuePrep([lib.tracks.find(t => t.id === track.id)!])}
+                onClick={() => queueStems([lib.tracks.find(t => t.id === track.id)!])}
                 className="hw-btn px-2 py-1 text-xs"
                 style={{ ["--led" as string]: "#ffcc00", color: "#ffcc00" }}
               >
@@ -919,6 +983,11 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
 
   return (
     <div className="zoom-zone hw-screwed hw-panel flex flex-1 flex-col gap-3 p-4">
+      {notice && (
+        <div className="hw-well p-2 text-xs text-[#ffcc00]">
+          {notice}
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <h1 className="text-sm font-black uppercase tracking-[0.2em] text-neutral-300">♫ Préparation</h1>
         <span className="text-[10px] text-neutral-600">{filteredTracks.length} morceaux</span>
@@ -1306,7 +1375,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
 
         <div className="flex flex-wrap gap-2 mb-2">
           <button
-            onClick={() => enqueuePrep(laterTracks)}
+            onClick={() => queueStems(laterTracks)}
             className="hw-btn px-2 py-1 text-xs"
             style={{ ["--led" as string]: "#ffcc00", color: "#ffcc00" }}
           >
@@ -1391,9 +1460,25 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
                     {SRC_BADGE[track.source]?.label || track.source.toUpperCase()}
                   </span>
                 </div>
+                <div className="text-[9px] mb-2">
+                  Stems: {getStemStatus(track.id) === "queued" ? "en attente" :
+                          getStemStatus(track.id) === "done" ? "prêt" :
+                          getStemStatus(track.id) === "error" ? <span style={{ color: "#ef4444" }}>erreur : {prepState.jobs.find(j => j.trackId === track.id)?.error?.substring(0, 80) ?? "inconnue"}</span> :
+                          getStemStatus(track.id) === "download" ? <span className="animate-pulse">téléchargement…</span> :
+                          getStemStatus(track.id).startsWith("separate") ? `séparation ${getStemStatus(track.id).split(" ")[1]}%` :
+                          getStemStatus(track.id).startsWith("running") ? `en cours ${getStemStatus(track.id).split(" ")[1]}%` : "—"}
+                </div>
+                {getStemStatus(track.id).startsWith("separate") && (
+                  <div className="hw-well mt-1 h-1.5 mb-2">
+                    <div
+                      className="h-full bg-[#ffcc00]"
+                      style={{ width: `${getStemStatus(track.id).split(" ")[1]}%` }}
+                    />
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-1">
                   <button
-                    onClick={() => enqueuePrep([track])}
+                    onClick={() => queueStems([track])}
                     className="hw-btn px-2 py-1 text-xs"
                     style={{ ["--led" as string]: "#ffcc00", color: "#ffcc00" }}
                   >

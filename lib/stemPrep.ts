@@ -14,8 +14,10 @@ export interface PrepJob {
   url?: string;
   status: PrepStatus;
   progress: number;
+  phase?: "download" | "separate";
   error?: string;
   addedAt: number;
+  hash?: string;
 }
 
 export interface PrepReady {
@@ -50,9 +52,13 @@ function loadState(): PrepState {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved) as PrepState;
-      // Reset running jobs to queued on load
+      // Reset running jobs to queued on load, but keep hash for resuming
       return {
-        jobs: parsed.jobs.map(j => j.status === "running" ? { ...j, status: "queued", progress: 0 } : j),
+        jobs: parsed.jobs.map(j =>
+          j.status === "running"
+            ? { ...j, status: j.hash ? "running" : "queued", progress: 0, phase: j.hash ? j.phase : undefined }
+            : j
+        ),
         ready: parsed.ready,
       };
     }
@@ -82,28 +88,85 @@ function ensureWorker(): void {
 
 async function processQueue(): Promise<void> {
   while (true) {
-    const job = state.jobs.find(j => j.status === "queued");
+    const job = state.jobs.find(j => j.status === "queued" || (j.status === "running" && j.hash));
     if (!job) break;
     while (!canRun()) await new Promise(r => setTimeout(r, 2000)); // wait for playback to stop
 
-    saveState({
-      ...state,
-      jobs: state.jobs.map(j => j.trackId === job.trackId ? { ...j, status: "running" } : j),
-    });
-
-    try {
-      const bytes = await fetchTrackBytes(job);
-      const { hash } = await startSeparation(bytes);
-      await monitorSeparation(job.trackId, hash);
-    } catch (error) {
+    if (job.hash) {
+      // Resume existing job
       saveState({
         ...state,
         jobs: state.jobs.map(j =>
           j.trackId === job.trackId
-            ? { ...j, status: "error", error: error instanceof Error ? error.message : "unknown error" }
+            ? { ...j, status: "running", progress: 0, phase: "separate" }
             : j
         ),
       });
+      try {
+        await monitorSeparation(job.trackId, job.hash);
+      } catch (error) {
+        saveState({
+          ...state,
+          jobs: state.jobs.map(j =>
+            j.trackId === job.trackId
+              ? {
+                  ...j,
+                  status: "error",
+                  error: error instanceof Error ? error.message.substring(0, 200) : "unknown error",
+                  hash: undefined,
+                  phase: undefined,
+                }
+              : j
+          ),
+        });
+      }
+    } else {
+      // New job
+      saveState({
+        ...state,
+        jobs: state.jobs.map(j =>
+          j.trackId === job.trackId
+            ? { ...j, status: "running", progress: 0, phase: "download" }
+            : j
+        ),
+      });
+
+      try {
+        const bytes = await fetchTrackBytes(job);
+        saveState({
+          ...state,
+          jobs: state.jobs.map(j =>
+            j.trackId === job.trackId
+              ? { ...j, phase: "separate", progress: 0 }
+              : j
+          ),
+        });
+        const { hash } = await startSeparation(bytes);
+        saveState({
+          ...state,
+          jobs: state.jobs.map(j =>
+            j.trackId === job.trackId
+              ? { ...j, hash, phase: "separate", progress: 0 }
+              : j
+          ),
+        });
+        await monitorSeparation(job.trackId, hash);
+      } catch (error) {
+        saveState({
+          ...state,
+          jobs: state.jobs.map(j =>
+            j.trackId === job.trackId
+              ? {
+                  ...j,
+                  status: "error",
+                  error: error instanceof Error ? error.message.substring(0, 200) : "unknown error",
+                  hash: undefined,
+                  phase: undefined,
+                }
+              : j
+          ),
+        });
+      }
     }
   }
 }
@@ -262,8 +325,8 @@ export async function saveFileToLibrary(file: File): Promise<LibTrack> {
 
 // Resume queued jobs after app reload
 if (typeof window !== "undefined") {
-  // Check if there are queued jobs on load
-  if (state.jobs.some(j => j.status === "queued")) {
+  // Check if there are queued jobs or jobs to resume on load
+  if (state.jobs.some(j => j.status === "queued" || (j.status === "running" && j.hash))) {
     // Schedule worker restart after small delay to ensure UI is ready
     setTimeout(() => ensureWorker(), 3000);
   }
