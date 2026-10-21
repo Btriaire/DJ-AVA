@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getProgress, isCached, isModel, StemModel, StemOpts } from "@/lib/stems";
+import { getFailure, getProgress, isCached, isModel, StemModel, StemOpts } from "@/lib/stems";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +25,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       cached: isCached(hash, model, opts),
       progress: getProgress(hash, model, opts),
+      error: getFailure(hash, model, opts),
     });
   } catch (error) {
     return NextResponse.json(

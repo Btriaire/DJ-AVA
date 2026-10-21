@@ -196,6 +196,7 @@ function run(cmd: string, args: string[], niceness?: number, onProgress?: (chunk
 // linear across the whole job, but it's a faithful "how far along is THIS
 // pass" reading, which is what a DJ waiting on a badge actually wants.
 const progress = new Map<string, number>();
+const failures = new Map<string, string>(); // last error per progressKey, kept so the client can show the real cause
 
 function progressKey(hash: string, model: StemModel, opts: StemOpts): string {
   return `${hash}:${model}:${dirSuffix(opts)}`;
@@ -273,10 +274,14 @@ export function prefetch(
   const cached = isCached(hash, model, opts);
   if (!cached) {
     separate(data, model, shifts, { ...opts, priority: 0, nice: true }).catch((e) =>
-      console.error("[stems prefetch]", (e as Error).message)
+      failures.set(progressKey(hash, model, opts), (e as Error).message.slice(0, 300)) && console.error("[stems prefetch]", (e as Error).message)
     );
   }
   return { hash, cached };
+}
+
+export function getFailure(hash: string, model: StemModel, opts: StemOpts = {}): string | null {
+  return failures.get(progressKey(hash, model, opts)) ?? null;
 }
 
 interface SepArgs {
@@ -354,6 +359,7 @@ async function doSeparate(
   const work = await mkdtemp(join(tmpdir(), "stems-"));
   const niceness = opts.nice ? 15 : undefined;
   const pKey = progressKey(hash, model, opts);
+  failures.delete(pKey);
   progress.set(pKey, 0); // visible immediately, even while still queued behind another job
   // serialise the heavy work: only one Demucs at a time on this CPU-bound box
   await acquireSlot(opts.priority ?? 1);

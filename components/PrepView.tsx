@@ -112,6 +112,13 @@ const toRow = (track: LibTrack | AudiusTrack): TrackRow => {
   }
 };
 
+// grid card widths: small / medium / large covers
+const GRID_CLASS = {
+  S: "grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8 flex-1 overflow-y-auto",
+  M: "grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-5 flex-1 overflow-y-auto",
+  L: "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 flex-1 overflow-y-auto"
+};
+
 export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "B", playlistId: string) => void } = {}) {
   const [lib, setLib] = useState(() => loadLibrary());
   const libRef = useRef(lib);
@@ -121,6 +128,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
   const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
   const [checkingQualityIds, setCheckingQualityIds] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+  const [gridSize, setGridSize] = useState<"S" | "M" | "L">("L");
   const [durationFilter, setDurationFilter] = useState<DurationFilterKey>("all");
   const [qualityFilter, setQualityFilter] = useState<QualityFilter>("all");
   const [videoFilter, setVideoFilter] = useState<VideoFilter>("all");
@@ -207,7 +215,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
     try {
       const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(searchQuery)}&n=40&min=0&max=100000`);
       const data = await res.json();
-      const results = data.tracks.map((track: any) => ({
+      const results = data.tracks.map((track: AudiusTrack) => ({
         ...track,
         bpm: track.bpm ? Number(track.bpm) || undefined : undefined
       }));
@@ -1088,7 +1096,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
             {visibleResultsCount.visible} sur {visibleResultsCount.total} résultats
           </span>
           <span className="text-[9px] text-neutral-500 ml-auto">
-            YouTube n'indique pas la qualité dans sa recherche : chaque résultat est vérifié à l'ouverture (environ 3 s par vidéo, 3 en parallèle).
+            YouTube n&apos;indique pas la qualité dans sa recherche : chaque résultat est vérifié à l&apos;ouverture (environ 3 s par vidéo, 3 en parallèle).
           </span>
         </div>
         <div className="space-y-1 max-h-60 overflow-y-auto">
@@ -1200,6 +1208,20 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
                       <span className="text-xs font-bold w-6 text-right">{index + 1}.</span>
                       <div className="flex-1">
                         <p className="text-xs font-medium truncate">{track.name}</p>
+                        {track.meta && (
+                          <p className="text-[9px] text-neutral-400 truncate">
+                            {[
+                              track.meta.artist,
+                              track.meta.label,
+                              track.meta.released,
+                              track.meta.genre,
+                              track.meta.style,
+                              track.meta.format,
+                              track.meta.country,
+                              track.meta.tracklist?.length ? `${track.meta.tracklist.length} titres` : null
+                            ].filter(Boolean).join(" · ")}
+                          </p>
+                        )}
                         {nextTrack && (
                           <div className="text-[10px] text-neutral-400">
                             <span className="mr-2">{getTempoRelation(track, nextTrack)}</span>
@@ -1234,6 +1256,34 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
             >
               Grille
             </button>
+            {viewMode === "grid" && (
+              <>
+                <button
+                  onClick={() => setGridSize("S")}
+                  className={`hw-btn px-2 py-1 text-xs ${gridSize === "S" ? "hw-btn-on" : ""}`}
+                  style={{ ["--led" as string]: "#ffcc00", color: "#ffcc00" }}
+                  title="Pochettes petites"
+                >
+                  S
+                </button>
+                <button
+                  onClick={() => setGridSize("M")}
+                  className={`hw-btn px-2 py-1 text-xs ${gridSize === "M" ? "hw-btn-on" : ""}`}
+                  style={{ ["--led" as string]: "#ffcc00", color: "#ffcc00" }}
+                  title="Pochettes moyennes"
+                >
+                  M
+                </button>
+                <button
+                  onClick={() => setGridSize("L")}
+                  className={`hw-btn px-2 py-1 text-xs ${gridSize === "L" ? "hw-btn-on" : ""}`}
+                  style={{ ["--led" as string]: "#ffcc00", color: "#ffcc00" }}
+                  title="Pochettes grandes"
+                >
+                  L
+                </button>
+              </>
+            )}
           </div>
           <div className="flex flex-wrap gap-1">
             <span className="text-[9px] text-neutral-400 mr-2">Durée :</span>
@@ -1408,7 +1458,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
         )}
 
         {viewMode === "grid" && (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 flex-1 overflow-y-auto">
+          <div className={GRID_CLASS[gridSize]}>
             {filteredTracks.map((track) => (
               <div key={track.id} className="hw-strip p-2">
                 <div className="relative mb-2">

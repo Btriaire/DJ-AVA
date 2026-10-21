@@ -46,6 +46,7 @@ export function AtelierView({ engine, active }: { engine: DJEngine; active: bool
   const [listen, setListen] = useState<"mix" | "orig">("mix");
   const [playing, setPlaying] = useState<"none" | "orig" | "mix">("none");
   const [busy, setBusy] = useState("");
+  const [sourceOpen, setSourceOpen] = useState(true);
   const [err, setErr] = useState("");
   const [note, setNote] = useState("");
   const [stemUndo, setStemUndo] = useState<Record<string, AudioBuffer>>({}); // one undo step per stem, key "soundId:index"
@@ -183,7 +184,8 @@ export function AtelierView({ engine, active }: { engine: DJEngine; active: bool
       info: p.info,
     };
     setSounds((prev) => [...prev, sound]);
-    if (select) {
+      if (select) {
+        setSourceOpen(false);
       releaseOthers(sound.id);
       stopAll();
       setCurId(sound.id);
@@ -243,7 +245,8 @@ export function AtelierView({ engine, active }: { engine: DJEngine; active: bool
     }
   };
 
-  const select = (id: string) => {
+    const select = (id: string) => {
+      setSourceOpen(false);
     releaseOthers(id);
     stopAll();
     setCurId(id);
@@ -529,6 +532,8 @@ export function AtelierView({ engine, active }: { engine: DJEngine; active: bool
       </div>
 
       <SourcePanel
+        open={sourceOpen}
+        onToggle={() => setSourceOpen((o) => !o)}
         engine={engine}
         color={COLOR}
         busy={!!busy || !!sep}

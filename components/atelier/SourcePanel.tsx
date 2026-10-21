@@ -10,13 +10,15 @@ function fmt(sec: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export function SourcePanel({ engine, color, busy, onOpenBytes, onOpenBuffer, bank }: {
+export function SourcePanel({ engine, color, busy, onOpenBytes, onOpenBuffer, bank, open = true, onToggle }: {
   engine: DJEngine;
   color: string;
   busy: boolean;
   onOpenBytes: (name: string, bytes: ArrayBuffer, info?: { label: string; value: string }[]) => Promise<void>;
   onOpenBuffer: (name: string, buf: AudioBuffer, bpm: number) => Promise<void>;
   bank: React.ReactNode;
+  open?: boolean;
+  onToggle?: () => void;
 }) {
   const [activeTab, setActiveTab] = useState(() => {
     try {
@@ -90,6 +92,14 @@ export function SourcePanel({ engine, color, busy, onOpenBytes, onOpenBuffer, ba
         <div className="text-[10px] font-bold uppercase tracking-[0.25em] text-neutral-500">
           1 · SOURCE
         </div>
+        {onToggle && (
+          <button
+            onClick={onToggle}
+            className="hw-btn px-2 py-1 text-[11px] font-bold"
+          >
+            {open ? "▴ replier" : "▾ déplier"}
+          </button>
+        )}
         <div className="flex flex-wrap gap-1">
           <button
             onClick={() => handleTabChange("youtube")}
@@ -129,6 +139,8 @@ export function SourcePanel({ engine, color, busy, onOpenBytes, onOpenBuffer, ba
         </div>
       </div>
 
+      {open !== false && (
+        <>
       {activeTab === "youtube" && (
         <YouTubeSearch
           ctx={engine.ctx}
@@ -261,7 +273,14 @@ export function SourcePanel({ engine, color, busy, onOpenBytes, onOpenBuffer, ba
         </div>
       )}
 
-      {activeTab === "bank" && bank}
-    </div>
+              {activeTab === "bank" && bank}
+            </>
+          )}
+          {open === false && (
+            <div className="text-[11px] text-neutral-400">
+              Source repliée : clique sur « déplier » pour chercher un autre son.
+            </div>
+          )}
+        </div>
   );
 }

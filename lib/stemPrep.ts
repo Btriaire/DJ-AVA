@@ -204,7 +204,7 @@ async function monitorSeparation(trackId: string, hash: string): Promise<void> {
 
     const s = await (await fetch(
       `/api/stems/status?hash=${hash}&model=${PREP_MODEL}&ultra=1&wav=1`
-    )).json() as { cached?: boolean; progress?: number };
+    )).json() as { cached?: boolean; progress?: number | null; error?: string | null };
 
     if (s.cached) {
       const lib = loadLibrary();
@@ -228,8 +228,10 @@ async function monitorSeparation(trackId: string, hash: string): Promise<void> {
       return;
     }
 
+    if (s.error) throw new Error(s.error);
+
     idlePolls = s.progress == null ? idlePolls + 1 : 0;
-    if (idlePolls >= 10) throw new Error("calcul interrompu côté serveur");
+    if (idlePolls >= 20) throw new Error("le serveur n'a plus de progression pour ce morceau (redémarrage de l'appli ?) : relance avec Stems");
 
     saveState({
       ...state,
