@@ -322,8 +322,14 @@ async function separateWithMlx(a: SepArgs, maxOps: string): Promise<string> {
   const overlap = a.opts.ultra ? "0.25" : process.env.STEMS_OVERLAP || "0.1";
   const shiftsEff = String(Math.min(a.opts.ultra ? Math.max(a.shifts, 2) : a.shifts, 10));
   const args = ["-n", a.model, "--overlap", overlap, "-b", "1", "--shifts", shiftsEff, "-v", "-o", mlxOut, a.wav];
+  // demucs-mlx prints two tqdm bars: "Tracks: 0%|…" (whole batch) and
+  // "<file>.wav:  25%|…" (steps of this file) — follow the per-file one.
   await run(MLX_BIN, args, a.niceness, (chunk) => {
-    const matches = chunk.match(/segments:\s*(\d{1,3})%\|/g);
+    const matches = chunk
+      .split(/[\r\n]/)
+      .filter((line) => !line.trimStart().startsWith("Tracks:"))
+      .join("\n")
+      .match(/(\d{1,3})%\|/g);
     if (!matches || !matches.length) return;
     const pct = parseInt(matches[matches.length - 1], 10);
     if (!isNaN(pct)) progress.set(a.pKey, Math.min(99, pct)); // 100 reserved for "done"

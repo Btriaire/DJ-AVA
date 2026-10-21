@@ -185,7 +185,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
   const [durationFilter, setDurationFilter] = useState<DurationFilterKey>("all");
   const [qualityFilter, setQualityFilter] = useState<QualityFilter>("all");
   const [videoFilter, setVideoFilter] = useState<VideoFilter>("all");
-  const [selectedGroup, setSelectedGroup] = useState("");
+  const [setSourceId, setSetSourceId] = useState("");
   const [setOrder, setSetOrder] = useState<string[]>([]);
   const [resultQualityMin, setResultQualityMin] = useState<ResultQualityFilter>("all");
   const [probed, setProbed] = useState<Record<string, { abr?: number; quality?: QualityLevel; height?: number; meta?: VideoMeta } | null>>({});
@@ -462,63 +462,36 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
     }));
   };
 
-  const createSetForGroup = () => {
-    if (!selectedGroup) return;
+  // a set = one of the lists re-ordered for mixing (BPM / Camelot), saved as « Set · <liste> »;
+  // returns the set's playlist id so it can be launched right away
+  const createSet = (): string | null => {
+    const source = lib.playlists.find(p => p.id === setSourceId);
+    if (!source) return null;
+    const tracks = source.trackIds
+      .map(id => lib.tracks.find(t => t.id === id))
+      .filter((t): t is LibTrack => !!t);
+    if (tracks.length < 2) return null;
 
-    const groupTracks = lib.tracks.filter(t => t.group === selectedGroup && t.later);
-    if (groupTracks.length < 2) return;
+    const order = buildSmartSet(tracks.map(t => ({ id: t.id, bpm: t.bpm ?? 0, camelot: t.camelot ?? "" })));
+    setSetOrder(order);
 
-    const cues: Cue[] = groupTracks.map(t => ({
-      id: t.id,
-      bpm: t.bpm ?? 0,
-      camelot: t.camelot ?? ""
-    }));
-
-    const setOrder = buildSmartSet(cues);
-    setSetOrder(setOrder);
-
-    // Create or update playlist
-    const playlistName = `Set · ${selectedGroup}`;
+    const name = source.name.startsWith("Set · ") ? source.name : `Set · ${source.name}`;
+    const existing = lib.playlists.find(p => p.name === name);
+    const id = existing?.id ?? uid();
     persist(data => {
-      const existingPlaylist = data.playlists.find(p => p.name === playlistName);
-      if (existingPlaylist) {
-        return {
-          ...data,
-          playlists: data.playlists.map(p =>
-            p.id === existingPlaylist.id
-              ? { ...p, trackIds: setOrder, transitionType: "smooth", transitionSec: 8, preloadSec: 15 }
-              : p
-          )
-        };
-      } else {
-        const newPlaylist: Playlist = {
-          id: uid(),
-          name: playlistName,
-          trackIds: setOrder,
-          transitionType: "smooth",
-          transitionSec: 8,
-          preloadSec: 15
-        };
-        return { ...data, playlists: [...data.playlists, newPlaylist] };
-      }
+      const set: Playlist = { ...existing, id, name, trackIds: order, transitionType: "smooth", transitionSec: 8, preloadSec: 15 };
+      return {
+        ...data,
+        playlists: existing ? data.playlists.map(p => (p.id === id ? set : p)) : [...data.playlists, set],
+      };
     });
+    return id;
   };
 
   const launchSet = (side: "A" | "B") => {
-    if (!selectedGroup || !onLaunchSet) return;
-
-    const playlistName = `Set · ${selectedGroup}`;
-    const playlist = lib.playlists.find(p => p.name === playlistName);
-
-    if (!playlist) {
-      createSetForGroup();
-      const newPlaylist = lib.playlists.find(p => p.name === playlistName);
-      if (newPlaylist) {
-        onLaunchSet(side, newPlaylist.id);
-      }
-    } else {
-      onLaunchSet(side, playlist.id);
-    }
+    if (!onLaunchSet) return;
+    const id = createSet();
+    if (id) onLaunchSet(side, id);
   };
 
   const fmt = (s: number) => {
@@ -752,22 +725,17 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
     });
   }, [searchResults, durationFilter, resultQualityMin, videoFilter, probed]);
 
-  const groupInfo = useMemo(() => {
-    if (!selectedGroup) return { count: 0, duration: 0 };
-
-    const groupTracks = lib.tracks.filter(t => t.group === selectedGroup && t.later);
-    const count = groupTracks.length;
-    const duration = groupTracks.reduce((sum, t) => sum + (t.durationSec || 0), 0);
-
-    return { count, duration };
-  }, [lib.tracks, selectedGroup]);
+  const setSource = lib.playlists.find(p => p.id === setSourceId);
+  const setSourceStats = setSource ? playlistStats(setSource.trackIds) : null;
 
   // compact row for the set-aside tray: checkbox, name, key facts, stems state
   const renderTrayRow = (track: LibTrack) => {
     const checked = selectedLaterIds.has(track.id);
     const stem = getStemStatus(track.id);
-    const stemLabel = stem === "done" ? "prêt" : stem === "none" ? "à préparer" : stem === "error" ? "erreur" : stem === "queued" ? "en attente" : "en cours";
+    const pct = stem.startsWith("separate") || stem.startsWith("running") ? Number(stem.split(" ")[1]) || 0 : null;
+    const stemLabel = stem === "done" ? "stems prêts" : stem === "none" ? "" : stem === "error" ? "stems : erreur" : stem === "queued" ? "stems en attente" : stem === "download" ? "téléchargement…" : `séparation ${pct} %`;
     const stemColor = stem === "done" ? "#34d399" : stem === "error" ? "#ef4444" : stem === "none" ? "#7b8494" : "#ffcc00";
+    const stemError = stem === "error" ? prepState.jobs.find(j => j.trackId === track.id)?.error : undefined;
     return (
       <div
         key={track.id}
@@ -785,7 +753,16 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
         <span className="hidden shrink-0 text-[10px] tabular-nums text-neutral-500 sm:inline">
           {track.bpm ? Math.round(track.bpm) : "—"} · {track.camelot ?? "—"} · {formatDuration(track.durationSec ?? 0)}
         </span>
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: stemColor }} title={`Stems : ${stemLabel}`} />
+        {stemLabel && (
+          <span className="flex shrink-0 items-center gap-1.5" title={stemError ?? stemLabel}>
+            {pct !== null && (
+              <span className="hw-well block h-1.5 w-16 overflow-hidden">
+                <span className="block h-full transition-[width] duration-500" style={{ width: `${pct}%`, background: stemColor }} />
+              </span>
+            )}
+            <span className={`text-[10px] tabular-nums ${stem === "download" || stem === "queued" ? "animate-pulse" : ""}`} style={{ color: stemColor }}>{stemLabel}</span>
+          </span>
+        )}
         {(stem === "none" || stem === "error") && (
           <button onClick={() => queueStems([track])} className="shrink-0 text-[10px] text-emerald-400 hover:underline">Stems</button>
         )}
@@ -1272,6 +1249,22 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
             aria-label="Tout cocher"
           />
           <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">Mis de côté ({laterTracks.length})</h2>
+          {(() => {
+            const st = laterTracks.map(t => getStemStatus(t.id));
+            const busy = st.filter(x => x === "download" || x.startsWith("separate") || x.startsWith("running")).length;
+            const waiting = st.filter(x => x === "queued").length;
+            const ready = st.filter(x => x === "done").length;
+            const failed = st.filter(x => x === "error").length;
+            if (busy + waiting + ready + failed === 0) return null;
+            return (
+              <span className="text-[10px] text-neutral-400">
+                stems : {busy > 0 && <span className="text-[#ffcc00]">{busy} en cours · </span>}
+                {waiting > 0 && <span>{waiting} en attente · </span>}
+                <span className="text-emerald-400">{ready} prêt(s)</span>
+                {failed > 0 && <span className="text-red-400"> · {failed} en erreur</span>}
+              </span>
+            );
+          })()}
           <span className="text-[10px] text-neutral-500">
             {selectedLaterIds.size > 0 ? `${selectedLaterIds.size} coché(s) → crée une liste ou ajoute-les à une liste à droite` : "coche des titres pour en faire une liste"}
           </span>
@@ -1722,57 +1715,62 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
       </div>
       </div>
 
-      {/* SETS PAR GROUPE */}
+      {/* SET : une liste ordonnée pour mixer */}
       <div className="hw-well p-2">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500">Sets par groupe</h2>
+          <h2 className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500">Set à partir d&apos;une liste</h2>
         </div>
-        <div className="flex flex-wrap gap-2 mb-2">
+        <div className="flex flex-wrap items-center gap-2 mb-2">
           <div className="hw-well px-2 py-1 text-xs">
-            <label className="text-[9px] text-neutral-400">Groupe</label>
+            <label className="text-[9px] text-neutral-400 mr-1">Liste</label>
             <select
-              value={selectedGroup}
-              onChange={(e) => setSelectedGroup(e.target.value)}
+              value={setSourceId}
+              onChange={(e) => { setSetSourceId(e.target.value); setSetOrder([]); }}
               className="hw-well bg-transparent text-xs text-neutral-200 outline-none"
             >
-              <option value="">Choisir un groupe</option>
-              {groups.map(group => (
-                <option key={group} value={group}>{group}</option>
+              <option value="">Choisir une liste</option>
+              {lib.playlists.map(p => (
+                <option key={p.id} value={p.id}>{p.name} ({p.trackIds.length})</option>
               ))}
             </select>
           </div>
-          {selectedGroup && (
-            <div className="text-xs text-neutral-400">
-              {groupInfo.count} morceaux · {fmt(groupInfo.duration)}
-            </div>
+          {setSourceStats && (
+            <span className="text-[10px] text-neutral-400">
+              {setSourceStats.count} titre(s) · {formatDuration(setSourceStats.seconds)} · BPM {setSourceStats.bpmRange}
+            </span>
           )}
-        </div>
-        <div className="flex flex-wrap gap-2 mb-2">
           <button
-            onClick={createSetForGroup}
-            disabled={!selectedGroup || groupInfo.count < 2}
-            className="hw-btn px-2 py-1 text-xs"
+            onClick={() => createSet()}
+            disabled={!setSourceStats || setSourceStats.count < 2}
+            className="hw-btn px-2 py-1 text-xs disabled:opacity-40"
             style={{ ["--led" as string]: "#a78bfa", color: "#a78bfa" }}
+            title="Ordonne les titres de la liste pour enchaîner (BPM proches, tonalités compatibles)"
           >
             Créer le set
           </button>
           <button
             onClick={() => launchSet("A")}
-            disabled={!selectedGroup || groupInfo.count < 2 || !onLaunchSet}
-            className="hw-btn px-2 py-1 text-xs"
+            disabled={!setSourceStats || setSourceStats.count < 2 || !onLaunchSet}
+            className="hw-btn px-2 py-1 text-xs disabled:opacity-40"
             style={{ ["--led" as string]: "#ffcc00", color: "#ffcc00" }}
           >
             Lancer sur A
           </button>
           <button
             onClick={() => launchSet("B")}
-            disabled={!selectedGroup || groupInfo.count < 2 || !onLaunchSet}
-            className="hw-btn px-2 py-1 text-xs"
+            disabled={!setSourceStats || setSourceStats.count < 2 || !onLaunchSet}
+            className="hw-btn px-2 py-1 text-xs disabled:opacity-40"
             style={{ ["--led" as string]: "#ffcc00", color: "#ffcc00" }}
           >
             Lancer sur B
           </button>
         </div>
+        {lib.playlists.length === 0 && (
+          <p className="text-[10px] text-neutral-500">Crée d&apos;abord une liste : le set ordonne ses titres pour les enchaîner.</p>
+        )}
+        {setSourceStats && setSourceStats.count < 2 && (
+          <p className="text-[10px] text-neutral-500">Il faut au moins 2 titres dans la liste.</p>
+        )}
         {setOrder.length > 0 && (
           <div className="mt-2">
             <h3 className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500 mb-1">Aperçu du set</h3>
