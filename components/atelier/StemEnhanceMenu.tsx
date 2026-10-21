@@ -19,12 +19,13 @@ export function StemEnhanceMenu({
   const options = enhanceOptions(stemName);
 
   const families = [
-    { key: "clean", title: "Nettoyer", icon: "clean", options: options.filter(o => ["normalize", "dc", "declick", "denoise"].includes(o.key)) },
-    { key: "dynamic", title: "Dynamique", icon: "dynamic", options: options.filter(o => ["punch", "dcomp", "bcomp", "vcomp", "vgate"].includes(o.key)) },
-    { key: "balance", title: "Équilibrer", icon: "balance", options: options.filter(o => ["warm", "presence", "bright", "air"].includes(o.key)) },
-    { key: "color", title: "Couleur et espace", icon: "color", options: options.filter(o => ["sat", "width"].includes(o.key)) },
-    { key: "other", title: "Autres", icon: "other", options: options.filter(o => !["normalize", "dc", "declick", "denoise", "punch", "dcomp", "bcomp", "vcomp", "vgate", "warm", "presence", "bright", "air", "sat", "width"].includes(o.key)) },
-  ].filter(f => f.options.length > 0);
+    { key: "clean", title: "Nettoyer", icon: "clean" },
+    { key: "dynamic", title: "Dynamique", icon: "dynamic" },
+    { key: "balance", title: "Équilibrer", icon: "balance" },
+    { key: "color", title: "Couleur et espace", icon: "color" },
+  ]
+    .map((f) => ({ ...f, options: options.filter((o) => o.family === f.key) }))
+    .filter((f) => f.options.length > 0);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
