@@ -8,3 +8,4 @@
 - Ne pas coller de gros fichiers dans les prompts de génération de code : donner le chemin, les numéros de lignes et l'extrait utile.
 - Lancer `/compact` avant de changer de sujet dans une même session.
 - Mesurer : `~/.claude/hooks/measure_tokens.sh /Users/bruno/dj-app` donne le volume de résultats d'outils par session.
+- Pour un gros fichier dont on veut seulement la vue d'ensemble : `~/.claude/tools/ruche-summarize.sh FICHIER "consigne"` (ne lit que les 30 000 premiers caractères et renvoie un résumé de 2 500 caractères au plus). Pour une question générale sans lire le projet : `~/.claude/tools/ruche-ask.sh "question"`. Les contenus sensibles (.env, clés, secrets) sont refusés.
