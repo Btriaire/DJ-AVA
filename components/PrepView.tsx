@@ -2,7 +2,7 @@
 
 import { useState, useRef, useMemo, useSyncExternalStore, useEffect } from "react";
 import { loadLibrary, saveLibrary, uid, idbGetBlob } from "@/lib/library";
-import { enqueuePrep, getPrepState, subscribePrep, forgetPrep } from "@/lib/stemPrep";
+import { enqueuePrep, getPrepState, subscribePrep, forgetPrep, cancelPrep } from "@/lib/stemPrep";
 import { queueAnalysis } from "@/lib/analyze";
 import { qualityFromKbps, kbpsFromSize, QUALITY_LABEL, QUALITY_HINT, QUALITY_RANK } from "@/lib/quality";
 import { buildSmartSet } from "@/lib/setBuilder";
@@ -113,6 +113,7 @@ const toRow = (track: LibTrack | AudiusTrack): TrackRow => {
 };
 
 // grid card widths: small / medium / large covers
+const COVER_CLASS = { S: "w-8 h-8", M: "w-14 h-14", L: "w-20 h-20" }; // list-view cover sizes, follow the S/M/L toggle
 const GRID_CLASS = {
   S: "grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8 flex-1 overflow-y-auto",
   M: "grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-5 flex-1 overflow-y-auto",
@@ -480,7 +481,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
 
   const getStemStatus = (trackId: string) => {
     const job = prepState.jobs.find(j => j.trackId === trackId);
-    if (!job) return prepState.ready.some(r => r.trackId === trackId) ? "done" : "queued";
+    if (!job) return prepState.ready.some(r => r.trackId === trackId) ? "done" : "none";
 
     if (job.status === "error") return "error";
     if (job.status === "running") {
@@ -728,13 +729,13 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
           <img
             src={track.art}
             alt=""
-            className="w-10 h-10 object-cover rounded"
+            className={`${COVER_CLASS[gridSize]} object-cover rounded`}
             loading="lazy"
             referrerPolicy="no-referrer"
           />
         )}
         {!track.art && (
-          <div className="hw-vinyl w-10 h-10 flex items-center justify-center text-xs font-bold">
+          <div className={`hw-vinyl ${COVER_CLASS[gridSize]} flex items-center justify-center text-xs font-bold`}>
             {track.name.charAt(0).toUpperCase()}
           </div>
         )}
@@ -771,7 +772,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
             )}
             {stemStatus && (
               <span>
-                Stems: {stemStatus === "queued" ? "en attente" :
+                Stems: {stemStatus === "none" ? "à préparer" : stemStatus === "queued" ? "en attente" :
                         stemStatus === "done" ? "prêt" :
                         stemStatus === "error" ? <span style={{ color: "#ef4444" }}>erreur : {prepState.jobs.find(j => j.trackId === track.id)?.error?.substring(0, 80) ?? "inconnue"}</span> :
                         stemStatus === "download" ? <span className="animate-pulse">téléchargement…</span> :
@@ -823,7 +824,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
                   {isCheckingQuality ? "Vérif..." : "Qualité"}
                 </button>
               )}
-              {hasMeta && (
+              {(hasMeta || isLater) && (
                 <button
                   onClick={() => toggleDetails(track.id)}
                   className={`hw-btn px-2 py-1 text-xs ${openDetailsIds.has(track.id) ? "hw-btn-on" : ""}`}
@@ -853,9 +854,36 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
             </button>
           )}
         </div>
-        {isLater && hasMeta && openDetailsIds.has(track.id) && (
-          <div className="w-full mt-2">
-            {renderMetaDetails(meta!)}
+        {isLater && openDetailsIds.has(track.id) && (
+          <div className="w-full mt-2 flex flex-col gap-2">
+            {hasMeta && renderMetaDetails(meta!)}
+            <div className="hw-well flex flex-wrap items-center gap-2 p-2">
+              <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500">Stems</span>
+              <span
+                className="text-[11px] font-bold"
+                style={{ color: stemStatus === "done" ? "#34d399" : stemStatus === "none" ? "#a78bfa" : stemStatus === "error" ? "#ef4444" : "#ffcc00" }}
+              >
+                {stemStatus === "done" ? "Prêts · 4 pistes" : stemStatus === "none" ? "À préparer" : stemStatus === "error" ? "Erreur" : "En cours"}
+              </span>
+              {(stemStatus === "none" || stemStatus === "error") && (
+                <button
+                  onClick={() => queueStems([lib.tracks.find(t => t.id === track.id)!])}
+                  className="hw-btn px-2 py-1 text-xs"
+                  style={{ ["--led" as string]: "#34d399", color: "#34d399" }}
+                >
+                  Préparer les stems
+                </button>
+              )}
+              {stemStatus !== "done" && stemStatus !== "none" && stemStatus !== "error" && (
+                <button
+                  onClick={() => cancelPrep(track.id)}
+                  className="hw-btn px-2 py-1 text-xs"
+                  style={{ ["--led" as string]: "#ef4444", color: "#ef4444" }}
+                >
+                  Annuler
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -1281,7 +1309,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
             >
               Grille
             </button>
-            {viewMode === "grid" && (
+            {(
               <>
                 <button
                   onClick={() => setGridSize("S")}
@@ -1536,7 +1564,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
                   </span>
                 </div>
                 <div className="text-[9px] mb-2">
-                  Stems: {getStemStatus(track.id) === "queued" ? "en attente" :
+                  Stems: {getStemStatus(track.id) === "none" ? "à préparer" : getStemStatus(track.id) === "queued" ? "en attente" :
                           getStemStatus(track.id) === "done" ? "prêt" :
                           getStemStatus(track.id) === "error" ? <span style={{ color: "#ef4444" }}>erreur : {prepState.jobs.find(j => j.trackId === track.id)?.error?.substring(0, 80) ?? "inconnue"}</span> :
                           getStemStatus(track.id) === "download" ? <span className="animate-pulse">téléchargement…</span> :
