@@ -2,7 +2,8 @@ export type FxName =
   | "echo" | "reverb" | "flanger" | "phaser" | "gate"
   | "roll" | "brake" | "reverse" | "sweep" | "wobble" | "pump" | "pan"
   | "noise" | "crush" | "pitch"
-  | "dub" | "ring" | "tape" | "mash" | "vowel" | "scatter";
+  | "dub" | "ring" | "tape" | "mash" | "vowel" | "scatter"
+  | "build" | "freeze" | "halftime";
 
 export const BEAT_DIVS: number[] = [1 / 16, 1 / 8, 1 / 4, 1 / 2, 3 / 4, 1, 2, 4, 8, 16];
 export const BEAT_LABELS: string[] = ["1/16", "1/8", "1/4", "1/2", "3/4", "1", "2", "4", "8", "16"];
@@ -405,6 +406,65 @@ export const FX_LIST: FxMeta[] = [
       fmt: (v) => `${Math.round((0.04 + v * 0.6) * 1000)} ms`
     },
     sendGain: 1.0
+  }, {
+    id: "build",
+    label: "BUILD",
+    color: "#f97316",
+    glyph: "⇗",
+    title: "Montée : le stem est roulé de plus en plus vite (1/2 → 1/32 de temps) pendant qu'un filtre monte ; relâche pour le drop",
+    insert: true,
+    always: false,
+    trigger: false,
+    beat: null,
+    p1: {
+      label: "Durée",
+      def: 0.5,
+      fmt: (v) => `${[2, 4, 8, 16][Math.min(3, Math.floor(v * 4))]} temps`
+    },
+    p2: {
+      label: "Filtre",
+      def: 0.75,
+      fmt: (v) => fmtHz(200 * Math.pow(25, v))
+    },
+    sendGain: 1.0
+  }, {
+    id: "freeze",
+    label: "FREEZE",
+    color: "#7dd3fc",
+    glyph: "❄",
+    title: "Gel : fige le son du stem en une nappe continue (une note de voix, un accord) pendant que le reste joue",
+    insert: true,
+    always: false,
+    trigger: false,
+    beat: null,
+    p1: {
+      label: "Grain",
+      def: 0.22,
+      fmt: (v) => `${Math.round((0.06 + v * 0.54) * 1000)} ms`
+    },
+    p2: {
+      label: "Brillance",
+      def: 0.65,
+      fmt: (v) => fmtHz(1000 * Math.pow(16, v))
+    },
+    sendGain: 1.0
+  }, {
+    id: "halftime",
+    label: "HALF",
+    color: "#84cc16",
+    glyph: "½",
+    title: "Demi-tempo : le stem est rejoué à moitié vitesse dans chaque fenêtre, une octave plus bas, calé sur les temps",
+    insert: true,
+    always: false,
+    trigger: false,
+    beat: 5,
+    p1: {
+      label: "Couleur",
+      def: 1,
+      fmt: (v) => fmtHz(400 * Math.pow(50, v))
+    },
+    p2: null,
+    sendGain: 1.0
   }
 ];
 
@@ -412,4 +472,7 @@ export const FX_META = new Map<FxName, FxMeta>(FX_LIST.map((m) => [m.id, m]));
 
 // pad order (3 x 3) of the all-in-one FX unit
 export const DECK_FX: FxName[] = ["echo", "dub", "reverb", "flanger", "gate", "noise", "roll", "brake", "reverse"];
-export const STEM_FX: FxName[] = ["echo", "dub", "vowel", "gate", "mash", "roll", "flanger", "crush", "scatter"];
+export const STEM_FX: FxName[] = [
+  "echo", "dub", "vowel", "gate", "mash", "roll", "flanger", "crush", "scatter",
+  "build", "freeze", "halftime", "wobble", "pump", "brake",
+];

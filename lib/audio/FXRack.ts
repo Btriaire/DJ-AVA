@@ -2,6 +2,7 @@ import { FxName, FxEnv, FxUnit, FX_LIST, FX_META, FxMeta } from "./fxTypes";
 import { buildUnitA } from "./fxUnitsA";
 import { buildUnitB } from "./fxUnitsB";
 import { buildUnitC } from "./fxUnitsC";
+import { buildUnitD } from "./fxUnitsD";
 
 export * from "./fxTypes";
 
@@ -106,6 +107,7 @@ export class FXRack {
   }
 
   private createUnit(name: FxName, env: FxEnv): FxUnit {
+    if (name === "build" || name === "freeze" || name === "halftime") return buildUnitD(name, env);
     if (name === "dub" || name === "ring" || name === "tape" || name === "mash" || name === "vowel" || name === "scatter") {
       return buildUnitC(name, env);
     }
