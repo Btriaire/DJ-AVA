@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Knob } from "../Knob";
 import { WaveEditor } from "./WaveEditor";
+import { StemEditPanel } from "./StemEditPanel";
 import type { Region, StemCtl } from "@/lib/atelier/types";
 
 export function StemZoom({
@@ -20,6 +21,9 @@ export function StemZoom({
   onStop,
   onAction,
   onClose,
+  onEdit,
+  canUndo,
+  onUndo,
 }: {
   label: string;
   color: string;
@@ -35,6 +39,9 @@ export function StemZoom({
   onStop: () => void;
   onAction: (what: "keys" | "sound" | "save" | "wav") => void;
   onClose: () => void;
+  onEdit?: (label: string, run: (buf: AudioBuffer) => Promise<AudioBuffer> | AudioBuffer) => void;
+  canUndo?: boolean;
+  onUndo?: () => void;
 }) {
   const [view, setView] = useState<Region | null>(null);
   const [draft, setDraft] = useState<Region | null>(
@@ -341,6 +348,10 @@ export function StemZoom({
             ⤓ WAV
           </button>
         </div>
+
+        {onEdit && (
+          <StemEditPanel buf={buf} region={draft} bpm={grid?.bpm ?? 0} color={color} busy={busy || working !== null} canUndo={!!canUndo} onEdit={onEdit} onUndo={() => onUndo?.()} />
+        )}
 
         <p className="text-[10px] text-neutral-500">
           Glisse sur la forme d&apos;onde pour choisir la partie que joue ce stem dans le mix. BOUCLE : elle se répète sur tout le morceau, calée sur sa place ; sinon elle ne joue qu&apos;à sa place. SUB ajoute une octave en dessous. Les exports reprennent tous les réglages du stem.

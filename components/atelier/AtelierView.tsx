@@ -48,6 +48,7 @@ export function AtelierView({ engine, active }: { engine: DJEngine; active: bool
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
   const [note, setNote] = useState("");
+  const [stemUndo, setStemUndo] = useState<Record<string, AudioBuffer>>({}); // one undo step per stem, key "soundId:index"
   const [bankVersion, setBankVersion] = useState(0);
   const [sens, setSens] = useState(0.5);
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -71,11 +72,47 @@ export function AtelierView({ engine, active }: { engine: DJEngine; active: bool
   useEffect(() => {
     const h = () => {
       setSounds((prev) => prev.map((s) => (s.id === curRef.current?.id ? { ...s, undo: undefined } : { ...s, undo: undefined, stems: s.stemHash ? undefined : s.stems })));
+      setStemUndo({});
       setNote("Mémoire libérée : historique d'annulation et stems inactifs relâchés");
     };
     window.addEventListener(FREE_MEMORY_EVENT, h);
     return () => window.removeEventListener(FREE_MEMORY_EVENT, h);
   }, []);
+
+  const editStem = async (i: number, label: string, run: (buf: AudioBuffer) => Promise<AudioBuffer> | AudioBuffer) => {
+    const s = curRef.current;
+    if (!s?.stems?.[i]) return;
+    const stem = s.stems[i];
+    try {
+      stopAll();
+      setBusy(`${label}…`);
+      const buf = await run(stem.buf);
+      if (buf.length !== stem.buf.length) throw new Error("length"); // a stem must keep its length to stay in sync
+      setStemUndo((u) => ({ ...u, [`${s.id}:${i}`]: stem.buf }));
+      update(s.id, { stems: s.stems.map((x, k) => (k === i ? { ...x, buf } : x)), stemHash: undefined });
+      setNote(`${label} appliqué`);
+    } catch {
+      setErr(`${label} impossible`);
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const undoStem = (i: number) => {
+    const s = curRef.current;
+    if (!s) return;
+    const key = `${s.id}:${i}`;
+    if (stemUndo[key] && s.stems) {
+      update(s.id, { stems: s.stems.map((x, k) => (k === i ? { ...x, buf: stemUndo[key] } : x)), stemHash: undefined });
+      setStemUndo((u) => {
+        const { [key]: _, ...rest } = u;
+        return rest;
+      });
+      setNote("Retour en arrière sur le stem");
+    }
+  };
+
+  const canUndoStem = (i: number) => !!(cur && stemUndo[`${cur.id}:${i}`]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -189,6 +226,7 @@ export function AtelierView({ engine, active }: { engine: DJEngine; active: bool
   // holds their stems (stemHash), their decoded stems: they reload on reopen.
   const releaseOthers = (keepId: string | null) => {
     setSounds((prev) => prev.map((s) => (s.id === keepId ? s : { ...s, undo: undefined, stems: s.stemHash ? undefined : s.stems })));
+    setStemUndo((u) => Object.fromEntries(Object.entries(u).filter(([k]) => k.startsWith(`${keepId}:`))));
   };
 
   const reloadStems = async (s: WorkSample) => {
@@ -832,6 +870,9 @@ export function AtelierView({ engine, active }: { engine: DJEngine; active: bool
                 setNote("Ajouté à la session");
               }}
               onSaved={() => setBankVersion((v) => v + 1)}
+              onStemEdit={editStem}
+              canUndoStem={canUndoStem}
+              onUndoStem={undoStem}
             />
           )}
         </div>

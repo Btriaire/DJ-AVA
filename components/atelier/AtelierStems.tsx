@@ -29,6 +29,9 @@ export function AtelierStems({
   onNewSound,
   onSaved,
   keys,
+  onStemEdit,
+  canUndoStem,
+  onUndoStem,
 }: {
   sound: WorkSample;
   mixer: StemMixer;
@@ -46,6 +49,9 @@ export function AtelierStems({
   onNewSound: (buf: AudioBuffer, name: string, kind: SoundKind) => void;
   onSaved: () => void;
   keys?: SampleKeys;
+  onStemEdit?: (i: number, label: string, run: (buf: AudioBuffer) => Promise<AudioBuffer> | AudioBuffer) => void;
+  canUndoStem?: (i: number) => boolean;
+  onUndoStem?: (i: number) => void;
 }) {
   const stems = sound.stems ?? [];
   const ctls = stems.map((_, i) => sound.ctls?.[i] ?? DEFAULT_CTL);
@@ -515,6 +521,9 @@ export function AtelierStems({
           onStop={onStop}
           onAction={(w) => act(zoom, w)}
           onClose={() => setZoom(null)}
+          onEdit={onStemEdit ? (label, run) => onStemEdit(zoom, label, run) : undefined}
+          canUndo={canUndoStem?.(zoom) ?? false}
+          onUndo={() => onUndoStem?.(zoom)}
         />
       )}
     </div>
