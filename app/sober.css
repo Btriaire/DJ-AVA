@@ -113,9 +113,9 @@ body,
 
 @keyframes stem-trait-sweep {
   from {
-    left: 0%;
+    left: var(--trait-from, 0%);
   }
   to {
-    left: 100%;
+    left: var(--trait-to, 100%);
   }
 }

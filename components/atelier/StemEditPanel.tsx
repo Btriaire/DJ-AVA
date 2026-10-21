@@ -136,8 +136,8 @@ export function StemEditPanel({
       </div>
 
       {tab === "decoupe" && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <div className="hw-strip p-2 flex flex-col gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 items-stretch gap-2">
+          <div className="hw-strip p-2 flex h-full flex-col gap-2">
             <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500">Répéter</p>
             <div className="flex justify-center gap-2">
               <button
@@ -197,7 +197,7 @@ export function StemEditPanel({
             </div>
           </div>
 
-          <div className="hw-strip p-2 flex flex-col gap-2">
+          <div className="hw-strip p-2 flex h-full flex-col gap-2">
             <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500">Décalage</p>
             <div className="flex justify-center gap-2">
               <button
@@ -331,8 +331,8 @@ export function StemEditPanel({
       )}
 
       {tab === "niveaux" && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <div className="hw-strip p-2 flex flex-col gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 items-stretch gap-2">
+          <div className="hw-strip p-2 flex h-full flex-col gap-2">
             <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500">Gain</p>
             <div className="flex justify-center">
               <Knob
@@ -353,7 +353,7 @@ export function StemEditPanel({
               <rect x="0" y={15 - (gain / 24) * 15} width="100" height={gain / 24 * 15} fill={color} />
             </svg>
             <button
-              className={`hw-btn px-2 py-1.5 text-[11px] font-bold w-full ${!busy ? "hw-btn-on" : ""}`}
+              className={`hw-btn px-2 py-1.5 text-[11px] font-bold w-full mt-auto ${!busy ? "hw-btn-on" : ""}`}
               style={{ ["--led" as string]: color, color } as React.CSSProperties}
               disabled={busy}
               onClick={() => onEdit("Gain", (b) => se.gain(b, r, gain))}
@@ -362,7 +362,7 @@ export function StemEditPanel({
             </button>
           </div>
 
-          <div className="hw-strip p-2 flex flex-col gap-2">
+          <div className="hw-strip p-2 flex h-full flex-col gap-2">
             <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500">Fondu</p>
             <div className="flex justify-center gap-1 mb-2">
               <button
@@ -417,8 +417,8 @@ export function StemEditPanel({
       )}
 
       {tab === "dynamique" && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <div className="hw-strip p-2 flex flex-col gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 items-stretch gap-2">
+          <div className="hw-strip p-2 flex h-full flex-col gap-2">
             <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500">Gate</p>
             <div className="flex justify-center">
               <Knob
@@ -439,7 +439,7 @@ export function StemEditPanel({
               <line x1="0" y1={40 - (gate + 80) / 80 * 40} x2="100" y2={40 - (gate + 80) / 80 * 40} stroke="#555" strokeWidth="1" strokeDasharray="2,2" />
             </svg>
             <button
-              className={`hw-btn px-2 py-1.5 text-[11px] font-bold w-full ${!busy ? "hw-btn-on" : ""}`}
+              className={`hw-btn px-2 py-1.5 text-[11px] font-bold w-full mt-auto ${!busy ? "hw-btn-on" : ""}`}
               style={{ ["--led" as string]: color, color } as React.CSSProperties}
               disabled={busy}
               onClick={() => onEdit("Gate", (b) => se.gate(b, r, gate))}
@@ -448,7 +448,7 @@ export function StemEditPanel({
             </button>
           </div>
 
-          <div className="hw-strip p-2 flex flex-col gap-2">
+          <div className="hw-strip p-2 flex h-full flex-col gap-2">
             <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500">Suppr. silences</p>
             <div className="flex justify-center">
               <Knob
@@ -469,7 +469,7 @@ export function StemEditPanel({
               <line x1="0" y1={40 - (strip + 80) / 80 * 40} x2="100" y2={40 - (strip + 80) / 80 * 40} stroke="#555" strokeWidth="1" strokeDasharray="2,2" />
             </svg>
             <button
-              className={`hw-btn px-2 py-1.5 text-[11px] font-bold w-full ${!busy ? "hw-btn-on" : ""}`}
+              className={`hw-btn px-2 py-1.5 text-[11px] font-bold w-full mt-auto ${!busy ? "hw-btn-on" : ""}`}
               style={{ ["--led" as string]: color, color } as React.CSSProperties}
               disabled={busy}
               onClick={() => onEdit("Supprimer silences", (b) => se.stripSilence(b, strip, 250))}
@@ -478,7 +478,7 @@ export function StemEditPanel({
             </button>
           </div>
 
-          <div className="hw-strip p-2 flex flex-col gap-2">
+          <div className="hw-strip p-2 flex h-full flex-col gap-2">
             <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500">Compresseur</p>
             <div className="grid grid-cols-2 gap-2">
               <Knob
@@ -523,7 +523,7 @@ export function StemEditPanel({
               <path d={`M-60,0 L${renderCompressorCurve()} L0,0`} stroke={color} strokeWidth="2" fill="none" />
             </svg>
             <button
-              className={`hw-btn px-2 py-1.5 text-[11px] font-bold w-full ${!busy ? "hw-btn-on" : ""}`}
+              className={`hw-btn px-2 py-1.5 text-[11px] font-bold w-full mt-auto ${!busy ? "hw-btn-on" : ""}`}
               style={{ ["--led" as string]: color, color } as React.CSSProperties}
               disabled={busy}
               onClick={() => onEdit("Compresseur", (b) => se.compress(b, r, { thresholdDb: compThreshold, ratio: compRatio, attackMs: 10, releaseMs: 120, makeupDb: compMakeup }))}
@@ -532,7 +532,7 @@ export function StemEditPanel({
             </button>
           </div>
 
-          <div className="hw-strip p-2 flex flex-col gap-2">
+          <div className="hw-strip p-2 flex h-full flex-col gap-2">
             <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500">Limiteur</p>
             <div className="flex justify-center">
               <Knob
@@ -553,7 +553,7 @@ export function StemEditPanel({
               <line x1="0" y1={40 - (limit + 12) / 12 * 40} x2="100" y2={40 - (limit + 12) / 12 * 40} stroke="#555" strokeWidth="1" strokeDasharray="2,2" />
             </svg>
             <button
-              className={`hw-btn px-2 py-1.5 text-[11px] font-bold w-full ${!busy ? "hw-btn-on" : ""}`}
+              className={`hw-btn px-2 py-1.5 text-[11px] font-bold w-full mt-auto ${!busy ? "hw-btn-on" : ""}`}
               style={{ ["--led" as string]: color, color } as React.CSSProperties}
               disabled={busy}
               onClick={() => onEdit("Limiteur", (b) => se.limit(b, r, limit))}
@@ -562,7 +562,7 @@ export function StemEditPanel({
             </button>
           </div>
 
-          <div className="hw-strip p-2 flex flex-col gap-2">
+          <div className="hw-strip p-2 flex h-full flex-col gap-2">
             <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500">Transitoires</p>
             <div className="grid grid-cols-2 gap-2">
               <Knob
@@ -595,7 +595,7 @@ export function StemEditPanel({
               <path d={`M0,100 Q25,${100 - (transientAttack + 12) / 24 * 100} 50,${100 - (transientSustain + 12) / 24 * 100} T100,0`} stroke={color} strokeWidth="2" fill="none" />
             </svg>
             <button
-              className={`hw-btn px-2 py-1.5 text-[11px] font-bold w-full ${!busy ? "hw-btn-on" : ""}`}
+              className={`hw-btn px-2 py-1.5 text-[11px] font-bold w-full mt-auto ${!busy ? "hw-btn-on" : ""}`}
               style={{ ["--led" as string]: color, color } as React.CSSProperties}
               disabled={busy}
               onClick={() => onEdit("Transitoires", (b) => se.transient(b, r, transientAttack, transientSustain))}
@@ -607,8 +607,8 @@ export function StemEditPanel({
       )}
 
       {tab === "son" && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <div className="hw-strip p-2 flex flex-col gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 items-stretch gap-2">
+          <div className="hw-strip p-2 flex h-full flex-col gap-2">
             <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500">Hauteur</p>
             <div className="flex justify-center">
               <Knob
@@ -647,7 +647,7 @@ export function StemEditPanel({
               />
             </svg>
             <button
-              className={`hw-btn px-2 py-1.5 text-[11px] font-bold w-full ${!busy ? "hw-btn-on" : ""}`}
+              className={`hw-btn px-2 py-1.5 text-[11px] font-bold w-full mt-auto ${!busy ? "hw-btn-on" : ""}`}
               style={{ ["--led" as string]: color, color } as React.CSSProperties}
               disabled={busy}
               onClick={() => onEdit("Hauteur", (b) => se.withRegion(b, r, (p) => ed.pitchKeep(p, pitch)))}
@@ -656,7 +656,7 @@ export function StemEditPanel({
             </button>
           </div>
 
-          <div className="hw-strip p-2 flex flex-col gap-2">
+          <div className="hw-strip p-2 flex h-full flex-col gap-2">
             <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500">Égaliseur</p>
             <div className="grid grid-cols-3 gap-2">
               <Knob
@@ -701,7 +701,7 @@ export function StemEditPanel({
               <path d={`M${renderEqCurve()}`} stroke={color} strokeWidth="2" fill="none" />
             </svg>
             <button
-              className={`hw-btn px-2 py-1.5 text-[11px] font-bold w-full ${!busy ? "hw-btn-on" : ""}`}
+              className={`hw-btn px-2 py-1.5 text-[11px] font-bold w-full mt-auto ${!busy ? "hw-btn-on" : ""}`}
               style={{ ["--led" as string]: color, color } as React.CSSProperties}
               disabled={busy}
               onClick={() => onEdit("Égaliseur", (b) => se.withRegion(b, r, (p) => ed.eq(p, { low: eqLow, mid: eqMid, high: eqHigh, hp: 80, lp: 16000 })))}

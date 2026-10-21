@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Knob } from "../Knob";
 import { WaveEditor } from "./WaveEditor";
 import { StemZoom } from "./StemZoom";
@@ -63,8 +63,10 @@ export function AtelierStems({
   const [working, setWorking] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [saved, setSaved] = useState<number | null>(null);
-  const [trigger, setTrigger] = useState<{ stem: number; id: number; duration: number } | null>(null);
+  const [trigger, setTrigger] = useState<{ stem: number; id: number; duration: number; from: number; to: number } | null>(null);
   const [triggerCounter, setTriggerCounter] = useState(0);
+  // the zone (seconds) that was sent to the keyboard for one stem: the trace must sweep only that zone
+  const keysSpanRef = useRef<{ stem: number; a: number; b: number } | null>(null);
 
   const nameOf = (i: number) => STEM_FR[stems[i].name] ?? stems[i].name.toUpperCase();
   const colorOf = (i: number) => STEM_COLOR[stems[i].name] ?? color;
@@ -75,7 +77,11 @@ export function AtelierStems({
       const stemIndex = stems.findIndex((_, i) => `${sound.name} · ${nameOf(i)}` === keys.name);
       if (stemIndex !== -1) {
         setTriggerCounter(prev => prev + 1);
-        setTrigger({ stem: stemIndex, id: triggerCounter + 1, duration: ev.duration });
+        const span = keysSpanRef.current;
+        const total = stems[stemIndex].buf.duration || 1;
+        const from = span && span.stem === stemIndex ? (span.a / total) * 100 : 0;
+        const to = span && span.stem === stemIndex ? (span.b / total) * 100 : 100;
+        setTrigger({ stem: stemIndex, id: triggerCounter + 1, duration: ev.duration, from, to });
       }
     });
     return () => unsubscribe();
@@ -102,6 +108,9 @@ export function AtelierStems({
       setErr(null);
       const part = ctls[i].part;
       const region = part ? { a: part.a, b: part.b } : sel;
+      if (what === "keys") {
+        keysSpanRef.current = { stem: i, a: region ? region.a : 0, b: region ? region.b : stems[i].buf.duration };
+      }
       const buf = await mixer.render(region, i);
       const name = `${sound.name} · ${nameOf(i)}`;
 
@@ -500,6 +509,8 @@ export function AtelierStems({
                   key={trigger.id}
                   className="stem-trait"
                   style={{
+                    ["--trait-from" as string]: `${trigger.from}%`,
+                    ["--trait-to" as string]: `${trigger.to}%`,
                     animationDuration: `${trigger.duration}s`,
                     backgroundColor: stemColor,
                     boxShadow: `0 0 6px ${stemColor}`

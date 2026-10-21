@@ -2,13 +2,17 @@ import type { Stem, StemModel } from './types';
 import { encodeWav } from "@/lib/audio/engine";
 import { sha1Hex16 } from "@/lib/audio/stemHash";
 
+// onPhase reports the current step so the UI can say where the job is:
+// Préparation → Envoi au serveur → Séparation sur le serveur → Téléchargement des pistes.
 export async function separateStems(
   ctx: BaseAudioContext,
   buf: AudioBuffer,
   model: StemModel,
   signal: AbortSignal,
-  onProgress: (pct: number | null) => void
+  onProgress: (pct: number | null) => void,
+  onPhase?: (label: string) => void
 ): Promise<{ hash: string; stems: Stem[] }> {
+  onPhase?.("Préparation");
   const bytes = await encodeWav(buf, 24).arrayBuffer();
   const local = await sha1Hex16(bytes);
   const timer = setInterval(async () => {
@@ -22,6 +26,7 @@ export async function separateStems(
   }, 1000);
 
   try {
+    onPhase?.("Envoi au serveur");
     const res = await fetch(`/api/stems/separate?model=${model}&wav=1`, {
       method: "POST",
       body: bytes,
@@ -33,6 +38,7 @@ export async function separateStems(
       throw new Error(detail || `Séparation impossible (${res.status})`);
     }
 
+    onPhase?.("Téléchargement des pistes");
     const data = await res.json() as { hash?: string; stems: string[] };
     const hash = data.hash || local;
     return { hash, stems: await loadStemsByHash(ctx, hash, model, data.stems, signal) };

@@ -54,7 +54,7 @@ export function AtelierView({ engine, active }: { engine: DJEngine; active: bool
   const [sens, setSens] = useState(0.5);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
-  const [sep, setSep] = useState<{ id: string; pct: number | null } | null>(null);
+  const [sep, setSep] = useState<{ id: string; pct: number | null; phase: string } | null>(null);
   const [model, setModel] = useState<StemModel>("htdemucs");
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const sepAbort = useRef<AbortController | null>(null);
@@ -434,17 +434,25 @@ export function AtelierView({ engine, active }: { engine: DJEngine; active: bool
     if (sep || !cur) return;
     try {
       stopAll();
-      const id = cur.id;
-      const buf = cur.buf;
+      // a selection is separated on its own: it becomes a new sound and only that part gets stems
+      const target = sel
+        ? addSound({ name: `${cur.name} · extrait`, buf: ed.slice(cur.buf, sel), kind: "sample", from: cur.name, bpm: cur.bpm, key: cur.key, offset: cur.offset, at: sel.a }, true)
+        : cur;
+      const id = target.id;
       const ac = new AbortController();
       sepAbort.current = ac;
-      setSep({ id, pct: 0 });
-      const { hash, stems } = await separateStems(engine.ctx, buf, model, ac.signal, (pct) =>
-        setSep((s) => (s && s.id === id ? { id, pct } : s))
+      setSep({ id, pct: 0, phase: "Préparation" });
+      const { hash, stems } = await separateStems(
+        engine.ctx,
+        target.buf,
+        model,
+        ac.signal,
+        (pct) => setSep((s) => (s && s.id === id ? { ...s, pct } : s)),
+        (phase) => setSep((s) => (s && s.id === id ? { ...s, phase } : s))
       );
       update(id, { stems, stemHash: hash, stemNames: stems.map((s) => s.name), stemModel: model, ctls: stems.map(() => DEFAULT_CTL) });
       setListen("mix");
-      setNote("Stems prêts : chaque piste se règle comme sur les platines.");
+      setNote(sel ? "Stems de la sélection prêts." : "Stems prêts : chaque piste se règle comme sur les platines.");
     } catch (e) {
       if (!(e instanceof DOMException && e.name === "AbortError")) {
         setErr(e instanceof Error ? e.message : "Séparation impossible");
@@ -786,16 +794,20 @@ export function AtelierView({ engine, active }: { engine: DJEngine; active: bool
             >
               6 PISTES
             </button>
-            {sep && sep.id === cur.id ? (
-              <button
-                className="hw-btn px-2 py-1 text-[11px] font-bold"
-                onClick={cancelSep}
-                title="Sépare tout le son (ou fais d'abord un sample de la partie voulue). Un morceau entier prend une à trois minutes"
-              >
-                ANNULER · {sep.pct ?? 0} %
-              </button>
-            ) : sep ? (
-              <div className="text-[10px] text-neutral-400">séparation en cours…</div>
+            {sep ? (
+              <div className="flex min-w-[220px] flex-1 flex-col gap-1">
+                <div className="flex items-center justify-between gap-2 text-[10px]">
+                  <span className="font-bold" style={{ color: COLOR }}>{sep.phase}</span>
+                  <span className="text-neutral-400">{sep.pct == null ? "en file d'attente" : `${Math.round(sep.pct)} %`}</span>
+                </div>
+                <div className="hw-well h-1.5 overflow-hidden">
+                  <div
+                    className={`h-full ${sep.pct == null ? "animate-pulse" : ""}`}
+                    style={{ width: sep.pct == null ? "100%" : `${sep.pct}%`, background: COLOR, opacity: sep.pct == null ? 0.35 : 1 }}
+                  />
+                </div>
+                <button className="hw-btn self-start px-2 py-0.5 text-[10px] font-bold" onClick={cancelSep}>ANNULER</button>
+              </div>
             ) : (
               <button
                 className="hw-btn px-2 py-1 text-[11px] font-bold"
