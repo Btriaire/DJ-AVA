@@ -96,6 +96,8 @@ export type KeysParams = {
   reso: number;
 };
 
+export type KeyZone = { name: string; buf: AudioBuffer; lo: number; hi: number; reversed: AudioBuffer | null };
+
 export class SampleKeys {
   readonly out: GainNode;
   root = 60;
@@ -118,8 +120,9 @@ export class SampleKeys {
   private sampleBuffer: AudioBuffer | null = null;
   private reversedBuffer: AudioBuffer | null = null;
   private filter: BiquadFilterNode;
-  private noteListeners = new Set<(ev: { midi: number; at: number; duration: number }) => void>();
+  private noteListeners = new Set<(ev: { midi: number; at: number; duration: number; name: string }) => void>();
   private loadListeners = new Set<(name: string) => void>();
+  private zones: KeyZone[] = [];
 
   constructor(ctx: BaseAudioContext, dest: AudioNode) {
     this.ctx = ctx;
@@ -133,7 +136,7 @@ export class SampleKeys {
     this.filter.connect(this.out);
   }
 
-  onNote(cb: (ev: { midi: number; at: number; duration: number }) => void): () => void {
+  onNote(cb: (ev: { midi: number; at: number; duration: number; name: string }) => void): () => void {
     this.noteListeners.add(cb);
     return () => this.noteListeners.delete(cb);
   }
@@ -143,8 +146,8 @@ export class SampleKeys {
     return () => this.loadListeners.delete(cb);
   }
 
-  private notifyNote(midi: number, at: number, duration: number): void {
-    const ev = { midi, at, duration };
+  private notifyNote(midi: number, at: number, duration: number, name: string): void {
+    const ev = { midi, at, duration, name };
     this.noteListeners.forEach(cb => {
       try {
         cb(ev);
@@ -162,6 +165,7 @@ export class SampleKeys {
 
   setSample(buf: AudioBuffer | null, name = ''): void {
     this.allOff();
+    this.zones = [];
     this.sampleBuffer = buf;
     this.reversedBuffer = null;
     this.name = name;
@@ -169,11 +173,65 @@ export class SampleKeys {
   }
 
   get loaded(): boolean {
-    return this.sampleBuffer !== null;
+    return this.sampleBuffer !== null || this.zones.length > 0;
   }
 
   get duration(): number {
+    if (this.zones.length > 0) return Math.max(...this.zones.map(z => z.buf.duration));
     return this.sampleBuffer?.duration || 0;
+  }
+
+  // Zones: each stem takes a slice of the keyboard. Equal split over MIDI 36..83 (C2..B4).
+  private static readonly SPLIT_LO = 36;
+  private static readonly SPLIT_HI = 83;
+
+  zoneList(): { name: string; lo: number; hi: number }[] {
+    return this.zones.map(z => ({ name: z.name, lo: z.lo, hi: z.hi }));
+  }
+
+  zoneNames(): string[] {
+    return this.zones.map(z => z.name);
+  }
+
+  addZone(buf: AudioBuffer, name: string): void {
+    // replacing a zone with the same name keeps its place; then the whole keyboard is re-split
+    const others = this.zones.filter(z => z.name !== name);
+    const next = [...others, { name, buf, lo: 0, hi: 0, reversed: null }];
+    this.splitZones(next);
+  }
+
+  removeZone(name: string): void {
+    this.allOff();
+    const rest = this.zones.filter(z => z.name !== name);
+    this.splitZones(rest);
+  }
+
+  clearZones(): void {
+    this.allOff();
+    this.zones = [];
+    this.notifyLoad('');
+  }
+
+  private splitZones(list: KeyZone[]): void {
+    this.allOff();
+    const n = list.length;
+    const span = SampleKeys.SPLIT_HI - SampleKeys.SPLIT_LO + 1;
+    this.zones = list.map((z, i) => {
+      const lo = SampleKeys.SPLIT_LO + Math.round((i * span) / n);
+      const hi = i === n - 1 ? SampleKeys.SPLIT_HI : SampleKeys.SPLIT_LO + Math.round(((i + 1) * span) / n) - 1;
+      return { ...z, lo, hi };
+    });
+    this.notifyLoad(this.zones.map(z => z.name).join(' · '));
+  }
+
+  // The sample played for a key: the zone that contains it, or the single sample when there are no zones.
+  private pickSample(midi: number): { buf: AudioBuffer; name: string; zone: KeyZone | null } | null {
+    if (this.zones.length > 0) {
+      const zone = this.zones.find(z => midi >= z.lo && midi <= z.hi);
+      return zone ? { buf: zone.buf, name: zone.name, zone } : null;
+    }
+    if (this.sampleBuffer) return { buf: this.sampleBuffer, name: this.name, zone: null };
+    return null;
   }
 
   setVolume(v: number): void {
@@ -211,12 +269,21 @@ export class SampleKeys {
   }
 
   noteOn(midi: number, vel = 1): void {
-    if (!this.sampleBuffer) return;
+    const picked = this.pickSample(midi);
+    if (!picked) return;
 
     const now = this.ctx.currentTime;
     const boundedVel = Math.max(0, Math.min(1, vel));
     const rate = 2 ** ((midi - this.root) / 12);
-    const buf = this.reverse ? (this.reversedBuffer || this.reverseBuffer(this.sampleBuffer)) : this.sampleBuffer;
+    let buf = picked.buf;
+    if (this.reverse) {
+      if (picked.zone) {
+        if (!picked.zone.reversed) picked.zone.reversed = this.reverseBuffer(picked.zone.buf);
+        buf = picked.zone.reversed;
+      } else {
+        buf = this.reversedBuffer || this.reverseBuffer(picked.buf);
+      }
+    }
     const offset = Math.max(0, Math.min(buf.duration - 0.01, this.start * buf.duration));
 
     if (this.mono && this.voices.size > 0) {
@@ -270,7 +337,7 @@ export class SampleKeys {
     env.gain.setTargetAtTime(boundedVel * this.sustain, now + Math.max(0.001, this.attack), this.decay / 3);
 
     this.voices.set(midi, { src, env });
-    this.notifyNote(midi, now, buf.duration);
+    this.notifyNote(midi, now, buf.duration, picked.name);
 
     src.onended = () => {
       src.disconnect();

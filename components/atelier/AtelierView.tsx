@@ -219,6 +219,11 @@ export function AtelierView({ engine, active }: { engine: DJEngine; active: bool
     addSound({ name: item.name, buf, kind: "bank", from: item.from, bpm: item.bpm, key: item.key });
   };
 
+  const toZone = (buf: AudioBuffer, name: string) => {
+    keys.addZone(buf, name);
+    setNote(`Zone ajoutée : ${name}`);
+  };
+
   const toKeys = (buf: AudioBuffer, name: string) => {
     keys.setSample(buf, name);
     setNote("Chargé dans le clavier");
@@ -879,6 +884,7 @@ export function AtelierView({ engine, active }: { engine: DJEngine; active: bool
               onStop={stopAll}
               onSeek={seek}
               toKeys={toKeys}
+              onToZone={toZone}
               onNewSound={(buf, name, kind) => {
                 addSound(
                   { name, buf, kind, from: cur.name, bpm: cur.bpm, key: cur.key, offset: cur.offset },

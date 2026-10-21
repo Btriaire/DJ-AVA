@@ -27,6 +27,7 @@ export function AtelierStems({
   onStop,
   onSeek,
   toKeys,
+  onToZone,
   onNewSound,
   onSaved,
   keys,
@@ -47,6 +48,7 @@ export function AtelierStems({
   onStop: () => void;
   onSeek: (t: number) => void;
   toKeys: (buf: AudioBuffer, name: string) => void;
+  onToZone?: (buf: AudioBuffer, name: string) => void;
   onNewSound: (buf: AudioBuffer, name: string, kind: SoundKind) => void;
   onSaved: () => void;
   keys?: SampleKeys;
@@ -74,7 +76,7 @@ export function AtelierStems({
   useEffect(() => {
     if (!keys) return;
     const unsubscribe = keys.onNote((ev) => {
-      const stemIndex = stems.findIndex((_, i) => `${sound.name} · ${nameOf(i)}` === keys.name);
+      const stemIndex = stems.findIndex((_, i) => `${sound.name} · ${nameOf(i)}` === ev.name);
       if (stemIndex !== -1) {
         setTriggerCounter(prev => prev + 1);
         const span = keysSpanRef.current;
@@ -102,7 +104,7 @@ export function AtelierStems({
     onCtls(next);
   };
 
-  const act = async (i: number, what: "keys" | "sound" | "save" | "wav") => {
+  const act = async (i: number, what: "keys" | "sound" | "save" | "wav" | "zone") => {
     try {
       setWorking(`${what}-${i}`);
       setErr(null);
@@ -117,6 +119,9 @@ export function AtelierStems({
       switch (what) {
         case "keys":
           toKeys(buf, name);
+          break;
+        case "zone":
+          onToZone?.(buf, name);
           break;
         case "sound":
           onNewSound(buf, name, "stem");
@@ -281,7 +286,7 @@ export function AtelierStems({
         const audible = !c.mute && (!anySolo || c.solo);
         const stemColor = colorOf(i);
         const stemName = nameOf(i);
-        const isKeysStem = keys && `${sound.name} · ${stemName}` === keys.name;
+        const isKeysStem = !!keys && (keys.zoneNames().includes(`${sound.name} · ${stemName}`) || `${sound.name} · ${stemName}` === keys.name);
 
         return (
           <div key={i} className="hw-recess flex flex-col gap-1 p-1.5 relative">
@@ -454,6 +459,14 @@ export function AtelierStems({
                 disabled={working !== null}
               >
                 → CLAVIER
+              </button>
+              <button
+                className="hw-btn px-2 py-1 text-[11px] font-bold"
+                onClick={() => act(i, "zone")}
+                disabled={working !== null || !onToZone}
+                title="Ajouter ce stem comme zone du clavier : le clavier se répartit entre les zones"
+              >
+                → ZONE
               </button>
               <button
                 className="hw-btn px-2 py-1 text-[11px] font-bold"

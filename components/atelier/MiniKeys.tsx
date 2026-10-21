@@ -247,10 +247,22 @@ export function MiniKeys({
 
   return (
     <div className="hw-panel flex flex-col gap-1.5">
+      {keys.zoneList().length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 px-1">
+          {keys.zoneList().map((z, idx) => (
+            <span key={z.name} className="hw-well flex items-center gap-1 px-2 py-0.5 text-[10px]" style={{ borderLeft: `2px solid ${["#22d3ee", "#34d399", "#ffcc00", "#a78bfa", "#ef4444", "#f97316"][idx % 6]}` }}>
+              <span className="font-bold text-neutral-200">{z.name}</span>
+              <span className="text-neutral-400">{midiName(z.lo)}–{midiName(z.hi)}</span>
+              <button className="px-1 text-neutral-400 hover:text-red-400" title="Retirer cette zone" onClick={() => { keys.removeZone(z.name); setTick((n) => n + 1); }}>×</button>
+            </span>
+          ))}
+          <button className="hw-btn px-2 py-0.5 text-[10px]" onClick={() => { keys.clearZones(); setTick((n) => n + 1); }}>Effacer les zones</button>
+        </div>
+      )}
       <div className="hw-brushed rounded-lg flex flex-wrap items-center gap-1.5 p-1.5">
         <div className="text-[10px] font-bold uppercase tracking-[0.25em] text-neutral-500">CLAVIER</div>
         <div className="hw-screen px-2 py-1 font-mono text-[10px] min-w-[180px]">
-          <div>{keys.name || <span className="text-neutral-500">aucun son</span>}</div>
+          <div>{keys.zoneList().length > 0 ? keys.zoneList().map(z => `${z.name} ${midiName(z.lo)}–${midiName(z.hi)}`).join(" · ") : (keys.name || <span className="text-neutral-500">aucun son</span>)}</div>
           <div>NOTE {last?.midi ? midiName(last.midi) : "—"} · VÉL {Math.round(vel * 100)} % · TRANSP {transpose >= 0 ? "+" : ""}{transpose}</div>
         </div>
         {current && (
