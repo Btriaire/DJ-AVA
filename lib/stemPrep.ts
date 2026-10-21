@@ -254,8 +254,9 @@ export function subscribePrep(cb: () => void): () => void {
 }
 
 export function enqueuePrep(tracks: LibTrack[]): number {
+  // a job that failed is not "in progress": it can be queued again (its old error is replaced)
   const existingIds = new Set([
-    ...state.jobs.map(j => j.trackId),
+    ...state.jobs.filter(j => j.status !== "error").map(j => j.trackId),
     ...state.ready.map(r => r.trackId),
   ]);
 
@@ -272,9 +273,10 @@ export function enqueuePrep(tracks: LibTrack[]): number {
     }));
 
   if (newJobs.length > 0) {
+    const requeued = new Set(newJobs.map(j => j.trackId));
     saveState({
       ...state,
-      jobs: [...state.jobs, ...newJobs],
+      jobs: [...state.jobs.filter(j => !requeued.has(j.trackId)), ...newJobs],
     });
     ensureWorker();
   }
