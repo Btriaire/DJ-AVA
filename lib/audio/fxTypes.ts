@@ -156,13 +156,13 @@ export const FX_LIST: FxMeta[] = [
     label: "BRAKE",
     color: "#f87171",
     glyph: "⏷",
-    title: "Frein vinyl : le son ralentit jusqu'à l'arrêt, puis repart quand tu relâches",
+    title: "Frein vinyl : le son ralentit jusqu'à l'arrêt ; quand tu relâches il remonte de la même façon, puis reprend calé sur le temps",
     insert: true,
     always: true,
     trigger: true,
     beat: null,
     p1: { label: "Durée", def: 0.4, fmt: (v) => `${Math.round(250 + v * 2250)} ms` },
-    p2: { label: "Relance", def: 0.3, fmt: (v) => `${Math.round(50 + v * 750)} ms` },
+    p2: { label: "Relance", def: 0.42, fmt: (v) => `${Math.round(100 + v * 2400)} ms` },
     sendGain: 1.0
   },
   {

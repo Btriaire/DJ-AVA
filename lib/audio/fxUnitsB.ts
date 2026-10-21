@@ -88,14 +88,14 @@ export function buildUnitB(name: "roll" | "brake" | "reverse" | "wobble" | "pump
       let engaged = false;
       let t0 = 0;
       let D = 0.25 + 0.4 * 2.25;
-      let R = 0.05 + 0.3 * 0.75;
+      let R = 0.1 + 0.42 * 2.4;
 
       return {
         input,
         output,
         setParam(key, v) {
           if (key === "p1") D = 0.25 + v * 2.25;
-          else if (key === "p2") R = 0.05 + v * 0.75;
+          else if (key === "p2") R = 0.1 + v * 2.4;
         },
         setBeat() {},
         engage() {
@@ -115,14 +115,25 @@ export function buildUnitB(name: "roll" | "brake" | "reverse" | "wobble" | "pump
           if (!engaged) return 0;
           engaged = false;
           const now = c.currentTime;
+          // spin back up the way it went down: the speed climbs linearly from where
+          // it is (0 when fully stopped) back to normal over R (scaled to what is left)
           const tau = Math.min(D, Math.max(0, now - t0));
-          const cur = tau * tau / (2 * D);
-          delay.delayTime.cancelScheduledValues(now);
-          delay.delayTime.setValueAtTime(cur, now);
-          delay.delayTime.linearRampToValueAtTime(0, now + R);
+          const r0 = 1 - tau / D; // current speed
+          const d0 = (tau * tau) / (2 * D); // how far behind the live sound it is
+          const S = R * (1 - r0);
           envNode.gain.cancelScheduledValues(now);
-          envNode.gain.setValueAtTime(1, now);
-          return R + 0.02;
+          envNode.gain.setValueAtTime(envNode.gain.value, now);
+          envNode.gain.linearRampToValueAtTime(1, now + 0.03);
+          if (S < 0.02) return 0;
+          delay.delayTime.cancelScheduledValues(now);
+          delay.delayTime.setValueAtTime(d0, now);
+          const N = 48;
+          for (let k = 1; k <= N; k++) {
+            const t = (S * k) / N;
+            delay.delayTime.linearRampToValueAtTime(d0 + (1 - r0) * (t - (t * t) / (2 * S)), now + t);
+          }
+          // then the effect hands back to the live sound (like slip mode): back on the beat
+          return S + 0.02;
         },
         retune() {},
       };
