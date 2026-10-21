@@ -121,6 +121,8 @@ const GRID_CLASS = {
 
 export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "B", playlistId: string) => void } = {}) {
   const [lib, setLib] = useState(() => loadLibrary());
+  const [newListName, setNewListName] = useState<string | null>(null); // null = formulaire fermé
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null); // première pression sur Supprimer
   const libRef = useRef(lib);
   const prepState = useSyncExternalStore(subscribePrep, getPrepState, getPrepState);
 
@@ -393,23 +395,12 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
     }));
   };
 
-  const createPlaylist = () => {
-    const name = window.prompt("Nom de la nouvelle liste :");
-    if (!name?.trim()) return;
-
-    persist(data => {
-      const newPlaylist: Playlist = {
-        id: uid(),
-        name,
-        trackIds: laterTracks.map(t => t.id)
-      };
-      return { ...data, playlists: [...data.playlists, newPlaylist] };
-    });
-  };
-
   const deletePlaylist = (id: string) => {
-    if (!window.confirm("Supprimer cette liste ?")) return;
-
+    if (pendingDeleteId !== id) {
+      setPendingDeleteId(id); // first press: ask for confirmation in the button itself
+      return;
+    }
+    setPendingDeleteId(null);
     persist(data => ({
       ...data,
       playlists: data.playlists.filter(p => p.id !== id)
@@ -655,6 +646,18 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
         return result.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
     }
   }, [laterTracks, sortBy, filterTheme, filterGroup, durationFilter, qualityFilter, videoFilter]);
+
+  const createPlaylist = (rawName: string) => {
+    const name = rawName.trim();
+    if (!name) return;
+    // the list takes the tracks currently shown (filters applied), or every "later" track when no filter is active
+    const source = filteredTracks.length > 0 ? filteredTracks : laterTracks;
+    persist(data => ({
+      ...data,
+      playlists: [...data.playlists, { id: uid(), name, trackIds: source.map(t => t.id) }]
+    }));
+    setNewListName(null);
+  };
 
   const filteredSearchResults = useMemo(() => {
     if (durationFilter === "all" && resultQualityMin === "all" && videoFilter === "all") return searchResults;
@@ -1113,12 +1116,34 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-xs font-bold uppercase tracking-wide text-neutral-400">Listes sauvegardées</h2>
           <button
-            onClick={createPlaylist}
+            onClick={() => setNewListName("")}
             className="hw-btn px-2 py-1 text-xs"
             style={{ ["--led" as string]: "#a78bfa", color: "#a78bfa" }}
           >
             Créer une liste
           </button>
+          {newListName !== null && (
+            <div className="hw-strip mb-2 flex flex-wrap items-center gap-2 p-2">
+              <input
+                autoFocus
+                value={newListName}
+                onChange={(e) => setNewListName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") createPlaylist(newListName);
+                  if (e.key === "Escape") setNewListName(null);
+                }}
+                placeholder="Nom de la liste"
+                className="hw-well flex-1 min-w-[160px] bg-transparent px-2 py-1 text-xs text-neutral-200 outline-none"
+              />
+              <button onClick={() => createPlaylist(newListName)} className="hw-btn px-2 py-1 text-xs" style={{ ["--led" as string]: "#a78bfa", color: "#a78bfa" }}>
+                Créer
+              </button>
+              <button onClick={() => setNewListName(null)} className="hw-btn px-2 py-1 text-xs">
+                Annuler
+              </button>
+              <p className="w-full text-[10px] text-neutral-400">La liste reprend les morceaux affichés (filtres appliqués).</p>
+            </div>
+          )}
         </div>
         <div className="space-y-1">
           {lib.playlists.map((playlist) => (
@@ -1132,7 +1157,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
                 className="hw-btn px-2 py-1 text-xs"
                 style={{ ["--led" as string]: "#ef4444", color: "#ef4444" }}
               >
-                Supprimer
+                {pendingDeleteId === playlist.id ? "Confirmer" : "Supprimer"}
               </button>
             </div>
           ))}
