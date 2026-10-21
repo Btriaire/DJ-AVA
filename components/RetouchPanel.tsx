@@ -1,7 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { Knob } from "./Knob";
 import { Retouch, RETOUCH_GROUPS, RETOUCH_PARAMS, RETOUCH_PRESETS } from "@/lib/audio/Retouch";
+import { subscribeAutomation, getAutomationVersion } from "@/lib/audio/deckAutomation";
 
 interface Props {
   retouch: Retouch;
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export function RetouchPanel({ retouch, color }: Props) {
+  useSyncExternalStore(subscribeAutomation, getAutomationVersion, getAutomationVersion); // redraw when a REC replay changes the deck
   const [, forceRender] = useState(0);
   const bypass = retouch.getBypass();
   const neutral = retouch.isNeutral();

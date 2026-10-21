@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useSyncExternalStore } from "react";
 import { Knob } from "./Knob";
 import { FxXyPad } from "./FxXyPad";
 import { FXRack, FX_META, BEAT_DIVS, BEAT_LABELS, type FxName } from "@/lib/audio/FXRack";
+import { subscribeAutomation, getAutomationVersion } from "@/lib/audio/deckAutomation";
 
 const HOLD_MS = 300;
 const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -31,6 +32,7 @@ export function FxUnit({ rack, ids, color, storageKey }: { rack: FXRack; ids: Fx
   const [levels, setLevels] = useState<Record<string, number>>(() => restore(rack, ids, storageKey));
   const [, force] = useState(0);
   const rerender = () => force((n) => n + 1);
+  useSyncExternalStore(subscribeAutomation, getAutomationVersion, getAutomationVersion); // redraw when a REC replay changes the deck
   const press = useRef<Map<FxName, { at: number; wasOn: boolean }>>(new Map());
   const led = useRef<HTMLSpanElement>(null);
   const padHeld = useRef(false);

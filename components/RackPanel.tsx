@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Deck } from "@/lib/audio/Deck";
+import { subscribeAutomation, getAutomationVersion } from "@/lib/audio/deckAutomation";
 import { Rack, RACK_MODULES, RackModuleId, RackPreset, XY_TARGETS, XY_FILTER_TYPES } from "@/lib/audio/Rack";
 import { levelColor } from "./EqVisuals";
 import { Knob } from "./Knob";
@@ -717,6 +718,7 @@ export function RackPanel({
 }) {
   const rack = deck.rack;
   const [, setV] = useState(0);
+  useSyncExternalStore(subscribeAutomation, getAutomationVersion, getAutomationVersion); // redraw when a REC replay changes the deck
   const force = () => setV((n) => n + 1);
   const [store, setStore] = useState<Record<string, RackPreset>>({});
   const [armed, setArmed] = useState<number | null>(null);

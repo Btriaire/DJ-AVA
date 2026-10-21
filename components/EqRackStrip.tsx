@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Deck } from "@/lib/audio/Deck";
+import { subscribeAutomation, getAutomationVersion } from "@/lib/audio/deckAutomation";
 import { EQ_FREQS } from "@/lib/audio/Rack";
 import { EQ_PRESETS, presetGains } from "@/lib/audio/eqPresets";
 import { Fader } from "./Fader";
@@ -69,6 +70,7 @@ function Toggle({ on, color, onClick }: { on: boolean; color: string; onClick: (
 export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
   const rack = deck.rack;
   const [, force] = useState(0);
+  useSyncExternalStore(subscribeAutomation, getAutomationVersion, getAutomationVersion); // redraw when a REC replay changes the deck
   const rerender = () => force((n) => n + 1);
   const [eqPresets, setEqPresets] = useState<(EqPreset | null)[]>(() => Array(EQ_SLOTS).fill(null));
   const [eqSaveMode, setEqSaveMode] = useState(false);

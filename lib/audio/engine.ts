@@ -1,4 +1,5 @@
 import { Deck } from "./Deck";
+import { automationFor } from "./deckAutomation";
 import { Synth } from "./Synth";
 import { StepSequencer } from "./StepSequencer";
 import { Sampler } from "./Sampler";
@@ -100,6 +101,9 @@ export class DJEngine {
     this.deckB = new Deck(this.ctx);
     this.deckA.setPlaybackGate(() => true);
     this.deckB.setPlaybackGate(() => true);
+    // per-deck REC: record and replay what is done to each song
+    automationFor(this.deckA);
+    automationFor(this.deckB);
     this.deckA.output.connect(this.chA);
     this.deckB.output.connect(this.chB);
 

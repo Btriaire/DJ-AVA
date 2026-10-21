@@ -2,6 +2,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useIsClient } from "@/lib/useIsClient";
 import { Deck } from "@/lib/audio/Deck";
+import { automationFor } from "@/lib/audio/deckAutomation";
 import { Knob } from "./Knob";
 import { Fader } from "./Fader";
 import { StemFxPanel } from "./StemFxPanel";
@@ -210,7 +211,6 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
   };
   useEffect(() => stopAutoSync, []);
 
-  const [eq, setEq] = useState({ low: 0, mid: 0, high: 0 });
   const [trim, setTrim] = useState(1);
   const prevForceTrimRef = useRef<number | undefined>(undefined);
   useEffect(() => {
@@ -236,7 +236,6 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
   function panic() {
     stopAutoSync();
     deck.unload();
-    setEq({ low: 0, mid: 0, high: 0 });
     setTrim(1);
     setPitch(0);
     setScratch(0);
@@ -610,6 +609,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
   }
 
   const spinning = deck.playing;
+  const auto = automationFor(deck);
 
   return (
     <div className="zoom-zone hw-screwed hw-panel flex flex-col gap-3 self-start p-4">
@@ -669,6 +669,56 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
           <div className="text-right">
             <div className="hw-led font-mono text-lg font-bold" style={{ color }}>
               {deck.effectiveBPM || "--"} <span className="text-xs text-neutral-500">BPM</span>
+            </div>
+          </div>
+          {/* REC: record what is done to this song, replayed next time it plays */}
+          <div className="flex flex-col items-center gap-0.5">
+            <span className="text-[9px] uppercase leading-none text-neutral-500">
+              {auto.recording ? `${auto.recordedCount} action(s)` : auto.take ? `${auto.take.events.length} action(s)` : "Actions"}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                className={`hw-btn px-2.5 py-1 text-xs font-bold ${auto.recording ? "hw-btn-on animate-pulse" : ""}`}
+                style={{ ["--led" as string]: "#ef4444", color: auto.recording ? undefined : "#ef4444" }}
+                disabled={!deck.name}
+                onClick={() => {
+                  if (auto.recording) auto.stop();
+                  else auto.start();
+                  rerender();
+                }}
+                title={auto.recording
+                  ? "Arrêter l'enregistrement et le garder pour ce morceau"
+                  : auto.take
+                    ? "Réenregistrer : remplace les actions sur la partie du morceau jouée pendant l'enregistrement"
+                    : "Enregistrer tout ce que tu fais sur ce morceau (volume, EQ, filtre, effets, stems, boucles…) pour le rejouer quand tu le relances"}
+              >
+                ● REC
+              </button>
+              {auto.take && !auto.recording && (
+                <>
+                  <button
+                    className={`hw-btn px-2 py-1 text-[10px] ${auto.replay ? "hw-btn-on" : ""}`}
+                    style={{ ["--led" as string]: color, color: auto.replay ? undefined : color }}
+                    onClick={() => {
+                      auto.toggleReplay();
+                      rerender();
+                    }}
+                    title={auto.replay ? "Rejoue les actions enregistrées pendant la lecture — clique pour couper" : "Rejeu coupé — clique pour rejouer les actions enregistrées"}
+                  >
+                    AUTO
+                  </button>
+                  <HoldButton
+                    onConfirm={() => {
+                      auto.clear();
+                      rerender();
+                    }}
+                    holdMs={600}
+                    className="hw-btn px-1.5 py-1 text-[10px] text-neutral-400"
+                    label="✕"
+                    title="Maintiens 0,6 s pour effacer les actions enregistrées de ce morceau"
+                  />
+                </>
+              )}
             </div>
           </div>
           {/* whole-track loop, sitting next to the BPM */}
@@ -957,10 +1007,10 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
             <span
               className="rounded px-0.5 py-0.5 text-center font-mono text-[10px] font-bold tracking-tight"
               style={{ width: 40, color, background: "#0a0d0a", textShadow: `0 0 5px ${color}`, boxShadow: "inset 0 0 0 1px #1a1a1a" }}
-            >{eq[b] > 0 ? "+" : ""}{Math.round(eq[b])}</span>
+            >{deck.eqDb(b) > 0 ? "+" : ""}{Math.round(deck.eqDb(b))}</span>
             <Fader
-              value={eq[b]} min={-26} max={12} step={0.1} neutral={0}
-              vertical onChange={(v) => { setEq((e) => ({ ...e, [b]: v })); deck.setEQ(b, v); }}
+              value={deck.eqDb(b)} min={-26} max={12} step={0.1} neutral={0}
+              vertical onChange={(v) => { deck.setEQ(b, v); rerender(); }}
               className="!h-[86px]"
             />
             <span className="text-center text-[10px] font-bold uppercase leading-none" style={{ color }}>{b}</span>

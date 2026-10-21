@@ -63,7 +63,32 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
 const ms = (v: number) => `${Math.round(v * 1000)} ms`;
 const hzr = (v: number) => `${Math.round(v)} Hz`;
 const dbr = (v: number) => `${v > 0 ? "+" : ""}${Math.round(v)} dB`;
-const VOWELS = "AEIOU";
+// VOYELLE: vowel sets as [F1, F2, F3] formant frequencies (adult voice, Hz)
+export const VOWEL_SETS: { name: string; vowels: { label: string; f: [number, number, number] }[] }[] = [
+  { name: "Classique", vowels: [
+    { label: "A", f: [800, 1150, 2800] }, { label: "E", f: [400, 1600, 2700] }, { label: "I", f: [350, 1700, 2700] },
+    { label: "O", f: [450, 800, 2830] }, { label: "U", f: [325, 700, 2530] },
+  ] },
+  { name: "Français", vowels: [
+    { label: "A", f: [750, 1300, 2500] }, { label: "È", f: [550, 1750, 2500] }, { label: "É", f: [400, 2000, 2550] },
+    { label: "I", f: [280, 2250, 2900] }, { label: "U", f: [280, 1750, 2150] }, { label: "EU", f: [380, 1500, 2300] },
+    { label: "ŒU", f: [550, 1450, 2450] }, { label: "O", f: [400, 750, 2400] }, { label: "OU", f: [300, 750, 2300] },
+    { label: "AN", f: [650, 1050, 2500] },
+  ] },
+  { name: "Chœur", vowels: [
+    { label: "OU", f: [350, 800, 2700] }, { label: "OH", f: [450, 850, 2600] }, { label: "AH", f: [850, 1250, 2800] },
+    { label: "EH", f: [550, 1900, 2700] }, { label: "II", f: [300, 2300, 3100] },
+  ] },
+  { name: "Talk-box", vowels: [
+    { label: "OU", f: [300, 750, 2300] }, { label: "WA", f: [650, 1000, 2500] }, { label: "A", f: [850, 1250, 2700] },
+    { label: "YA", f: [600, 1900, 2700] }, { label: "I", f: [300, 2250, 3000] },
+  ] },
+  { name: "Nasales", vowels: [
+    { label: "M", f: [250, 1100, 2500] }, { label: "N", f: [250, 1700, 2600] }, { label: "NG", f: [250, 1400, 2400] },
+    { label: "AN", f: [650, 1050, 2500] }, { label: "ON", f: [450, 800, 2500] },
+  ] },
+];
+const vowelSet = (v: number) => VOWEL_SETS[Math.max(0, Math.min(VOWEL_SETS.length - 1, Math.round(v)))];
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const SCALE_LABELS = ["CHRO", "MAJ", "MIN"];
 // pitch-class sets for the auto-tune module (chromatic / major / minor)
@@ -193,9 +218,12 @@ export const RACK_MODULES: RackModuleDef[] = [
   {
     id: "voyelle",
     label: "VOYELLE",
-    title: "Filtre de formant — morphe les voyelles A·E·I·O·U",
+    title: "Filtre de formant — fait « parler » le son : jeux de voyelles (classique, français, chœur, talk-box, nasales), taille de voix, balayage auto",
     params: [
-      { key: "morph", label: "Voyelle", min: 0, max: 1, def: 0.3, fmt: (v) => VOWELS[Math.min(4, Math.floor(v * 5))] },
+      { key: "set", label: "Jeu", min: 0, max: VOWEL_SETS.length - 1, def: 0, fmt: (v) => vowelSet(v).name },
+      { key: "morph", label: "Voyelle", min: 0, max: 1, def: 0.3, fmt: (v) => `${Math.round(v * 100)}%` },
+      { key: "size", label: "Voix", min: 0.7, max: 1.4, def: 1, fmt: (v) => (v < 0.9 ? "grave" : v > 1.12 ? "aiguë" : "normale") },
+      { key: "auto", label: "Auto", min: 0, max: 6, def: 0, fmt: (v) => (v < 0.05 ? "off" : `${v.toFixed(1)} Hz`) },
       { key: "reso", label: "Réso", min: 1, max: 20, def: 8, fmt: (v) => v.toFixed(0) },
     ],
   },
@@ -928,16 +956,15 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
       };
     }
     case "voyelle": {
-      // 3 parallel formant bandpasses morphing across A-E-I-O-U
+      // 3 parallel formant bandpasses morphing across the vowels of the chosen set;
+      // "size" scales every formant (lower = bigger/deeper voice), "auto" sweeps the
+      // morph back and forth on its own
       const fxIn = c.createGain();
       const fxOut = c.createGain();
-      const F = [
-        [800, 1150, 2800], // A
-        [400, 1600, 2700], // E
-        [350, 1700, 2700], // I
-        [450, 800, 2830], // O
-        [325, 700, 2530], // U
-      ];
+      let F = VOWEL_SETS[0].vowels.map((v) => v.f);
+      let morph = 0.3;
+      let size = 1;
+      let sweep: ReturnType<typeof setInterval> | null = null;
       fxOut.gain.value = 3.2; // makeup: parallel formant bandpasses lose a lot of level
       const bands = [0, 1, 2].map((i) => {
         const bp = c.createBiquadFilter();
@@ -956,14 +983,37 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
         const f = x - i;
         const a = F[i];
         const b = F[Math.min(F.length - 1, i + 1)];
-        for (let k = 0; k < 3; k++) at(bands[k].frequency, a[k] + (b[k] - a[k]) * f);
+        for (let k = 0; k < 3; k++) at(bands[k].frequency, Math.min(c.sampleRate / 2 - 100, (a[k] + (b[k] - a[k]) * f) * size));
       };
-      setMorph(0.3);
+      const setAuto = (hz: number) => {
+        if (sweep) clearInterval(sweep);
+        sweep = null;
+        if (hz < 0.05) {
+          setMorph(morph);
+          return;
+        }
+        const t0 = performance.now();
+        // ponytail: JS timer at 30 Hz drives the sweep; an AudioParam LFO per band if it ever sounds steppy
+        sweep = setInterval(() => {
+          const phase = (((performance.now() - t0) / 1000) * hz) % 1;
+          setMorph(phase < 0.5 ? phase * 2 : 2 - phase * 2); // triangle: first vowel → last → first
+        }, 33);
+      };
+      setMorph(morph);
       return {
         fxIn,
         fxOut,
         onParam: (k, v) => {
-          if (k === "morph") setMorph(v);
+          if (k === "morph") {
+            morph = v;
+            if (!sweep) setMorph(v);
+          } else if (k === "set") {
+            F = vowelSet(v).vowels.map((x) => x.f);
+            if (!sweep) setMorph(morph);
+          } else if (k === "size") {
+            size = v;
+            if (!sweep) setMorph(morph);
+          } else if (k === "auto") setAuto(v);
           else if (k === "reso") bands.forEach((b) => at(b.Q, v));
         },
       };

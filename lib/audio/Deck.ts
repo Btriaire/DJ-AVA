@@ -2194,6 +2194,10 @@ export class Deck {
     this.retouch.reset();
   }
 
+  eqDb(band: "low" | "mid" | "high"): number {
+    return this[band].gain.value;
+  }
+
   // capture the current mixer/FX state so it can be stored with a track
   getSettings(): DeckSettings {
     const fx: Partial<Record<FxName, number>> = {};
