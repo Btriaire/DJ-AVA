@@ -124,7 +124,49 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
   const [lib, setLib] = useState(() => loadLibrary());
   const [newListName, setNewListName] = useState<string | null>(null); // null = formulaire fermé
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null); // première pression sur Supprimer
+  const [openPlaylistId, setOpenPlaylistId] = useState<string | null>(null);
+  const openPlaylist = lib.playlists.find(p => p.id === openPlaylistId) ?? null;
+  const openPlaylistTracks = openPlaylist
+    ? openPlaylist.trackIds.map(id => lib.tracks.find(t => t.id === id)).filter((t): t is LibTrack => !!t)
+    : [];
+  const playlistStats = (trackIds: string[]) => {
+    const tracks = trackIds.map(id => lib.tracks.find(t => t.id === id)).filter((t): t is LibTrack => !!t);
+    const seconds = tracks.reduce((sum, t) => sum + (t.durationSec ?? 0), 0);
+    const bpms = tracks.map(t => t.bpm).filter((b): b is number => !!b && b > 0);
+    return {
+      count: trackIds.length,
+      seconds,
+      bpmRange: bpms.length ? (Math.min(...bpms) === Math.max(...bpms) ? `${Math.round(bpms[0])}` : `${Math.round(Math.min(...bpms))}–${Math.round(Math.max(...bpms))}`) : "—",
+    };
+  };
+  const removeFromPlaylist = (playlistId: string, trackId: string) => {
+    persist(data => ({
+      ...data,
+      playlists: data.playlists.map(p => p.id === playlistId ? { ...p, trackIds: p.trackIds.filter(id => id !== trackId) } : p),
+    }));
+  };
+  const addCheckedToPlaylist = (playlistId: string) => {
+    persist(data => ({
+      ...data,
+      playlists: data.playlists.map(p => {
+        if (p.id !== playlistId) return p;
+        const merged = [...p.trackIds, ...[...selectedLaterIds].filter(id => !p.trackIds.includes(id))];
+        return { ...p, trackIds: merged };
+      }),
+    }));
+    setSelectedLaterIds(new Set());
+  };
+  const formatDuration = (s: number) => {
+    if (!s) return "—";
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    return h > 0 ? `${h} h ${String(m).padStart(2, "0")}` : `${m} min`;
+  };
+
   const [selectedLaterIds, setSelectedLaterIds] = useState<Set<string>>(new Set());
+  // search box: results panel open after a search, filters folded by default
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [showSearchFilters, setShowSearchFilters] = useState(false);
   const toggleLaterSelected = (id: string) => {
     setSelectedLaterIds(prev => {
       const next = new Set(prev);
@@ -172,6 +214,8 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
   const [sortBy, setSortBy] = useState<SortOption>("recent");
   const [filterTheme, setFilterTheme] = useState("");
   const [filterGroup, setFilterGroup] = useState("");
+  const [showTrayFilters, setShowTrayFilters] = useState(false);
+  const trayFiltersOn = durationFilter !== "all" || qualityFilter !== "all" || videoFilter !== "all" || sortBy !== "recent" || filterTheme !== "" || filterGroup !== "";
 
   useEffect(() => {
     return () => {
@@ -219,6 +263,8 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
     setIsSearching(true);
+    setSearchOpen(true);
+    setShowSearchFilters(false);
     setSearchError("");
     setProbed({});
     setChecking(false);
@@ -716,6 +762,38 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
     return { count, duration };
   }, [lib.tracks, selectedGroup]);
 
+  // compact row for the set-aside tray: checkbox, name, key facts, stems state
+  const renderTrayRow = (track: LibTrack) => {
+    const checked = selectedLaterIds.has(track.id);
+    const stem = getStemStatus(track.id);
+    const stemLabel = stem === "done" ? "prêt" : stem === "none" ? "à préparer" : stem === "error" ? "erreur" : stem === "queued" ? "en attente" : "en cours";
+    const stemColor = stem === "done" ? "#34d399" : stem === "error" ? "#ef4444" : stem === "none" ? "#7b8494" : "#ffcc00";
+    return (
+      <div
+        key={track.id}
+        className="flex items-center gap-2 rounded border px-2 py-1"
+        style={{ borderColor: checked ? "#22d3ee" : "#232831", background: checked ? "rgba(34,211,238,0.08)" : "transparent" }}
+      >
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={() => toggleLaterSelected(track.id)}
+          className="h-3.5 w-3.5 shrink-0 accent-[#22d3ee]"
+          aria-label={`Sélectionner ${track.name}`}
+        />
+        <span className="min-w-0 flex-1 truncate text-[11px] text-neutral-100" title={track.name}>{track.name}</span>
+        <span className="hidden shrink-0 text-[10px] tabular-nums text-neutral-500 sm:inline">
+          {track.bpm ? Math.round(track.bpm) : "—"} · {track.camelot ?? "—"} · {formatDuration(track.durationSec ?? 0)}
+        </span>
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: stemColor }} title={`Stems : ${stemLabel}`} />
+        {(stem === "none" || stem === "error") && (
+          <button onClick={() => queueStems([track])} className="shrink-0 text-[10px] text-emerald-400 hover:underline">Stems</button>
+        )}
+        <button onClick={() => removeLaterTrack(track.id)} className="shrink-0 text-[10px] text-neutral-500 hover:text-red-400">Retirer</button>
+      </div>
+    );
+  };
+
   const renderTrackCard = (track: TrackRow, isLater: boolean) => {
     const stemStatus = isLater ? getStemStatus(track.id) : undefined;
     const isAnalyzing = isLater ? analyzingIds.has(track.id) : false;
@@ -1041,7 +1119,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
   }, [filteredSearchResults, searchResults]);
 
   return (
-    <div className="zoom-zone hw-screwed hw-panel flex flex-1 flex-col gap-3 p-4">
+    <div className="hw-screwed hw-panel flex flex-1 flex-col gap-3 p-4">
       {notice && (
         <div className="hw-well p-2 text-xs text-[#ffcc00]">
           {notice}
@@ -1059,6 +1137,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleSearch(); }}
             placeholder="Rechercher sur YouTube..."
             className="hw-well bg-transparent px-2 py-1 text-xs text-neutral-200 outline-none flex-1 min-w-[200px]"
           />
@@ -1070,8 +1149,22 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
           >
             {isSearching ? "Recherche..." : "Rechercher"}
           </button>
+          <button
+            onClick={() => setShowSearchFilters(v => !v)}
+            className={`hw-btn px-2 py-1 text-xs ${showSearchFilters ? "hw-btn-on" : ""}`}
+            style={{ ["--led" as string]: "#ffcc00", color: "#ffcc00" }}
+            aria-expanded={showSearchFilters}
+          >
+            Filtres{durationFilter !== "all" || resultQualityMin !== "all" || videoFilter !== "all" ? " ●" : ""}
+          </button>
+          {!searchOpen && searchResults.length > 0 && (
+            <button onClick={() => setSearchOpen(true)} className="hw-btn px-2 py-1 text-xs">
+              Résultats ({searchResults.length})
+            </button>
+          )}
         </div>
         {searchError && <p className="text-[10px] text-red-500 mb-2">{searchError}</p>}
+        {showSearchFilters && (<>
         <div className="flex flex-wrap gap-1 mb-2">
           <span className="text-[9px] text-neutral-400 mr-2">Durée :</span>
           {DUR_FILTERS.map(filter => (
@@ -1142,26 +1235,47 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
             </button>
           </div>
         </div>
+        </>)}
+        {searchOpen && (isSearching || searchResults.length > 0) && (<>
         <div className="flex flex-wrap gap-2 items-center mb-2">
           <span className="text-[10px] text-neutral-400">
-            {visibleResultsCount.visible} sur {visibleResultsCount.total} résultats
+            {isSearching ? "Recherche en cours…" : `${visibleResultsCount.visible} sur ${visibleResultsCount.total} résultats`}
           </span>
-          <span className="text-[9px] text-neutral-500 ml-auto">
-            YouTube n&apos;indique pas la qualité dans sa recherche : chaque résultat est vérifié à l&apos;ouverture (environ 3 s par vidéo, 3 en parallèle).
-          </span>
+          <button
+            onClick={() => setSearchOpen(false)}
+            className="hw-btn ml-auto px-2 py-1 text-xs"
+            style={{ ["--led" as string]: "#34d399", color: "#34d399" }}
+            title="Replier les résultats (le bouton « Résultats » les rouvre)"
+          >
+            Terminé
+          </button>
         </div>
-        <div className="space-y-1 max-h-60 overflow-y-auto">
+        <div className="space-y-1 max-h-72 overflow-y-auto">
           {filteredSearchResults.map((track) => (
             <div key={track.id}>
               {renderSearchResultCard(track)}
             </div>
           ))}
         </div>
+        </>)}
       </div>
 
+      <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_340px]">
       {/* À préparer : tiroir de sélection */}
-      <p className="text-[10px] uppercase tracking-[0.2em] text-neutral-500 mb-1">Mis de côté · {selectedLaterIds.size} coché(s) sur {laterTracks.length}</p>
-      <div className="hw-well p-2 flex-1 flex flex-col">
+      <div className="hw-well p-2 flex flex-col">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <input
+            type="checkbox"
+            checked={filteredTracks.length > 0 && filteredTracks.every(t => selectedLaterIds.has(t.id))}
+            onChange={(e) => setSelectedLaterIds(e.target.checked ? new Set(filteredTracks.map(t => t.id)) : new Set())}
+            className="h-3.5 w-3.5 accent-[#22d3ee]"
+            aria-label="Tout cocher"
+          />
+          <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">Mis de côté ({laterTracks.length})</h2>
+          <span className="text-[10px] text-neutral-500">
+            {selectedLaterIds.size > 0 ? `${selectedLaterIds.size} coché(s) → crée une liste ou ajoute-les à une liste à droite` : "coche des titres pour en faire une liste"}
+          </span>
+        </div>
         <div className="flex flex-wrap gap-2 items-center mb-2">
           <div className="flex flex-wrap gap-1">
             <button
@@ -1207,21 +1321,33 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
               </>
             )}
           </div>
-          <div className="flex flex-wrap gap-1">
-            <span className="text-[9px] text-neutral-400 mr-2">Durée :</span>
-            {DUR_FILTERS.map(filter => (
-              <button
-                key={filter.key}
-                onClick={() => setDurationFilter(filter.key)}
-                className={`hw-btn px-2 py-1 text-xs ${durationFilter === filter.key ? "hw-btn-on" : ""}`}
-                style={{ ["--led" as string]: "#ffcc00", color: "#ffcc00" }}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
+          <button
+            onClick={() => setShowTrayFilters(v => !v)}
+            className={`hw-btn px-2 py-1 text-xs ${showTrayFilters ? "hw-btn-on" : ""}`}
+            style={{ ["--led" as string]: "#ffcc00", color: "#ffcc00" }}
+            aria-expanded={showTrayFilters}
+          >
+            Filtres{trayFiltersOn ? " ●" : ""}
+          </button>
         </div>
 
+        {showTrayFilters && (
+        <div className="flex flex-wrap gap-1 mb-2">
+          <span className="text-[9px] text-neutral-400 mr-2">Durée :</span>
+          {DUR_FILTERS.map(filter => (
+            <button
+              key={filter.key}
+              onClick={() => setDurationFilter(filter.key)}
+              className={`hw-btn px-2 py-1 text-xs ${durationFilter === filter.key ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: "#ffcc00", color: "#ffcc00" }}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
+        )}
+
+        {showTrayFilters && (
         <div className="flex flex-wrap gap-2 mb-2">
           <div className="flex flex-wrap gap-1">
             <span className="text-[9px] text-neutral-400 mr-2">Audio :</span>
@@ -1300,7 +1426,9 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
             </button>
           </div>
         </div>
+        )}
 
+        {showTrayFilters && (
         <div className="flex flex-wrap gap-2 mb-2">
           <div className="hw-well px-2 py-1 text-xs">
             <label className="text-[9px] text-neutral-400">Trier par</label>
@@ -1344,6 +1472,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
             </select>
           </div>
         </div>
+        )}
 
         <div className="flex flex-wrap gap-2 mb-2">
           <button
@@ -1370,20 +1499,23 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
         </div>
 
         {viewMode === "list" && (
-          <div className="space-y-1 flex-1 overflow-y-auto">
-            {filteredTracks.map((track) => (
-              <div key={track.id}>
-                {renderTrackCard(toRow(track), true)}
-              </div>
-            ))}
+          <div className="flex max-h-[60vh] flex-col gap-1 overflow-y-auto pr-1">
+            {filteredTracks.map((track) => renderTrayRow(track))}
           </div>
         )}
 
         {viewMode === "grid" && (
           <div className={GRID_CLASS[gridSize]}>
             {filteredTracks.map((track) => (
-              <div key={track.id} className="hw-strip p-2">
+              <div key={track.id} className="hw-strip p-2" style={selectedLaterIds.has(track.id) ? { outline: "1px solid #22d3ee" } : undefined}>
                 <div className="relative mb-2">
+                  <input
+                    type="checkbox"
+                    checked={selectedLaterIds.has(track.id)}
+                    onChange={() => toggleLaterSelected(track.id)}
+                    className="absolute left-1 top-1 z-10 h-4 w-4 accent-[#22d3ee]"
+                    aria-label={`Sélectionner ${track.name}`}
+                  />
                   {track.art && (
                     <img
                       src={track.art}
@@ -1501,57 +1633,93 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
           </div>
         )}
       </div>
-      {/* Listes sauvegardées */}
-      <div className="hw-well p-2">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500">Listes sauvegardées</h2>
+      {/* Listes : création à partir des titres cochés, puis cartes */}
+      <div className="hw-well p-3 flex flex-col gap-3 lg:sticky lg:top-4 lg:max-h-[85vh] lg:overflow-y-auto">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500">Listes</h2>
+          <span className="text-[10px] text-neutral-500">{lib.playlists.length} liste(s)</span>
+        </div>
+        <div className="hw-strip flex flex-wrap items-center gap-2 p-2">
+          <input
+            value={newListName ?? ""}
+            onChange={(e) => setNewListName(e.target.value)}
+            onFocus={() => { if (newListName === null) setNewListName(""); }}
+            placeholder="Nom de la nouvelle liste…"
+            className="hw-well flex-1 min-w-[180px] bg-transparent px-2 py-1 text-xs text-neutral-200 outline-none"
+          />
           <button
-            onClick={() => setNewListName("")}
-            className="hw-btn px-2 py-1 text-xs"
-            style={{ ["--led" as string]: "#a78bfa", color: "#a78bfa" }}
+            onClick={() => createPlaylist(newListName ?? "")}
+            disabled={selectedLaterIds.size === 0 || !(newListName ?? "").trim()}
+            className="hw-btn px-3 py-1 text-xs disabled:opacity-40"
+            style={{ ["--led" as string]: "#22d3ee", color: "#22d3ee" }}
           >
-            Créer une liste
+            Créer la liste
           </button>
-          {newListName !== null && (
-            <div className="hw-strip mb-2 flex flex-wrap items-center gap-2 p-2">
-              <input
-                autoFocus
-                value={newListName}
-                onChange={(e) => setNewListName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") createPlaylist(newListName);
-                  if (e.key === "Escape") setNewListName(null);
-                }}
-                placeholder="Nom de la liste"
-                className="hw-well flex-1 min-w-[160px] bg-transparent px-2 py-1 text-xs text-neutral-200 outline-none"
-              />
-              <button onClick={() => createPlaylist(newListName)} className="hw-btn px-2 py-1 text-xs" style={{ ["--led" as string]: "#a78bfa", color: "#a78bfa" }}>
-                Créer
-              </button>
-              <button onClick={() => setNewListName(null)} className="hw-btn px-2 py-1 text-xs">
-                Annuler
-              </button>
-              <p className="w-full text-[10px] text-neutral-400">{selectedLaterIds.size === 0 ? "Coche des titres mis de côté pour les ajouter à la liste." : `${selectedLaterIds.size} titre(s) coché(s) seront ajoutés à la liste.`}</p>
-            </div>
-          )}
+          <span className="w-full text-[10px] text-neutral-500">
+            {selectedLaterIds.size === 0 ? "Coche des titres dans « Mis de côté » pour créer une liste." : `${selectedLaterIds.size} titre(s) coché(s) seront dans la liste.`}
+          </span>
         </div>
-        <div className="space-y-1">
-          {lib.playlists.map((playlist) => (
-            <div key={playlist.id} className="hw-strip flex items-center justify-between px-2 py-1.5">
-              <div>
-                <p className="text-xs font-medium">{playlist.name}</p>
-                <p className="text-[10px] text-neutral-400">{playlist.trackIds.length} morceaux</p>
+        {lib.playlists.length === 0 && (
+          <p className="text-[11px] text-neutral-500">Aucune liste pour l&apos;instant.</p>
+        )}
+        <div className="flex flex-col gap-2">
+          {lib.playlists.map((playlist, index) => {
+            const stats = playlistStats(playlist.trackIds);
+            const isOpen = openPlaylistId === playlist.id;
+            const color = ["#22d3ee", "#34d399", "#ffcc00", "#a78bfa", "#f97316", "#ef4444"][index % 6];
+            return (
+              <div key={playlist.id} className="hw-strip flex flex-col gap-2 p-3" style={{ borderLeft: `3px solid ${isOpen ? color : "#2e3540"}` }}>
+                <button onClick={() => setOpenPlaylistId(isOpen ? null : playlist.id)} className="text-left" aria-expanded={isOpen}>
+                  <p className="truncate text-xs font-medium text-neutral-100">{playlist.name}</p>
+                  <p className="text-[10px] text-neutral-400">{stats.count} titre(s) · {formatDuration(stats.seconds)} · BPM {stats.bpmRange}</p>
+                </button>
+                <div className="flex flex-wrap gap-1">
+                  <button
+                    onClick={() => addCheckedToPlaylist(playlist.id)}
+                    disabled={selectedLaterIds.size === 0}
+                    className="hw-btn px-2 py-1 text-[11px] disabled:opacity-40"
+                    style={{ ["--led" as string]: color, color }}
+                    title={selectedLaterIds.size === 0 ? "Coche d'abord des titres dans « Mis de côté »" : "Ajouter les titres cochés à cette liste"}
+                  >
+                    + {selectedLaterIds.size} coché(s)
+                  </button>
+                  <button onClick={() => setOpenPlaylistId(isOpen ? null : playlist.id)} className="hw-btn px-2 py-1 text-[11px]">
+                    {isOpen ? "Fermer" : "Voir"}
+                  </button>
+                  <button
+                    onClick={() => deletePlaylist(playlist.id)}
+                    className="hw-btn px-2 py-1 text-[11px]"
+                    style={{ ["--led" as string]: "#ef4444", color: "#ef4444" }}
+                  >
+                    {pendingDeleteId === playlist.id ? "Confirmer" : "Supprimer"}
+                  </button>
+                </div>
               </div>
-              <button
-                onClick={() => deletePlaylist(playlist.id)}
-                className="hw-btn px-2 py-1 text-xs"
-                style={{ ["--led" as string]: "#ef4444", color: "#ef4444" }}
-              >
-                {pendingDeleteId === playlist.id ? "Confirmer" : "Supprimer"}
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
+        {openPlaylist && (
+          <div className="hw-well flex flex-col gap-1 p-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-1">
+              <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-500">{openPlaylist.name} · contenu</span>
+              <span className="text-[10px] text-neutral-500">{openPlaylistTracks.length} titre(s)</span>
+            </div>
+            {openPlaylistTracks.length === 0 && (
+              <p className="py-2 text-[11px] text-neutral-500">Liste vide : coche des titres dans « Mis de côté », puis « + coché(s) ».</p>
+            )}
+            {openPlaylistTracks.map((t, idx) => (
+              <div key={t.id} className="flex flex-wrap items-center gap-3 border-t border-[#1d222a] px-1 py-1.5">
+                <span className="w-5 text-right text-[10px] tabular-nums text-neutral-500">{idx + 1}</span>
+                <span className="flex-1 min-w-[140px] truncate text-[11px] text-neutral-200">{t.name}</span>
+                <span className="text-[10px] tabular-nums text-neutral-400">{t.bpm ? `${Math.round(t.bpm)} BPM` : "— BPM"}</span>
+                <span className="text-[10px] text-neutral-400">{t.camelot ?? "—"}</span>
+                <span className="text-[10px] tabular-nums text-neutral-400">{formatDuration(t.durationSec ?? 0)}</span>
+                <button onClick={() => removeFromPlaylist(openPlaylist.id, t.id)} className="text-[10px] text-neutral-400 hover:text-red-400" title="Retirer de la liste (le titre reste dans « Mis de côté »)">Retirer</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       </div>
 
       {/* SETS PAR GROUPE */}
