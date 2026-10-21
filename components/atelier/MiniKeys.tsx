@@ -166,7 +166,8 @@ export function MiniKeys({
       const semi = i % 12;
       const isWhite = WHITE_KEYS.includes(semi);
       const isDown = down.has(shown);
-      const isRoot = shown + transpose === keys.root;
+      const zones = keys.zoneList();
+      const isRoot = zones.length > 0 ? zones.some((z) => z.root === shown + transpose) : shown + transpose === keys.root;
 
       if (isWhite) {
         whiteKeys.push(
@@ -253,6 +254,7 @@ export function MiniKeys({
             <span key={z.name} className="hw-well flex items-center gap-1 px-2 py-0.5 text-[10px]" style={{ borderLeft: `2px solid ${["#22d3ee", "#34d399", "#ffcc00", "#a78bfa", "#ef4444", "#f97316"][idx % 6]}` }}>
               <span className="font-bold text-neutral-200">{z.name}</span>
               <span className="text-neutral-400">{midiName(z.lo)}–{midiName(z.hi)}</span>
+              <span className="text-neutral-500" title="Touche qui joue ce stem à sa hauteur d'origine">· origine {midiName(z.root)}</span>
               <button className="px-1 text-neutral-400 hover:text-red-400" title="Retirer cette zone" onClick={() => { keys.removeZone(z.name); setTick((n) => n + 1); }}>×</button>
             </span>
           ))}
@@ -298,14 +300,18 @@ export function MiniKeys({
         >
           TRANSP +
         </button>
-        <div className="text-[10px] text-neutral-400">NOTE DE BASE</div>
+        <div className="text-[10px] text-neutral-400" title={keys.zoneList().length > 0 ? "Avec des zones, chaque zone joue son stem à la hauteur d'origine sur sa touche « origine » ; ce réglage les décale toutes ensemble" : undefined}>
+          {keys.zoneList().length > 0 ? "DÉCALAGE ZONES" : "NOTE DE BASE"}
+        </div>
         <button
           className="hw-btn px-2 py-1 text-[11px] font-bold"
           onClick={() => handleConfigure({ root: Math.max(24, keys.root - 1) })}
         >
           ◄
         </button>
-        <div className="text-[10px] text-neutral-400">{midiName(keys.root)}</div>
+        <div className="text-[10px] text-neutral-400">
+          {keys.zoneList().length > 0 ? `${keys.root - 60 > 0 ? "+" : ""}${keys.root - 60} dt` : midiName(keys.root)}
+        </div>
         <button
           className="hw-btn px-2 py-1 text-[11px] font-bold"
           onClick={() => handleConfigure({ root: Math.min(96, keys.root + 1) })}

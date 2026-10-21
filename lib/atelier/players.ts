@@ -96,7 +96,8 @@ export type KeysParams = {
   reso: number;
 };
 
-export type KeyZone = { name: string; buf: AudioBuffer; lo: number; hi: number; reversed: AudioBuffer | null };
+// root = the key of this zone that plays its stem at the original pitch
+export type KeyZone = { name: string; buf: AudioBuffer; lo: number; hi: number; root: number; reversed: AudioBuffer | null };
 
 export class SampleKeys {
   readonly out: GainNode;
@@ -185,8 +186,15 @@ export class SampleKeys {
   private static readonly SPLIT_LO = 36;
   private static readonly SPLIT_HI = 83;
 
-  zoneList(): { name: string; lo: number; hi: number }[] {
-    return this.zones.map(z => ({ name: z.name, lo: z.lo, hi: z.hi }));
+  zoneList(): { name: string; lo: number; hi: number; root: number }[] {
+    return this.zones.map(z => ({ name: z.name, lo: z.lo, hi: z.hi, root: this.zoneRoot(z) }));
+  }
+
+  // each zone plays its stem at the original pitch on its own first C (not on the
+  // keyboard's global root, which would put a low zone octaves down); the NOTE DE
+  // BASE control still shifts every zone by the same amount
+  private zoneRoot(z: KeyZone): number {
+    return z.root + (this.root - 60);
   }
 
   zoneNames(): string[] {
@@ -196,7 +204,7 @@ export class SampleKeys {
   addZone(buf: AudioBuffer, name: string): void {
     // replacing a zone with the same name keeps its place; then the whole keyboard is re-split
     const others = this.zones.filter(z => z.name !== name);
-    const next = [...others, { name, buf, lo: 0, hi: 0, reversed: null }];
+    const next = [...others, { name, buf, lo: 0, hi: 0, root: 0, reversed: null }];
     this.splitZones(next);
   }
 
@@ -219,7 +227,8 @@ export class SampleKeys {
     this.zones = list.map((z, i) => {
       const lo = SampleKeys.SPLIT_LO + Math.round((i * span) / n);
       const hi = i === n - 1 ? SampleKeys.SPLIT_HI : SampleKeys.SPLIT_LO + Math.round(((i + 1) * span) / n) - 1;
-      return { ...z, lo, hi };
+      const firstC = Math.ceil(lo / 12) * 12;
+      return { ...z, lo, hi, root: firstC <= hi ? firstC : lo };
     });
     this.notifyLoad(this.zones.map(z => z.name).join(' · '));
   }
@@ -274,7 +283,7 @@ export class SampleKeys {
 
     const now = this.ctx.currentTime;
     const boundedVel = Math.max(0, Math.min(1, vel));
-    const rate = 2 ** ((midi - this.root) / 12);
+    const rate = 2 ** ((midi - (picked.zone ? this.zoneRoot(picked.zone) : this.root)) / 12);
     let buf = picked.buf;
     if (this.reverse) {
       if (picked.zone) {
