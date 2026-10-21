@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { SampleKeys } from "../lib/atelier/players";
 
 // minimal fake AudioContext: SampleKeys only needs gain/filter nodes at construction
-const node = () => ({ connect: () => node(), disconnect() {}, gain: { value: 1 }, frequency: { value: 0 }, Q: { value: 0 }, type: "" });
-const ctx = { currentTime: 0, sampleRate: 44100, createGain: node, createBiquadFilter: node } as unknown as BaseAudioContext;
+const param = () => ({ value: 0, setTargetAtTime() {} });
+const node = () => ({ connect: () => node(), disconnect() {}, gain: param(), frequency: param(), Q: param(), delayTime: param(), type: "" });
+const ctx = { currentTime: 0, sampleRate: 44100, createGain: node, createBiquadFilter: node, createDelay: node } as unknown as BaseAudioContext;
 const buf = { duration: 1 } as AudioBuffer;
 const keys = new SampleKeys(ctx, node() as unknown as AudioNode);
 

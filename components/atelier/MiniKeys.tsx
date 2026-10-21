@@ -346,6 +346,48 @@ export function MiniKeys({
         >
           INVERSÉ
         </button>
+        <span className="mx-1 h-5 w-px bg-white/10" />
+        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500">Live</span>
+        {([
+          ["repeat", "RÉPÈTE", "Tant que la touche est tenue, la note se relance au tempo (note repeat)"],
+          ["arp", "ARP", "Les touches tenues sont jouées l'une après l'autre vers le haut, au tempo (arpégiateur) ; avec HOLD, l'arpège continue tout seul"],
+          ["octave", "+OCT", "Chaque note est doublée à l'octave au-dessus"],
+          ["echo", "ÉCHO", "Écho pointé au tempo sur tout le clavier"],
+        ] as const).map(([k, label, title]) => (
+          <button
+            key={k}
+            className={`hw-btn px-2 py-1 text-[11px] font-bold ${keys[k] ? "hw-btn-on" : ""}`}
+            style={{ ["--led" as string]: color }}
+            title={title}
+            onClick={() => { keys.setLive({ [k]: !keys[k] }); setTick((n) => n + 1); }}
+          >
+            {label}
+          </button>
+        ))}
+        <button
+          className={`hw-btn px-2 py-1 text-[11px] font-bold ${keys.chord ? "hw-btn-on" : ""}`}
+          style={{ ["--led" as string]: color }}
+          title="Une touche joue un accord : clique pour passer de majeur à mineur, quinte, sus4, puis arrêt"
+          onClick={() => {
+            const order = ["", "maj", "min", "5", "sus"] as const;
+            keys.setLive({ chord: order[(order.indexOf(keys.chord) + 1) % order.length] });
+            setTick((n) => n + 1);
+          }}
+        >
+          {keys.chord === "" ? "ACCORD" : keys.chord === "maj" ? "ACC MAJ" : keys.chord === "min" ? "ACC MIN" : keys.chord === "5" ? "ACC 5TE" : "ACC SUS4"}
+        </button>
+        <button
+          className="hw-btn px-2 py-1 text-[11px] font-bold"
+          style={{ ["--led" as string]: color }}
+          title="Vitesse de RÉPÈTE et ARP (valeur de note au tempo du son ouvert)"
+          onClick={() => {
+            const steps = [1 / 8, 1 / 16, 1 / 32];
+            keys.setLive({ step: steps[(steps.indexOf(keys.step) + 1) % steps.length] });
+            setTick((n) => n + 1);
+          }}
+        >
+          {keys.step === 1 / 8 ? "1/8" : keys.step === 1 / 16 ? "1/16" : "1/32"}
+        </button>
         <button
           className="hw-btn px-2 py-1 text-[11px] font-bold ml-auto"
           title="Afficher / masquer les réglages"

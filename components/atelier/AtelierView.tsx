@@ -62,6 +62,11 @@ export function AtelierView({ engine, active }: { engine: DJEngine; active: bool
   const noteTimer = useRef<NodeJS.Timeout | null>(null);
 
   const cur = sounds.find((s) => s.id === curId) ?? null;
+  const curBpm = cur?.bpm;
+  // RÉPÈTE / ARP / ÉCHO of the keyboard follow the tempo of the open sound
+  useEffect(() => {
+    if (curBpm) keys.setLive({ bpm: curBpm });
+  }, [keys, curBpm]);
   const hasStems = !!cur?.stems?.length;
   const useMix = hasStems && listen === "mix";
   const marks = cur ? sounds.filter((s) => s.from === cur.name).map((s) => s.at ?? 0) : [];
