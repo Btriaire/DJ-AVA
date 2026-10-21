@@ -10,7 +10,7 @@ import { downloadBlob } from "@/lib/atelier/download";
 import type { StemMixer } from "@/lib/atelier/stemMixer";
 import type { Region, StemCtl, WorkSample, SoundKind } from "@/lib/atelier/types";
 import { DEFAULT_CTL, STEM_FR, STEM_COLOR } from "@/lib/atelier/types";
-import { enhanceOptions } from "@/lib/atelier/stemEnhance";
+import { StemEnhanceMenu } from "./StemEnhanceMenu";
 import type { SampleKeys } from "@/lib/atelier/players";
 
 export function AtelierStems({
@@ -473,22 +473,12 @@ export function AtelierStems({
               >
                 ÉDITER
               </button>
-              <select
-                className="hw-well bg-transparent px-1 py-0.5 text-[11px] text-neutral-200"
-                value=""
+              <StemEnhanceMenu
+                stemName={stems[i].name}
+                color={stemColor}
                 disabled={working !== null || !onStemEdit}
-                title="Améliorer ce stem : options adaptées à son type (chaque option garde la durée)"
-                onChange={(e) => {
-                  const opt = enhanceOptions(stems[i].name).find((o) => o.key === e.target.value);
-                  if (opt && onStemEdit) onStemEdit(i, opt.label, opt.run);
-                  e.target.value = "";
-                }}
-              >
-                <option value="">AMÉLIORER…</option>
-                {enhanceOptions(stems[i].name).map((o) => (
-                  <option key={o.key} value={o.key} title={o.hint}>{o.label}</option>
-                ))}
-              </select>
+                onPick={(o) => onStemEdit?.(i, o.label, o.run)}
+              />
             </div>
 
             <div className="relative" style={{ position: 'relative' }}>
