@@ -53,6 +53,8 @@ export interface WorkSample {
   at?: number; // start in the sound it was cut from
   stems?: Stem[];
   stemModel?: StemModel;
+  stemHash?: string; // server cache key of the stems: lets us drop the decoded stems and reload them later
+  stemNames?: string[]; // stem names, kept while the decoded stems are released
   ctls?: StemCtl[];
   undo?: { buf: AudioBuffer; bpm: number }[];
   info?: { label: string; value: string }[]; // source details, e.g. YouTube

@@ -120,9 +120,9 @@ export async function loadStemLine(deck: Deck, stem: string, signal: AbortSignal
   const get = (hash: string) => fetch(`/api/stems/midi?hash=${hash}&model=${model}`, { signal });
   let r = deck.stemHash ? await get(deck.stemHash) : null;
   if (!r || r.status === 404) {
-    const raw = deck.getRawData();
+    const raw = deck.getRawBlob();
     if (!raw) throw new Error("Morceau indisponible pour la transcription");
-    const res = await fetch(`/api/stems/midi?model=${model}`, { method: "POST", body: raw.slice(0), signal });
+    const res = await fetch(`/api/stems/midi?model=${model}`, { method: "POST", body: raw, signal });
     if (!res.ok) throw new Error("Transcription impossible");
     const { hash } = (await res.json()) as { hash: string };
     r = await get(hash);

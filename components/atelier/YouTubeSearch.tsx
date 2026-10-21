@@ -2,6 +2,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { detectBPM } from "@/lib/audio/bpm";
 import { detectKey } from "@/lib/audio/key";
+import { FREE_MEMORY_EVENT } from "@/lib/memory";
 
 type YTTrack = {
   id: string;
@@ -116,7 +117,15 @@ export function YouTubeSearch({ ctx, color, busy, onOpen }: {
   const [durKey, setDurKey] = useState("all");
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const cacheRef = useRef<Map<string, { bytes: ArrayBuffer; type: string }>>(new Map());
+  // downloads kept as Blobs (Chromium can page them to disk), 4 at most
+  const cacheRef = useRef<Map<string, { blob: Blob; type: string }>>(new Map());
+
+  useEffect(() => {
+    const cache = cacheRef.current;
+    const h = () => cache.clear();
+    window.addEventListener(FREE_MEMORY_EVENT, h);
+    return () => window.removeEventListener(FREE_MEMORY_EVENT, h);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -190,7 +199,7 @@ export function YouTubeSearch({ ctx, color, busy, onOpen }: {
 
   const fetchBytes = async (t: YTTrack): Promise<ArrayBuffer> => {
     if (cacheRef.current.has(t.id)) {
-      return cacheRef.current.get(t.id)!.bytes;
+      return await cacheRef.current.get(t.id)!.blob.arrayBuffer();
     }
 
     setDownloadProgress(prev => ({ ...prev, [t.id]: true }));
@@ -198,10 +207,12 @@ export function YouTubeSearch({ ctx, color, busy, onOpen }: {
       const res = await fetch(`/api/youtube/stream?id=${t.id}`);
       if (!res.ok) throw new Error("Téléchargement impossible");
       const type = res.headers.get("Content-Type") || "audio/mpeg";
-      const bytes = await res.arrayBuffer();
-      cacheRef.current.set(t.id, { bytes, type });
-      while (cacheRef.current.size > 6) cacheRef.current.delete(cacheRef.current.keys().next().value as string);
-      return bytes;
+      const blob = await res.blob();
+      cacheRef.current.set(t.id, { blob, type });
+      while (cacheRef.current.size > 4) {
+        cacheRef.current.delete(cacheRef.current.keys().next().value as string);
+      }
+      return await blob.arrayBuffer();
     } catch {
       setError(`Erreur pour ${t.title}`);
       throw new Error("Téléchargement impossible");

@@ -83,7 +83,7 @@ export class Deck {
   readonly output: GainNode; // connect this to the mixer channel
 
   private buffer: AudioBuffer | null = null;
-  private rawData: ArrayBuffer | null = null; // kept so we can ship the track to the stem separator
+  private rawBlob: Blob | null = null; // the source file, kept as a Blob so Chromium can page it to disk instead of RAM
   private activeSources: AudioBufferSourceNode[] = []; // 1 in normal mode, N in stem mode
 
   // bumped on every load()/_streamSetup()/unload() — every async stem call
@@ -100,9 +100,12 @@ export class Deck {
   // the full AudioBuffer so scratch/loop/every feature works normally (phase 2).
   private mediaEl: HTMLAudioElement | null = null;
   private mediaElSrc: MediaElementAudioSourceNode | null = null;
+  static maxDecodeSec = 20 * 60; // above this, play straight from the streaming <audio> element: no full decode (a 3 h set would need >4 GB of RAM)
   // true while we're in phase 1 (streaming preview, full decode still in flight)
   private _bufferLoading = false;
+  private _streamOnly = false;
   get bufferLoading(): boolean { return this._bufferLoading; }
+  get streamOnly(): boolean { return this._streamOnly; }
   // decoded stem i of the loaded track (null when not separated), for the sampler
   getStemBuffer(i: number): AudioBuffer | null { return this.stemBuffers[i] ?? null; }
 
@@ -625,8 +628,9 @@ export class Deck {
 
   async load(file: File | ArrayBuffer, name: string) {
     const data = file instanceof File ? await file.arrayBuffer() : file;
-    this.rawData = data.slice(0); // keep a pristine copy for stem separation
-    const buf = await this.ctx.decodeAudioData(data.slice(0));
+    this.rawBlob = file instanceof File ? file : new Blob([data]); // keep a pristine copy for stem separation
+    const buf = await this.ctx.decodeAudioData(data);
+    this._streamOnly = false;
     this.cleanupMediaEl(); // cancel any in-progress streaming phase
     this.stopSources(); // kill any lingering playback (incl. orphaned stems) first
     this._playing = false;
@@ -670,6 +674,7 @@ export class Deck {
     this.duration = 0;
     this.pausedAt = 0;
     this.cuePoint = 0;
+    this._streamOnly = false;
     this.clearStems();
     this.loadGen++;
 
@@ -711,7 +716,34 @@ export class Deck {
     if (wasPlaying) this.play();
   }
 
-  loadStreaming(blob: Blob, name: string): Promise<boolean> {
+  private waitDuration(el: HTMLAudioElement, ms: number): Promise<number> {
+    return new Promise((resolve) => {
+      if (Number.isFinite(el.duration) && el.duration > 0) {
+        resolve(el.duration);
+        return;
+      }
+
+      let timer: number | null = null;
+      const cleanup = () => {
+        if (timer) clearTimeout(timer);
+        el.removeEventListener('loadedmetadata', onLoaded);
+      };
+
+      const onLoaded = () => {
+        cleanup();
+        resolve(Number.isFinite(el.duration) ? el.duration : NaN);
+      };
+
+      timer = window.setTimeout(() => {
+        cleanup();
+        resolve(NaN);
+      }, ms);
+
+      el.addEventListener('loadedmetadata', onLoaded, { once: true });
+    });
+  }
+
+  async loadStreaming(blob: Blob, name: string): Promise<boolean> {
     const el = new Audio();
     el.src = URL.createObjectURL(blob);
     const onEnded = () => {
@@ -719,18 +751,33 @@ export class Deck {
         this._playing = false;
         this.pausedAt = 0;
         if (this.repeat && this.buffer) this.play();
+        if (this.repeat && this._streamOnly) {
+          el.currentTime = 0;
+          el.play().catch(() => {});
+          this._playing = true;
+        }
       }
     };
     this._streamSetup(el, name, onEnded);
 
-    // Phase 2 in background: decode + analysis → hot-swap.
     const capturedEl = el;
-    return blob.arrayBuffer().then((raw) => {
-      if (capturedEl !== this.mediaEl) return null;
-      this.rawData = raw.slice(0);
+    const dur = await this.waitDuration(el, 5000);
+    if (capturedEl !== this.mediaEl) return false;
+    if (dur > Deck.maxDecodeSec) {
+      this.rawBlob = blob;
+      this._streamOnly = true;
+      this._bufferLoading = false;
+      this.loading = false;
+      this.duration = dur;
+      return true;
+    }
+
+    try {
+      const raw = await blob.arrayBuffer();
+      if (capturedEl !== this.mediaEl) return false;
+      this.rawBlob = blob;
       if (this.stemsWanted) void this.prefetchStems();
-      return this.ctx.decodeAudioData(raw);
-    }).then((buf) => {
+      const buf = await this.ctx.decodeAudioData(raw);
       if (!buf || capturedEl !== this.mediaEl) return false;
       const pos = this.mediaEl?.currentTime ?? 0;
       const wasPlaying = this._playing;
@@ -738,17 +785,17 @@ export class Deck {
       this._bufferLoading = false;
       this.loading = false;
       return true;
-    }).catch((e) => {
+    } catch (e) {
       console.error("[deck] background decode failed", (e as Error).message);
       if (capturedEl === this.mediaEl) {
         this._bufferLoading = false;
         this.loading = false;
       }
       return false;
-    });
+    }
   }
 
-  loadStreamingUrl(url: string, name: string): Promise<boolean> {
+  async loadStreamingUrl(url: string, name: string, knownDurationSec = 0): Promise<boolean> {
     this.cleanupMediaEl();
     this.stopSources();
     this._playing = false;
@@ -760,12 +807,12 @@ export class Deck {
     this.duration = 0;
     this.pausedAt = 0;
     this.cuePoint = 0;
+    this._streamOnly = false;
     this.clearStems();
     this.loadGen++;
     this._bufferLoading = true;
-    this.loading = false; // Immediately allow user interaction / PLAY while streaming
+    this.loading = false;
 
-    // Mount native progressive audio element immediately with stream URL
     const el = new Audio();
     el.crossOrigin = "anonymous";
     el.src = url;
@@ -774,43 +821,51 @@ export class Deck {
         this._playing = false;
         this.pausedAt = 0;
         if (this.repeat && this.buffer) this.play();
+        if (this.repeat && this._streamOnly) {
+          el.currentTime = 0;
+          el.play().catch(() => {});
+          this._playing = true;
+        }
       }
     };
     this._streamSetup(el, name, onEnded);
 
-    // Asynchronously fetch full stream data for Phase 2 (AudioBuffer decode + waveform + stems)
     const currentGen = this.loadGen;
     const capturedEl = el;
+    const dur = knownDurationSec > 0 ? knownDurationSec : await this.waitDuration(el, 8000);
+    if (currentGen !== this.loadGen || capturedEl !== this.mediaEl) return false;
+    if (dur > Deck.maxDecodeSec) {
+      this._streamOnly = true;
+      this._bufferLoading = false;
+      this.loading = false;
+      this.duration = dur;
+      return true;
+    }
 
-    return fetch(url)
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.arrayBuffer();
-      })
-      .then(async (raw) => {
-        if (currentGen !== this.loadGen || capturedEl !== this.mediaEl) return false;
-        this.rawData = raw.slice(0);
-        if (this.stemsWanted) void this.prefetchStems();
-        const buf = await this.ctx.decodeAudioData(raw);
-        if (!buf || currentGen !== this.loadGen || capturedEl !== this.mediaEl) return false;
-
-        const pos = this.mediaEl?.currentTime ?? 0;
-        const wasPlaying = this._playing;
-        this._streamSwap(buf, pos, wasPlaying);
-        this._bufferLoading = false;
-        return true;
-      })
-      .catch((e) => {
-        console.error("[deck] background stream decode notice:", (e as Error).message);
-        // Do not break playback: mediaEl can keep streaming audio
-        return true;
-      });
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const blob = await r.blob();
+      if (currentGen !== this.loadGen || capturedEl !== this.mediaEl) return false;
+      this.rawBlob = blob;
+      if (this.stemsWanted) void this.prefetchStems();
+      const buf = await this.ctx.decodeAudioData(await blob.arrayBuffer());
+      if (!buf || currentGen !== this.loadGen || capturedEl !== this.mediaEl) return false;
+      const pos = this.mediaEl?.currentTime ?? 0;
+      const wasPlaying = this._playing;
+      this._streamSwap(buf, pos, wasPlaying);
+      this._bufferLoading = false;
+      return true;
+    } catch (e) {
+      console.error("[deck] background stream decode notice:", (e as Error).message);
+      return true;
+    }
   }
 
   // pristine bytes of the loaded track (for re-storing the audio when saving a
   // directly-loaded file into the library). Null once unloaded.
-  getRawData(): ArrayBuffer | null {
-    return this.rawData;
+  getRawBlob(): Blob | null {
+    return this.rawBlob;
   }
 
   // build one source feeding `dest`. The `primary` source carries the onended
@@ -874,7 +929,7 @@ export class Deck {
 
   play() {
     // phase 1: streaming via MediaElement (buffer not yet decoded)
-    if (this._bufferLoading && this.mediaEl) {
+    if ((this._bufferLoading || this._streamOnly) && this.mediaEl) {
       if (this._playing) return;
       this.mediaEl.play().catch(() => {});
       this._playing = true;
@@ -905,7 +960,7 @@ export class Deck {
   pause() {
     if (!this._playing) return;
     // phase 1: pause the MediaElement
-    if (this._bufferLoading && this.mediaEl) {
+    if ((this._bufferLoading || this._streamOnly) && this.mediaEl) {
       this.pausedAt = this.mediaEl.currentTime;
       this.mediaEl.pause();
       this._playing = false;
@@ -941,7 +996,7 @@ export class Deck {
 
   position(): number {
     // phase 1: read position from the MediaElement
-    if (this._bufferLoading && this.mediaEl) return this.mediaEl.currentTime;
+    if ((this._bufferLoading || this._streamOnly) && this.mediaEl) return this.mediaEl.currentTime;
     if (!this.buffer) return 0;
     if (!this._playing) return this.pausedAt;
     let pos = this.startOffset + (this.ctx.currentTime - this.startCtxTime) * this.effRate;
@@ -955,7 +1010,7 @@ export class Deck {
   seek(t: number) {
     const target = Math.max(0, Math.min(t, this.duration));
     // phase 1: seek the MediaElement directly
-    if (this._bufferLoading && this.mediaEl) {
+    if ((this._bufferLoading || this._streamOnly) && this.mediaEl) {
       this.mediaEl.currentTime = target;
       this.pausedAt = target;
       return;
@@ -1279,13 +1334,14 @@ export class Deck {
   // this return value rather than re-reading deck.stemHash after the await, since
   // that field may have moved on to a newer track by then.
   async probeStems(): Promise<{ hash: string; cached: boolean } | null> {
+    if (this._streamOnly) return null;
     const gen = this.loadGen;
     this.stemCached = false;
-    if (!this.rawData || this.stemReady) return null;
+    if (!this.rawBlob || this.stemReady) return null;
     try {
       const res = await fetch(`/api/stems/separate?probe=1&model=${this.stemModel}${this.stemOptsQS()}`, {
         method: "POST",
-        body: this.rawData.slice(0),
+        body: this.rawBlob,
       });
       if (!res.ok) return null;
       const { cached, hash } = (await res.json()) as { cached: boolean; hash: string };
@@ -1306,7 +1362,8 @@ export class Deck {
   // immediately; the actual Demucs run happens server-side while the deck idles.
   // Caller should poll probeStems() to flip the "cached" badge once it lands.
   async prefetchStems(): Promise<void> {
-    if (!this.rawData || this.stemReady || this.stemCached) return;
+    if (this._streamOnly) return;
+    if (!this.rawBlob || this.stemReady || this.stemCached) return;
     if (!this.playbackGate()) return;
     // don't stomp on a live, foreground separation
     if (this.stemStatus === "working") return;
@@ -1316,7 +1373,7 @@ export class Deck {
     try {
       const res = await fetch(`/api/stems/separate?prefetch=1&model=${model}${this.stemOptsQS()}`, {
         method: "POST",
-        body: this.rawData.slice(0),
+        body: this.rawBlob,
       });
       if (!res.ok) {
         if (this.loadGen === gen && this.stemStatus === "prefetching") this.stemStatus = "none";
@@ -1574,8 +1631,12 @@ export class Deck {
       this.stemStatus = "blocked";
       return;
     }
-    if (!this.rawData) {
+    if (!this.rawBlob) {
       this.stemStatus = "error";
+      return;
+    }
+    if (this._streamOnly) {
+      this.stemStatus = "error"; // a long track is never decoded, so its stems can't be either
       return;
     }
     this.stemStatus = "working";
@@ -1587,11 +1648,11 @@ export class Deck {
       // finishes, so progress has to come from a side-channel poll — compute
       // the content hash ourselves (matches the server's hashBytes()) so we
       // can start polling immediately, without waiting on that response.
-      const hash = await sha1Hex16(this.rawData);
+      const hash = await sha1Hex16(await this.rawBlob.arrayBuffer());
       if (this.loadGen === gen) this.pollStemProgress(hash, model, gen);
       const res = await fetch(`/api/stems/separate?model=${model}${stemOpts}`, {
         method: "POST",
-        body: this.rawData.slice(0),
+        body: this.rawBlob,
       });
       if (!res.ok) throw new Error(await res.text());
       const { stems } = (await res.json()) as { hash: string; stems: string[] };
@@ -2108,7 +2169,8 @@ export class Deck {
     this.loopActive = false;
     this.sourceLink = "";
     this.coverArt = "";
-    this.rawData = null;
+    this._streamOnly = false;
+    this.rawBlob = null;
     this.origin = null;
     this.clearStems();
     this.loadGen++;

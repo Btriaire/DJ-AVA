@@ -42,7 +42,7 @@ export function StemPrepPanel({ engine }: { engine: DJEngine }) {
         const blob = await idbGetBlob(r.trackId);
         if (blob) ok = await deck.loadStreaming(blob, r.name);
       } else {
-        ok = await deck.loadStreamingUrl(`/api/${r.source}/stream?id=${encodeURIComponent(r.url ?? "")}`, r.name);
+        ok = await deck.loadStreamingUrl(`/api/${r.source}/stream?id=${encodeURIComponent(r.url ?? "")}`, r.name, r.durationSec);
       }
       flash(ok ? `« ${r.name} » chargé sur ${side} : pistes prêtes, lance la lecture` : "Chargement impossible : fichier introuvable");
     } catch (e) {

@@ -8,7 +8,7 @@ export async function separateStems(
   model: StemModel,
   signal: AbortSignal,
   onProgress: (pct: number | null) => void
-): Promise<Stem[]> {
+): Promise<{ hash: string; stems: Stem[] }> {
   const bytes = await encodeWav(buf, 24).arrayBuffer();
   const local = await sha1Hex16(bytes);
   const timer = setInterval(async () => {
@@ -35,19 +35,23 @@ export async function separateStems(
 
     const data = await res.json() as { hash?: string; stems: string[] };
     const hash = data.hash || local;
-    const stems: Stem[] = [];
-
-    for (const name of data.stems) {
-      const r = await fetch(`/api/stems/${hash}/${name}?model=${model}&wav=1`, { signal });
-      if (!r.ok) {
-        throw new Error(`Stem introuvable : ${name}`);
-      }
-      const buf = await ctx.decodeAudioData(await r.arrayBuffer());
-      stems.push({ name, buf });
-    }
-
-    return stems;
+    return { hash, stems: await loadStemsByHash(ctx, hash, model, data.stems, signal) };
   } finally {
     clearInterval(timer);
   }
+}
+
+// Downloads and decodes stems already separated on the server (cache key = hash),
+// e.g. to bring back stems that were released from memory.
+export async function loadStemsByHash(ctx: BaseAudioContext, hash: string, model: StemModel, names: string[], signal?: AbortSignal): Promise<Stem[]> {
+  const stems: Stem[] = [];
+  for (const name of names) {
+    const r = await fetch(`/api/stems/${hash}/${name}?model=${model}&wav=1`, { signal });
+    if (!r.ok) {
+      throw new Error(`Stem introuvable : ${name}`);
+    }
+    const buf = await ctx.decodeAudioData(await r.arrayBuffer());
+    stems.push({ name, buf });
+  }
+  return stems;
 }

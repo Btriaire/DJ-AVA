@@ -341,7 +341,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
         deck.sourceLink = "";
       } else {
         const streamUrl = `/api/${t.source}/stream?id=${encodeURIComponent(t.url ?? "")}`;
-        void deck.loadStreamingUrl(streamUrl, t.name).then(() => onLoaded());
+        void deck.loadStreamingUrl(streamUrl, t.name, t.durationSec).then(() => onLoaded());
         deck.sourceLink =
           t.source === "youtube"
             ? `https://www.youtube.com/watch?v=${t.url}`
@@ -574,10 +574,10 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
       // a directly-loaded local file has no stored blob — persist its bytes so
       // it can be reloaded later from the playlist.
       if (source === "local") {
-        const raw = deck.getRawData();
+        const raw = deck.getRawBlob();
         if (raw) {
           try {
-            await idbPutBlob(id, new Blob([raw]));
+            await idbPutBlob(id, raw);
           } catch {
             /* metadata still saved even if the blob store is unavailable */
           }
@@ -627,6 +627,11 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
           </span>
         </div>
         <div className="flex items-center gap-3">
+          {deck.streamOnly && (
+            <span className="text-[9px] font-bold tracking-wider text-amber-300" title="Morceau de plus de 20 min : lu en streaming pour économiser la mémoire (pas de forme d'onde, de boucles ni de stems)">
+              STREAMING · MORCEAU LONG
+            </span>
+          )}
           {/* loading indicator — two phases:
               1. "Chargement" (deck.loading) = fetch in flight, no audio yet
               2. "Décodage…" (deck.bufferLoading) = audio playing, waveform/BPM pending

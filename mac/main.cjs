@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain } = require("electron");
 const { spawn, execFileSync } = require("node:child_process");
 const path = require("node:path");
 const http = require("node:http");
@@ -99,7 +99,7 @@ async function createWindow(url) {
     backgroundColor: "#050506",
     title: "DJSynth",
     titleBarStyle: "hiddenInset",
-    webPreferences: { contextIsolation: true },
+    webPreferences: { contextIsolation: true, preload: path.join(__dirname, "preload.cjs") },
   });
   await win.loadURL(url);
 }
@@ -107,6 +107,24 @@ async function createWindow(url) {
 app.whenReady().then(async () => {
   pidFile = path.join(app.getPath("userData"), "server.pid");
   killStaleServer();
+  // real memory of every DJSynth process (window, GPU, audio…) plus the local Next server
+  ipcMain.handle("djsynth:memory", () => {
+    const appMB = Math.round(app.getAppMetrics().reduce((sum, m) => sum + m.memory.workingSetSize, 0) / 1024);
+    let serverMB = 0;
+    if (server && server.pid) {
+      try {
+        serverMB = Math.round(parseInt(execFileSync("ps", ["-o", "rss=", "-p", String(server.pid)], { encoding: "utf8" }), 10) / 1024) || 0;
+      } catch {
+        /* server gone */
+      }
+    }
+    return { appMB, serverMB };
+  });
+  // drops the window's HTTP cache (audio streams already played)
+  ipcMain.handle("djsynth:trim", async (event) => {
+    await event.sender.session.clearCache();
+    return true;
+  });
   const port = await freePort(3217);
   startServer(port);
   const url = `http://localhost:${port}`;

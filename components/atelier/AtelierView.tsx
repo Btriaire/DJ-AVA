@@ -11,7 +11,8 @@ import { AtelierStems } from "./AtelierStems";
 import { MiniKeys } from "./MiniKeys";
 import { Previewer, SampleKeys } from "@/lib/atelier/players";
 import { StemMixer } from "@/lib/atelier/stemMixer";
-import { separateStems } from "@/lib/atelier/separate";
+import { loadStemsByHash, separateStems } from "@/lib/atelier/separate";
+import { FREE_MEMORY_EVENT } from "@/lib/memory";
 import { addToBank } from "@/lib/atelier/bank";
 import * as ed from "@/lib/atelier/edit";
 import { downloadBlob } from "@/lib/atelier/download";
@@ -66,6 +67,15 @@ export function AtelierView({ engine, active }: { engine: DJEngine; active: bool
   useEffect(() => {
     curRef.current = cur;
   });
+
+  useEffect(() => {
+    const h = () => {
+      setSounds((prev) => prev.map((s) => (s.id === curRef.current?.id ? { ...s, undo: undefined } : { ...s, undo: undefined, stems: s.stemHash ? undefined : s.stems })));
+      setNote("Mémoire libérée : historique d'annulation et stems inactifs relâchés");
+    };
+    window.addEventListener(FREE_MEMORY_EVENT, h);
+    return () => window.removeEventListener(FREE_MEMORY_EVENT, h);
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -137,6 +147,7 @@ export function AtelierView({ engine, active }: { engine: DJEngine; active: bool
     };
     setSounds((prev) => [...prev, sound]);
     if (select) {
+      releaseOthers(sound.id);
       stopAll();
       setCurId(sound.id);
       setSel(null);
@@ -174,11 +185,36 @@ export function AtelierView({ engine, active }: { engine: DJEngine; active: bool
     setNote("Chargé dans le clavier");
   };
 
+  // Sounds that are not open drop their undo copies and, when the server still
+  // holds their stems (stemHash), their decoded stems: they reload on reopen.
+  const releaseOthers = (keepId: string | null) => {
+    setSounds((prev) => prev.map((s) => (s.id === keepId ? s : { ...s, undo: undefined, stems: s.stemHash ? undefined : s.stems })));
+  };
+
+  const reloadStems = async (s: WorkSample) => {
+    if (!s.stemHash || !s.stemModel || !s.stemNames?.length) return;
+    try {
+      setBusy("Rechargement des stems…");
+      const stems = await loadStemsByHash(engine.ctx, s.stemHash, s.stemModel, s.stemNames);
+      update(s.id, { stems });
+    } catch {
+      setErr("Stems indisponibles : relance la séparation");
+      update(s.id, { stemHash: undefined, stemNames: undefined, ctls: undefined });
+    } finally {
+      setBusy("");
+    }
+  };
+
   const select = (id: string) => {
+    releaseOthers(id);
     stopAll();
     setCurId(id);
     setSel(null);
     setCursor(0);
+    const cible = sounds.find((s) => s.id === id);
+    if (cible && !cible.stems && cible.stemHash) {
+      void reloadStems(cible);
+    }
   };
 
   const remove = (id: string) => {
@@ -234,7 +270,7 @@ export function AtelierView({ engine, active }: { engine: DJEngine; active: bool
       update(cur.id, {
         buf: res.buf,
         bpm: res.bpm ?? cur.bpm,
-        undo: [{ buf: cur.buf, bpm: cur.bpm }, ...(cur.undo ?? [])].slice(0, 5),
+        undo: [{ buf: cur.buf, bpm: cur.bpm }, ...(cur.undo ?? [])].slice(0, 3),
         stems: undefined,
         ctls: undefined,
         stemModel: undefined,
@@ -256,6 +292,8 @@ export function AtelierView({ engine, active }: { engine: DJEngine; active: bool
       bpm: last.bpm,
       undo: rest,
       stems: undefined,
+      stemHash: undefined,
+      stemNames: undefined,
       ctls: undefined,
       stemModel: undefined,
     });
@@ -360,10 +398,10 @@ export function AtelierView({ engine, active }: { engine: DJEngine; active: bool
       const ac = new AbortController();
       sepAbort.current = ac;
       setSep({ id, pct: 0 });
-      const stems = await separateStems(engine.ctx, buf, model, ac.signal, (pct) =>
+      const { hash, stems } = await separateStems(engine.ctx, buf, model, ac.signal, (pct) =>
         setSep((s) => (s && s.id === id ? { id, pct } : s))
       );
-      update(id, { stems, stemModel: model, ctls: stems.map(() => DEFAULT_CTL) });
+      update(id, { stems, stemHash: hash, stemNames: stems.map((s) => s.name), stemModel: model, ctls: stems.map(() => DEFAULT_CTL) });
       setListen("mix");
       setNote("Stems prêts : chaque piste se règle comme sur les platines.");
     } catch (e) {

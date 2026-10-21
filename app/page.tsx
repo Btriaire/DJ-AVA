@@ -31,6 +31,7 @@ import { LcdClock } from "@/components/LcdClock";
 import { MasterRecorder } from "@/components/MasterRecorder";
 import { useAutoFit } from "@/lib/useAutoFit";
 import { DeckTimers } from "@/components/DeckTimers";
+import { MemoryGauge } from "@/components/MemoryGauge";
 import { MixScope } from "@/components/MixScope";
 import { CpuMeter } from "@/components/CpuMeter";
 import { StudioView } from "@/components/StudioView";
@@ -957,6 +958,8 @@ const [showModulePicker, setShowModulePicker] = useState(false);
           {ready && engine && (
             <DeckTimers deckA={engine.deckA} deckB={engine.deckB} colorA="#38bdf8" colorB="#f59e0b" />
           )}
+
+          <MemoryGauge />
 
           {ready && (
             <button

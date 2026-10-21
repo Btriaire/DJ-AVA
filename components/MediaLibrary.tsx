@@ -519,7 +519,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
         deck.sourceLink = "";
       } else {
         const streamUrl = `/api/${t.source}/stream?id=${encodeURIComponent(t.url ?? "")}`;
-        void deck.loadStreamingUrl(streamUrl, t.name).then(() => onLoaded?.());
+        void deck.loadStreamingUrl(streamUrl, t.name, t.durationSec).then(() => onLoaded?.());
         deck.sourceLink =
           t.source === "youtube"
             ? `https://www.youtube.com/watch?v=${t.url}`

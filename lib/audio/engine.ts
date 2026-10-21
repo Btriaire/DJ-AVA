@@ -568,7 +568,7 @@ export class DJEngine {
   // engine (fresh AudioContext) can take over when the current one is wedged.
   exportState(): EngineState {
     const snap = (d: Deck): DeckSnapshot => ({
-      raw: d.getRawData(),
+      raw: d.getRawBlob(),
       name: d.name,
       coverArt: d.coverArt,
       sourceLink: d.sourceLink,
@@ -595,7 +595,7 @@ export class DJEngine {
 
   private async restoreDeck(d: Deck, snap: DeckSnapshot) {
     if (!snap.raw) return;
-    await d.load(snap.raw, snap.name); // re-decode on the new context
+    await d.load(await snap.raw.arrayBuffer(), snap.name); // re-decode on the new context
     d.coverArt = snap.coverArt;
     d.sourceLink = snap.sourceLink;
     d.origin = snap.origin;
@@ -607,7 +607,7 @@ export class DJEngine {
 }
 
 interface DeckSnapshot {
-  raw: ArrayBuffer | null;
+  raw: Blob | null;
   name: string;
   coverArt: string;
   sourceLink: string;
@@ -758,7 +758,7 @@ export async function saveEngineState(eng: DJEngine): Promise<void> {
   const s = eng.exportState();
   const persist = async (key: string, snap: DeckSnapshot): Promise<SavedDeck> => {
     if (snap.raw) {
-      await idbPutBlob(key, new Blob([snap.raw]));
+      await idbPutBlob(key, snap.raw);
     } else {
       await idbDelBlob(key); // drop any stale audio for an empty deck
     }
@@ -801,8 +801,7 @@ async function restoreSavedDeck(d: Deck, key: string, snap: SavedDeck | undefine
   if (!snap || !snap.hasAudio) return;
   const blob = await idbGetBlob(key);
   if (!blob) return;
-  const raw = await blob.arrayBuffer();
-  await d.load(raw, snap.name); // re-decode on the live context
+  await d.load(await blob.arrayBuffer(), snap.name); // re-decode on the live context
   d.coverArt = snap.coverArt;
   d.sourceLink = snap.sourceLink;
   d.origin = snap.origin;
