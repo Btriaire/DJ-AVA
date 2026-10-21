@@ -3,7 +3,7 @@ export type FxName =
   | "roll" | "brake" | "reverse" | "sweep" | "wobble" | "pump" | "pan"
   | "noise" | "crush" | "pitch"
   | "dub" | "ring" | "tape" | "mash" | "vowel" | "scatter"
-  | "build" | "freeze" | "halftime";
+  | "build" | "freeze" | "halftime" | "double" | "rise" | "echoout" | "wash";
 
 export const BEAT_DIVS: number[] = [1 / 16, 1 / 8, 1 / 4, 1 / 2, 3 / 4, 1, 2, 4, 8, 16];
 export const BEAT_LABELS: string[] = ["1/16", "1/8", "1/4", "1/2", "3/4", "1", "2", "4", "8", "16"];
@@ -465,6 +465,86 @@ export const FX_LIST: FxMeta[] = [
     },
     p2: null,
     sendGain: 1.0
+  }, {
+    id: "double",
+    label: "DOUBLE",
+    color: "#facc15",
+    glyph: "×2",
+    title: "Double vitesse : chaque fenêtre est rejouée deux fois plus vite, une octave plus haut, calée sur les temps",
+    insert: true,
+    always: false,
+    trigger: false,
+    beat: 3,
+    p1: {
+      label: "Couleur",
+      def: 1,
+      fmt: (v) => fmtHz(400 * Math.pow(50, v))
+    },
+    p2: null,
+    sendGain: 1.0
+  }, {
+    id: "rise",
+    label: "RISE",
+    color: "#e879f9",
+    glyph: "↗",
+    title: "Montée de hauteur : le stem grimpe en continu (jusqu'à 2 octaves) sur la durée choisie, sans changer le tempo",
+    insert: true,
+    always: false,
+    trigger: false,
+    beat: null,
+    p1: {
+      label: "Durée",
+      def: 0.5,
+      fmt: (v) => `${[2, 4, 8, 16][Math.min(3, Math.floor(v * 4))]} temps`
+    },
+    p2: {
+      label: "Ambitus",
+      def: 0.37,
+      fmt: (v) => `+${Math.round(5 + v * 19)} dt`
+    },
+    sendGain: 1.0
+  }, {
+    id: "echoout",
+    label: "OUT",
+    color: "#38bdf8",
+    glyph: "⇥",
+    title: "Sortie en écho : le stem est coupé et ses derniers instants s'envolent en échos au tempo qui s'amincissent",
+    insert: true,
+    always: false,
+    trigger: false,
+    beat: 3,
+    p1: {
+      label: "Échos",
+      def: 0.5,
+      fmt: (v) => `${Math.round((0.35 + v * 0.5) * 100)}%`
+    },
+    p2: {
+      label: "Amincir",
+      def: 0.6,
+      fmt: (v) => fmtHz(300 * Math.pow(15, v))
+    },
+    sendGain: 1.0
+  }, {
+    id: "wash",
+    label: "WASH",
+    color: "#c4b5fd",
+    glyph: "≋",
+    title: "Lavage : le stem se noie dans une immense réverbération pendant qu'un filtre s'ouvre ; relâche pour le retrouver",
+    insert: true,
+    always: false,
+    trigger: false,
+    beat: null,
+    p1: {
+      label: "Taille",
+      def: 0.45,
+      fmt: (v) => `${(1.5 + v * 5.5).toFixed(1)} s`
+    },
+    p2: {
+      label: "Ouverture",
+      def: 0.55,
+      fmt: (v) => fmtHz(200 * Math.pow(25, v))
+    },
+    sendGain: 1.0
   }
 ];
 
@@ -475,4 +555,5 @@ export const DECK_FX: FxName[] = ["echo", "dub", "reverb", "flanger", "gate", "n
 export const STEM_FX: FxName[] = [
   "echo", "dub", "vowel", "gate", "mash", "roll", "flanger", "crush", "scatter",
   "build", "freeze", "halftime", "wobble", "pump", "brake",
+  "double", "rise", "echoout", "wash",
 ];

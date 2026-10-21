@@ -107,7 +107,8 @@ export class FXRack {
   }
 
   private createUnit(name: FxName, env: FxEnv): FxUnit {
-    if (name === "build" || name === "freeze" || name === "halftime") return buildUnitD(name, env);
+    if (name === "build" || name === "freeze" || name === "halftime" || name === "double" ||
+        name === "rise" || name === "echoout" || name === "wash") return buildUnitD(name, env);
     if (name === "dub" || name === "ring" || name === "tape" || name === "mash" || name === "vowel" || name === "scatter") {
       return buildUnitC(name, env);
     }
