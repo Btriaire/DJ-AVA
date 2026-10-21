@@ -34,6 +34,7 @@ export function AtelierStems({
   onStemEdit,
   canUndoStem,
   onUndoStem,
+  onReinforce,
 }: {
   sound: WorkSample;
   mixer: StemMixer;
@@ -55,6 +56,7 @@ export function AtelierStems({
   onStemEdit?: (i: number, label: string, run: (buf: AudioBuffer) => Promise<AudioBuffer> | AudioBuffer) => void;
   canUndoStem?: (i: number) => boolean;
   onUndoStem?: (i: number) => void;
+  onReinforce?: (i: number) => void;
 }) {
   const stems = sound.stems ?? [];
   const ctls = stems.map((_, i) => sound.ctls?.[i] ?? DEFAULT_CTL);
@@ -453,6 +455,26 @@ export function AtelierStems({
               >
                 ▶ SEUL
               </button>
+              {onReinforce && (
+                <button
+                  className="hw-btn px-2 py-1 text-[11px] font-bold"
+                  style={{ ["--led" as string]: color }}
+                  onClick={() => onReinforce(i)}
+                  disabled={working !== null}
+                  title="Re-sépare ce stem pour retirer ce qui déborde des autres instruments ; les autres stems ne bougent pas. Une à deux minutes pour un morceau entier"
+                >
+                  RENFORCER
+                </button>
+              )}
+              {canUndoStem?.(i) && (
+                <button
+                  className="hw-btn px-2 py-1 text-[11px] font-bold"
+                  onClick={() => onUndoStem?.(i)}
+                  title="Revenir à la version d'avant de ce stem"
+                >
+                  ↶
+                </button>
+              )}
               <button
                 className="hw-btn px-2 py-1 text-[11px] font-bold"
                 onClick={() => act(i, "keys")}

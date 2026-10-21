@@ -468,6 +468,52 @@ export function AtelierView({ engine, active }: { engine: DJEngine; active: bool
     }
   };
 
+  // RENFORCER: separate one stem again and keep only its own part — what bled in
+  // from the other instruments is dropped. The other stems are left as they are;
+  // ↶ (stem undo) brings the previous version back.
+  const reinforceStem = async (i: number) => {
+    const s = curRef.current;
+    const stem = s?.stems?.[i];
+    if (!s || !stem || sep) return;
+    const name = stem.name;
+    // guitar / piano only exist in the 6-stem model; the 4-stem one keeps "other" whole
+    const m: StemModel = name === "guitar" || name === "piano" ? "htdemucs_6s" : "htdemucs";
+    const ac = new AbortController();
+    sepAbort.current = ac;
+    try {
+      stopAll();
+      setSep({ id: s.id, pct: 0, phase: `Renforcement ${name}` });
+      const { stems } = await separateStems(
+        engine.ctx,
+        stem.buf,
+        m,
+        ac.signal,
+        (pct) => setSep((x) => (x && x.id === s.id ? { ...x, pct } : x)),
+        (phase) => setSep((x) => (x && x.id === s.id ? { ...x, phase: `Renforcement ${name} · ${phase}` } : x))
+      );
+      const clean = stems.find((x) => x.name === name);
+      if (!clean) throw new Error(`Le modèle ne rend pas de piste « ${name} »`);
+      // same length and channels as before, so the stem stays in sync with the others
+      const buf = engine.ctx.createBuffer(stem.buf.numberOfChannels, stem.buf.length, stem.buf.sampleRate);
+      for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+        const src = clean.buf.getChannelData(Math.min(ch, clean.buf.numberOfChannels - 1));
+        buf.copyToChannel(src.subarray(0, buf.length), ch);
+      }
+      const now = curRef.current;
+      if (!now?.stems || now.id !== s.id) return;
+      setStemUndo((u) => ({ ...u, [`${s.id}:${i}`]: stem.buf }));
+      update(s.id, { stems: now.stems.map((x, k) => (k === i ? { ...x, buf } : x)), stemHash: undefined });
+      setNote(`Stem ${name} renforcé — ↶ pour revenir`);
+    } catch (e) {
+      if (!(e instanceof DOMException && e.name === "AbortError")) {
+        setErr(e instanceof Error ? e.message : "Renforcement impossible");
+      }
+    } finally {
+      setSep(null);
+      sepAbort.current = null;
+    }
+  };
+
   const cancelSep = () => {
     sepAbort.current?.abort();
   };
@@ -896,6 +942,7 @@ export function AtelierView({ engine, active }: { engine: DJEngine; active: bool
               onStemEdit={editStem}
               canUndoStem={canUndoStem}
               onUndoStem={undoStem}
+              onReinforce={reinforceStem}
             />
           )}
         </div>
