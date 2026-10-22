@@ -1313,12 +1313,15 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     plId,
     idx,
     count,
+    nested = false,
   }: {
     t: LibTrack;
     plId?: string;
     idx?: number; // 0-based position when shown inside a playlist
     count?: number; // playlist length, to disable the last "↓"
+    nested?: boolean; // already inside an <li> (library list): render a <div>, an <li> can't hold an <li>
   }) => {
+    const Row = nested ? "div" : "li";
     const badge = SRC_BADGE[t.source];
     const hasStems = !!t.stemHash && stemSet.has(t.stemHash);
     const prepJob = prep.jobs.find((j) => j.trackId === t.id);
@@ -1329,7 +1332,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     const nextSide = markA.next === t.id ? "A" : markB.next === t.id ? "B" : null;
     const cueColor = (s: "A" | "B") => (s === "A" ? COLOR_A : COLOR_B);
     return (
-      <li
+      <Row
         className={`hw-strip flex flex-wrap items-center gap-2 px-2 py-1.5 ${nextSide ? "lib-next-blink" : ""}`}
         style={{
           ...(nextSide ? { ["--cue" as string]: cueColor(nextSide) } : {}),
@@ -1599,7 +1602,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
             </button>
           </>
         )}
-      </li>
+      </Row>
     );
   };
 
@@ -2223,7 +2226,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
               )}
               {visibleLibTracks().map((t) => (
                 <li key={t.id} className="flex flex-col gap-1">
-                  <TrackRow t={t} />
+                  <TrackRow t={t} nested />
                   <div className="flex items-center gap-2 px-2 pb-1 text-[11px] text-neutral-400">
                     <input
                       defaultValue={t.theme ?? ""}
