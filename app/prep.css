@@ -1,0 +1,135 @@
+/* Préparation view: surfaces and accent, following the skin (html[data-skin]) */
+.prep {
+  --prep-accent: #22d3ee;
+  --prep-surface: #11141a;
+  --prep-surface-2: #161a21;
+  --prep-line: #222833;
+}
+[data-skin="vinyl"] .prep {
+  --prep-accent: #e8a04a;
+  --prep-surface: #171009;
+  --prep-surface-2: #1e150c;
+  --prep-line: #3a2614;
+}
+[data-skin="neon"] .prep {
+  --prep-accent: #ff2bd6;
+  --prep-surface: #0c0614;
+  --prep-surface-2: #130a1e;
+  --prep-line: #2a0a38;
+}
+
+.prep-card {
+  background: var(--prep-surface);
+  border: 1px solid var(--prep-line);
+  border-radius: 12px;
+}
+.prep-tile {
+  background: linear-gradient(180deg, var(--prep-surface-2), var(--prep-surface));
+  border: 1px solid var(--prep-line);
+}
+.prep-input {
+  background: #07090c;
+  border: 1px solid var(--prep-line);
+  border-radius: 10px;
+  color: #e5e7eb;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.prep-input:focus {
+  border-color: var(--prep-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--prep-accent) 18%, transparent);
+}
+
+/* tray rows */
+.prep-row {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+.prep-row:hover {
+  background: var(--prep-surface-2);
+}
+.prep-row[data-checked="true"] {
+  background: color-mix(in srgb, var(--prep-accent) 9%, var(--prep-surface));
+  border-color: color-mix(in srgb, var(--prep-accent) 45%, transparent);
+}
+.prep-row .prep-row-actions {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.prep-row:hover .prep-row-actions,
+.prep-row:focus-within .prep-row-actions {
+  opacity: 1;
+}
+/* touch screens have no hover: actions always shown */
+@media (hover: none) {
+  .prep-row .prep-row-actions {
+    opacity: 1;
+  }
+}
+
+/* list cards accept dropped tracks */
+.prep-drop[data-over="true"] {
+  border-color: var(--prep-accent);
+  background: color-mix(in srgb, var(--prep-accent) 10%, var(--prep-surface));
+  transform: scale(1.01);
+}
+.prep-drop {
+  transition: transform 0.12s ease, border-color 0.12s ease, background-color 0.12s ease;
+}
+
+/* segmented control */
+.prep-seg {
+  display: inline-flex;
+  border: 1px solid var(--prep-line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.prep-seg > button {
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #8b93a1;
+  background: transparent;
+}
+.prep-seg > button + button {
+  border-left: 1px solid var(--prep-line);
+}
+.prep-seg > button[aria-pressed="true"] {
+  color: var(--prep-accent);
+  background: color-mix(in srgb, var(--prep-accent) 12%, transparent);
+}
+.prep-seg > button:hover {
+  color: #e5e7eb;
+}
+
+.prep-accent {
+  color: var(--prep-accent);
+}
+.prep-btn-accent {
+  background: var(--prep-accent);
+  color: #05070a;
+  font-weight: 800;
+  border-radius: 8px;
+  transition: filter 0.12s ease, opacity 0.12s ease;
+}
+.prep-btn-accent:hover {
+  filter: brightness(1.1);
+}
+.prep-btn-accent:disabled {
+  opacity: 0.35;
+  filter: none;
+}
+.prep-btn-ghost {
+  border: 1px solid var(--prep-line);
+  border-radius: 8px;
+  color: #c7ccd4;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+.prep-btn-ghost:hover {
+  border-color: color-mix(in srgb, var(--prep-accent) 60%, transparent);
+  color: #fff;
+}
+.prep-btn-ghost:disabled {
+  opacity: 0.35;
+}
