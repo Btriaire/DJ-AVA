@@ -2,7 +2,8 @@
 # Reconstruit l'appli et la réinstalle dans /Applications (à relancer après chaque changement de code)
 set -e
 cd "$(dirname "$0")/.."
-npx next build --webpack
+# .next may point outside the project (caches on another volume): the build needs the project modules on its path
+NODE_PATH="$(pwd -P)/node_modules" npx next build --webpack
 npx @electron/packager mac DJSynth --platform=darwin --arch=arm64 --out=/tmp/djsynth-pkg --overwrite
 # quit cleanly (the app stops its own server), then clear any server left behind by an older version
 osascript -e 'tell application "DJSynth" to quit' 2>/dev/null || true

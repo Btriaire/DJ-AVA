@@ -136,14 +136,27 @@ function loadSearchState(): SearchState | null {
   }
 }
 
+// A set sent from the Préparation tab waits in localStorage until the playlists view mounts.
+const PENDING_SET_KEY = "djsynth.pendingSet";
+type PendingSet = { side: "A" | "B" | "relay" | "open"; id: string };
+function readPendingSet(): PendingSet | null {
+  try {
+    const raw = localStorage.getItem(PENDING_SET_KEY);
+    return raw ? (JSON.parse(raw) as PendingSet) : null;
+  } catch {
+    return null;
+  }
+}
+
 function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayout, defaultExpanded }: Props) {
   const [data, setData] = useState<LibraryData>({ tracks: [], playlists: [] });
   // memoized once via useState's lazy initializer, not a ref — reading a ref's
   // .current during render is flagged (and rightly so, it's not meant for that)
   const [initialSearch] = useState(loadSearchState);
+  const [pending] = useState(readPendingSet); // read-only here: the effect below consumes the key
   const [tab, setTab] = useState<
     "files" | "playlists" | "audius" | "youtube" | "soundcloud" | "deezer" | "auto"
-  >(initialSearch?.tab ?? "files");
+  >(pending?.side === "open" ? "playlists" : initialSearch?.tab ?? "files");
   const [q, setQ] = useState(initialSearch?.q ?? "");
   const [durKey, setDurKey] = useState<string>(initialSearch?.durKey ?? "all"); // YouTube duration filter
   const [results, setResults] = useState<AudiusTrack[]>(initialSearch?.results ?? []);
@@ -171,8 +184,8 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  const [activePl, setActivePl] = useState<string | null>(null);
-  const [collapsed, setCollapsed] = useState(!defaultExpanded);
+  const [activePl, setActivePl] = useState<string | null>(pending?.side === "open" ? pending.id : null);
+  const [collapsed, setCollapsed] = useState(!defaultExpanded && !pending); // a set sent from Préparation opens the panel
   const [liveA, setLiveA] = useState(false);
   const [liveB, setLiveB] = useState(false);
   const [relay, setRelay] = useState(false); // A→B→A automix relay
@@ -1020,24 +1033,6 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     const n = liveQueue(side).length;
     flash(`File Deck ${side} : playlist (${n} titre${n > 1 ? "s" : ""})`);
   }
-  // A set launched from the Préparation tab: start it on the chosen deck once.
-  useEffect(() => {
-    let raw: string | null = null;
-    try {
-      raw = localStorage.getItem("djsynth.pendingSet");
-      localStorage.removeItem("djsynth.pendingSet");
-    } catch {
-      return;
-    }
-    if (!raw) return;
-    try {
-      const { side, id } = JSON.parse(raw) as { side: "A" | "B"; id: string };
-      playPlaylistLive(side, id);
-    } catch {
-      // malformed request: ignore it
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot on mount
-  }, []);
   // Run the A→B→A relay through one playlist on both decks (long automix set).
   // `startIdx` (default 0) picks up the set from any track — B cues the very
   // next track after it, and the relay continues in order from there, looping.
@@ -1054,6 +1049,24 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     queueSrcRef.current = next;
     startRelay(startIdx);
   }
+  // A set sent from the Préparation tab (see `pending`): queued on Deck A or B, or run as
+  // the A→B→A relay. "open" needs no playback: it is applied as the initial tab / playlist.
+  useEffect(() => {
+    if (!pending) return;
+    try {
+      if (localStorage.getItem(PENDING_SET_KEY) === null) return; // already taken: dev StrictMode runs effects twice
+      localStorage.removeItem(PENDING_SET_KEY);
+    } catch {
+      return;
+    }
+    // next tick: the decks and the library are settled once the view has mounted
+    // (no cleanup: the second dev run finds the key gone and must not cancel this one)
+    window.setTimeout(() => {
+      if (pending.side === "relay") playPlaylistRelay(pending.id);
+      else if (pending.side === "A" || pending.side === "B") playPlaylistLive(pending.side, pending.id);
+    }, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot on mount
+  }, []);
 
   // watch each live deck; when its single ends (position snaps back to ~0 while
   // stopped) load + play the next filed single, looping the queue forever.

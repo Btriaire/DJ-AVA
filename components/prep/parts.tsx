@@ -260,6 +260,10 @@ const ICONS = {
   bolt: "M13 3L5 14h6l-1 7l8-11h-6z",
   check: "M5 12l5 5l9-10",
   crate: "M3 8l9-4l9 4v9l-9 4l-9-4zM3 8l9 4l9-4M12 12v9",
+  up: "M8 14l4-4l4 4",
+  refresh: "M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6",
+  send: "M4 12l16-8l-6 16l-3-7z",
+  save: "M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6",
 } as const;
 
 export function Icon({ name, size = 14, className = "" }: { name: keyof typeof ICONS; size?: number; className?: string }) {

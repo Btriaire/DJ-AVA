@@ -1,11 +1,11 @@
 "use client";
 
-import { Fragment, useState, useRef, useMemo, useSyncExternalStore, useEffect } from "react";
+import { useState, useRef, useMemo, useSyncExternalStore, useEffect } from "react";
 import { loadLibrary, saveLibrary, uid, idbGetBlob } from "@/lib/library";
 import { enqueuePrep, getPrepState, subscribePrep, forgetPrep, cancelPrep } from "@/lib/stemPrep";
 import { queueAnalysis } from "@/lib/analyze";
 import { qualityFromKbps, kbpsFromSize, QUALITY_LABEL, QUALITY_HINT, QUALITY_RANK } from "@/lib/quality";
-import { buildSmartSet } from "@/lib/setBuilder";
+import { SetStudio, type SendDest, type SetDraft, type SetStudioInitial } from "./prep/SetStudio";
 import { pickNext } from "@/lib/setPicker";
 import { getCachedQuality, probeQualities } from "@/lib/ytQuality";
 import { VIDEO_LABEL, VIDEO_RANK, videoLevelFromHeight, effectiveVideoLevel } from "@/lib/videoQuality";
@@ -16,7 +16,7 @@ import type { QualityLevel } from "@/lib/quality";
 import type { VideoLevel } from "@/lib/videoQuality";
 import type { Cue } from "@/lib/setPicker";
 import type { VideoMeta } from "@/lib/videoMeta";
-import { BpmChip, BpmCurve, Cover, Icon, KeyChip, Mosaic, StatTile, StemPill, Transition, fmtDur, stemInfoFrom } from "./prep/parts";
+import { BpmChip, Cover, Icon, KeyChip, Mosaic, StatTile, StemPill, fmtDur, stemInfoFrom } from "./prep/parts";
 
 type SortOption = "recent" | "title" | "bpm" | "camelot" | "theme" | "group";
 type DurationFilterKey = "all" | "1" | "3" | "5" | "8" | "15" | "15+";
@@ -67,8 +67,6 @@ const LIST_ACCENTS = ["#22d3ee", "#34d399", "#ffcc00", "#a78bfa", "#f97316", "#f
 const SORTS: [SortOption, string][] = [["recent", "Récents"], ["title", "Titre"], ["bpm", "BPM"], ["camelot", "Tonalité"]];
 const DRAG_TYPE = "application/x-djsynth-tracks"; // tray rows dragged onto lists
 const NEW_LIST = "__new"; // drop zone that creates a list
-const SET_CARD_W = 150; // set flow: card width and transition width, shared with the BPM curve above it
-const SET_GAP_W = 74;
 
 const GRID_CLASS = {
   S: "grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8 flex-1 overflow-y-auto",
@@ -76,7 +74,7 @@ const GRID_CLASS = {
   L: "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 flex-1 overflow-y-auto"
 };
 
-export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "B", playlistId: string) => void } = {}) {
+export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDest, playlistId: string) => void } = {}) {
   const [lib, setLib] = useState(() => loadLibrary());
   const [newListName, setNewListName] = useState<string | null>(null); // null = formulaire fermé
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null); // première pression sur Supprimer
@@ -126,8 +124,8 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
   const [durationFilter, setDurationFilter] = useState<DurationFilterKey>("all");
   const [qualityFilter, setQualityFilter] = useState<QualityFilter>("all");
   const [videoFilter, setVideoFilter] = useState<VideoFilter>("all");
-  const [setSourceId, setSetSourceId] = useState("");
-  const [setOrder, setSetOrder] = useState<string[]>([]);
+  // set creator: remounted (new key) whenever another entry point asks for it ("En set", "Créer un set")
+  const [studio, setStudio] = useState<{ nonce: number; initial?: SetStudioInitial }>({ nonce: 0 });
   const [resultQualityMin, setResultQualityMin] = useState<ResultQualityFilter>("all");
   const [probed, setProbed] = useState<Record<string, { abr?: number; quality?: QualityLevel; height?: number; meta?: VideoMeta } | null>>({});
   const [checking, setChecking] = useState(false);
@@ -399,36 +397,29 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
     }));
   };
 
-  // a set = one of the lists re-ordered for mixing (BPM / Camelot), saved as « Set · <liste> »;
-  // returns the set's playlist id so it can be launched right away
-  const createSet = (): string | null => {
-    const source = lib.playlists.find(p => p.id === setSourceId);
-    if (!source) return null;
-    const tracks = source.trackIds
-      .map(id => lib.tracks.find(t => t.id === id))
-      .filter((t): t is LibTrack => !!t);
-    if (tracks.length < 2) return null;
-
-    const order = buildSmartSet(tracks.map(t => ({ id: t.id, bpm: t.bpm ?? 0, camelot: t.camelot ?? "" })));
-    setSetOrder(order);
-
-    const name = source.name.startsWith("Set · ") ? source.name : `Set · ${source.name}`;
-    const existing = lib.playlists.find(p => p.name === name);
-    const id = existing?.id ?? uid();
-    persist(data => {
-      const set: Playlist = { ...existing, id, name, trackIds: order, transitionType: "smooth", transitionSec: 8, preloadSec: 15 };
-      return {
-        ...data,
-        playlists: existing ? data.playlists.map(p => (p.id === id ? set : p)) : [...data.playlists, set],
-      };
-    });
-    return id;
+  const openStudio = (initial: SetStudioInitial) => {
+    setStudio(st => ({ nonce: st.nonce + 1, initial }));
+    setSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  const launchSet = (side: "A" | "B") => {
-    if (!onLaunchSet) return;
-    const id = createSet();
-    if (id) onLaunchSet(side, id);
+  // a set made in the creator is a playlist with its own transition: new, or the one it was last saved as
+  const saveSet = (draft: SetDraft): string => {
+    const existing = draft.id ? lib.playlists.find(p => p.id === draft.id) : undefined;
+    const id = existing?.id ?? uid();
+    persist(data => {
+      const set: Playlist = {
+        ...existing,
+        id,
+        name: draft.name,
+        trackIds: draft.trackIds,
+        transitionType: draft.transitionType,
+        transitionSec: draft.transitionSec,
+        preloadSec: existing?.preloadSec ?? 15,
+      };
+      return { ...data, playlists: existing ? data.playlists.map(p => (p.id === id ? set : p)) : [...data.playlists, set] };
+    });
+    flash(`Set « ${draft.name} » enregistré : ${draft.trackIds.length} titres`);
+    return id;
   };
 
   const getStemStatus = (trackId: string) => {
@@ -611,9 +602,6 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
     });
   }, [searchResults, durationFilter, resultQualityMin, videoFilter, probed]);
 
-  const setSource = lib.playlists.find(p => p.id === setSourceId);
-  const setSourceStats = setSource ? playlistStats(setSource.trackIds) : null;
-
   const stemOf = (id: string) => stemInfoFrom(getStemStatus(id), prepState.jobs.find((j) => j.trackId === id)?.error);
 
   // drag one title (or every checked one, when it is checked) from the tray onto a list
@@ -784,17 +772,22 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
             {selectedLaterIds.size > 0 ? `${selectedLaterIds.size} coché(s)` : "cochés"}
           </button>
           <button
-            onClick={() => {
-              setSetSourceId(playlist.id);
-              setSetOrder([]);
-              setSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-            }}
+            onClick={() => openStudio({ source: "list", listId: playlist.id, autoBuild: true })}
             disabled={tracks.length < 2}
             className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[10px]"
-            title="Ouvrir cette liste dans le constructeur de set"
+            title="Réordonner cette liste en set (forme, durée, transitions)"
+          >
+            <Icon name="bolt" size={10} />
+            En set
+          </button>
+          <button
+            onClick={() => onLaunchSet?.("relay", playlist.id)}
+            disabled={tracks.length < 2 || !onLaunchSet}
+            className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[10px]"
+            title="Lance cette liste telle quelle en automix A→B→A"
           >
             <Icon name="play" size={10} />
-            En set
+            Jouer
           </button>
           <button onClick={() => queueStems(tracks)} disabled={tracks.length === 0 || ready === tracks.length} className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[10px]" title="Préparer les stems de toute la liste">
             <Icon name="stems" size={11} />
@@ -928,7 +921,6 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
   const selectedSec = selectedTracks.reduce((sum, t) => sum + (t.durationSec ?? 0), 0);
   const allShownChecked = filteredTracks.length > 0 && filteredTracks.every((t) => selectedLaterIds.has(t.id));
   const searchFiltersOn = durationFilter !== "all" || resultQualityMin !== "all" || videoFilter !== "all";
-  const setTracks = setOrder.map((id) => lib.tracks.find((t) => t.id === id)).filter((t): t is LibTrack => !!t);
   const dot = <span className="h-1.5 w-1.5 rounded-full bg-[var(--prep-accent)]" />;
 
   return (
@@ -1198,6 +1190,10 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
             <option value="">Ajouter à une liste…</option>
             {lib.playlists.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
+          <button onClick={() => openStudio({ source: "checked", autoBuild: selectedLaterIds.size >= 2 })} disabled={selectedLaterIds.size < 2} className="prep-btn-accent flex items-center gap-1.5 px-3 py-1 text-xs" title="Ordonner les titres cochés en set (forme, durée, transitions), puis l'envoyer sur les platines">
+            <Icon name="bolt" size={12} />
+            Créer un set
+          </button>
           <button
             onClick={() => {
               newListInputRef.current?.focus();
@@ -1212,65 +1208,24 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (side: "A" | "
         </div>
       )}
 
-      {/* set : une liste ordonnée pour mixer */}
+      {/* créateur de set : source, forme d'énergie, durée, transitions, puis envoi sur les platines */}
       <section ref={setSectionRef} className="prep-card flex scroll-mt-4 flex-col gap-3 p-3">
         <div className="flex flex-wrap items-baseline gap-2">
-          <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-200">Set</h2>
-          <span className="text-[10px] text-neutral-500">ordonne une liste pour l&apos;enchaîner : tempos proches, tonalités compatibles</span>
+          <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-200">Créer un set</h2>
+          <span className="text-[10px] text-neutral-500">tempos et tonalités qui s&apos;enchaînent, avec la forme d&apos;énergie de ton choix</span>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <select value={setSourceId} onChange={(e) => { setSetSourceId(e.target.value); setSetOrder([]); }} className="prep-input px-2.5 py-1.5 text-xs" aria-label="Liste à ordonner en set">
-            <option value="">Choisir une liste…</option>
-            {lib.playlists.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.trackIds.length})</option>)}
-          </select>
-          {setSourceStats && (
-            <span className="text-[11px] text-neutral-500">{setSourceStats.count} titre(s) · {formatDuration(setSourceStats.seconds)} · {setSourceStats.bpmRange} BPM</span>
-          )}
-          <button onClick={() => createSet()} disabled={!setSourceStats || setSourceStats.count < 2} className="prep-btn-accent flex items-center gap-1.5 px-3 py-1.5 text-xs" title="Ordonne les titres pour enchaîner (BPM proches, tonalités compatibles)">
-            <Icon name="bolt" size={12} />
-            Ordonner
-          </button>
-          <button onClick={() => launchSet("A")} disabled={!setSourceStats || setSourceStats.count < 2 || !onLaunchSet} className="prep-btn-ghost flex items-center gap-1 px-3 py-1.5 text-xs"><Icon name="play" size={10} />Lancer sur A</button>
-          <button onClick={() => launchSet("B")} disabled={!setSourceStats || setSourceStats.count < 2 || !onLaunchSet} className="prep-btn-ghost flex items-center gap-1 px-3 py-1.5 text-xs"><Icon name="play" size={10} />Lancer sur B</button>
-        </div>
-        {lib.playlists.length === 0 && <p className="text-[11px] text-neutral-500">Crée d&apos;abord une liste : le set ordonne ses titres pour les enchaîner.</p>}
-        {setSourceStats && setSourceStats.count < 2 && <p className="text-[11px] text-neutral-500">Il faut au moins 2 titres dans la liste.</p>}
-        {setTracks.length > 0 && (
-          <div className="flex flex-col gap-2 rounded-xl border border-[var(--prep-line)] bg-black/20 p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-neutral-500">
-              <span>{setTracks.length} titres · {formatDuration(setTracks.reduce((sum, t) => sum + (t.durationSec ?? 0), 0))}</span>
-              <span className="flex items-center gap-3">
-                <span className="flex items-center gap-1"><span className="h-0.5 w-3 rounded bg-[#34d399]" />compatible</span>
-                <span className="flex items-center gap-1"><span className="h-0.5 w-3 rounded bg-[#ffcc00]" />montée d&apos;énergie</span>
-                <span className="flex items-center gap-1"><span className="h-0.5 w-3 rounded bg-[#f87171]" />dissonant</span>
-              </span>
-            </div>
-            <div className="overflow-x-auto pb-1">
-              <div className="flex w-max flex-col gap-1">
-                <BpmCurve tracks={setTracks} cardW={SET_CARD_W} gapW={SET_GAP_W} />
-                <div className="flex items-stretch">
-                  {setTracks.map((t, i) => (
-                    <Fragment key={t.id}>
-                      {i > 0 && <Transition from={setTracks[i - 1]} to={t} width={SET_GAP_W} />}
-                      <div className="flex shrink-0 flex-col gap-1.5 rounded-lg border border-[var(--prep-line)] bg-[var(--prep-surface-2)] p-2" style={{ width: SET_CARD_W }}>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-[10px] text-neutral-600">{i + 1}</span>
-                          <Cover art={t.art} name={t.name} camelot={t.camelot} size={30} rounded={4} />
-                          <span className="ml-auto"><KeyChip camelot={t.camelot} /></span>
-                        </div>
-                        <p className="line-clamp-2 text-[11px] font-semibold leading-snug text-neutral-100" title={t.name}>{t.name}</p>
-                        <div className="mt-auto flex items-center justify-between">
-                          <BpmChip bpm={t.bpm} estimated={t.bpmEstimated} />
-                          <span className="font-mono text-[10px] text-neutral-500">{fmtDur(t.durationSec)}</span>
-                        </div>
-                      </div>
-                    </Fragment>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        <SetStudio
+          key={studio.nonce}
+          bac={laterTracks}
+          allTracks={lib.tracks}
+          checkedIds={selectedLaterIds}
+          playlists={lib.playlists}
+          initial={studio.initial}
+          isStemReady={(id) => stemOf(id).state === "done"}
+          onSave={saveSet}
+          onSend={(dest, id) => onLaunchSet?.(dest, id)}
+          canSend={!!onLaunchSet}
+        />
       </section>
 
       {notice && (

@@ -1249,9 +1249,9 @@ const [showModulePicker, setShowModulePicker] = useState(false);
           />
         ) : view === "atelier" ? null : view === "preparation" ? (
           <PrepView
-            onLaunchSet={(side, id) => {
+            onLaunchSet={(dest, id) => {
               try {
-                localStorage.setItem("djsynth.pendingSet", JSON.stringify({ side, id }));
+                localStorage.setItem("djsynth.pendingSet", JSON.stringify({ side: dest, id }));
               } catch {
                 // storage blocked: the set is still saved, just not auto-started
               }
