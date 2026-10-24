@@ -264,6 +264,14 @@ const ICONS = {
   refresh: "M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6",
   send: "M4 12l16-8l-6 16l-3-7z",
   save: "M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6",
+  pause: "M8 5v14M16 5v14",
+  prev: "M7 5v14M19 5l-9 7l9 7z",
+  next: "M17 5v14M5 5l9 7l-9 7z",
+  trash: "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3",
+  copy: "M8 8h11v12H8zM5 16V4h11",
+  edit: "M4 20l4-1l11-11l-3-3L5 16zM14 6l3 3",
+  upload: "M12 16V4M7 9l5-5l5 5M5 20h14",
+  swap: "M4 8h13l-3-3M20 16H7l3 3",
 } as const;
 
 export function Icon({ name, size = 14, className = "" }: { name: keyof typeof ICONS; size?: number; className?: string }) {

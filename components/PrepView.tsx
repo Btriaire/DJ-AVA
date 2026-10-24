@@ -406,11 +406,15 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   const saveSet = (draft: SetDraft): string => {
     const existing = draft.id ? lib.playlists.find(p => p.id === draft.id) : undefined;
     const id = existing?.id ?? uid();
+    // the default names repeat ("Set · Fluide"): keep every set name unique
+    const taken = new Set(lib.playlists.filter(p => p.id !== id).map(p => p.name));
+    let name = draft.name;
+    for (let n = 2; taken.has(name); n++) name = `${draft.name} (${n})`;
     persist(data => {
       const set: Playlist = {
         ...existing,
         id,
-        name: draft.name,
+        name,
         trackIds: draft.trackIds,
         transitionType: draft.transitionType,
         transitionSec: draft.transitionSec,
@@ -418,7 +422,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
       };
       return { ...data, playlists: existing ? data.playlists.map(p => (p.id === id ? set : p)) : [...data.playlists, set] };
     });
-    flash(`Set « ${draft.name} » enregistré : ${draft.trackIds.length} titres`);
+    flash(`Set « ${name} » enregistré : ${draft.trackIds.length} titres`);
     return id;
   };
 

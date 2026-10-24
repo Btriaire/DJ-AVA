@@ -1,5 +1,5 @@
 "use client";
-import { memo, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { DJEngine } from "@/lib/audio/engine";
 import {
   LibraryData,
@@ -25,6 +25,10 @@ import { queueAnalysis } from "@/lib/analyze";
 import { pickNext, type Cue } from "@/lib/setPicker";
 import { AudiusTrack } from "@/lib/audius";
 import { CdPlayerFace } from "./CdPlayerFace";
+import { buildSet, type SetArc } from "@/lib/setBuilder";
+import { PlaylistStudio } from "./playlist/PlaylistStudio";
+import type { DeckInfo, DeckLive, Side as PlSide, StemInfo, TrackMark } from "./playlist/types";
+import { fmtDur } from "./prep/parts";
 
 interface Props {
   engine: DJEngine;
@@ -641,13 +645,13 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   }
 
   // wipe every track (and its stored blob); playlists are kept but emptied.
-  async function delAll() {
+  async function delAll(skipConfirm = false) {
     const locals = dataRef.current.tracks.filter((t) => t.source === "local");
     if (!dataRef.current.tracks.length) {
       flash("La bibliothèque est déjà vide");
       return;
     }
-    if (!confirm("Effacer TOUS les morceaux de la bibliothèque ? (les playlists seront vidées)"))
+    if (!skipConfirm && !confirm("Effacer TOUS les morceaux de la bibliothèque ? (les playlists seront vidées)"))
       return;
     persist((d) => ({
       tracks: [],
@@ -759,6 +763,68 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     if (!name || !confirm(`Vider le set « ${name} » ?`)) return;
     persist((d) => ({ ...d, playlists: d.playlists.map((pl) => (pl.id === id ? { ...pl, trackIds: [] } : pl)) }));
     flash("Set vidé");
+  }
+
+  // --- set management for the Playlist view: names come from inline fields, confirmations from
+  // two-click buttons, because prompt() and confirm() never answer in the Mac app ---
+  function createSetNamed(name: string) {
+    const p = { id: uid(), name, trackIds: [] as string[], transitionSec: 12 };
+    persist((d) => ({ ...d, playlists: [...d.playlists, p] }));
+    setActivePl(p.id);
+    flash(`Set « ${name} » créé`);
+  }
+  function renameNow(id: string, name: string) {
+    persist((d) => ({ ...d, playlists: d.playlists.map((pl) => (pl.id === id ? { ...pl, name } : pl)) }));
+  }
+  function clearNow(id: string) {
+    persist((d) => ({ ...d, playlists: d.playlists.map((pl) => (pl.id === id ? { ...pl, trackIds: [] } : pl)) }));
+    flash("Set vidé");
+  }
+  // move the track at `from` so that it ends at index `to` (drag-and-drop and the ▲ ▼ buttons)
+  function moveIndex(plId: string, from: number, to: number) {
+    persist((d) => ({
+      ...d,
+      playlists: d.playlists.map((p) => {
+        if (p.id !== plId || from < 0 || from >= p.trackIds.length) return p;
+        const ids = [...p.trackIds];
+        const [moved] = ids.splice(from, 1);
+        ids.splice(Math.max(0, Math.min(ids.length, to)), 0, moved);
+        return { ...p, trackIds: ids };
+      }),
+    }));
+  }
+  // add library tracks (not already in the set) at an index, or at the end
+  function addTracksAt(plId: string, ids: string[], at?: number) {
+    const cur = dataRef.current.playlists.find((p) => p.id === plId);
+    if (!cur) return;
+    const have = new Set(cur.trackIds);
+    const fresh = [...new Set(ids)].filter((id) => !have.has(id) && dataRef.current.tracks.some((t) => t.id === id));
+    if (fresh.length === 0) {
+      flash("Déjà dans le set");
+      return;
+    }
+    persist((d) => ({
+      ...d,
+      playlists: d.playlists.map((p) => {
+        if (p.id !== plId) return p;
+        const list = [...p.trackIds];
+        list.splice(at === undefined ? list.length : Math.max(0, Math.min(list.length, at)), 0, ...fresh);
+        return { ...p, trackIds: list };
+      }),
+    }));
+    flash(`${fresh.length} titre${fresh.length > 1 ? "s" : ""} ajouté${fresh.length > 1 ? "s" : ""} à « ${cur.name} »`);
+  }
+  // reorder a set for an energy shape (same engine as the Préparation set creator)
+  function optimizePlaylist(plId: string, arc: SetArc) {
+    const pl = dataRef.current.playlists.find((p) => p.id === plId);
+    if (!pl) return;
+    const cues = pl.trackIds
+      .map((id) => dataRef.current.tracks.find((t) => t.id === id))
+      .filter((t): t is LibTrack => !!t)
+      .map((t) => ({ id: t.id, bpm: t.bpm ?? 0, camelot: t.camelot ?? "", durationSec: t.durationSec ?? 0 }));
+    const order = buildSet(cues, { arc });
+    persist((d) => ({ ...d, playlists: d.playlists.map((p) => (p.id === plId ? { ...p, trackIds: order } : p)) }));
+    flash(`Set réordonné (${{ flow: "fluide", rise: "montée", fall: "descente", peak: "pic", wave: "vague" }[arc]})`);
   }
 
   // --- Audius / YouTube search ---
@@ -1871,410 +1937,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     </div>
   );
 
-  return (
-    <div className="zoom-zone hw-screwed hw-panel flex flex-1 flex-col gap-3 p-4">
-      {/* header */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-black uppercase tracking-[0.2em] text-neutral-300">
-            ♫ Bibliothèque
-          </span>
-          <span className="text-[10px] text-neutral-600">
-            {data.tracks.length} morceaux · {data.playlists.length} set{data.playlists.length > 1 ? "s" : ""}
-          </span>
-        </div>
-        {/* LIVE A/B + relais + lanceur de set rapide — beaucoup de boutons, ne
-            tient jamais sur une largeur d'iPhone : retour à la ligne au lieu
-            de déborder hors du panneau. */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          {/* Deck A : single précédent · LIVE · single suivant */}
-          <button
-            // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
-            onClick={() => stepSingle("A", -1)}
-            className="hw-btn px-1.5 py-1 text-xs"
-            style={{ ["--led" as string]: COLOR_A, color: COLOR_A }}
-            title="Deck A : single précédent (classés A)"
-          >
-            ⏮
-          </button>
-          <button
-            // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
-            onClick={() => toggleLive("A")}
-            className={`hw-btn px-2 py-1 text-xs ${liveA ? "hw-btn-on" : ""}`}
-            style={{ ["--led" as string]: COLOR_A, color: liveA ? undefined : COLOR_A }}
-            title="LIVE Deck A : enchaîne en continu les singles classés A (boucle la file)"
-          >
-            {liveA ? "● LIVE A" : "○ LIVE A"}
-          </button>
-          <button
-            onClick={() => stepSingle("A", 1)}
-            className="hw-btn px-1.5 py-1 text-xs"
-            style={{ ["--led" as string]: COLOR_A, color: COLOR_A }}
-            title="Deck A : single suivant (classés A)"
-          >
-            ⏭
-          </button>
-          {/* Deck B : single précédent · LIVE · single suivant */}
-          <button
-            onClick={() => stepSingle("B", -1)}
-            className="hw-btn px-1.5 py-1 text-xs"
-            style={{ ["--led" as string]: COLOR_B, color: COLOR_B }}
-            title="Deck B : single précédent (classés B)"
-          >
-            ⏮
-          </button>
-          <button
-            onClick={() => toggleLive("B")}
-            className={`hw-btn px-2 py-1 text-xs ${liveB ? "hw-btn-on" : ""}`}
-            style={{ ["--led" as string]: COLOR_B, color: liveB ? undefined : COLOR_B }}
-            title="LIVE Deck B : enchaîne en continu les singles classés B (boucle la file)"
-          >
-            {liveB ? "● LIVE B" : "○ LIVE B"}
-          </button>
-          <button
-            onClick={() => stepSingle("B", 1)}
-            className="hw-btn px-1.5 py-1 text-xs"
-            style={{ ["--led" as string]: COLOR_B, color: COLOR_B }}
-            title="Deck B : single suivant (classés B)"
-          >
-            ⏭
-          </button>
-          <button
-            onClick={() => toggleRelay()}
-            className={`hw-btn px-2 py-1 text-xs ${relay ? "hw-btn-on" : ""}`}
-            style={{ ["--led" as string]: "#22d3ee" }}
-            title="AUTOMIX A→B→A : joue le Deck A, puis bascule en autofade sur le Deck B en fin de morceau, puis revient sur A… en boucle"
-          >
-            <span style={{ color: COLOR_A }}>A</span>
-            <span className="text-neutral-500">→</span>
-            <span style={{ color: COLOR_B }}>B</span>
-            <span className="text-neutral-500">→</span>
-            <span style={{ color: COLOR_A }}>A</span>
-          </button>
-          {/* quick set launcher — play a saved playlist right from the header,
-              without switching into the "Sets" tab first */}
-          {data.playlists.length > 0 && (
-            <div className="flex items-center gap-1 rounded bg-black/30 px-1.5 py-1">
-              <select
-                value={activePl ?? ""}
-                onChange={(e) => setActivePl(e.target.value || null)}
-                className="rounded bg-neutral-800 px-1.5 py-1 text-xs text-violet-300 outline-none ring-1 ring-neutral-700"
-                title="Choisir un set à lancer"
-              >
-                <option value="" disabled>
-                  Set…
-                </option>
-                {data.playlists.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.trackIds.length})
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={() => activePl && playPlaylistLive("A", activePl)}
-                disabled={!activePl}
-                className="hw-btn px-1.5 py-1 text-xs disabled:opacity-30"
-                style={{ ["--led" as string]: COLOR_A, color: COLOR_A }}
-                title="Lancer ce set sur le Deck A, maintenant"
-              >
-                ▶A
-              </button>
-              <button
-                onClick={() => activePl && playPlaylistLive("B", activePl)}
-                disabled={!activePl}
-                className="hw-btn px-1.5 py-1 text-xs disabled:opacity-30"
-                style={{ ["--led" as string]: COLOR_B, color: COLOR_B }}
-                title="Lancer ce set sur le Deck B, maintenant"
-              >
-                ▶B
-              </button>
-              <button
-                onClick={() => activePl && playPlaylistRelay(activePl)}
-                disabled={!activePl}
-                className="hw-btn px-1.5 py-1 text-xs disabled:opacity-30"
-                style={{ ["--led" as string]: "#a78bfa", color: "#a78bfa" }}
-                title="Relais A→B→A avec ce set, maintenant"
-              >
-                ⇄
-              </button>
-            </div>
-          )}
-          <button
-            onClick={() => setCollapsed((c) => !c)}
-            className="hw-btn px-2 py-0.5 text-xs text-neutral-400"
-          >
-            {collapsed ? "▼ Ouvrir" : "▲ Replier"}
-          </button>
-        </div>
-      </div>
-
-      {!collapsed && (
-        <>
-          {/* ===== affiche : cover of the active single on each deck ===== */}
-          <div className="flex flex-wrap gap-3">
-            {(["A", "B"] as const).map((side) => {
-              const a = active[side];
-              const color = side === "A" ? COLOR_A : COLOR_B;
-              // while LIVE is on, peek at the next queued single for this deck
-              const live = side === "A" ? liveA : liveB;
-              const mark = side === "A" ? markA : markB;
-              const nextT = live && mark.next ? trackById(mark.next) : null;
-              return (
-                <div
-                  key={side}
-                  className="hw-strip flex flex-1 items-center gap-3 p-2.5"
-                  style={{ ["--led" as string]: color, boxShadow: `inset 0 0 0 1px ${color}33, inset 0 1px 0 rgba(255,255,255,0.07), 0 2px 5px rgba(0,0,0,0.5)` }}
-                >
-                  <div
-                    className="hw-cover relative h-14 w-14 shrink-0 overflow-hidden rounded-md bg-neutral-800"
-                    style={{ boxShadow: `0 0 12px ${color}55` }}
-                  >
-                    {a?.art ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={a.art} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                      <div
-                        className="hw-vinyl flex h-full w-full items-center justify-center text-2xl font-black drop-shadow"
-                        style={{ color }}
-                      >
-                        ♫
-                      </div>
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[10px] font-black uppercase tracking-wider" style={{ color }}>
-                      Deck {side}
-                    </div>
-                    <div className="truncate text-sm text-neutral-100">
-                      {a?.name ?? "— aucun single —"}
-                    </div>
-                  </div>
-                  {/* LIVE : aperçu du single suivant (petite pochette + titre) */}
-                  {nextT && (
-                    <div
-                      className="lib-next-blink flex shrink-0 items-center gap-2 rounded-md bg-black/50 px-2 py-1"
-                      style={{ ["--cue" as string]: color, boxShadow: `inset 0 0 0 1px ${color}55` }}
-                      title={`À suivre sur le Deck ${side} : ${nextT.name}`}
-                    >
-                      <div className="flex flex-col items-end leading-tight">
-                        <span className="text-[9px] font-black uppercase" style={{ color }}>
-                          ⏭ À suivre
-                        </span>
-                        <span className="max-w-[7rem] truncate text-[10px] text-neutral-300">
-                          {nextT.name}
-                        </span>
-                      </div>
-                      <div
-                        className="h-9 w-9 shrink-0 overflow-hidden rounded bg-neutral-800"
-                        style={{ boxShadow: `0 0 8px ${color}66` }}
-                      >
-                        {nextT.art ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={nextT.art} alt="" className="h-full w-full object-cover" />
-                        ) : (
-                          <div
-                            className="flex h-full w-full items-center justify-center text-base"
-                            style={{ color }}
-                          >
-                            ♫
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          <div className={splitLayout ? "grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start" : "contents"}>
-          <div className="flex flex-col gap-3">
-
-          {/* tabs */}
-          <div className="hw-well flex flex-wrap items-center gap-1.5 p-1.5">
-            {(
-              [
-                ["files", "⤓ Mes fichiers", "#9ca3af"],
-                // "Sets" is redundant in splitLayout — the right column already
-                // always shows the current set, so hide the duplicate entry point.
-                ...(splitLayout ? [] : [["playlists", "🎚 Sets", "#a78bfa"] as const]),
-                ["audius", "♫ Audius", COLOR_B],
-                ["youtube", "▶ YouTube", "#ef4444"],
-                ["soundcloud", "☁ SoundCloud", "#ff7700"],
-                ["deezer", "◆ Deezer", "#a238ff"],
-                ["auto", "✨ Auto-IA", "#e879f9"],
-              ] as const
-            ).map(([key, label, color]) => (
-              <button
-                key={key}
-                onClick={() => setTab(key)}
-                className={`hw-btn px-3 py-1 text-sm ${tab === key ? "hw-btn-on" : "text-neutral-300"}`}
-                style={{ ["--led" as string]: color }}
-              >
-                {label}
-              </button>
-            ))}
-            {tab === "files" && (
-<div className="ml-auto flex items-center gap-2">
-  <div className="flex items-center gap-2.5 rounded-lg border border-neutral-800 bg-neutral-950/60 px-2.5 py-1.5">
-    <div className={`hw-led ${audit === null ? 'bg-[#525252]' : (audit ? audit.missing.length + audit.orphans.length : 0) > 0 ? 'bg-[#f59e0b]' : 'bg-[#22c55e]'}`} />
-    <div className="flex flex-col gap-1">
-      <div className="text-[11px] font-bold text-neutral-200">
-        {audit === null ? 'Non vérifiée' : (audit ? audit.missing.length + audit.orphans.length : 0) > 0 ? `${audit.missing.length} sans fichier · ${audit.orphans.length} orphelins` : 'Cohérente'}
-      </div>
-      {usage && (
-        <>
-          <div className="relative h-1.5 w-40 rounded-full bg-neutral-800">
-            <div
-              className="absolute h-full rounded-full bg-gradient-to-r from-[#38bdf8] to-[#a78bfa]"
-              style={{ width: `${Math.min(100, (usage.usedMb / usage.quotaMb) * 100)}%` }}
-            />
-          </div>
-          <div className="text-[9px] font-mono text-neutral-500">
-            {usage.usedMb.toFixed(1)} Mo / {Math.round(usage.quotaMb)} Mo
-          </div>
-        </>
-      )}
-    </div>
-    <button
-      className="hw-btn px-2.5 py-1 text-[10px] font-bold"
-      onClick={async () => {
-        setUsage(await storageUsage());
-        runAudit();
-      }}
-      title="Vérifie que chaque piste a son fichier et que chaque fichier a sa piste"
-    >
-      VÉRIFIER
-    </button>
-    {audit && audit.missing.length > 0 && (
-      <button
-        className="hw-btn px-2.5 py-1 text-[10px] font-bold"
-        onClick={fixMissing}
-      >
-        Retirer sans fichier ({audit.missing.length})
-      </button>
-    )}
-    {audit && audit.orphans.length > 0 && (
-      <button
-        className="hw-btn px-2.5 py-1 text-[10px] font-bold"
-        onClick={fixOrphans}
-      >
-        Supprimer orphelins ({audit.orphans.length})
-      </button>
-    )}
-  </div>
-                <button
-                  onClick={delAll}
-                  disabled={data.tracks.length === 0}
-                  className="hw-btn px-3 py-1 text-sm font-bold text-red-400 hover:bg-red-500/20 disabled:opacity-30"
-                  style={{ ["--led" as string]: "#ef4444" }}
-                  title="Effacer tous les morceaux de la bibliothèque"
-                >
-                  🗑 Tout effacer
-                </button>
-                <button
-                  onClick={() => fileRef.current?.click()}
-                  className="hw-btn hw-btn-on px-3 py-1 text-sm"
-                  style={{ ["--led" as string]: COLOR_A }}
-                >
-                  + Importer
-                </button>
-              </div>
-            )}
-          </div>
-
-          {msg && (
-            <div className="rounded bg-amber-500/10 px-3 py-1.5 text-xs text-amber-300">
-              {msg}
-            </div>
-          )}
-
-          {/* ===== FILES ===== */}
-          {tab === "files" && data.tracks.some((t) => t.later) && (
-            <div className="flex items-center gap-2 px-1 py-1 text-xs text-neutral-400">
-              <span>{data.tracks.filter((t) => t.later).length} à jouer plus tard</span>
-              <button
-                onClick={() => enqueuePrep(data.tracks.filter((t) => t.later))}
-                className="hw-btn px-2 py-1 text-xs"
-                title="Séparer en stems tous les morceaux marqués à jouer plus tard"
-              >
-                PRÉPARER LES STEMS
-              </button>
-            </div>
-          )}
-          {tab === "files" && (
-            <div className="flex flex-wrap items-center gap-2 px-1 py-1 text-xs text-neutral-300">
-              <select value={libSort} onChange={(e) => setLibSort(e.target.value as typeof libSort)} className="rounded bg-neutral-800 px-1 py-0.5">
-                <option value="recent">Récents</option>
-                <option value="title">Titre</option>
-                <option value="bpm">BPM</option>
-                <option value="key">Tonalité</option>
-                <option value="theme">Thème</option>
-                <option value="group">Groupe</option>
-              </select>
-              <select value={libTheme} onChange={(e) => setLibTheme(e.target.value)} className="rounded bg-neutral-800 px-1 py-0.5">
-                <option value="">Tous thèmes</option>
-                {[...new Set(data.tracks.map((t) => t.theme).filter((x): x is string => !!x))].map((x) => (
-                  <option key={x} value={x}>{x}</option>
-                ))}
-              </select>
-              <select value={libGroup} onChange={(e) => setLibGroup(e.target.value)} className="rounded bg-neutral-800 px-1 py-0.5">
-                <option value="">Tous groupes</option>
-                {[...new Set(data.tracks.map((t) => t.group).filter((x): x is string => !!x))].map((x) => (
-                  <option key={x} value={x}>{x}</option>
-                ))}
-              </select>
-              <button onClick={() => createListFromView(visibleLibTracks())} className="hw-btn px-2 py-1 text-xs" title="Enregistrer la vue filtrée comme liste">
-                CRÉER UNE LISTE
-              </button>
-            </div>
-          )}
-          {tab === "files" && (
-            <ul className={`flex flex-col gap-1 overflow-y-auto ${splitLayout ? "max-h-[34rem]" : "max-h-80"}`}>
-              {data.tracks.length === 0 && (
-                <p className="py-6 text-center text-sm text-neutral-600">
-                  Aucun morceau. Clique sur « + Importer » pour ajouter des MP3 / WAV, ou
-                  enregistre des trouvailles Audius / YouTube.
-                </p>
-              )}
-              {visibleLibTracks().map((t) => (
-                <li key={t.id} className="flex flex-col gap-1">
-                  <TrackRow t={t} nested />
-                  <div className="flex items-center gap-2 px-2 pb-1 text-[11px] text-neutral-400">
-                    <input
-                      defaultValue={t.theme ?? ""}
-                      onBlur={(e) => setTrackField(t.id, "theme", e.target.value)}
-                      placeholder="thème"
-                      list="lib-themes"
-                      className="w-32 rounded bg-neutral-900 px-1 py-0.5 text-neutral-200"
-                    />
-                    <input
-                      defaultValue={t.group ?? ""}
-                      onBlur={(e) => setTrackField(t.id, "group", e.target.value)}
-                      placeholder="groupe"
-                      list="lib-groups"
-                      className="w-32 rounded bg-neutral-900 px-1 py-0.5 text-neutral-200"
-                    />
-                  </div>
-                </li>
-              ))}
-              <datalist id="lib-themes">
-                {[...new Set(data.tracks.map((t) => t.theme).filter((x): x is string => !!x))].map((x) => (
-                  <option key={x} value={x} />
-                ))}
-              </datalist>
-              <datalist id="lib-groups">
-                {[...new Set(data.tracks.map((t) => t.group).filter((x): x is string => !!x))].map((x) => (
-                  <option key={x} value={x} />
-                ))}
-              </datalist>
-            </ul>
-          )}
-
-          {/* PLAYLISTS panel now lives in `playlistsPanel` (see above `return`) —
-              rendered inline here when not splitLayout, or in the right column when it is. */}
-          {!splitLayout && tab === "playlists" && playlistsPanel}
-
+  const onlineSources = (
+    <>
           {/* ===== ONLINE catalogue search (Audius / YouTube / SoundCloud / Deezer) ===== */}
           {(tab === "audius" || tab === "youtube" || tab === "soundcloud" || tab === "deezer") && (
             <div className="flex flex-col gap-2">
@@ -2642,16 +2306,59 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
             </div>
           )}
 
+    </>
+  );
+  const auditWidget = (
+  <div className="flex items-center gap-2.5 rounded-lg border border-neutral-800 bg-neutral-950/60 px-2.5 py-1.5">
+    <div className={`hw-led ${audit === null ? 'bg-[#525252]' : (audit ? audit.missing.length + audit.orphans.length : 0) > 0 ? 'bg-[#f59e0b]' : 'bg-[#22c55e]'}`} />
+    <div className="flex flex-col gap-1">
+      <div className="text-[11px] font-bold text-neutral-200">
+        {audit === null ? 'Non vérifiée' : (audit ? audit.missing.length + audit.orphans.length : 0) > 0 ? `${audit.missing.length} sans fichier · ${audit.orphans.length} orphelins` : 'Cohérente'}
+      </div>
+      {usage && (
+        <>
+          <div className="relative h-1.5 w-40 rounded-full bg-neutral-800">
+            <div
+              className="absolute h-full rounded-full bg-gradient-to-r from-[#38bdf8] to-[#a78bfa]"
+              style={{ width: `${Math.min(100, (usage.usedMb / usage.quotaMb) * 100)}%` }}
+            />
           </div>
-          {splitLayout && (
-            <div className="flex flex-col gap-3">
-              {playlistsPanel}
-            </div>
-          )}
+          <div className="text-[9px] font-mono text-neutral-500">
+            {usage.usedMb.toFixed(1)} Mo / {Math.round(usage.quotaMb)} Mo
           </div>
         </>
       )}
+    </div>
+    <button
+      className="hw-btn px-2.5 py-1 text-[10px] font-bold"
+      onClick={async () => {
+        setUsage(await storageUsage());
+        runAudit();
+      }}
+      title="Vérifie que chaque piste a son fichier et que chaque fichier a sa piste"
+    >
+      VÉRIFIER
+    </button>
+    {audit && audit.missing.length > 0 && (
+      <button
+        className="hw-btn px-2.5 py-1 text-[10px] font-bold"
+        onClick={fixMissing}
+      >
+        Retirer sans fichier ({audit.missing.length})
+      </button>
+    )}
+    {audit && audit.orphans.length > 0 && (
+      <button
+        className="hw-btn px-2.5 py-1 text-[10px] font-bold"
+        onClick={fixOrphans}
+      >
+        Supprimer orphelins ({audit.orphans.length})
+      </button>
+    )}
+  </div>
 
+  );
+  const fileInput = (
       <input
         ref={fileRef}
         type="file"
@@ -2663,6 +2370,572 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           e.target.value = "";
         }}
       />
+
+  );
+
+  // ===== Playlist view (splitLayout): data and actions for the presentational components =====
+  const readLive = useCallback(
+    (side: PlSide): DeckLive => {
+      const d = side === "A" ? engine.deckA : engine.deckB;
+      return { title: d.name || null, playing: d.playing, pos: d.position(), dur: d.duration || 0 };
+    },
+    [engine]
+  );
+
+  if (splitLayout) {
+    const deckOf = (side: PlSide) => (side === "A" ? engine.deckA : engine.deckB);
+    const liveOf = (side: PlSide) => (side === "A" ? liveA : liveB);
+    const deckInfo = (side: PlSide): DeckInfo => {
+      const d = deckOf(side);
+      const origin = d.origin ? trackById(d.origin.id) : undefined;
+      const srcId = liveOf(side) || relay ? queueSrc[side] : null;
+      const pl = srcId ? data.playlists.find((p) => p.id === srcId) : undefined;
+      const ids = pl?.trackIds ?? [];
+      const ci = origin ? ids.indexOf(origin.id) : -1;
+      const nextT = ci >= 0 && ids.length > 1 ? trackById(ids[(ci + 1) % ids.length]) : undefined;
+      return {
+        side,
+        title: d.name || null,
+        art: active[side]?.art ?? origin?.art,
+        bpm: origin?.bpm ?? (d.effectiveBPM || undefined),
+        camelot: origin?.camelot,
+        live: liveOf(side),
+        trackNo: ci >= 0 ? ci + 1 : undefined,
+        trackCount: pl ? ids.length : undefined,
+        setName: pl?.name,
+        next: nextT ? { title: nextT.name, art: nextT.art } : null,
+      };
+    };
+    // which set drives which deck right now
+    const driving = (id: string) => ({
+      A: queueSrc.A === id && (liveA || relay),
+      B: queueSrc.B === id && (liveB || relay),
+      relay: relay && queueSrc.A === id,
+    });
+    // where a track sits relative to the decks: on air, or cued next
+    const marksFor = (id: string): TrackMark => {
+      let cur: PlSide | null = null;
+      let next: PlSide | null = null;
+      for (const side of ["A", "B"] as const) {
+        const d = deckOf(side);
+        if (d.name && d.origin?.id === id) {
+          if (relay && relayFg !== side) next = side;
+          else cur = side;
+        }
+        if (!relay && liveOf(side)) {
+          const ids = data.playlists.find((p) => p.id === queueSrc[side])?.trackIds ?? [];
+          const ci = d.origin ? ids.indexOf(d.origin.id) : -1;
+          if (ci >= 0 && ids.length > 1 && ids[(ci + 1) % ids.length] === id) next = next ?? side;
+        }
+      }
+      return { cur, next };
+    };
+    const stemOf = (id: string): StemInfo => {
+      const t = trackById(id);
+      const job = prep.jobs.find((j) => j.trackId === id);
+      if ((t?.stemHash && stemSet.has(t.stemHash)) || prep.ready.some((r) => r.trackId === id)) return { state: "done", pct: 100 };
+      if (job?.status === "running") return job.phase === "download" ? { state: "download", pct: null } : { state: "run", pct: job.progress };
+      if (job?.status === "queued") return { state: "queued", pct: null };
+      if (job?.status === "error") return { state: "error", pct: null, error: job.error };
+      return { state: "none", pct: null };
+    };
+    const sendSet = (dest: "A" | "B" | "relay", id: string, startIdx?: number) => {
+      if (dest === "relay") playPlaylistRelay(id, startIdx);
+      else playPlaylistLive(dest, id, startIdx);
+    };
+    const ap = activePlaylist ?? data.playlists[0] ?? null; // the first set is open by default
+    const setIds = new Set(ap?.trackIds ?? []);
+    const allSec = data.tracks.reduce((sum, t) => sum + (t.durationSec ?? 0), 0);
+    const readyCount = data.tracks.filter((t) => stemOf(t.id).state === "done").length;
+    const laterCount = data.tracks.filter((t) => t.later).length;
+    const status = relay ? "Relais" : liveA && liveB ? "LIVE A+B" : liveA ? "LIVE A" : liveB ? "LIVE B" : "À l'arrêt";
+
+    return (
+      <PlaylistStudio
+        tiles={[
+          { label: "Bibliothèque", value: String(data.tracks.length), sub: `${fmtDur(allSec)} · ${laterCount} à jouer plus tard`, color: "var(--prep-accent)" },
+          { label: "Sets", value: String(data.playlists.length), sub: `${new Set(data.playlists.flatMap((p) => p.trackIds)).size} titre(s) rangé(s)`, color: "#a78bfa" },
+          { label: "Stems prêts", value: `${readyCount}/${data.tracks.length}`, sub: "chargement instantané", color: "#34d399", meter: data.tracks.length ? readyCount / data.tracks.length : 0 },
+          { label: "Lecture", value: status, sub: relay ? `en antenne : deck ${relayFg}` : "platines A et B", color: "#ffcc00" },
+        ]}
+        decks={{
+          decks: { A: deckInfo("A"), B: deckInfo("B") },
+          readLive,
+          relay,
+          relayFg,
+          onPrev: (side) => stepSingle(side, -1),
+          onToggle: (side) => {
+            const d = deckOf(side);
+            if (d.playing) d.pause();
+            else d.play();
+            onLoaded?.();
+          },
+          onNext: (side) => stepSingle(side, 1),
+          onToggleLive: (side) => toggleLive(side),
+          onToggleRelay: () => toggleRelay(),
+        }}
+        rail={{
+          tracks: data.tracks,
+          playlists: data.playlists,
+          activeId: ap?.id ?? null,
+          driving,
+          onSelect: (id) => setActivePl(id),
+          onCreate: createSetNamed,
+          onDropTracks: (id, ids) => addTracksAt(id, ids),
+          onPlay: (dest, id) => sendSet(dest, id),
+        }}
+        detail={{
+          playlist: ap,
+          tracks: data.tracks,
+          marks: marksFor,
+          stemOf,
+          driving: ap ? driving(ap.id) : { A: false, B: false, relay: false },
+          onRename: (name) => ap && renameNow(ap.id, name),
+          onDuplicate: () => ap && duplicatePlaylist(ap.id),
+          onClear: () => ap && clearNow(ap.id),
+          onDelete: () => ap && delPlaylist(ap.id),
+          onTransitionSec: (sec) => ap && setTransition(ap.id, sec),
+          onTransitionType: (type) => ap && setTransitionType(ap.id, type),
+          onPreload: (sec) => ap && setPreloadSec(ap.id, sec),
+          onMove: (from, to) => ap && moveIndex(ap.id, from, to),
+          onRemove: (trackId) => ap && toggleInPlaylist(ap.id, trackId),
+          onAddTracks: (ids, at) => ap && addTracksAt(ap.id, ids, at),
+          onPlay: (dest, startIdx) => ap && sendSet(dest, ap.id, startIdx),
+          onOptimize: (arc) => ap && optimizePlaylist(ap.id, arc),
+          onPrepareStems: (ids) => {
+            const list = ids.map((id) => trackById(id)).filter((t): t is LibTrack => !!t);
+            if (list.length === 0) return;
+            enqueuePrep(list);
+            flash(list.length === 1 ? `« ${list[0].name} » ajouté à la préparation des stems` : `${list.length} titres ajoutés à la préparation des stems`);
+          },
+        }}
+        library={{
+          tabs: [
+            { key: "files", label: "Mes fichiers", color: "#34d399" },
+            { key: "audius", label: "Audius", color: "#38bdf8" },
+            { key: "youtube", label: "YouTube", color: "#ef4444" },
+            { key: "soundcloud", label: "SoundCloud", color: "#ff7700" },
+            { key: "deezer", label: "Deezer", color: "#a238ff" },
+            { key: "auto", label: "Auto-IA", color: "#e879f9" },
+          ],
+          tab,
+          onTab: (key) => setTab(key as typeof tab),
+          sources: onlineSources,
+          maintenance: auditWidget,
+          notice: msg,
+          tracks: data.tracks,
+          inSet: setIds,
+          activeSetName: ap?.name ?? null,
+          marks: marksFor,
+          stemOf,
+          busyKey: busy,
+          onAdd: (ids) => ap && addTracksAt(ap.id, ids),
+          onLoad: (id, side) => {
+            const t = trackById(id);
+            if (t) void loadToDeck(t, side);
+          },
+          onFile: (id, side) => {
+            const t = trackById(id);
+            if (t) fileFor(t, side);
+          },
+          onPrepareStems: (id) => {
+            const t = trackById(id);
+            if (t) queueStemsPrep(t);
+          },
+          onPrepareAllLater: () => enqueuePrep(data.tracks.filter((t) => t.later)),
+          onCaptureFx: (id, side) => {
+            const t = trackById(id);
+            if (t) captureFx(t, side);
+          },
+          onApplyFx: (id, side) => {
+            const t = trackById(id);
+            if (t) applyFx(t, side);
+          },
+          onDelete: (id) => {
+            const t = trackById(id);
+            if (t) void del(t);
+          },
+          onDeleteAll: () => void delAll(true),
+          onSetField: setTrackField,
+          onImport: () => fileRef.current?.click(),
+          onListFromIds: (ids) =>
+            createListFromView(ids.map((id) => trackById(id)).filter((t): t is LibTrack => !!t)),
+        }}
+        extras={fileInput}
+      />
+    );
+  }
+
+  return (
+    <div className="zoom-zone hw-screwed hw-panel flex flex-1 flex-col gap-3 p-4">
+      {/* header */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-black uppercase tracking-[0.2em] text-neutral-300">
+            ♫ Bibliothèque
+          </span>
+          <span className="text-[10px] text-neutral-600">
+            {data.tracks.length} morceaux · {data.playlists.length} set{data.playlists.length > 1 ? "s" : ""}
+          </span>
+        </div>
+        {/* LIVE A/B + relais + lanceur de set rapide — beaucoup de boutons, ne
+            tient jamais sur une largeur d'iPhone : retour à la ligne au lieu
+            de déborder hors du panneau. */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {/* Deck A : single précédent · LIVE · single suivant */}
+          <button
+            // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
+            onClick={() => stepSingle("A", -1)}
+            className="hw-btn px-1.5 py-1 text-xs"
+            style={{ ["--led" as string]: COLOR_A, color: COLOR_A }}
+            title="Deck A : single précédent (classés A)"
+          >
+            ⏮
+          </button>
+          <button
+            // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
+            onClick={() => toggleLive("A")}
+            className={`hw-btn px-2 py-1 text-xs ${liveA ? "hw-btn-on" : ""}`}
+            style={{ ["--led" as string]: COLOR_A, color: liveA ? undefined : COLOR_A }}
+            title="LIVE Deck A : enchaîne en continu les singles classés A (boucle la file)"
+          >
+            {liveA ? "● LIVE A" : "○ LIVE A"}
+          </button>
+          <button
+            onClick={() => stepSingle("A", 1)}
+            className="hw-btn px-1.5 py-1 text-xs"
+            style={{ ["--led" as string]: COLOR_A, color: COLOR_A }}
+            title="Deck A : single suivant (classés A)"
+          >
+            ⏭
+          </button>
+          {/* Deck B : single précédent · LIVE · single suivant */}
+          <button
+            onClick={() => stepSingle("B", -1)}
+            className="hw-btn px-1.5 py-1 text-xs"
+            style={{ ["--led" as string]: COLOR_B, color: COLOR_B }}
+            title="Deck B : single précédent (classés B)"
+          >
+            ⏮
+          </button>
+          <button
+            onClick={() => toggleLive("B")}
+            className={`hw-btn px-2 py-1 text-xs ${liveB ? "hw-btn-on" : ""}`}
+            style={{ ["--led" as string]: COLOR_B, color: liveB ? undefined : COLOR_B }}
+            title="LIVE Deck B : enchaîne en continu les singles classés B (boucle la file)"
+          >
+            {liveB ? "● LIVE B" : "○ LIVE B"}
+          </button>
+          <button
+            onClick={() => stepSingle("B", 1)}
+            className="hw-btn px-1.5 py-1 text-xs"
+            style={{ ["--led" as string]: COLOR_B, color: COLOR_B }}
+            title="Deck B : single suivant (classés B)"
+          >
+            ⏭
+          </button>
+          <button
+            onClick={() => toggleRelay()}
+            className={`hw-btn px-2 py-1 text-xs ${relay ? "hw-btn-on" : ""}`}
+            style={{ ["--led" as string]: "#22d3ee" }}
+            title="AUTOMIX A→B→A : joue le Deck A, puis bascule en autofade sur le Deck B en fin de morceau, puis revient sur A… en boucle"
+          >
+            <span style={{ color: COLOR_A }}>A</span>
+            <span className="text-neutral-500">→</span>
+            <span style={{ color: COLOR_B }}>B</span>
+            <span className="text-neutral-500">→</span>
+            <span style={{ color: COLOR_A }}>A</span>
+          </button>
+          {/* quick set launcher — play a saved playlist right from the header,
+              without switching into the "Sets" tab first */}
+          {data.playlists.length > 0 && (
+            <div className="flex items-center gap-1 rounded bg-black/30 px-1.5 py-1">
+              <select
+                value={activePl ?? ""}
+                onChange={(e) => setActivePl(e.target.value || null)}
+                className="rounded bg-neutral-800 px-1.5 py-1 text-xs text-violet-300 outline-none ring-1 ring-neutral-700"
+                title="Choisir un set à lancer"
+              >
+                <option value="" disabled>
+                  Set…
+                </option>
+                {data.playlists.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.trackIds.length})
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => activePl && playPlaylistLive("A", activePl)}
+                disabled={!activePl}
+                className="hw-btn px-1.5 py-1 text-xs disabled:opacity-30"
+                style={{ ["--led" as string]: COLOR_A, color: COLOR_A }}
+                title="Lancer ce set sur le Deck A, maintenant"
+              >
+                ▶A
+              </button>
+              <button
+                onClick={() => activePl && playPlaylistLive("B", activePl)}
+                disabled={!activePl}
+                className="hw-btn px-1.5 py-1 text-xs disabled:opacity-30"
+                style={{ ["--led" as string]: COLOR_B, color: COLOR_B }}
+                title="Lancer ce set sur le Deck B, maintenant"
+              >
+                ▶B
+              </button>
+              <button
+                onClick={() => activePl && playPlaylistRelay(activePl)}
+                disabled={!activePl}
+                className="hw-btn px-1.5 py-1 text-xs disabled:opacity-30"
+                style={{ ["--led" as string]: "#a78bfa", color: "#a78bfa" }}
+                title="Relais A→B→A avec ce set, maintenant"
+              >
+                ⇄
+              </button>
+            </div>
+          )}
+          <button
+            onClick={() => setCollapsed((c) => !c)}
+            className="hw-btn px-2 py-0.5 text-xs text-neutral-400"
+          >
+            {collapsed ? "▼ Ouvrir" : "▲ Replier"}
+          </button>
+        </div>
+      </div>
+
+      {!collapsed && (
+        <>
+          {/* ===== affiche : cover of the active single on each deck ===== */}
+          <div className="flex flex-wrap gap-3">
+            {(["A", "B"] as const).map((side) => {
+              const a = active[side];
+              const color = side === "A" ? COLOR_A : COLOR_B;
+              // while LIVE is on, peek at the next queued single for this deck
+              const live = side === "A" ? liveA : liveB;
+              const mark = side === "A" ? markA : markB;
+              const nextT = live && mark.next ? trackById(mark.next) : null;
+              return (
+                <div
+                  key={side}
+                  className="hw-strip flex flex-1 items-center gap-3 p-2.5"
+                  style={{ ["--led" as string]: color, boxShadow: `inset 0 0 0 1px ${color}33, inset 0 1px 0 rgba(255,255,255,0.07), 0 2px 5px rgba(0,0,0,0.5)` }}
+                >
+                  <div
+                    className="hw-cover relative h-14 w-14 shrink-0 overflow-hidden rounded-md bg-neutral-800"
+                    style={{ boxShadow: `0 0 12px ${color}55` }}
+                  >
+                    {a?.art ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={a.art} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <div
+                        className="hw-vinyl flex h-full w-full items-center justify-center text-2xl font-black drop-shadow"
+                        style={{ color }}
+                      >
+                        ♫
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[10px] font-black uppercase tracking-wider" style={{ color }}>
+                      Deck {side}
+                    </div>
+                    <div className="truncate text-sm text-neutral-100">
+                      {a?.name ?? "— aucun single —"}
+                    </div>
+                  </div>
+                  {/* LIVE : aperçu du single suivant (petite pochette + titre) */}
+                  {nextT && (
+                    <div
+                      className="lib-next-blink flex shrink-0 items-center gap-2 rounded-md bg-black/50 px-2 py-1"
+                      style={{ ["--cue" as string]: color, boxShadow: `inset 0 0 0 1px ${color}55` }}
+                      title={`À suivre sur le Deck ${side} : ${nextT.name}`}
+                    >
+                      <div className="flex flex-col items-end leading-tight">
+                        <span className="text-[9px] font-black uppercase" style={{ color }}>
+                          ⏭ À suivre
+                        </span>
+                        <span className="max-w-[7rem] truncate text-[10px] text-neutral-300">
+                          {nextT.name}
+                        </span>
+                      </div>
+                      <div
+                        className="h-9 w-9 shrink-0 overflow-hidden rounded bg-neutral-800"
+                        style={{ boxShadow: `0 0 8px ${color}66` }}
+                      >
+                        {nextT.art ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={nextT.art} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <div
+                            className="flex h-full w-full items-center justify-center text-base"
+                            style={{ color }}
+                          >
+                            ♫
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className={splitLayout ? "grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start" : "contents"}>
+          <div className="flex flex-col gap-3">
+
+          {/* tabs */}
+          <div className="hw-well flex flex-wrap items-center gap-1.5 p-1.5">
+            {(
+              [
+                ["files", "⤓ Mes fichiers", "#9ca3af"],
+                // "Sets" is redundant in splitLayout — the right column already
+                // always shows the current set, so hide the duplicate entry point.
+                ...(splitLayout ? [] : [["playlists", "🎚 Sets", "#a78bfa"] as const]),
+                ["audius", "♫ Audius", COLOR_B],
+                ["youtube", "▶ YouTube", "#ef4444"],
+                ["soundcloud", "☁ SoundCloud", "#ff7700"],
+                ["deezer", "◆ Deezer", "#a238ff"],
+                ["auto", "✨ Auto-IA", "#e879f9"],
+              ] as const
+            ).map(([key, label, color]) => (
+              <button
+                key={key}
+                onClick={() => setTab(key)}
+                className={`hw-btn px-3 py-1 text-sm ${tab === key ? "hw-btn-on" : "text-neutral-300"}`}
+                style={{ ["--led" as string]: color }}
+              >
+                {label}
+              </button>
+            ))}
+            {tab === "files" && (
+<div className="ml-auto flex items-center gap-2">
+{auditWidget}
+                <button
+                  onClick={() => delAll()}
+                  disabled={data.tracks.length === 0}
+                  className="hw-btn px-3 py-1 text-sm font-bold text-red-400 hover:bg-red-500/20 disabled:opacity-30"
+                  style={{ ["--led" as string]: "#ef4444" }}
+                  title="Effacer tous les morceaux de la bibliothèque"
+                >
+                  🗑 Tout effacer
+                </button>
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  className="hw-btn hw-btn-on px-3 py-1 text-sm"
+                  style={{ ["--led" as string]: COLOR_A }}
+                >
+                  + Importer
+                </button>
+              </div>
+            )}
+          </div>
+
+          {msg && (
+            <div className="rounded bg-amber-500/10 px-3 py-1.5 text-xs text-amber-300">
+              {msg}
+            </div>
+          )}
+
+          {/* ===== FILES ===== */}
+          {tab === "files" && data.tracks.some((t) => t.later) && (
+            <div className="flex items-center gap-2 px-1 py-1 text-xs text-neutral-400">
+              <span>{data.tracks.filter((t) => t.later).length} à jouer plus tard</span>
+              <button
+                onClick={() => enqueuePrep(data.tracks.filter((t) => t.later))}
+                className="hw-btn px-2 py-1 text-xs"
+                title="Séparer en stems tous les morceaux marqués à jouer plus tard"
+              >
+                PRÉPARER LES STEMS
+              </button>
+            </div>
+          )}
+          {tab === "files" && (
+            <div className="flex flex-wrap items-center gap-2 px-1 py-1 text-xs text-neutral-300">
+              <select value={libSort} onChange={(e) => setLibSort(e.target.value as typeof libSort)} className="rounded bg-neutral-800 px-1 py-0.5">
+                <option value="recent">Récents</option>
+                <option value="title">Titre</option>
+                <option value="bpm">BPM</option>
+                <option value="key">Tonalité</option>
+                <option value="theme">Thème</option>
+                <option value="group">Groupe</option>
+              </select>
+              <select value={libTheme} onChange={(e) => setLibTheme(e.target.value)} className="rounded bg-neutral-800 px-1 py-0.5">
+                <option value="">Tous thèmes</option>
+                {[...new Set(data.tracks.map((t) => t.theme).filter((x): x is string => !!x))].map((x) => (
+                  <option key={x} value={x}>{x}</option>
+                ))}
+              </select>
+              <select value={libGroup} onChange={(e) => setLibGroup(e.target.value)} className="rounded bg-neutral-800 px-1 py-0.5">
+                <option value="">Tous groupes</option>
+                {[...new Set(data.tracks.map((t) => t.group).filter((x): x is string => !!x))].map((x) => (
+                  <option key={x} value={x}>{x}</option>
+                ))}
+              </select>
+              <button onClick={() => createListFromView(visibleLibTracks())} className="hw-btn px-2 py-1 text-xs" title="Enregistrer la vue filtrée comme liste">
+                CRÉER UNE LISTE
+              </button>
+            </div>
+          )}
+          {tab === "files" && (
+            <ul className={`flex flex-col gap-1 overflow-y-auto ${splitLayout ? "max-h-[34rem]" : "max-h-80"}`}>
+              {data.tracks.length === 0 && (
+                <p className="py-6 text-center text-sm text-neutral-600">
+                  Aucun morceau. Clique sur « + Importer » pour ajouter des MP3 / WAV, ou
+                  enregistre des trouvailles Audius / YouTube.
+                </p>
+              )}
+              {visibleLibTracks().map((t) => (
+                <li key={t.id} className="flex flex-col gap-1">
+                  <TrackRow t={t} nested />
+                  <div className="flex items-center gap-2 px-2 pb-1 text-[11px] text-neutral-400">
+                    <input
+                      defaultValue={t.theme ?? ""}
+                      onBlur={(e) => setTrackField(t.id, "theme", e.target.value)}
+                      placeholder="thème"
+                      list="lib-themes"
+                      className="w-32 rounded bg-neutral-900 px-1 py-0.5 text-neutral-200"
+                    />
+                    <input
+                      defaultValue={t.group ?? ""}
+                      onBlur={(e) => setTrackField(t.id, "group", e.target.value)}
+                      placeholder="groupe"
+                      list="lib-groups"
+                      className="w-32 rounded bg-neutral-900 px-1 py-0.5 text-neutral-200"
+                    />
+                  </div>
+                </li>
+              ))}
+              <datalist id="lib-themes">
+                {[...new Set(data.tracks.map((t) => t.theme).filter((x): x is string => !!x))].map((x) => (
+                  <option key={x} value={x} />
+                ))}
+              </datalist>
+              <datalist id="lib-groups">
+                {[...new Set(data.tracks.map((t) => t.group).filter((x): x is string => !!x))].map((x) => (
+                  <option key={x} value={x} />
+                ))}
+              </datalist>
+            </ul>
+          )}
+
+          {/* PLAYLISTS panel now lives in `playlistsPanel` (see above `return`) —
+              rendered inline here when not splitLayout, or in the right column when it is. */}
+          {!splitLayout && tab === "playlists" && playlistsPanel}
+
+          {onlineSources}
+          </div>
+          {splitLayout && (
+            <div className="flex flex-col gap-3">
+              {playlistsPanel}
+            </div>
+          )}
+          </div>
+        </>
+      )}
+
+      {fileInput}
     </div>
   );
 }
