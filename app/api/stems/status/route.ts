@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getFailure, getProgress, isCached, isModel, StemModel, StemOpts } from "@/lib/stems";
+import { getFailure, getProgress, isCached, isModel, MODEL_STEMS, StemModel, StemOpts } from "@/lib/stems";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
     const opts: StemOpts = { ultra, lossless: wav, denoiseVocals: denoise };
     return NextResponse.json({
       cached: isCached(hash, model, opts),
+      stems: MODEL_STEMS[model], // names to fetch under /api/stems/<hash>/<stem> once cached
       progress: getProgress(hash, model, opts),
       error: getFailure(hash, model, opts),
     });

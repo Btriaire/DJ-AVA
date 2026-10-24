@@ -1145,7 +1145,9 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                 }
               >
                 {deck.stemStatus === "working"
-                  ? deck.stemProgress != null
+                  ? deck.stemCached
+                    ? "⏳ chargement…"
+                    : deck.stemProgress != null
                     ? `⏳ ${deck.stemProgress}%`
                     : "⏳ …"
                   : deck.stemReady
@@ -1158,7 +1160,11 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
               </button>
               {deck.stemStatus === "working" && (
                 <span className="text-[8px] leading-tight text-neutral-500">
-                  {deck.stemModel === "htdemucs" ? "peut prendre 1–2 min…" : "qualité élevée — plus long…"}
+                  {deck.stemCached
+                    ? "depuis le cache, rien à calculer…"
+                    : deck.stemModel === "htdemucs"
+                      ? "peut prendre 1–2 min…"
+                      : "qualité élevée — plus long…"}
                 </span>
               )}
               {deck.stemCached && !deck.stemReady && deck.stemStatus !== "working" && (

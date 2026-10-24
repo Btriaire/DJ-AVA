@@ -20,7 +20,7 @@ import {
   type LibraryAudit,
   type Playlist,
 } from "@/lib/library";
-import { enqueuePrep, getPrepState, subscribePrep } from "@/lib/stemPrep";
+import { enqueuePrep, getPrepState, getPreparedStems, PREP_OPTS, subscribePrep } from "@/lib/stemPrep";
 import { queueAnalysis } from "@/lib/analyze";
 import { pickNext, type Cue } from "@/lib/setPicker";
 import { AudiusTrack } from "@/lib/audius";
@@ -551,6 +551,23 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       setActive((a) => ({ ...a, [side]: { name: t.name, art: t.art } }));
       onLoaded?.();
       flash(`« ${t.name} » → Deck ${side}`);
+      // stems prepared in advance for this track: the deck loads exactly those from the server cache,
+      // instead of looking for (and then computing) its own default variant
+      const prepared = getPreparedStems(t.id);
+      if (prepared) {
+        void deck
+          .adoptPreparedStems({
+            hash: prepared.hash,
+            model: prepared.model as typeof deck.stemModel,
+            ultra: prepared.ultra ?? PREP_OPTS.ultra,
+            lossless: prepared.lossless ?? PREP_OPTS.lossless,
+          })
+          .then((ok) => {
+            if (!ok) return;
+            setStemSet((s) => new Set(s).add(prepared.hash));
+            onLoaded?.();
+          });
+      }
       // probe the server cache so we can record this track's content hash and
       // badge it if its stems already exist (no-op for non-stored results).
       // Use the result THIS call returned, not deck.stemHash read after the

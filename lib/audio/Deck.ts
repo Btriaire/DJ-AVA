@@ -151,6 +151,11 @@ export class Deck {
   stemUltra = false; // extra-precision Demucs pass (shifts≥2, overlap 0.25) — several× slower
   stemLossless = false; // cache/serve stems as WAV instead of MP3
   stemDenoiseVocals = false; // ffmpeg noise-reduction pass on the vocals stem
+  // Stems prepared in advance (Préparation) sit in the server cache under THEIR variant (e.g. htdemucs_ultra_wav).
+  // adoptPreparedStems() points the deck at that variant for the loaded track; the user's own settings are kept
+  // aside and come back as soon as another track is loaded or the user changes a setting by hand.
+  private preparedHash = "";
+  private stemOptsSaved: { model: Deck["stemModel"]; ultra: boolean; lossless: boolean; denoise: boolean } | null = null;
   stemsActive = false; // play the stems (with per-stem gain) instead of the full mix
   // sticks across track loads (unlike stemsActive, which clearStems() resets) so
   // that once a DJ turns stems on for a deck, every track queued into it next —
@@ -1226,6 +1231,8 @@ export class Deck {
   // wipe any loaded stems (called when a new track is loaded / deck is cleared /
   // the model changes). Does NOT reset stemModel (user's chosen quality sticks).
   clearStems() {
+    this.restoreStemOpts();
+    this.preparedHash = "";
     this.releaseStemSynth(); // a new track: give the synth back to the master before the stem indices go stale
     this.clearAllStemFxTargets(); // un-splice before the stem indices go stale
     this.stopStemProgressPoll();
@@ -1260,6 +1267,7 @@ export class Deck {
   setStemModel(model: Deck["stemModel"]) {
     if (model === this.stemModel) return;
     this.stemModel = model;
+    this.stemOptsSaved = null; // an explicit choice replaces whatever a prepared track had set
     this.clearStems();
     this.loadGen++; // invalidate any in-flight probe/prefetch/separate for the old model
     void this.probeStems();
@@ -1270,6 +1278,7 @@ export class Deck {
   setStemUltra(on: boolean) {
     if (on === this.stemUltra) return;
     this.stemUltra = on;
+    this.stemOptsSaved = null; // an explicit choice replaces whatever a prepared track had set
     this.clearStems();
     this.loadGen++;
     void this.probeStems();
@@ -1277,6 +1286,7 @@ export class Deck {
   setStemLossless(on: boolean) {
     if (on === this.stemLossless) return;
     this.stemLossless = on;
+    this.stemOptsSaved = null; // an explicit choice replaces whatever a prepared track had set
     this.clearStems();
     this.loadGen++;
     void this.probeStems();
@@ -1284,9 +1294,94 @@ export class Deck {
   setStemDenoiseVocals(on: boolean) {
     if (on === this.stemDenoiseVocals) return;
     this.stemDenoiseVocals = on;
+    this.stemOptsSaved = null; // an explicit choice replaces whatever a prepared track had set
     this.clearStems();
     this.loadGen++;
     void this.probeStems();
+  }
+
+  private restoreStemOpts() {
+    const saved = this.stemOptsSaved;
+    if (!saved) return;
+    this.stemOptsSaved = null;
+    this.stemModel = saved.model;
+    this.stemUltra = saved.ultra;
+    this.stemLossless = saved.lossless;
+    this.stemDenoiseVocals = saved.denoise;
+  }
+
+  // The loaded track has stems prepared in advance: use exactly that variant (model + ULTRA + WAV) and hash, so
+  // the STEMS button loads them from the server cache instead of separating the track again. Checks the cache
+  // first: false (and nothing changed) when the files are gone or another track got loaded meanwhile.
+  async adoptPreparedStems(p: { hash: string; model: Deck["stemModel"]; ultra: boolean; lossless: boolean }): Promise<boolean> {
+    if (this._streamOnly || this.stemReady) return false;
+    const gen = this.loadGen;
+    try {
+      const qs = `&model=${p.model}${p.ultra ? "&ultra=1" : ""}${p.lossless ? "&wav=1" : ""}`;
+      const res = await fetch(`/api/stems/status?hash=${p.hash}${qs}`);
+      if (!res.ok) return false;
+      const { cached } = (await res.json()) as { cached: boolean };
+      if (!cached || this.loadGen !== gen || this.stemReady) return false;
+    } catch {
+      return false;
+    }
+    if (!this.stemOptsSaved) {
+      this.stemOptsSaved = { model: this.stemModel, ultra: this.stemUltra, lossless: this.stemLossless, denoise: this.stemDenoiseVocals };
+    }
+    this.stemModel = p.model;
+    this.stemUltra = p.ultra;
+    this.stemLossless = p.lossless;
+    this.stemDenoiseVocals = false;
+    this.stemHash = p.hash;
+    this.preparedHash = p.hash;
+    this.stemCached = true;
+    return true;
+  }
+
+  // load the prepared stems straight from the cache: no audio is sent back, nothing is separated, and the
+  // files are fetched and decoded in parallel. false = they are gone: the shortcut is dropped and the normal path runs.
+  private async loadPreparedStems(): Promise<boolean> {
+    const hash = this.preparedHash;
+    const model = this.stemModel;
+    const gen = this.loadGen;
+    const qs = this.stemOptsQS();
+    this.stemStatus = "working";
+    try {
+      const st = await fetch(`/api/stems/status?hash=${hash}&model=${model}${qs}`).then((r) => r.json() as Promise<{ cached: boolean; stems?: string[] }>);
+      const names = st.stems ?? [];
+      if (!st.cached || names.length === 0) throw new Error("stems absents du cache");
+      const bufs = await Promise.all(
+        names.map(async (n) => {
+          const r = await fetch(`/api/stems/${hash}/${n}?model=${model}${qs}`);
+          if (!r.ok) throw new Error(`stem ${n}: ${r.status}`);
+          return this.ctx.decodeAudioData(await r.arrayBuffer());
+        })
+      );
+      if (this.loadGen !== gen || this.stemModel !== model) return true; // another track / setting meanwhile: nothing to install
+      this.installStems(names, bufs, hash);
+      return true;
+    } catch (e) {
+      console.warn("[stems] stems préparés introuvables, séparation normale :", (e as Error).message);
+      if (this.loadGen === gen) {
+        this.preparedHash = "";
+        this.stemHash = "";
+        this.stemCached = false;
+        this.stemStatus = "none";
+        this.restoreStemOpts(); // the normal path must not start a slow ULTRA run the user never asked for
+      }
+      return false;
+    }
+  }
+
+  private installStems(names: string[], bufs: AudioBuffer[], hash: string) {
+    this.stemNames = names;
+    this.stemVol = names.map(() => 1);
+    this.stemBuffers = bufs;
+    this.stemHash = hash;
+    this.stemCached = true;
+    for (let i = 0; i < names.length; i++) this.stemGains[i].gain.value = this.stemVol[i];
+    this.recomputeStemMakeup();
+    this.stemStatus = "ready";
   }
 
   // query-string suffix carrying the current quality opts, shared by every
@@ -1335,6 +1430,7 @@ export class Deck {
   // that field may have moved on to a newer track by then.
   async probeStems(): Promise<{ hash: string; cached: boolean } | null> {
     if (this._streamOnly) return null;
+    if (this.preparedHash) return { hash: this.preparedHash, cached: true }; // prepared stems: already known to be there
     const gen = this.loadGen;
     this.stemCached = false;
     if (!this.rawBlob || this.stemReady) return null;
@@ -1346,6 +1442,7 @@ export class Deck {
       if (!res.ok) return null;
       const { cached, hash } = (await res.json()) as { cached: boolean; hash: string };
       if (this.loadGen !== gen) return null; // a different track/setting loaded meanwhile — discard
+      if (this.preparedHash) return { hash: this.preparedHash, cached: true }; // adopted while this probe was in flight
       this.stemCached = !!cached;
       if (hash) this.stemHash = hash;
       // a background prefetch just finished — drop the "préparation…" badge
@@ -1627,6 +1724,8 @@ export class Deck {
       this.stemStatus = "ready";
       return;
     }
+    // prepared in advance: straight from the cache (allowed while playing, nothing is computed)
+    if (this.preparedHash && this.stemCached && (await this.loadPreparedStems())) return;
     if (!this.stemCached && !this.playbackGate()) {
       this.stemStatus = "blocked";
       return;
@@ -1658,21 +1757,15 @@ export class Deck {
       const { stems } = (await res.json()) as { hash: string; stems: string[] };
       // user may have swapped tracks or the model/quality while we were separating — bail if so
       if (this.loadGen !== gen || this.stemModel !== model) return;
-      const bufs: AudioBuffer[] = [];
-      for (const n of stems) {
-        const r = await fetch(`/api/stems/${hash}/${n}?model=${model}${stemOpts}`);
-        if (!r.ok) throw new Error(`stem ${n}: ${r.status}`);
-        bufs.push(await this.ctx.decodeAudioData(await r.arrayBuffer()));
-      }
+      const bufs = await Promise.all(
+        stems.map(async (n) => {
+          const r = await fetch(`/api/stems/${hash}/${n}?model=${model}${stemOpts}`);
+          if (!r.ok) throw new Error(`stem ${n}: ${r.status}`);
+          return this.ctx.decodeAudioData(await r.arrayBuffer());
+        })
+      );
       if (this.loadGen !== gen || this.stemModel !== model) return;
-      this.stemNames = stems;
-      this.stemVol = stems.map(() => 1);
-      this.stemBuffers = bufs;
-      this.stemHash = hash;
-      this.stemCached = true;
-      for (let i = 0; i < stems.length; i++) this.stemGains[i].gain.value = this.stemVol[i];
-      this.recomputeStemMakeup();
-      this.stemStatus = "ready";
+      this.installStems(stems, bufs, hash);
     } catch (e) {
       if (this.loadGen === gen) this.stemStatus = "error"; // a newer track's own status shouldn't be clobbered
       console.error("[stems]", e);

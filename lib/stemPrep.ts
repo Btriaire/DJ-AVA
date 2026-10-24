@@ -4,6 +4,10 @@ import { idbGetBlob, idbPutBlob, loadLibrary, saveLibrary, uid, extractCover, ty
 export const PREP_MODEL = "htdemucs";
 export const PREP_SHIFTS = 2;
 export const PREP_STEMS: readonly string[] = ["drums", "bass", "other", "vocals"];
+// quality of the prepared stems; a deck must ask for the SAME variant to find them in the server cache
+// (cache folder <hash>/<model>[_ultra][_wav]), see Deck.adoptPreparedStems()
+export const PREP_OPTS = { ultra: true, lossless: true } as const;
+const PREP_QS = `${PREP_OPTS.ultra ? "&ultra=1" : ""}${PREP_OPTS.lossless ? "&wav=1" : ""}`;
 
 export type PrepStatus = "queued" | "running" | "done" | "error";
 
@@ -27,6 +31,8 @@ export interface PrepReady {
   url?: string;
   hash: string;
   model: string;
+  ultra?: boolean; // quality the stems were made with; missing on old entries = PREP_OPTS
+  lossless?: boolean;
   preparedAt: number;
   durationSec?: number;
 }
@@ -185,7 +191,7 @@ async function fetchTrackBytes(job: PrepJob): Promise<ArrayBuffer> {
 
 async function startSeparation(bytes: ArrayBuffer): Promise<{ hash: string }> {
   const res = await fetch(
-    `/api/stems/separate?prefetch=1&model=${PREP_MODEL}&shifts=${PREP_SHIFTS}&ultra=1&wav=1`,
+    `/api/stems/separate?prefetch=1&model=${PREP_MODEL}&shifts=${PREP_SHIFTS}${PREP_QS}`,
     { method: "POST", body: bytes }
   );
   if (!res.ok) {
@@ -203,7 +209,7 @@ async function monitorSeparation(trackId: string, hash: string): Promise<void> {
     if (!job) return; // Job was canceled
 
     const s = await (await fetch(
-      `/api/stems/status?hash=${hash}&model=${PREP_MODEL}&ultra=1&wav=1`
+      `/api/stems/status?hash=${hash}&model=${PREP_MODEL}${PREP_QS}`
     )).json() as { cached?: boolean; progress?: number | null; error?: string | null };
 
     if (s.cached) {
@@ -220,6 +226,8 @@ async function monitorSeparation(trackId: string, hash: string): Promise<void> {
             url: job.url,
             hash,
             model: PREP_MODEL,
+            ultra: PREP_OPTS.ultra,
+            lossless: PREP_OPTS.lossless,
             preparedAt: Date.now(),
             durationSec: track?.durationSec,
           },
@@ -246,6 +254,11 @@ async function monitorSeparation(trackId: string, hash: string): Promise<void> {
 
 export function getPrepState(): PrepState {
   return state;
+}
+
+// the prepared stems of a library track (what the deck should load instead of separating again)
+export function getPreparedStems(trackId: string): PrepReady | undefined {
+  return state.ready.find(r => r.trackId === trackId);
 }
 
 export function subscribePrep(cb: () => void): () => void {
