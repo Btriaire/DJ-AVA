@@ -22,6 +22,15 @@ export function IconHeadphones({ className = "w-4 h-4" }: { className?: string }
   );
 }
 
+export function IconRadio({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4.9 19.1a10 10 0 0 1 0-14.2M19.1 4.9a10 10 0 0 1 0 14.2M8 16a6 6 0 0 1 0-8M16 8a6 6 0 0 1 0 8" />
+      <circle cx="12" cy="12" r="1.5" />
+    </svg>
+  );
+}
+
 export function IconDisc({ className = "w-4 h-4" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

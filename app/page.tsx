@@ -34,7 +34,7 @@ import { DeckTimers } from "@/components/DeckTimers";
 import { MemoryGauge } from "@/components/MemoryGauge";
 import { MixScope } from "@/components/MixScope";
 import { CpuMeter } from "@/components/CpuMeter";
-import { StudioView } from "@/components/StudioView";
+import RadioView from "@/components/radio/RadioView";
 import { PlatineView } from "@/components/PlatineView";
 import { StemPrepPanel } from "@/components/StemPrepPanel";
 import { DancePanel } from "@/components/DancePanel";
@@ -46,7 +46,7 @@ import { DisplayTemplate, TemplateView, loadTemplates, saveTemplates, newTemplat
 import { Splash } from "@/components/Splash";
 import {
   IconMixer,
-  IconHeadphones,
+  IconRadio,
   IconDisc,
   IconPlaylist,
   IconMusic,
@@ -141,7 +141,7 @@ export default function Home() {
   const [tick, setTick] = useState(0);
   const [crossfade, setCrossfade] = useState(0.5);
   const [master, setMaster] = useState(0.9);
-  const [view, setView] = useState<"console" | "studio" | "platine" | "playlist" | "preparation" | "atelier">("console"); // top-level workspace
+  const [view, setView] = useState<"console" | "radio" | "platine" | "playlist" | "preparation" | "atelier">("console"); // top-level workspace
   const [atelierSeen, setAtelierSeen] = useState(false); // the Atelier stays mounted (hidden) once opened, so its session survives tab switches
   const [engineGen, setEngineGen] = useState(0); // bumps on each new engine: remounts the Atelier on fresh audio objects
   if (view === "atelier" && !atelierSeen) setAtelierSeen(true);
@@ -368,9 +368,18 @@ function persistTemplates(list: DisplayTemplate[]) {
   setTemplates(list);
   saveTemplates(list);
 }
+// a set made in Préparation or Radio-AVA: the Playlist view opens it (and starts it, unless dest is "open")
+function launchSet(dest: "relay" | "A" | "B" | "open", id: string) {
+  try {
+    localStorage.setItem("djsynth.pendingSet", JSON.stringify({ side: dest, id }));
+  } catch {
+    // storage blocked: the set is still saved, just not auto-started
+  }
+  setView("playlist");
+}
 function saveCurrentTemplate() {
   const name = templateName.trim() || `Modèle ${templates.length + 1}`;
-  persistTemplates([newTemplate(name, modules, view as TemplateView, deckClosed), ...templates]);
+  persistTemplates([newTemplate(name, modules, (view === "radio" ? "console" : view) as TemplateView, deckClosed), ...templates]);
   setTemplateName("");
 }
 function applyTemplate(t: DisplayTemplate) {
@@ -383,7 +392,7 @@ function applyTemplate(t: DisplayTemplate) {
   } catch {
     /* storage unavailable: the layout still applies for this session */
   }
-  setView(t.view);
+  setView(t.view === "studio" ? "console" : t.view); // "Écoute" no longer exists: old templates open the console
   setDeckClosed(t.deckClosed);
 }
 function deleteTemplate(id: string) {
@@ -886,13 +895,13 @@ const [showModulePicker, setShowModulePicker] = useState(false);
               <span>Console</span>
             </button>
             <button
-              onClick={() => setView("studio")}
-              className={`inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${view === "studio" ? "hw-btn-on shadow-sm" : "text-neutral-400 hover:text-neutral-200"}`}
+              onClick={() => { setView("radio"); setShowLibrary(false); }}
+              className={`inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${view === "radio" ? "hw-btn-on shadow-sm" : "text-neutral-400 hover:text-neutral-200"}`}
               style={{ ["--led" as string]: "#e879f9" }}
-              title="Écoute, analyse (BPM/beats/fréquences), playlists, base de données et Auto-IA"
+              title="Radio-AVA : donne tes artistes préférés, elle cherche sur YouTube, analyse les BPM et compose des sets qui s'enchaînent"
             >
-              <IconHeadphones className="w-3.5 h-3.5" />
-              <span>Écoute</span>
+              <IconRadio className="w-3.5 h-3.5" />
+              <span>Radio-AVA</span>
             </button>
             <button
               onClick={() => { setView("platine"); setShowLibrary(false); }}
@@ -1240,24 +1249,10 @@ const [showModulePicker, setShowModulePicker] = useState(false);
       ) : (
         engine && (<>{atelierSeen && (<div hidden={view !== "atelier"}><AtelierView key={engineGen} engine={engine} active={view === "atelier"} /></div>)}{view === "platine" ? (
           <PlatineView engine={engine} />
-        ) : view === "studio" ? (
-          <StudioView
-            engine={engine}
-            onLoaded={bumpTick}
-            stemRefresh={stemRefresh}
-            libRefresh={libRefresh}
-          />
+        ) : view === "radio" ? (
+          <RadioView onLaunchSet={launchSet} />
         ) : view === "atelier" ? null : view === "preparation" ? (
-          <PrepView
-            onLaunchSet={(dest, id) => {
-              try {
-                localStorage.setItem("djsynth.pendingSet", JSON.stringify({ side: dest, id }));
-              } catch {
-                // storage blocked: the set is still saved, just not auto-started
-              }
-              setView("playlist");
-            }}
-          />
+          <PrepView onLaunchSet={launchSet} />
         ) : view === "playlist" ? (
           <MediaLibrary
             engine={engine}

@@ -1,12 +1,12 @@
 "use client";
-import { Fragment, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { LibTrack, Playlist, TransitionType } from "@/lib/library";
 import type { SetArc } from "@/lib/setBuilder";
 import { arcTarget } from "@/lib/setBuilder";
-import { keyCompat } from "@/lib/camelot";
 import { setHealth } from "@/lib/setHealth";
 import { ARC_HINT, ARC_LABEL, ARC_ORDER, DURATIONS, computeOrder, durationLabel, estimateCount, needsAnalysis, resolveSource, type WizardSource } from "@/lib/setWizard";
-import { BpmChip, Cover, Icon, KeyChip, fmtDur } from "../prep/parts";
+import { Icon, fmtDur } from "../prep/parts";
+import { OrderPreview } from "./OrderPreview";
 
 export type WizardDest = "relay" | "A" | "B" | "open";
 export interface SetDraft { id?: string; name: string; trackIds: string[]; transitionType: TransitionType; transitionSec: number }
@@ -428,90 +428,7 @@ export function SetWizard({
                   )}
                 </div>
 
-                <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="h-14 w-full">
-                  <title>Courbe des BPM du set</title>
-                  {draftTracks.slice(0, -1).map((t, i) => {
-                    const next = draftTracks[i + 1];
-                    if (!t.bpm || !next.bpm) return null;
-                    const min = Math.min(...draftTracks.filter(t => t.bpm).map(t => t.bpm!));
-                    const max = Math.max(...draftTracks.filter(t => t.bpm).map(t => t.bpm!));
-                    const y1 = 5 + ((max - t.bpm) / Math.max(max - min, 1)) * 30;
-                    const y2 = 5 + ((max - next.bpm) / Math.max(max - min, 1)) * 30;
-                    return (
-                      <line
-                        key={i}
-                        x1={i * (100 / (draftTracks.length - 1))}
-                        y1={y1}
-                        x2={(i + 1) * (100 / (draftTracks.length - 1))}
-                        y2={y2}
-                        stroke={keyCompat(t.camelot, next.camelot).color}
-                        strokeWidth={2.5}
-                        vectorEffect="non-scaling-stroke"
-                        strokeLinecap="round"
-                      />
-                    );
-                  })}
-                </svg>
-
-                <ol className="flex max-h-[46vh] flex-col overflow-y-auto">
-                  {draftTracks.map((t, i) => (
-                    <Fragment key={t.id}>
-                      <li className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-white/[.03]">
-                        <div className="w-5 text-right font-mono text-[10px] text-neutral-600">{i + 1}</div>
-                        <Cover art={t.art} name={t.name} camelot={t.camelot} size={30} rounded={5} />
-                        <div className="min-w-0 flex-1 truncate text-[12px] text-neutral-100" title={t.name}>{t.name}</div>
-                        <BpmChip bpm={t.bpm} estimated={t.bpmEstimated} />
-                        <KeyChip camelot={t.camelot} />
-                        <div className="font-mono text-[10px] text-neutral-500">{fmtDur(t.durationSec)}</div>
-                        <button
-                          type="button"
-                          aria-label="Monter"
-                          onClick={() => move(i, -1)}
-                          className="p-1 text-neutral-500 hover:text-white"
-                        >
-                          <Icon name="up" size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="Descendre"
-                          onClick={() => move(i, 1)}
-                          className="p-1 text-neutral-500 hover:text-white"
-                        >
-                          <Icon name="chevron" size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="Retirer"
-                          onClick={() => removeAt(i)}
-                          className="p-1 text-neutral-500 hover:text-white"
-                        >
-                          <Icon name="x" size={14} />
-                        </button>
-                      </li>
-                      {i < draftTracks.length - 1 && (
-                        <li aria-hidden className="flex items-center gap-2 pl-9 pr-2">
-                          <div
-                            className="h-3 w-2.5 shrink-0"
-                            style={{ backgroundColor: keyCompat(t.camelot, draftTracks[i + 1].camelot).color }}
-                          />
-                          {(() => {
-                            const nb = draftTracks[i + 1]?.bpm;
-                            const d = t.bpm && nb ? ((nb - t.bpm) / t.bpm) * 100 : null;
-                            const col = d === null ? "#9ca3af" : Math.abs(d) <= 3 ? "#34d399" : Math.abs(d) <= 6 ? "#f59e0b" : "#f87171";
-                            return (
-                              <div className="font-mono text-[10px]" style={{ color: col }}>
-                                {d === null ? "? %" : `${d > 0 ? "+" : ""}${d.toFixed(1)} %`}
-                              </div>
-                            );
-                          })()}
-                          <div className="text-[10px]" style={{ color: keyCompat(t.camelot, draftTracks[i + 1].camelot).color }}>
-                            {keyCompat(t.camelot, draftTracks[i + 1].camelot).label}
-                          </div>
-                        </li>
-                      )}
-                    </Fragment>
-                  ))}
-                </ol>
+                <OrderPreview tracks={draftTracks} onMove={(i, dir) => move(i, dir)} onRemove={removeAt} />
 
                 {isStale && (
                   <button
