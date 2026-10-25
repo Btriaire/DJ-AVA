@@ -7,13 +7,16 @@ export interface RunPanelProps {
   state: RadioState;
   onCancel: () => void;
   onRegenerate?: (artistId: string) => void; // a new list of songs for one artist
+  onMore?: (artistId: string) => void; // more songs by the same artist, the current ones are kept
+  canExtend?: (artistId: string) => boolean; // offered as soon as the first songs of the artist are analysed
+  onAnalyze?: () => void; // after a radio built without analysis: analyse tempo and key, then order the sets properly
 }
 
 const hueOf = (name: string) => (Array.from(name).reduce((sum, c) => sum + c.charCodeAt(0), 0) * 7) % 360;
 const fmtEta = (s: number) => (s < 60 ? `${Math.max(s, 1)} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, "0")}`);
 
 // Progress of the search and analysis. Detailed while it runs, one line once it is over (the list is a click away).
-export function RunPanel({ state, onCancel, onRegenerate }: RunPanelProps) {
+export function RunPanel({ state, onCancel, onRegenerate, onMore, canExtend, onAnalyze }: RunPanelProps) {
   const [userOpen, setUserOpen] = useState<boolean | null>(null);
   if (state.phase === "idle") return null;
 
@@ -56,8 +59,13 @@ export function RunPanel({ state, onCancel, onRegenerate }: RunPanelProps) {
       <div className="h-1.5 overflow-hidden rounded-full bg-[var(--prep-line)]" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(share * 100)}>
         <div className={`h-full bg-[var(--prep-accent)] transition-[width] duration-500 ${running && items.length === 0 ? "animate-pulse" : ""}`} style={{ width: items.length === 0 && running ? "35%" : `${share * 100}%` }} />
       </div>
-      <p className="font-mono text-[11px] text-neutral-500">
-        {ready}/{items.length} analysés{failed > 0 ? ` · ${failed} échec(s)` : ""}
+      <p className="flex flex-wrap items-center gap-2 font-mono text-[11px] text-neutral-500">
+        {state.prefs?.analysis === "none" ? `${items.length} titres, sans analyse du tempo ni de la tonalité` : `${ready}/${items.length} analysés${failed > 0 ? ` · ${failed} échec(s)` : ""}`}
+        {state.prefs?.analysis === "none" && !running && onAnalyze && (
+          <button type="button" className="prep-btn-ghost px-2 py-0.5 font-sans text-[10px]" onClick={onAnalyze} title="Mesure le tempo et la tonalité des titres puis recompose les sets avec un meilleur ordre">
+            Analyser et réordonner
+          </button>
+        )}
       </p>
 
       {open && (
@@ -75,15 +83,16 @@ export function RunPanel({ state, onCancel, onRegenerate }: RunPanelProps) {
                       .join("")}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-neutral-100">{a.name}</span>
-                  {onRegenerate && !running && a.status !== "wait" && (
-                    <button
-                      type="button"
-                      className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[10px]"
-                      onClick={() => onRegenerate(a.id)}
-                      title={`Une nouvelle liste de titres pour ${a.name}`}
-                    >
+                  {canExtend?.(a.id) && onMore && (
+                    <button type="button" className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[10px]" onClick={() => onMore(a.id)} title={`Plus de titres de ${a.name} : ceux de la liste sont gardés`}>
+                      <Icon name="plus" size={11} />
+                      Autre
+                    </button>
+                  )}
+                  {canExtend?.(a.id) && onRegenerate && (
+                    <button type="button" className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[10px]" onClick={() => onRegenerate(a.id)} title={`Refaire la liste de ${a.name} avec d'autres titres`}>
                       <Icon name="refresh" size={11} />
-                      Régénérer
+                      Refaire la liste
                     </button>
                   )}
                   <span className="text-[11px]">

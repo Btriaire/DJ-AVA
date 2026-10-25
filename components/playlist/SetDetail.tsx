@@ -5,6 +5,9 @@ import type { SetArc } from "@/lib/setBuilder";
 import { BpmChip, Cover, Icon, KeyChip, StemPill, fmtDur, keyCompat } from "../prep/parts";
 import { setHealth } from "@/lib/setHealth";
 import type { PrepProgress } from "@/lib/setPrep";
+import type { DjOptions } from "@/lib/mixPlan";
+import { DEFAULT_DJ } from "@/lib/mixPlan";
+import { DjForceControl } from "../DjForceControl";
 import { NextStepBar } from "./NextStep";
 import { TRANSITIONS } from "@/lib/transitions";
 import { DECK_COLOR, DRAG_TYPE, type SendDest, type StemInfo, type TrackMark } from "./types";
@@ -35,6 +38,7 @@ export interface SetDetailProps {
   analyzing: ReadonlySet<string>;
   onAnalyze: (ids: string[]) => void;
   onMixPlan: (on: boolean) => void; // (re)computes the DJ plan of the set / switches it off
+  onDj: (next: DjOptions) => void; // changes the DJ options of the set (force, length of the blends...) and plans again
 }
 
 export function SetDetail(props: SetDetailProps) {
@@ -343,6 +347,12 @@ export function SetDetail(props: SetDetailProps) {
             />
           </button>
         </div>
+
+        {props.playlist!.mixPlan && props.playlist!.dj?.auto !== false && (
+          <div className="mt-2">
+            <DjForceControl dj={{ ...DEFAULT_DJ, ...props.playlist!.dj }} onChange={props.onDj} />
+          </div>
+        )}
 
         {showTransition && (
           <div className="mt-2 grid gap-3 sm:grid-cols-2">

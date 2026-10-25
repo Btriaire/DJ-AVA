@@ -29,7 +29,7 @@ assert.equal(planStep(t(65, "8A"), t(130, "8A"), "flow").type, "echo");
 assert.ok(!planStep(t(124, "8A"), t(125, "8A"), "flow", { ...DEFAULT_DJ, sync: false, bassSwap: false }).sync);
 assert.ok(planStep(t(124, "8A"), t(125, "8A"), "rise").sec < planStep(t(124, "8A"), t(125, "8A"), "fall").sec);
 // short songs never get a blend longer than a fifth of them
-assert.ok(planStep(t(124, "8A", { durationSec: 60 }), t(125, "8A"), "flow").sec <= 12);
+assert.ok(planStep(t(124, "8A", { durationSec: 60 }), t(125, "8A"), "flow").sec <= 15);
 // manual steps survive a re-plan
 const tracks = [t(120, "8A"), t(121, "8A"), t(122, "9A")];
 const first = planMix(tracks, "flow");
@@ -78,4 +78,55 @@ assert.equal(new Set(all).size, all.length, "no duplicate clip");
 const cl = planStep(t(60, "8A", { durationSec: 600 }), t(140, "3B", { durationSec: 600 }), "flow", { ...DEFAULT_DJ, style: "classical" });
 assert.equal(cl.type, "smooth");
 assert.ok(!cl.sync && !cl.bassSwap && cl.tail === "none" && cl.sec >= 10 && cl.sec <= 14);
+// force of the DJ: 1-2 never use effects, 5 puts one on every change, 4 on every other one
+import { applyForce, accentDue, amountFor, fitsEffect, isCalm, pickAccent, PROFILE, FORCES, type Feel } from "../lib/djForce";
+const a = t(124, "8A"), b2 = t(125, "9A");
+for (const f of [1, 2] as const) assert.ok(!["echo", "dub", "wash", "flanger", "gate", "noise", "roll", "brake", "reverse", "drop"].includes(planStep(a, b2, "flow", applyForce(DEFAULT_DJ, f), 0).type), `force ${f}: no effect blend`);
+const types = (f: 1 | 2 | 3 | 4 | 5) => [0, 1, 2, 3, 4, 5].map((i) => planStep(a, b2, "flow", applyForce(DEFAULT_DJ, f), i).type);
+assert.ok(types(5).every((x) => !["smooth", "fade", "filter", "cut"].includes(x)), `force 5: an effect every time (${types(5)})`);
+assert.equal(types(4).filter((x) => !["smooth", "fade", "filter", "cut"].includes(x)).length, 3, "force 4: every other one");
+assert.ok(new Set(types(5)).size >= 5, "force 5: varied effects");
+// blends can be long: a 3x blend of a long song goes past the old 20 s limit, but never beyond a quarter of the song
+const long = planStep(t(124, "8A", { durationSec: 600 }), t(125, "8A", { durationSec: 600 }), "flow", { ...DEFAULT_DJ, force: 1, blend: "xlong" }, 0);
+assert.ok(long.sec > 20 && long.sec <= 60, `xlong blend ${long.sec}`);
+assert.ok(planStep(t(124, "8A", { durationSec: 100 }), t(125, "8A", { durationSec: 100 }), "flow", { ...DEFAULT_DJ, blend: "xlong" }, 0).sec <= 25, "short songs: a quarter at most");
+assert.ok(planStep(a, b2, "flow", { ...DEFAULT_DJ, force: 1, blend: "short" }, 0).sec < planStep(a, b2, "flow", { ...DEFAULT_DJ, force: 1, blend: "normal" }, 0).sec);
+// the forces switch the options on in order of power
+assert.equal(applyForce(DEFAULT_DJ, 1).sync, false);
+assert.equal(applyForce(DEFAULT_DJ, 5).keyFix, true);
+assert.equal(applyForce(DEFAULT_DJ, 4).stems, "punchy");
+// interventions during a song: more often as the force grows, never at the start or near the transition, stems moves need stems
+const every = FORCES.map((f) => PROFILE[f].everyBars);
+assert.deepEqual(every, [32, 24, 16, 8, 4]);
+assert.equal(accentDue(5, 10, 0, 5, 200, 10), false, "not in the first seconds");
+assert.equal(accentDue(5, 10, 0, 60, 20, 10), false, "not just before the transition");
+assert.equal(accentDue(5, 10, 0, 60, 120, 10), true);
+assert.equal(accentDue(1, 10, 0, 60, 120, 10), false, "force 1: rare");
+const NEED_STEMS = ["drumsout", "vocalecho", "bassdrop", "drumsolo", "vocalsolo", "voiceout", "otherout"];
+for (let n = 0; n < 20; n++) assert.ok(!NEED_STEMS.includes(pickAccent(5, n, false)!), "no stem move without stems");
+assert.equal(new Set(Array.from({ length: PROFILE[5].pool.length }, (_, n) => pickAccent(5, n, true))).size, PROFILE[5].pool.length);
+assert.equal(pickAccent(1, 3, true), "filterbreath");
+// the DJ reads the song: no fast effect on a calm song, no roll or gate at a slow tempo, classical gets the softest moves
+const moves = (force: 1 | 2 | 3 | 4 | 5, feel: Feel) => new Set(Array.from({ length: 30 }, (_, n) => pickAccent(force, n, feel)));
+const SPEEDY = ["gatechop", "roll", "noiseburst", "flangersweep", "drumsolo", "drumsout", "bassdrop"];
+const slow = moves(5, { bpm: 72, stems: ["drums", "bass", "other", "vocals"] });
+for (const k of SPEEDY) assert.ok(!slow.has(k as never), `${k} refused at 72 BPM`);
+assert.ok(slow.has("reverbwash") && slow.has("vocalecho"), "gentle moves stay");
+assert.ok(moves(5, { bpm: 128, stems: ["drums", "bass", "other", "vocals"] }).has("roll"), "roll fits a 128 BPM song");
+const calmPiece = moves(5, { bpm: 60, classical: true, stems: ["drums", "bass", "other", "vocals"] });
+assert.ok([...calmPiece].every((k) => ["filterbreath", "reverbwash", "echothrow", "vocalecho"].includes(k!)), "classical: soft moves only");
+assert.ok(!moves(5, { bpm: 128, stems: ["other"] }).has("drumsolo" as never), "a stem move needs its stem");
+assert.ok(isCalm({ bpm: 80 }) && !isCalm({ bpm: 120 }) && amountFor(1, { bpm: 80 }) < 1 && accentDue(5, 6, 0, 60, 120, 10, true) === true && accentDue(5, 5, 0, 60, 120, 10, true) === false, "calm songs: gentler and rarer");
+// transitions: effects must suit the tempos of the two songs
+assert.ok(!fitsEffect("roll", 90, 100) && fitsEffect("roll", 120, 128) && !fitsEffect("gate", 98, 100) && fitsEffect("echo", 60, 70));
+for (let i = 0; i < 12; i++) assert.ok(!["roll", "gate", "noise", "drop", "flanger"].includes(planStep(t(80, "8A"), t(82, "8A"), "flow", applyForce(DEFAULT_DJ, 5), i).type), "slow pair: no fast effect");
+// stem techniques: drum-on-drum needs a shared beat and a lively tempo, a slammed bass needs one too; a calm pair stays soft
+import { pickTech, stemFrame } from "../lib/stemMix";
+const both = { outStems: true, inStems: true, mode: "punchy" as const, type: "smooth" as const, sec: 12 };
+const techs = (o: { bpm?: number; sync?: boolean }) => new Set(Array.from({ length: 10 }, (_, index) => pickTech({ ...both, index, ...o })));
+assert.ok(techs({ bpm: 126, sync: true }).has("drumbridge"), "drum bridge on a lively synced pair");
+assert.ok(!techs({ bpm: 126, sync: false }).has("drumbridge") && !techs({ bpm: 126, sync: false }).has("drumswap"), "no drums on drums without a shared beat");
+assert.ok(![...techs({ bpm: 75, sync: true })].some((x) => ["drumbridge", "drumswap", "bassslam"].includes(x!)), "calm pair: soft techniques only");
+const mid = stemFrame("drumbridge", 0.5, "punchy");
+assert.ok((mid.out.drums ?? 0) > 0.9 && (mid.inn.drums ?? 0) > 0.9 && (mid.out.bass ?? 1) < 0.1 && (mid.inn.bass ?? 1) < 0.1, "midway only the two drums play");
 console.log("mixplan ok");

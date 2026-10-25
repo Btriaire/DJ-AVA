@@ -33,7 +33,7 @@ export interface LibTrack {
   addedAt: number;
 }
 
-export type TransitionType = "fade" | "cut" | "smooth" | "filter" | "highpass" | "loop" | "echo" | "wash" | "brake" | "reverse";
+export type TransitionType = "fade" | "cut" | "smooth" | "filter" | "highpass" | "loop" | "echo" | "wash" | "brake" | "reverse" | "dub" | "flanger" | "gate" | "noise" | "roll" | "eq" | "drop";
 
 export interface Playlist {
   id: string;
@@ -99,8 +99,39 @@ export function wasLastSaveSlim(): boolean {
 // written; on quota failure we retry once WITHOUT the heavy cover-art data-URLs
 // (the only large field) so the essential metadata — including a deletion —
 // still persists.
+// ---- the bin: sets that disappear from the library (deleted, or lost to a bug) are kept for recovery --------------
+const LS_TRASH_KEY = "djsynth.playlists.trash.v1";
+export interface TrashEntry {
+  at: number;
+  playlists: Playlist[]; // the whole list of sets as it was before it shrank
+}
+
+export function loadPlaylistTrash(): TrashEntry[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(LS_TRASH_KEY) ?? "[]") as TrashEntry[];
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+// before a save that makes the list of sets shorter, the previous list goes into the bin (the last 6 are kept)
+function keepShrunkPlaylists(next: Playlist[]) {
+  try {
+    const prev = JSON.parse(localStorage.getItem(LS_PL_KEY) ?? "[]") as Playlist[];
+    if (!Array.isArray(prev) || prev.length === 0) return;
+    const gone = prev.filter((p) => !next.some((n) => n.id === p.id));
+    if (gone.length === 0) return;
+    const trash = [{ at: Date.now(), playlists: prev }, ...loadPlaylistTrash()].slice(0, 6);
+    localStorage.setItem(LS_TRASH_KEY, JSON.stringify(trash));
+  } catch {
+    // the bin is a convenience: never block a save for it
+  }
+}
+
 export function saveLibrary(data: LibraryData): boolean {
   if (typeof window === "undefined") return false;
+  keepShrunkPlaylists(data.playlists);
   // 1. playlists first, in their own minuscule key — quota-safe.
   let plOk = true;
   try {

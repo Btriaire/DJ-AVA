@@ -1,6 +1,8 @@
 import type { LibTrack, TransitionType } from "@/lib/library";
 import type { SetArc } from "@/lib/setBuilder";
 import { keyCompat, shiftCamelot } from "@/lib/camelot";
+import { EFFECT_TRANSITIONS } from "@/lib/transitions";
+import { PROFILE, fitsEffect, forceOf } from "@/lib/djForce";
 
 // The "DJ brain": for every pair of songs of a set, decide HOW to go from one to the other, in advance.
 // Pure and deterministic, so the plan can be shown, edited, saved with the set and replayed by the relay.
@@ -30,7 +32,12 @@ export interface DjOptions {
   endOfSet: "loop" | "stop"; // at the end of the set: start again, or finish with an outro
   style?: "club" | "classical"; // classical: long soft blends, never beat-matched
   stems?: "off" | "smooth" | "punchy"; // use the stems of the songs that have them ready (see lib/stemMix.ts)
+  force?: 1 | 2 | 3 | 4 | 5; // how much the DJ does (lib/djForce.ts); 3 when missing
+  blend?: "short" | "normal" | "long" | "xlong"; // length of the blends: x0.6, x1, x1.8, x3
 }
+
+export const BLEND_FACTOR = { short: 0.6, normal: 1, long: 1.8, xlong: 3 } as const;
+export const BLEND_LABEL = { short: "Courts", normal: "Normaux", long: "Longs", xlong: "Très longs" } as const;
 
 export const DEFAULT_DJ: DjOptions = {
   auto: true,
@@ -45,6 +52,8 @@ export const DEFAULT_DJ: DjOptions = {
   tails: true,
   endOfSet: "loop",
   stems: "punchy",
+  force: 3,
+  blend: "normal",
 };
 
 export { TRANSITION_LABEL as STEP_LABEL } from "@/lib/transitions";
@@ -59,11 +68,30 @@ export function tempoGap(a: number, b: number): { pct: number; folded: boolean }
 }
 
 // `index` (position of the transition in the set) varies the effect transitions so a set does not repeat itself
+// seconds of each effect blend, and why it was chosen
+const FX_SEC: Partial<Record<TransitionType, number>> = { echo: 6, dub: 8, wash: 8, flanger: 10, gate: 8, noise: 8, roll: 6, brake: 4, reverse: 4, loop: 12, highpass: 10, eq: 14, drop: 8 };
+const FX_NOTE: Partial<Record<TransitionType, string>> = {
+  echo: "le titre qui sort part en échos",
+  dub: "écho dub sous le nouveau titre",
+  wash: "le titre qui sort se noie dans la réverb",
+  flanger: "balayage de flanger pendant le fondu",
+  gate: "le titre qui sort est haché (gate)",
+  noise: "un souffle montant couvre le fondu",
+  roll: "le titre qui sort roule avant de céder la place",
+  brake: "le titre qui sort freine comme un vinyle",
+  reverse: "les derniers temps repartent à l'envers",
+  loop: "la dernière mesure tourne en boucle",
+  highpass: "le titre qui sort monte dans les aigus",
+  eq: "les bandes s'échangent une à une",
+  drop: "coupure nette, vide, puis le nouveau claque",
+};
+const FIXED_LENGTH = new Set<TransitionType>(["echo", "dub", "brake", "wash", "reverse", "roll", "drop", "noise", "gate", "flanger"]);
+
 export function planStep(a: LibTrack, b: LibTrack, arc: SetArc, opts: DjOptions = DEFAULT_DJ, index = 0): MixStep {
   if (opts.style === "classical") {
     // no beat to match, no bass to swap: a long, soft blend, never longer than a tenth of the shortest piece
     const shortest = Math.min(a.durationSec || 300, b.durationSec || 300);
-    return { type: "smooth", sec: Math.round(Math.max(5, Math.min(14, shortest * 0.1))), sync: false, bassSwap: false, tail: "none", note: "Enchaînement classique : fondu long et doux, sans caler les tempos." };
+    return { type: "smooth", sec: Math.round(Math.max(5, Math.min(14 * BLEND_FACTOR[opts.blend ?? "normal"], shortest * 0.1 * BLEND_FACTOR[opts.blend ?? "normal"]))), sync: false, bassSwap: false, tail: "none", note: "Enchaînement classique : fondu long et doux, sans caler les tempos." };
   }
   const { pct, folded } = tempoGap(a.bpm ?? 0, b.bpm ?? 0);
   const gap = Math.abs(pct);
@@ -71,8 +99,18 @@ export function planStep(a: LibTrack, b: LibTrack, arc: SetArc, opts: DjOptions 
   const friendly = level === "same" || level === "good";
   const known = (a.bpm ?? 0) > 0 && (b.bpm ?? 0) > 0;
   let step: Omit<MixStep, "bassSwap">;
+  const force = forceOf(opts);
+  // a strong DJ puts an effect on every (5) or every other (4) change, whatever the songs are
+  const effectEvery = PROFILE[force].effects;
+  const wantsEffect = effectEvery >= 1 || (effectEvery >= 0.5 && index % 2 === 0) || (effectEvery > 0 && effectEvery < 0.5 && index % 5 === 2);
 
-  if (!known) {
+  if (known && !folded && gap <= 10 && wantsEffect) {
+    // only effects that suit the tempo of the two songs: no roll or gate on a slow pair
+    const fitting = EFFECT_TRANSITIONS.filter((e) => fitsEffect(e, Math.min(a.bpm ?? 0, b.bpm ?? 0), Math.max(a.bpm ?? 0, b.bpm ?? 0)));
+    const fx = fitting[(index * 3 + force) % fitting.length] ?? "wash";
+    const base = FX_SEC[fx] ?? 8;
+    step = { type: fx, sec: base, sync: gap <= 6 && !["brake", "reverse", "wash", "drop"].includes(fx), note: `Force du DJ ${force} : ${FX_NOTE[fx] ?? "un effet accompagne l'enchaînement"}.` };
+  } else if (!known) {
     step = { type: "fade", sec: 8, sync: false, note: "Tempo inconnu : fondu classique, sans calage." };
   } else if (folded) {
     step = opts.tails
@@ -97,7 +135,8 @@ export function planStep(a: LibTrack, b: LibTrack, arc: SetArc, opts: DjOptions 
     step = { type: "filter", sec: 6, sync: false, note: `Écart de tempo de ${gap.toFixed(0)} % : fondu filtré court, sans caler (un calage s'entendrait).` };
   } else if (opts.tails) {
     // too far apart to blend: an effect takes the old song away instead of a bare cut
-    const fx = (["echo", "brake", "wash", "reverse"] as const)[index % 4];
+    const away = (["echo", "brake", "wash", "reverse"] as const).filter((e) => fitsEffect(e, Math.min(a.bpm ?? 0, b.bpm ?? 0), Math.max(a.bpm ?? 0, b.bpm ?? 0)));
+    const fx = away[index % away.length];
     const sec = { echo: 6, brake: 4, wash: 8, reverse: 4 }[fx];
     const how = { echo: "part en échos", brake: "freine comme un vinyle", wash: "se noie dans la réverb", reverse: "repart à l'envers" }[fx];
     step = { type: fx, sec, sync: false, note: `Saut de tempo de ${gap.toFixed(0)} % : pas de fondu possible, le titre qui sort ${how}.` };
@@ -109,8 +148,11 @@ export function planStep(a: LibTrack, b: LibTrack, arc: SetArc, opts: DjOptions 
   const arcFactor = arc === "rise" ? 0.85 : arc === "fall" ? 1.15 : 1;
   // never longer than a fifth of the shortest song
   const shortest = Math.min(a.durationSec || 240, b.durationSec || 240);
-  const fxType = step.type === "echo" || step.type === "brake" || step.type === "wash" || step.type === "reverse";
-  const sec = step.type === "cut" ? 0 : fxType ? step.sec : Math.round(Math.max(3, Math.min(20, step.sec * arcFactor, shortest * 0.2)));
+  const fxType = FIXED_LENGTH.has(step.type);
+  const blend = BLEND_FACTOR[opts.blend ?? "normal"];
+  // effect blends keep their own short length (a brake is a brake); the others follow the length option, the shape
+  // of the set, and never exceed a quarter of the shortest song
+  const sec = step.type === "cut" ? 0 : fxType ? Math.round(step.sec * Math.min(blend, 2)) : Math.round(Math.max(3, Math.min(60, step.sec * arcFactor * blend, shortest * 0.25)));
   return {
     ...step,
     sec,

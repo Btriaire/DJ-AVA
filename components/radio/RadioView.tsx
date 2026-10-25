@@ -14,6 +14,9 @@ import {
   loadStations,
   prepareShow,
   regenerateArtist,
+  moreOfArtist,
+  canExtendArtist,
+  analyzeAndRecompose,
   radioBusy,
   recomposeRadio,
   renameShow,
@@ -35,6 +38,7 @@ import { Icon, StatTile, stemInfoFrom } from "../prep/parts";
 import { Journey, type JourneyStep } from "../prep/Journey";
 import { AdvancedPanel } from "./AdvancedPanel";
 import { ClassicalPanel } from "./ClassicalPanel";
+import { CatalogPanel } from "./CatalogPanel";
 import { PrepDock, type PrepRow } from "./PrepDock";
 import { findComposer } from "@/lib/classical";
 import { pickTech } from "@/lib/stemMix";
@@ -457,6 +461,12 @@ export default function RadioView({
         : `${name} : aucun nouveau titre trouvé pour l'instant`,
     );
   };
+  const more = async (artistId: string) => {
+    const name = prefs.artists.find((a) => a.id === artistId)?.name ?? "cet artiste";
+    flash(`${name} : recherche de titres supplémentaires…`);
+    const n = await moreOfArtist(artistId);
+    flash(n > 0 ? `${name} : ${n} titre(s) ajouté(s)` : `${name} : aucun autre titre trouvé pour l'instant`);
+  };
   const flags = [
     prefs.artists.length > 0,
     radio.phase !== "idle",
@@ -605,13 +615,32 @@ export default function RadioView({
                 Type de radio
               </span>
               <div className="prep-seg" role="group" aria-label="Type de radio">
+                <button type="button" aria-pressed={prefs.mode === "artists"} disabled={busy} onClick={() => change({ mode: "artists" })}>
+                  Artistes
+                </button>
                 <button
                   type="button"
-                  aria-pressed={!classical}
+                  aria-pressed={prefs.mode === "style"}
                   disabled={busy}
-                  onClick={() => change({ mode: "artists" })}
+                  onClick={() => {
+                    change({ mode: "style" });
+                    flash("Radio par style : touche un style pour ajouter ses artistes");
+                  }}
+                  title="Un style de musique apporte ses artistes typiques"
                 >
-                  Artistes
+                  Style
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={prefs.mode === "collection"}
+                  disabled={busy}
+                  onClick={() => {
+                    change({ mode: "collection" });
+                    flash("Radio par collection : choisis des listes de titres");
+                  }}
+                  title="Des listes de titres précis : hits d'une époque, soirée disco..."
+                >
+                  Collection
                 </button>
                 <button
                   type="button"
@@ -632,6 +661,17 @@ export default function RadioView({
                   title="Compositeurs et leurs pièces les plus connues, enchaînées en douceur"
                 >
                   Musique classique
+                </button>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500">Création de la liste</span>
+              <div className="prep-seg" role="group" aria-label="Création de la liste">
+                <button type="button" aria-pressed={prefs.analysis === "full"} disabled={busy} onClick={() => change({ analysis: "full" })} title="Mesure le tempo et la tonalité : les sets s'enchaînent au mieux">
+                  Avec analyse
+                </button>
+                <button type="button" aria-pressed={prefs.analysis === "none"} disabled={busy} onClick={() => change({ analysis: "none" })} title="Instantané : les titres sont alternés entre artistes, sans mesurer tempo ni tonalité (tu peux analyser après)">
+                  Sans analyse
                 </button>
               </div>
             </div>
@@ -704,10 +744,15 @@ export default function RadioView({
           <div className="grid items-start gap-4 lg:grid-cols-2">
             <div className="flex flex-col gap-4">
               <ArtistsPanel
-                variant={classical ? "composer" : "artist"}
+                variant={classical ? "composer" : prefs.mode === "collection" ? "collection" : "artist"}
                 onRegenerate={
                   radio.phase === "done" || radio.phase === "cancelled"
                     ? (id) => void regen(id)
+                    : undefined
+                }
+                onMore={
+                  radio.phase === "done" || radio.phase === "cancelled"
+                    ? (id) => void more(id)
                     : undefined
                 }
                 artists={prefs.artists}
@@ -726,6 +771,21 @@ export default function RadioView({
                 }
                 onClear={() => change({ artists: [] })}
               />
+              {(prefs.mode === "style" || prefs.mode === "collection") && (
+                <CatalogPanel
+                  kind={prefs.mode}
+                  chosen={prefs.artists.map((a) => a.name)}
+                  locked={busy}
+                  onToggleStyle={(names, on) =>
+                    on ? addMany(names) : change({ artists: prefs.artists.filter((a) => !names.some((n) => n.toLowerCase() === a.name.toLowerCase())) })
+                  }
+                  onToggleCollection={(label) => {
+                    const have = prefs.artists.find((a) => a.name.toLowerCase() === label.toLowerCase());
+                    if (have) change({ artists: prefs.artists.filter((a) => a.id !== have.id) });
+                    else addMany([label]);
+                  }}
+                />
+              )}
               {classical && (
                 <ClassicalPanel
                   chosen={prefs.artists.map((a) => a.name)}
@@ -879,6 +939,9 @@ export default function RadioView({
           state={radio}
           onCancel={cancelRadio}
           onRegenerate={(id) => void regen(id)}
+          onMore={(id) => void more(id)}
+          canExtend={canExtendArtist}
+          onAnalyze={() => void analyzeAndRecompose()}
         />
       </div>
 
@@ -973,6 +1036,7 @@ export default function RadioView({
                       : "Ces stems sont déjà prêts ou en file",
                   );
                 }}
+                onStepSec={(idx, sec) => setStep(show.key, idx, { sec })}
                 stemOf={stemOf}
                 stemTech={(i) => {
                   const a = byId.get(show.trackIds[i]);

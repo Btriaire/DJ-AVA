@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { Icon } from "../prep/parts";
+import { DjForceControl } from "../DjForceControl";
 import type { RadioPrefs } from "@/lib/radio";
 import { speak, canSpeak, lineUrl, playLines } from "@/lib/djVoice";
 import { INTRO_LINE } from "@/lib/djLines";
@@ -248,7 +249,8 @@ export function AdvancedPanel({ prefs, busy, onChange }: AdvancedPanelProps) {
 
           <fieldset className="flex flex-col gap-3 rounded-lg border border-[var(--prep-line)] p-3">
             <legend className="px-1 text-[10px] uppercase tracking-[0.15em] text-neutral-500">DJ intelligent</legend>
-            <div className="text-[12px] text-neutral-300">Pour chaque enchaînement, la radio choisit le style, la durée et le calage, et le prépare à l&apos;avance. Tu peux le modifier titre par titre dans le set.</div>
+            <div className="text-[12px] text-neutral-300">Pour chaque enchaînement, la radio choisit le style, la durée et le calage, et le prépare à l&apos;avance. Pendant les morceaux, le DJ intervient aussi, plus ou moins selon sa force. Tu peux tout modifier titre par titre dans le set.</div>
+            <DjForceControl dj={prefs.dj} disabled={busy || !prefs.dj.auto} onChange={(dj) => onChange({ dj })} />
             <Switch
               on={prefs.dj.auto}
               label="Plan de mix intelligent"

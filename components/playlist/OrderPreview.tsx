@@ -12,12 +12,13 @@ export interface OrderPreviewProps {
   maxHeight?: string;
   plan?: MixStep[]; // the DJ plan: one step per transition, shown (and editable) on the connector rows
   onStepType?: (index: number, type: TransitionType) => void;
+  onStepSec?: (index: number, sec: number) => void; // length of one transition, up to a minute
   stemOf?: (trackId: string) => StemInfo; // stem state of each song (pill on every row)
   onPrepareStem?: (trackId: string) => void;
   stemTech?: (index: number) => StemTech | null; // the stem technique this transition will use, when the stems are ready
 }
 
-export function OrderPreview({ tracks, onMove, onRemove, maxHeight = "46vh", plan, onStepType, stemOf, onPrepareStem, stemTech }: OrderPreviewProps) {
+export function OrderPreview({ tracks, onMove, onRemove, maxHeight = "46vh", plan, onStepType, onStepSec, stemOf, onPrepareStem, stemTech }: OrderPreviewProps) {
   const hasControls = onMove !== undefined && onRemove !== undefined;
 
   if (tracks.length === 0) {
@@ -149,7 +150,15 @@ export function OrderPreview({ tracks, onMove, onRemove, maxHeight = "46vh", pla
                         </option>
                       ))}
                     </select>
-                    <span className="font-mono">{plan[i].type === "cut" ? "net" : `${plan[i].sec} s`}</span>
+                    {plan[i].type === "cut" || !onStepSec ? (
+                      <span className="font-mono">{plan[i].type === "cut" ? "net" : `${plan[i].sec} s`}</span>
+                    ) : (
+                      <select className="prep-input px-1 py-0.5 font-mono text-[10px]" aria-label={`Durée de la transition ${i + 1}`} value={plan[i].sec} onChange={(e) => onStepSec(i, Number(e.target.value))}>
+                        {[...new Set([2, 3, 4, 6, 8, 10, 12, 16, 20, 24, 30, 40, 50, 60, plan[i].sec])].sort((x, y) => x - y).map((v) => (
+                          <option key={v} value={v}>{`${v} s`}</option>
+                        ))}
+                      </select>
+                    )}
                     {plan[i].sync && <span className="rounded bg-white/5 px-1">calé</span>}
                     {stemTech?.(i) && (
                       <span className="rounded px-1 font-bold" style={{ background: "color-mix(in srgb, var(--prep-accent) 22%, transparent)", color: "var(--prep-accent)" }} title={STEM_TECH_NOTE[stemTech(i)!]}>

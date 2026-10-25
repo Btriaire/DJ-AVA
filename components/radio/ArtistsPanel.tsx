@@ -11,11 +11,12 @@ export interface ArtistsPanelProps {
   onRemove: (id: string) => void;
   onLove: (id: string, love: 1 | 2 | 3) => void;
   onClear: () => void;
-  variant?: "artist" | "composer"; // a classical radio talks about composers
+  variant?: "artist" | "composer" | "collection"; // a classical radio talks about composers
   onRegenerate?: (id: string) => void; // a new list of songs for one artist
+  onMore?: (id: string) => void; // more songs by the same artist
 }
 
-export function ArtistsPanel({ artists, suggestions, locked, onAdd, onRemove, onLove, onClear, variant = "artist", onRegenerate }: ArtistsPanelProps) {
+export function ArtistsPanel({ artists, suggestions, locked, onAdd, onRemove, onLove, onClear, variant = "artist", onRegenerate, onMore }: ArtistsPanelProps) {
   const composer = variant === "composer";
   const [draft, setDraft] = useState("");
 
@@ -33,7 +34,7 @@ export function ArtistsPanel({ artists, suggestions, locked, onAdd, onRemove, on
   return (
     <section className="prep-card flex flex-col gap-3 p-4">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-200">{composer ? "Tes compositeurs" : "Tes artistes"}</h2>
+        <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-200">{composer ? "Tes compositeurs" : variant === "collection" ? "Tes collections" : "Tes artistes"}</h2>
         <div className="flex items-center gap-2">
           {artists.length > 0 && !locked && (
             <button
@@ -50,7 +51,7 @@ export function ArtistsPanel({ artists, suggestions, locked, onAdd, onRemove, on
         </div>
       </div>
       <p className="text-[12px] text-neutral-400">
-        {composer ? "Les compositeurs de ta radio. Plus la priorité est haute, plus la radio en prend." : "Chanteurs ou groupes que tu aimes. Plus la priorité est haute, plus la radio en prend."}
+        {variant === "collection" ? "Les collections de ta radio (tu peux aussi taper un artiste). Plus la priorité est haute, plus la radio en prend." : composer ? "Les compositeurs de ta radio. Plus la priorité est haute, plus la radio en prend." : "Chanteurs ou groupes que tu aimes. Plus la priorité est haute, plus la radio en prend."}
       </p>
 
       <div className="flex gap-2">
@@ -109,6 +110,19 @@ export function ArtistsPanel({ artists, suggestions, locked, onAdd, onRemove, on
                 <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-neutral-100" title={a.name}>
                   {a.name}
                 </span>
+                {onMore && (
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-neutral-300 hover:bg-[var(--prep-line)] disabled:opacity-40"
+                    onClick={() => onMore(a.id)}
+                    disabled={locked}
+                    aria-label={`Autre : plus de titres de ${a.name}`}
+                    title={`Autre : plus de titres de ${a.name}, ceux de la liste sont gardés`}
+                  >
+                    <Icon name="plus" size={13} />
+                    <span className="hidden sm:inline">Autre</span>
+                  </button>
+                )}
                 {onRegenerate && (
                   <button
                     type="button"

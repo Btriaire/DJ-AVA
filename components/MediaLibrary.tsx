@@ -7,6 +7,7 @@ import {
   TrackSource,
   TransitionType,
   loadLibrary,
+  loadPlaylistTrash,
   saveLibrary,
   uid,
   idbPutBlob,
@@ -35,13 +36,15 @@ import { buildJourney } from "./prep/Journey";
 import { analyzeLibraryTrack } from "@/lib/analyzeTrack";
 import { alignDelaySec } from "@/lib/audio/beatAlign";
 import { TRANSITIONS, TRANSITION_FX, crossfadeAt } from "@/lib/transitions";
-import { announcement, DEFAULT_DJ, planMix, type MixStep } from "@/lib/mixPlan";
+import { announcement, DEFAULT_DJ, planMix, type DjOptions, type MixStep } from "@/lib/mixPlan";
 import { playLines, speak, stopSpeaking } from "@/lib/djVoice";
 import { INTRO_LINE, OUTRO_LINE, djLineFor } from "@/lib/djLines";
 import { prepareSet, useSetPrep } from "@/lib/setPrep";
 import { useStemsShared } from "@/lib/stemsShared";
 import { getRelayHost, publishRelayHost, registerRelayHost, relayHostStart, relayHostStop, subscribeRelayHost } from "@/lib/relayHost";
 import { cachedLoudness, loudnessFor, matchTrimDb } from "@/lib/audio/levelMatch";
+import { getDjLive, showDjAction, useDjLive } from "@/lib/djLive";
+import { ACCENT_LABEL, PROFILE as FORCE_PROFILE, accentDue, amountFor, forceOf, isCalm, pickAccent, type AccentKind, type Feel } from "@/lib/djForce";
 import { pickTech, stemFrame, STEM_TECH_LABEL, type StemMode, type StemName, type StemTech } from "@/lib/stemMix";
 import { getMemLevel } from "@/lib/memoryGovernor";
 
@@ -255,6 +258,9 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   // instead of each side keeping its own counter and both starting on track0.
   const relayPos = useRef(-1);
   const relayFading = useRef(false);
+  const accentRef = useRef({ A: { id: "", lastBar: Number.NEGATIVE_INFINITY, count: 0 }, B: { id: "", lastBar: Number.NEGATIVE_INFINITY, count: 0 } }); // the DJ's interventions in the song that plays on each deck
+  const djLive = useDjLive(); // the always-at-hand DJ switch (top bar)
+  const djAction = djLive.action; // what the DJ just did, shown in the Lecture tile
   const baseTrim = useRef<{ A?: number; B?: number }>({}); // trim of a deck before the volume matching touched it
   const relayArmed = useRef(true); // fade exactly once per song
   // mirror of liveIdx as state so the track list re-renders when the queue moves
@@ -873,12 +879,12 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     return id;
   }
   // the DJ plan of a set: computed from its songs (kept in the set), or switched off
-  function setMixPlan(plId: string, on: boolean) {
+  function setMixPlan(plId: string, on: boolean, patch?: DjOptions) {
     const cur = dataRef.current.playlists.find((p) => p.id === plId);
     if (!cur) return;
     const byId = new Map(dataRef.current.tracks.map((t) => [t.id, t]));
     const tracks = cur.trackIds.map((id) => byId.get(id)).filter((t): t is LibTrack => !!t);
-    const dj = { ...DEFAULT_DJ, ...cur.dj, auto: on };
+    const dj = { ...DEFAULT_DJ, ...cur.dj, ...patch, auto: on };
     persist((d) => ({ ...d, playlists: d.playlists.map((p) => (p.id === plId ? { ...p, dj, mixPlan: on ? planMix(tracks, "flow", dj, p.mixPlan) : p.mixPlan } : p)) }));
     flash(on ? "Plan DJ calculé : le relais suit ces enchaînements" : "Plan DJ désactivé : un seul style pour tout le set");
   }
@@ -1408,6 +1414,16 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
         outDeck.setTrim(0); // the trim is before the effects: the tail still sounds
       }
       if (type === "highpass") outDeck.setFilter(Math.min(0.95, k * 1.1)); // positive = high-pass sweep
+      if (type === "eq") {
+        // three-band blend: the old song loses lows, then mids, then highs; the new one gains them in the reverse order
+        const r = (a: number, b: number) => Math.max(0, Math.min(1, (k - a) / (b - a)));
+        outDeck.setEQ("low", -26 * r(0, 0.4));
+        outDeck.setEQ("mid", -26 * r(0.3, 0.7));
+        outDeck.setEQ("high", -26 * r(0.6, 1));
+        inDeck.setEQ("high", -26 * (1 - r(0, 0.4)));
+        inDeck.setEQ("mid", -26 * (1 - r(0.2, 0.6)));
+        inDeck.setEQ("low", -26 * (1 - r(0.4, 0.8)));
+      }
     };
     if (type === "loop") outDeck.setBeatLoop(4);
     if (type === "cut") {
@@ -1423,6 +1439,9 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       if (dryCut) outDeck.setTrim(dryTrim);
       if (type === "loop") outDeck.clearLoop();
       if (type === "filter" || type === "highpass") outDeck.setFilter(0);
+      if (type === "eq") {
+        for (const d of [outDeck, inDeck]) for (const b of ["low", "mid", "high"] as const) d.setEQ(b, 0);
+      }
     };
     // Driven by a timer, not by requestAnimationFrame: animation frames stop when the window is hidden or
     // behind another one, and the blend froze half-way (no song change at all). A timer keeps running.
@@ -1593,6 +1612,137 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     const base = decks.map((d) => d.volumeValue);
     playLines([OUTRO_LINE], { onStart: () => decks.forEach((d, i) => d.setVolume(base[i] * 0.45)), onEnd: () => decks.forEach((d, i) => d.setVolume(base[i])) });
   }
+  // One move of the DJ on the song that plays (the "force" of the DJ sets how often and how strongly). Every move
+  // is short and puts everything back by itself.
+  function runAccent(deck: typeof engine.deckA, kind: AccentKind, amount: number) {
+    const spb = 60 / deck.bpm;
+    const bar = spb * 4;
+    // moves put themselves back even when no relay runs (songs played by hand get them too)
+    const later = (ms: number, fn: () => void) => window.setTimeout(fn, ms);
+    const burst =(fx: "echo" | "reverb" | "gate" | "roll" | "dub" | "flanger" | "noise", wet: number, sec: number) => {
+      deck.setFxWet(fx, wet);
+      later(sec * 1000, () => deck.setFxWet(fx, 0));
+    };
+    const stem = (name: string) => deck.stemNames.indexOf(name);
+    switch (kind) {
+      case "filterbreath": // the bass thins out over two bars and comes back over one
+        deck.rampFilter(0.2 + 0.4 * amount, bar * 2);
+        later(bar * 2000, () => deck.rampFilter(0, bar));
+        later(bar * 3100, () => deck.setFilter(0));
+        break;
+      case "echothrow":
+        burst("echo", 0.3 + 0.5 * amount, bar);
+        break;
+      case "reverbwash":
+        burst("reverb", 0.4 + 0.5 * amount, spb * 3);
+        break;
+      case "flangersweep":
+        burst("flanger", 0.4 + 0.5 * amount, bar * 2);
+        break;
+      case "gatechop":
+        burst("gate", 0.6 + 0.4 * amount, bar);
+        break;
+      case "dubthrow":
+        burst("dub", 0.4 + 0.5 * amount, bar);
+        break;
+      case "roll":
+        burst("roll", 1, spb * 2);
+        break;
+      case "noiseburst":
+        burst("noise", 0.3 + 0.5 * amount, bar);
+        break;
+      case "drumsout": {
+        const i = stem("drums");
+        if (i < 0) return;
+        deck.setStemVol(i, 0);
+        later(bar * 1000, () => deck.setStemVol(i, 1));
+        break;
+      }
+      case "vocalecho": {
+        const i = stem("vocals");
+        if (i < 0) return;
+        deck.setStemDelaySend(i, 0.5 + 0.4 * amount);
+        later(bar * 2000, () => deck.setStemDelaySend(i, 0));
+        break;
+      }
+      case "bassdrop": {
+        const i = stem("bass");
+        if (i < 0) return;
+        deck.setStemVol(i, 0);
+        later(spb * 6000, () => deck.setStemVol(i, 1)); // out for a bar and a half, then it slams back
+        break;
+      }
+      case "drumsolo": // everything but the drums drops out for a bar, then comes back together
+      case "vocalsolo": {
+        const keep = stem(kind === "drumsolo" ? "drums" : "vocals");
+        if (keep < 0) return;
+        const others = deck.stemNames.map((_, i) => i).filter((i) => i !== keep);
+        others.forEach((i) => deck.setStemVol(i, 0));
+        later(bar * 1000, () => others.forEach((i) => deck.setStemVol(i, 1)));
+        break;
+      }
+      case "voiceout": {
+        const i = stem("vocals");
+        if (i < 0) return;
+        deck.setStemVol(i, 0);
+        later(bar * 2000, () => deck.setStemVol(i, 1)); // an instrumental moment of two bars
+        break;
+      }
+      case "otherout": {
+        const i = stem("other");
+        if (i < 0) return;
+        deck.setStemVol(i, 0);
+        later(bar * 1000, () => deck.setStemVol(i, 1));
+        break;
+      }
+    }
+  }
+  // At the start of a bar, when the force of the DJ says it is time and the song is neither starting nor about to
+  // change, the DJ makes one move.
+  function maybeAccent(side: "A" | "B", deck: typeof engine.deckA, remain: number, fadeSec: number) {
+    const dj = relayPlaylist()?.dj;
+    const live = getDjLive();
+    // the top-bar switch rules (and works on songs played by hand); otherwise the set's own DJ options
+    const active = live.on || (!!dj && dj.auto !== false);
+    if (!active || !deck.playing || !(deck.bpm > 0)) return;
+    const force = live.on ? live.force : forceOf(dj);
+    const st = accentRef.current[side];
+    const id = deck.origin?.id ?? deck.name;
+    if (st.id !== id) {
+      st.id = id;
+      st.lastBar = Number.NEGATIVE_INFINITY;
+      st.count = 0;
+    }
+    const bar = (60 / deck.bpm) * 4;
+    const rel = deck.position() - deck.beatGridOffset;
+    const barIdx = Math.floor(rel / bar);
+    if (rel - barIdx * bar > 0.45 || barIdx < 0) return; // only on the first beat of a bar
+    // the first move comes after about half an interval, the next ones at the full interval
+    if (st.lastBar === Number.NEGATIVE_INFINITY) st.lastBar = barIdx - Math.round(FORCE_PROFILE[force].everyBars / 2);
+    // what the DJ knows of the song: its tempo, whether it is classical, the stems it really has
+    const feel: Feel = { bpm: deck.bpm, classical: dj?.style === "classical", stems: deck.stemsActive && deck.stemReady ? deck.stemNames : [] };
+    if (!accentDue(force, barIdx, st.lastBar, deck.position(), remain, fadeSec, isCalm(feel))) return;
+    const kind = pickAccent(force, st.count, feel);
+    if (!kind) return;
+    st.lastBar = barIdx;
+    st.count++;
+    runAccent(deck, kind, amountFor(FORCE_PROFILE[force].amount, feel));
+    showDjAction(`${ACCENT_LABEL[kind]}${deck.name ? ` (${side})` : ""}`);
+  }
+  // songs played by hand (no relay on that deck) get the DJ's moves too when the top-bar switch is ON
+  useEffect(() => {
+    if (!splitLayout) return;
+    const id = window.setInterval(() => {
+      if (!getDjLive().on) return;
+      for (const side of ["A", "B"] as const) {
+        if (relayRef.current && relaySide.current === side) continue; // the relay tick looks after its own deck
+        const d = side === "A" ? engine.deckA : engine.deckB;
+        if (d.playing && d.duration > 0) maybeAccent(side, d, d.duration - d.position(), 0);
+      }
+    }, 400);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [splitLayout]);
   // vinyl brake: the song slows down to a stop in under a second
   function brakeOut(deck: typeof engine.deckA) {
     let a = 0.25;
@@ -1640,6 +1790,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       if (!deck.playing || deck.duration <= 0) return;
       const remain = deck.duration - deck.position();
 
+      maybeAccent(side, deck, remain, FADE);
+
       // end of the set: no new song, the closing words, then the relay stops with the last song
       if (dj?.endOfSet === "stop" && relayIdx.current[side] === liveQueue(side).length - 1) {
         relayArmed.current = false;
@@ -1669,7 +1821,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       const stemMode: StemMode = dj?.stems ?? "punchy";
       const tech =
         step && dj
-          ? pickTech({ outStems: deck.stemsActive && deck.stemReady, inStems: otherDeck.stemsActive && otherDeck.stemReady, index: relayIdx.current[side], mode: stemMode, type: TYPE, sec: secs })
+          ? pickTech({ outStems: deck.stemsActive && deck.stemReady, inStems: otherDeck.stemsActive && otherDeck.stemReady, index: relayIdx.current[side], mode: stemMode, type: TYPE, sec: secs, bpm: Math.min(deck.bpm || 120, otherDeck.bpm || 120), sync: !!step?.sync })
           : null;
       if (tech) flash(`DJ : ${STEM_TECH_LABEL[tech]}`);
       const go = () => {
@@ -2852,7 +3004,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           { label: "Bibliothèque", value: String(data.tracks.length), sub: `${fmtDur(allSec)} · ${laterCount} à jouer plus tard`, color: "var(--prep-accent)" },
           { label: "Sets", value: String(data.playlists.length), sub: `${new Set(data.playlists.flatMap((p) => p.trackIds)).size} titre(s) rangé(s)`, color: "#a78bfa" },
           { label: "Stems prêts", value: `${readyCount}/${data.tracks.length}`, sub: "chargement instantané", color: "#34d399", meter: data.tracks.length ? readyCount / data.tracks.length : 0 },
-          { label: "Lecture", value: status, sub: relay ? `en antenne : deck ${relayFg}` : "platines A et B", color: "#ffcc00" },
+          { label: "Lecture", value: status, sub: relay ? `en antenne : deck ${relayFg}${djAction ? ` · DJ : ${djAction}` : ""}` : "platines A et B", color: "#ffcc00" },
         ]}
         decks={{
           decks: { A: deckInfo("A"), B: deckInfo("B") },
@@ -2887,6 +3039,13 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           onPlay: (dest, id) => sendSet(dest, id),
           stemReady: (id) => stemOf(id).state === "done",
           onWizard: () => setWizard((w) => ({ nonce: (w?.nonce ?? 0) + 1 })),
+          trash: loadPlaylistTrash().map((t) => ({ at: t.at, count: t.playlists.length, names: t.playlists.map((p) => p.name).join(", ") })),
+          onRestore: (i) => {
+            const entry = loadPlaylistTrash()[i];
+            if (!entry) return;
+            persist((d) => ({ ...d, playlists: [...d.playlists, ...entry.playlists.filter((p) => !d.playlists.some((x) => x.id === p.id))] }));
+            flash(`${entry.playlists.length} set(s) restauré(s)`);
+          },
         }}
         detail={{
           playlist: ap,
@@ -2915,6 +3074,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           analyzing: analyzingIds,
           onAnalyze: analyzeIds,
           onMixPlan: (on) => ap && setMixPlan(ap.id, on),
+          onDj: (next) => ap && setMixPlan(ap.id, true, next),
           prep: ap ? setPreps[ap.id] : undefined,
           onPrepare: () => ap && void prepareSet(ap.id),
         }}

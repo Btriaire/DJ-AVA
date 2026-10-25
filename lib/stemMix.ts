@@ -5,7 +5,7 @@ import type { TransitionType } from "@/lib/library";
 // Pure: `stemFrame` gives, for a progress k (0..1) through the blend, the level of every stem of both songs.
 
 export type StemName = "drums" | "bass" | "other" | "vocals";
-export type StemTech = "build" | "drumswap" | "vocalhandoff" | "bassslam" | "stripout";
+export type StemTech = "build" | "drumswap" | "vocalhandoff" | "bassslam" | "stripout" | "drumbridge";
 export type StemMode = "off" | "smooth" | "punchy";
 
 export const STEM_TECH_LABEL: Record<StemTech, string> = {
@@ -14,6 +14,7 @@ export const STEM_TECH_LABEL: Record<StemTech, string> = {
   vocalhandoff: "Voix sur le nouveau rythme",
   bassslam: "Claque de basse",
   stripout: "Dépouillement + écho de voix",
+  drumbridge: "Pont de batterie",
 };
 
 export const STEM_TECH_NOTE: Record<StemTech, string> = {
@@ -22,6 +23,7 @@ export const STEM_TECH_NOTE: Record<StemTech, string> = {
   vocalhandoff: "La voix de l'ancien titre chante encore sur le rythme du nouveau, avec un écho, avant que la voix du nouveau prenne le relais.",
   bassslam: "Le nouveau titre entre sans basse, puis sa basse remplace d'un coup celle de l'ancien : l'effet percutant.",
   stripout: "L'ancien titre est dépouillé instrument par instrument ; seule sa voix reste, avec un écho, au-dessus du nouveau titre.",
+  drumbridge: "Les deux titres ne gardent que leur batterie : elles roulent ensemble sur les mêmes temps, puis la basse, les harmonies et la voix du nouveau titre reviennent.",
 };
 
 export interface StemFrame {
@@ -45,7 +47,7 @@ export function crossCurve(k: number): number {
 // how fast a stem changes: a punchy slam is nearly instant, a smooth blend takes its time
 function widthOf(tech: StemTech, mode: StemMode): number {
   if (mode !== "punchy") return 0.2;
-  return tech === "bassslam" ? 0.03 : tech === "drumswap" ? 0.06 : 0.12;
+  return tech === "bassslam" ? 0.03 : tech === "drumswap" ? 0.06 : tech === "drumbridge" ? 0.08 : 0.12;
 }
 
 export function stemFrame(tech: StemTech, k: number, mode: StemMode = "smooth"): StemFrame {
@@ -82,6 +84,15 @@ export function stemFrame(tech: StemTech, k: number, mode: StemMode = "smooth"):
         outEcho: 0,
         cross,
       };
+    case "drumbridge":
+      // the old song loses everything but its drums, the new one enters by its drums alone: for a while only
+      // two drum kits play (on the same beat), then the new song's bass, harmonies and voice come back
+      return {
+        inn: { drums: up(0.25), bass: up(0.65), other: up(0.7), vocals: up(0.78) },
+        out: { vocals: down(0.1), other: down(0.15), bass: down(0.2), drums: down(0.72) },
+        outEcho: 0,
+        cross,
+      };
     case "stripout":
       return {
         inn: {},
@@ -94,9 +105,16 @@ export function stemFrame(tech: StemTech, k: number, mode: StemMode = "smooth"):
 
 // which technique this transition uses, or null (plain blend). Techniques rotate with the transition index so a
 // set does not repeat the same trick; what the two songs have (stems loaded or not) limits the choice.
-export function pickTech(o: { outStems: boolean; inStems: boolean; index: number; mode: StemMode; type: TransitionType; sec: number }): StemTech | null {
+// `bpm` (the slower of the two songs) and `sync` let the choice fit the songs: drums played together need the
+// same beat, a slammed bass needs a tempo that can take it, a calm pair only gets the soft techniques.
+export function pickTech(o: { outStems: boolean; inStems: boolean; index: number; mode: StemMode; type: TransitionType; sec: number; bpm?: number; sync?: boolean }): StemTech | null {
   if (o.mode === "off" || o.type === "cut" || o.sec < 6) return null;
-  const both: StemTech[] = o.mode === "punchy" ? ["drumswap", "vocalhandoff", "bassslam", "build"] : ["build", "vocalhandoff"];
+  const bpm = o.bpm ?? 120;
+  const beat = o.sync !== false && bpm >= 90; // drum-on-drum blends only work on a shared beat
+  const punchy: StemTech[] = ["drumswap", "vocalhandoff", "bassslam", "build", "drumbridge"].filter(
+    (t) => (t !== "drumswap" && t !== "drumbridge") || beat
+  ) as StemTech[];
+  const both: StemTech[] = o.mode === "punchy" ? punchy.filter((t) => t !== "bassslam" || bpm >= 100) : ["build", "vocalhandoff"];
   const list: StemTech[] = o.outStems && o.inStems ? both : o.inStems ? ["build"] : o.outStems ? ["stripout"] : [];
   return list.length ? list[o.index % list.length] : null;
 }

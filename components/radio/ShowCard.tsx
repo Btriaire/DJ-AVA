@@ -31,6 +31,7 @@ export interface ShowCardProps {
   onRename: (name: string) => void;
   onRegenerate?: () => void; // a set about one artist: new songs for that artist
   stemTech?: (index: number) => StemTech | null; // stem technique of each transition, when the stems are ready
+  onStepSec: (index: number, sec: number) => void;
 }
 
 export function ShowCard({
@@ -54,6 +55,7 @@ export function ShowCard({
   onRename,
   onRegenerate,
   stemTech,
+  onStepSec,
 }: ShowCardProps) {
   const [open, setOpen] = useState(defaultOpen);
   const [editing, setEditing] = useState(false);
@@ -232,6 +234,7 @@ export function ShowCard({
           maxHeight="40vh"
           plan={show.plan}
           onStepType={onStepType}
+          onStepSec={onStepSec}
           stemOf={stemOf}
           stemTech={stemTech}
           onPrepareStem={(id) => onPrepareStems([id])}

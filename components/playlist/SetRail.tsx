@@ -20,12 +20,15 @@ export interface SetRailProps {
   onPlay: (dest: SendDest, id: string) => void;
   stemReady: (trackId: string) => boolean;
   onWizard: () => void;
+  trash: { at: number; count: number; names: string }[]; // earlier lists of sets, to bring back
+  onRestore: (index: number) => void;
 }
 
 export function SetRail(props: SetRailProps) {
   const [newName, setNewName] = useState("");
   const [overId, setOverId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [showTrash, setShowTrash] = useState(false);
 
   const trackMap = new Map(props.tracks.map(t => [t.id, t]));
 
@@ -226,6 +229,29 @@ export function SetRail(props: SetRailProps) {
           })
         )}
       </div>
+
+      {props.trash.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <button type="button" className="self-start text-[11px] text-neutral-400 underline decoration-dotted hover:text-white" onClick={() => setShowTrash(!showTrash)} aria-expanded={showTrash}>
+            {`Récupérer des sets supprimés (${props.trash.length})`}
+          </button>
+          {showTrash && (
+            <ul className="flex flex-col gap-1">
+              {props.trash.map((t, i) => (
+                <li key={t.at} className="prep-card flex items-center gap-2 px-2.5 py-1.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[11px] font-semibold text-neutral-200">{`${new Date(t.at).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · ${t.count} set(s)`}</div>
+                    <div className="truncate text-[10px] text-neutral-500" title={t.names}>{t.names}</div>
+                  </div>
+                  <button type="button" className="prep-btn-ghost px-2 py-1 text-[11px]" onClick={() => props.onRestore(i)} title="Remet ces sets dans ta bibliothèque (ceux qui existent déjà ne sont pas dupliqués)">
+                    Restaurer
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 }

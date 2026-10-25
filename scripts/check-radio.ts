@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { artistOfName, composeShows, tempoGroups, isRelevant, normTitle, pickCandidates, suggestArtists, DEFAULT_PREFS, type YtResult } from "../lib/radio";
+import { plainOrder, artistOfName, composeShows, tempoGroups, isRelevant, normTitle, pickCandidates, suggestArtists, DEFAULT_PREFS, type YtResult } from "../lib/radio";
 import type { LibTrack } from "../lib/library";
 
 const yt = (id: string, title: string, artist = "Daft Punk - Topic", duration = 240): YtResult => ({ id, title, artist, duration, artwork: null });
@@ -83,4 +83,18 @@ const cs = composeShows(classic, { ...prefs, mode: "classical", durationMin: 0, 
 assert.equal(cs.length, 1, "no tempo zones for a concert");
 assert.ok(cs[0].name.includes("Classique"));
 assert.ok(cs[0].plan.every((st) => st.type === "smooth" && !st.sync && !st.bassSwap));
+// no analysis: songs without tempo still make a set, artists take turns, length is honoured
+const bare = ["A", "A", "A", "B", "B", "C"].map((g, i): LibTrack => ({ id: "n" + i, name: `${g} - t${i}`, source: "youtube", deck: null, addedAt: 0, durationSec: 240, group: g }));
+const ps = composeShows(bare, { ...prefs, analysis: "none", durationMin: 0, soloSets: false, mixArtists: "alternate" }, 0);
+assert.equal(ps.length, 1);
+assert.equal(ps[0].trackIds.length, 6, "every song is used");
+assert.deepEqual(ps[0].trackIds.slice(0, 3).map((id) => bare.find((t) => t.id === id)!.group).sort(), ["A", "B", "C"], "artists alternate");
+assert.ok(plainOrder(bare, 8, 1, "free").length <= 3, "stops at the asked length");
+assert.equal(plainOrder(bare, 0, 3, "blocks").join(","), plainOrder(bare, 0, 3, "blocks").join(","), "deterministic for a seed");
+// styles and collections
+import { COLLECTIONS, STYLES, findCollection, pickSongs } from "../lib/styles";
+assert.ok(STYLES.every((st) => st.artists.length >= 5) && COLLECTIONS.every((c) => c.songs.length >= 8));
+const col = findCollection("hits des années 80")!;
+assert.equal(pickSongs(col, 4, 0).length, 4);
+assert.notDeepEqual(pickSongs(col, 4, 0), pickSongs(col, 4, 1), "another offset gives other songs");
 console.log("radio ok");
