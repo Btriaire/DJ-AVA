@@ -56,6 +56,7 @@ interface Props {
   // renders search (left) and the playlist workspace (right) as two permanent
   // columns instead of one tab-switched list — used by the dedicated Playlist view.
   splitLayout?: boolean;
+  launchTick?: number; // bumped by the page when a set is sent here (the Playlist view stays mounted, hidden)
   // whether the panel starts expanded (true) instead of collapsed (false)
   defaultExpanded?: boolean;
 }
@@ -161,7 +162,7 @@ function readPendingSet(): PendingSet | null {
   }
 }
 
-function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayout, defaultExpanded }: Props) {
+function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayout, defaultExpanded, launchTick }: Props) {
   const [data, setData] = useState<LibraryData>({ tracks: [], playlists: [] });
   // memoized once via useState's lazy initializer, not a ref — reading a ref's
   // .current during render is flagged (and rightly so, it's not meant for that)
@@ -391,7 +392,15 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   // successive edits (e.g. deleting several rows quickly) never clobber each other
   // with a stale snapshot. The localStorage write happens off the captured value.
   function persist(update: (prev: LibraryData) => LibraryData) {
-    const next = update(dataRef.current);
+    // Built on what is stored, not on this view's copy: other parts of the app (the radio, the preparation) write
+    // to the same library, and this view may have been hidden for a while. A stale copy would erase their work.
+    let base = dataRef.current;
+    try {
+      base = loadLibrary();
+    } catch {
+      // unreadable storage: this view's own copy is the best there is
+    }
+    const next = update(base);
     dataRef.current = next; // keep the ref in sync IMMEDIATELY so back-to-back
     setData(next); //          calls in the same tick each see the latest list
     if (!saveLibrary(next))
@@ -1188,8 +1197,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   }
   // A set sent from the Préparation tab (see `pending`): queued on Deck A or B, or run as
   // the A→B→A relay. "open" needs no playback: it is applied as the initial tab / playlist.
-  useEffect(() => {
-    if (!pending) return;
+  function takePendingSet(p: PendingSet | null) {
+    if (!p || !splitLayout) return; // only the Playlist view plays what is sent to it
     try {
       if (localStorage.getItem(PENDING_SET_KEY) === null) return; // already taken: dev StrictMode runs effects twice
       localStorage.removeItem(PENDING_SET_KEY);
@@ -1199,11 +1208,26 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     // next tick: the decks and the library are settled once the view has mounted
     // (no cleanup: the second dev run finds the key gone and must not cancel this one)
     window.setTimeout(() => {
-      if (pending.side === "relay") playPlaylistRelay(pending.id);
-      else if (pending.side === "A" || pending.side === "B") playPlaylistLive(pending.side, pending.id);
+      if (p.side === "relay") playPlaylistRelay(p.id);
+      else if (p.side === "A" || p.side === "B") playPlaylistLive(p.side, p.id);
+      else if (p.side === "open") setActivePl(p.id);
     }, 0);
+  }
+  // at mount (the page was opened on this view) ...
+  useEffect(() => {
+    takePendingSet(pending);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot on mount
   }, []);
+  // ... and every time the page sends a set while this view is already mounted (it stays mounted when hidden)
+  const firstTick = useRef(true);
+  useEffect(() => {
+    if (firstTick.current) {
+      firstTick.current = false;
+      return;
+    }
+    takePendingSet(readPendingSet());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [launchTick]);
 
   // watch each live deck; when its single ends (position snaps back to ~0 while
   // stopped) load + play the next filed single, looping the queue forever.
