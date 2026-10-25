@@ -1,12 +1,21 @@
 import { type Cue, harmonicScore, tempoScore } from "@/lib/setPicker";
 
 export type SetArc = "flow" | "rise" | "fall" | "peak" | "wave";
-export interface SetCue extends Cue { durationSec: number }
+export interface SetCue extends Cue { durationSec: number; group?: string }
 export interface SetOptions {
   arc: SetArc;
   targetMin?: number;
   startId?: string;
   seed?: number;
+  harmonyWeight?: number; // weight of the key compatibility in the chain cost (default 0.5)
+  artists?: "alternate" | "blocks" | "free"; // never twice the same artist in a row / keep an artist together / ignore
+}
+
+// extra cost of a pair, from the artist rule
+function artistCost(a: SetCue, b: SetCue, mode: SetOptions["artists"]): number {
+  if (!mode || mode === "free" || !a.group || !b.group) return 0;
+  const same = a.group === b.group;
+  return mode === "alternate" ? (same ? 1.2 : 0) : same ? 0 : 0.6;
 }
 
 function mulberry32(seed: number): () => number {
@@ -34,23 +43,23 @@ export function transitionScore(a: Cue, b: Cue): number {
   return 2 * tempoScore(a.bpm, b.bpm) + harmonicScore(a.camelot, b.camelot);
 }
 
-function stepCost(order: SetCue[], k: number, minBpm: number, range: number, arc: SetArc, m: number): number {
+function stepCost(order: SetCue[], k: number, minBpm: number, range: number, arc: SetArc, m: number, opts: SetOptions): number {
   const prev = order[k - 1];
   const cur = order[k];
   const t = m > 1 ? k / (m - 1) : 1;
   const tempoTerm = arc === "flow"
     ? 3 * Math.abs(cur.bpm - prev.bpm) / range
     : 3 * Math.abs(cur.bpm - (minBpm + arcTarget(arc, t) * range)) / range;
-  return tempoTerm + (2 - tempoScore(prev.bpm, cur.bpm)) * 0.8 + (3 - harmonicScore(prev.camelot, cur.camelot)) * 0.5;
+  return tempoTerm + (2 - tempoScore(prev.bpm, cur.bpm)) * 0.8 + (3 - harmonicScore(prev.camelot, cur.camelot)) * (opts.harmonyWeight ?? 0.5) + artistCost(prev, cur, opts.artists);
 }
 
 // Local search over pair swaps. The greedy pass leaves leftovers at the end (a "rise"
 // can finish below the tempo it passed); swapping two tracks is kept when the total
 // step cost drops. The first track never moves; only the order changes, not the tracks.
-function polish(order: SetCue[], minBpm: number, range: number, arc: SetArc): SetCue[] {
+function polish(order: SetCue[], minBpm: number, range: number, arc: SetArc, opts: SetOptions): SetCue[] {
   const m = order.length;
   if (m < 3 || m > 300) return order;
-  const cost = (k: number) => (k > 0 && k < m ? stepCost(order, k, minBpm, range, arc, m) : 0);
+  const cost = (k: number) => (k > 0 && k < m ? stepCost(order, k, minBpm, range, arc, m, opts) : 0);
   for (let sweep = 0; sweep < 20; sweep++) {
     let kept = false;
     for (let i = 1; i < m - 1; i++) {
@@ -126,7 +135,8 @@ export function buildSet(tracks: SetCue[], opts: SetOptions): string[] {
         : 3 * Math.abs(candidate.bpm - (minBpm + arcTarget(opts.arc, t) * range)) / range;
       const cost = tempoTerm +
         (2 - tempoScore(prev.bpm, candidate.bpm)) * 0.8 +
-        (3 - harmonicScore(prev.camelot, candidate.camelot)) * 0.5;
+        (3 - harmonicScore(prev.camelot, candidate.camelot)) * (opts.harmonyWeight ?? 0.5) +
+        artistCost(prev, candidate, opts.artists);
       const finalCost = rng ? cost + rng() * 0.35 : cost;
       if (finalCost < bestCost) {
         best = candidate;
@@ -143,7 +153,7 @@ export function buildSet(tracks: SetCue[], opts: SetOptions): string[] {
     } else break;
   }
 
-  const polished = polish(result, minBpm, range, opts.arc);
+  const polished = polish(result, minBpm, range, opts.arc, opts);
   const ids = polished.map(t => t.id);
   if (wanted === 0) ids.push(...unknown);
   return ids;

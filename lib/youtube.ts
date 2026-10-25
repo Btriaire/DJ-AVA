@@ -155,7 +155,7 @@ export async function searchYouTubeInner(q: string, opts: YTSearchOpts = {}): Pr
             title: v.title?.runs?.[0]?.text || "—",
             artist: v.ownerText?.runs?.[0]?.text || "YouTube",
             duration: dur,
-            artwork: v.thumbnail?.thumbnails?.slice(-1)[0]?.url || null,
+            artwork: `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`, // 320x180: small to decode (a hq720 cover costs 4x the memory)
           });
           if (tracks.length >= limit) break;
         }

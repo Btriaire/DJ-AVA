@@ -1,3 +1,4 @@
+import { getMemLevel } from "@/lib/memoryGovernor";
 import { detectBPM, buildWaveformPeaks } from "./bpm";
 import { detectKey, transposeKey, KeyResult } from "./key";
 import { FXRack, FX_LIST, FxName, DECK_FX, STEM_FX } from "./FXRack";
@@ -1462,6 +1463,7 @@ export class Deck {
     if (this._streamOnly) return;
     if (!this.rawBlob || this.stemReady || this.stemCached) return;
     if (!this.playbackGate()) return;
+    if (getMemLevel() === "critical") return; // four decoded stems cost ~350 MB: not now
     // don't stomp on a live, foreground separation
     if (this.stemStatus === "working") return;
     const model = this.stemModel;

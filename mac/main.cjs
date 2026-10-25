@@ -101,24 +101,59 @@ async function createWindow(url) {
     titleBarStyle: "hiddenInset",
     webPreferences: { contextIsolation: true, preload: path.join(__dirname, "preload.cjs") },
   });
+  // A renderer killed for lack of memory must not leave a white window: log it, reload (the library is stored on disk)
+  // and tell the page why. Three reloads in two minutes means something is really wrong: ask instead.
+  const crashes = [];
+  win.webContents.on("render-process-gone", (_e, details) => {
+    logCrash(`render-process-gone reason=${details.reason} exit=${details.exitCode}`);
+    if (details.reason === "clean-exit") return;
+    const now = Date.now();
+    crashes.push(now);
+    while (crashes.length && now - crashes[0] > 120_000) crashes.shift();
+    if (crashes.length > 3) {
+      dialog.showErrorBox("DJSynth", `L'affichage s'est arrêté plusieurs fois de suite (${details.reason}). Ferme les autres applications puis relance DJSynth.`);
+      return;
+    }
+    win.loadURL(`${url}/?recovered=${encodeURIComponent(details.reason)}`);
+  });
   await win.loadURL(url);
 }
+
+// what happened, kept next to the app data (read it when the app misbehaves)
+function logCrash(line) {
+  try {
+    fs.appendFileSync(path.join(app.getPath("userData"), "crash.log"), `${new Date().toISOString()} ${line}\n`);
+  } catch {
+    /* log folder not writable */
+  }
+}
+app.on("child-process-gone", (_e, details) => logCrash(`child-process-gone type=${details.type} reason=${details.reason} exit=${details.exitCode}`));
 
 app.whenReady().then(async () => {
   pidFile = path.join(app.getPath("userData"), "server.pid");
   killStaleServer();
-  // real memory of every DJSynth process (window, GPU, audio…) plus the local Next server
+  // real memory of every DJSynth process (window, GPU, audio…) plus the local Next server AND its children
+  // (yt-dlp, ffmpeg, python analysis and separation), and the RAM of the machine
   ipcMain.handle("djsynth:memory", () => {
     const appMB = Math.round(app.getAppMetrics().reduce((sum, m) => sum + m.memory.workingSetSize, 0) / 1024);
     let serverMB = 0;
     if (server && server.pid) {
       try {
-        serverMB = Math.round(parseInt(execFileSync("ps", ["-o", "rss=", "-p", String(server.pid)], { encoding: "utf8" }), 10) / 1024) || 0;
+        const rows = execFileSync("ps", ["-axo", "pid=,ppid=,rss="], { encoding: "utf8" })
+          .trim()
+          .split("\n")
+          .map((l) => l.trim().split(/\s+/).map(Number));
+        const tree = new Set([server.pid]);
+        for (let grew = true; grew; ) {
+          grew = false;
+          for (const [pid, ppid] of rows) if (tree.has(ppid) && !tree.has(pid)) (tree.add(pid), (grew = true));
+        }
+        serverMB = Math.round(rows.filter(([pid]) => tree.has(pid)).reduce((sum, r) => sum + (r[2] || 0), 0) / 1024);
       } catch {
         /* server gone */
       }
     }
-    return { appMB, serverMB };
+    return { appMB, serverMB, totalMB: Math.round(process.getSystemMemoryInfo().total / 1024) };
   });
   // drops the window's HTTP cache (audio streams already played)
   ipcMain.handle("djsynth:trim", async (event) => {

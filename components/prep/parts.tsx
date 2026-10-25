@@ -4,6 +4,7 @@
 // status, stat tiles, list mosaics and the set flow. No state, no storage.
 
 import type { LibTrack } from "@/lib/library";
+import { thumbSrc } from "@/lib/thumb";
 
 // ---- Camelot keys: pure helpers live in lib/camelot.ts ------------------------
 export { parseCamelot, keyColor, keyCompat, type Compat } from "@/lib/camelot";
@@ -27,7 +28,7 @@ export function Cover({ art, name, camelot, size = 40, rounded = 6, fill = false
   const box = fill ? { width: "100%", aspectRatio: "1", borderRadius: rounded } : { width: size, height: size, borderRadius: rounded };
   if (art) {
     // eslint-disable-next-line @next/next/no-img-element -- remote YouTube / Audius thumbnails, no Next image loader in the Mac app
-    return <img src={art} alt="" loading="lazy" referrerPolicy="no-referrer" className="shrink-0 object-cover" style={box} />;
+    return <img src={thumbSrc(art, fill ? 200 : size)} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" className="shrink-0 object-cover" style={box} />;
   }
   const c = keyColor(camelot);
   const initials = name

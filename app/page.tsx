@@ -32,6 +32,7 @@ import { MasterRecorder } from "@/components/MasterRecorder";
 import { useAutoFit } from "@/lib/useAutoFit";
 import { DeckTimers } from "@/components/DeckTimers";
 import { MemoryGauge } from "@/components/MemoryGauge";
+import { RecoveryNotice } from "@/components/RecoveryNotice";
 import { MixScope } from "@/components/MixScope";
 import { CpuMeter } from "@/components/CpuMeter";
 import RadioView from "@/components/radio/RadioView";
@@ -969,6 +970,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
           )}
 
           <MemoryGauge />
+          <RecoveryNotice />
 
           {ready && (
             <button

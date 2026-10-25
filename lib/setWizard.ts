@@ -36,10 +36,15 @@ export function resolveSource(
   return list.trackIds.map((id) => byId.get(id)).filter((t): t is LibTrack => !!t);
 }
 
-export function computeOrder(tracks: LibTrack[], arc: SetArc, durationMin: number, startId: string, seed: number | null): string[] {
+export interface OrderTuning {
+  harmonyWeight?: number;
+  artists?: "alternate" | "blocks" | "free";
+}
+
+export function computeOrder(tracks: LibTrack[], arc: SetArc, durationMin: number, startId: string, seed: number | null, tuning: OrderTuning = {}): string[] {
   return buildSet(
-    tracks.map((t) => ({ id: t.id, bpm: t.bpm ?? 0, camelot: t.camelot ?? "", durationSec: t.durationSec ?? 0 })),
-    { arc, targetMin: durationMin || undefined, startId: startId || undefined, seed: seed ?? undefined }
+    tracks.map((t) => ({ id: t.id, bpm: t.bpm ?? 0, camelot: t.camelot ?? "", durationSec: t.durationSec ?? 0, group: t.group })),
+    { arc, targetMin: durationMin || undefined, startId: startId || undefined, seed: seed ?? undefined, ...tuning }
   );
 }
 

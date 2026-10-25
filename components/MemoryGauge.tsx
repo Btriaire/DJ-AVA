@@ -1,56 +1,33 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { requestFreeMemory } from "@/lib/memory";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { freeMemoryNow, getMemSnap, startMemoryGovernor, subscribeMem } from "@/lib/memoryGovernor";
 
-declare global {
-  interface Window {
-    djsynthNative?: {
-      memory: () => Promise<{ appMB: number; serverMB: number }>;
-      trim: () => Promise<boolean>;
-    };
-  }
-}
+const COLOR = { ok: "#34d399", warn: "#ffcc00", critical: "#ef4444" } as const;
 
 export function MemoryGauge() {
-  const [memory, setMemory] = useState<{ appMB: number; serverMB: number } | null>(null);
+  const snap = useSyncExternalStore(subscribeMem, getMemSnap, () => null);
   const [isFreeing, setIsFreeing] = useState(false);
 
-  useEffect(() => {
-    const native = window.djsynthNative;
-    if (!native) return; // web build: no native memory info
+  useEffect(() => startMemoryGovernor(), []);
 
-    const updateMemory = async () => {
-      setMemory(await native.memory());
-    };
+  if (!snap) return null; // web build: no native memory info
 
-    void updateMemory();
-    const interval = setInterval(updateMemory, 3000);
-    return () => clearInterval(interval);
-  }, []);
-
-  if (!memory) return null;
-
-  const totalMB = memory.appMB + memory.serverMB;
-  const totalGB = totalMB / 1024;
-  const displayValue = totalGB < 1
-    ? `${totalMB} Mo`
-    : `${totalGB.toFixed(1).replace(".", ",")} Go`;
-
-  const color = totalMB < 2048
-    ? "#34d399"
-    : totalMB < 3584
-      ? "#ffcc00"
-      : "#ef4444";
+  const totalGB = snap.usedMB / 1024;
+  const value = totalGB < 1 ? `${snap.usedMB} Mo` : `${totalGB.toFixed(1).replace(".", ",")} Go`;
+  const color = COLOR[snap.level];
+  const detail =
+    snap.level === "critical"
+      ? "Mémoire presque pleine : les tâches lourdes (stems, analyse de la radio) sont ralenties."
+      : snap.level === "warn"
+        ? "Mémoire élevée : DJSynth libère ce qu'il peut tout seul."
+        : "Mémoire normale.";
 
   const handleClick = async () => {
-    const native = window.djsynthNative;
-    if (isFreeing || !native) return;
+    if (isFreeing) return;
     setIsFreeing(true);
-    requestFreeMemory(); // Atelier undo + inactive stems, download caches
-    await native.trim(); // HTTP cache of the window
+    await freeMemoryNow();
     setTimeout(() => setIsFreeing(false), 2000);
-    setMemory(await native.memory());
   };
 
   return (
@@ -58,9 +35,9 @@ export function MemoryGauge() {
       onClick={handleClick}
       className="hw-btn inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold"
       style={{ ["--led" as string]: color, color }}
-      title={`Mémoire utilisée par DJSynth : appli ${memory.appMB} Mo, serveur ${memory.serverMB} Mo. Clic : libérer la mémoire (annulations et stems inactifs de l'Atelier, téléchargements en cache, cache HTTP).`}
+      title={`${detail} DJSynth : appli ${snap.appMB} Mo, serveur et outils ${snap.serverMB} Mo, sur ${Math.round(snap.totalMB / 1024)} Go de mémoire. Limites : ${snap.warnMB} Mo / ${snap.criticalMB} Mo. Libéré automatiquement ${snap.autoFrees} fois. Clic : libérer maintenant.`}
     >
-      {isFreeing ? "Libéré" : `MÉM ${displayValue}`}
+      {isFreeing ? "Libéré" : `MÉM ${value}${snap.level === "critical" ? " · éco" : ""}`}
     </button>
   );
 }

@@ -2,7 +2,8 @@
 import { useState, useMemo } from "react";
 import { Icon, Mosaic, fmtDur } from "../prep/parts";
 import type { LibTrack } from "@/lib/library";
-import type { RadioShow } from "@/lib/radio";
+import type { RadioShow, ShowPrep } from "@/lib/radio";
+import type { TransitionType } from "@/lib/library";
 import { setHealth, STATUS_LABEL } from "@/lib/setHealth";
 import { STATUS_COLOR } from "../playlist/NextStep";
 import { OrderPreview } from "../playlist/OrderPreview";
@@ -20,6 +21,9 @@ export interface ShowCardProps {
   onSave: () => void;
   onSend: (dest: "relay" | "A" | "B" | "open") => void;
   onPrepareStems: (ids: string[]) => void;
+  prep?: ShowPrep; // state of the preparation in advance
+  onPrepare: () => void;
+  onStepType: (index: number, type: TransitionType) => void;
 }
 
 export function ShowCard({
@@ -35,6 +39,9 @@ export function ShowCard({
   onSave,
   onSend,
   onPrepareStems,
+  prep,
+  onPrepare,
+  onStepType,
 }: ShowCardProps) {
   const [open, setOpen] = useState(defaultOpen);
   const health = useMemo(() => setHealth(
@@ -51,6 +58,20 @@ export function ShowCard({
   }, [tracks, isStemReady]);
 
   const canPrepareStems = missingStems.length > 0;
+
+  const planSummary = useMemo(() => {
+    const count = (type: TransitionType) => show.plan.filter((st) => st.type === type).length;
+    const parts = [
+      [count("smooth"), "fondu(s) doux"],
+      [count("fade"), "fondu(s)"],
+      [count("filter"), "filtre(s)"],
+      [count("cut"), "coupe(s)"],
+    ]
+      .filter(([n]) => (n as number) > 0)
+      .map(([n, label]) => `${n} ${label}`);
+    const synced = show.plan.filter((st) => st.sync).length;
+    return `${parts.join(", ")}${synced ? ` · ${synced} calé(s) sur les temps` : ""}`;
+  }, [show.plan]);
 
   return (
     <article className="prep-card flex flex-col gap-3 p-3" style={{ boxShadow: `inset 3px 0 0 ${accent}` }}>
@@ -103,6 +124,27 @@ export function ShowCard({
         </span>
       </div>
 
+      {show.plan.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-[var(--prep-line)] px-3 py-2">
+          <div className="min-w-0 flex-1">
+            <div className="text-[10px] uppercase tracking-[0.15em] text-neutral-500">Plan de mix DJ</div>
+            <div className="text-[12px] text-neutral-200" title="Chaque enchaînement a son style, sa durée et son calage, décidés d'après les tempos et les tonalités. Ouvre l'ordre pour les modifier.">
+              {planSummary}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="prep-btn-ghost flex items-center gap-1.5 px-3 py-1.5 text-xs"
+            onClick={onPrepare}
+            disabled={prep?.state === "running" || prep?.state === "done" || tracks.length < 2}
+            title="Télécharge les titres dans le cache de l'appli (démarrage instantané, pas de trou entre deux titres)"
+          >
+            <Icon name={prep?.state === "done" ? "check" : "bolt"} />
+            {prep?.state === "running" ? `Préparation ${prep.warmed}/${prep.total}` : prep?.state === "done" ? "Émission prête" : "Préparer l'émission"}
+          </button>
+        </div>
+      )}
+
       <button
         type="button"
         className="prep-btn-ghost self-start flex items-center gap-1.5 px-3 py-1.5 text-xs"
@@ -119,6 +161,8 @@ export function ShowCard({
           onMove={onMove}
           onRemove={onRemove}
           maxHeight="40vh"
+          plan={show.plan}
+          onStepType={onStepType}
         />
       )}
 

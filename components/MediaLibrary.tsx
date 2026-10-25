@@ -29,9 +29,13 @@ import { buildSet, type SetArc } from "@/lib/setBuilder";
 import { PlaylistStudio } from "./playlist/PlaylistStudio";
 import type { DeckInfo, DeckLive, Side as PlSide, StemInfo, TrackMark } from "./playlist/types";
 import { fmtDur } from "./prep/parts";
+import { thumbSrc } from "@/lib/thumb";
 import { SetWizard, type SetDraft, type WizardInitial } from "./playlist/SetWizard";
 import { buildJourney } from "./prep/Journey";
 import { analyzeLibraryTrack } from "@/lib/analyzeTrack";
+import { alignDelaySec } from "@/lib/audio/beatAlign";
+import { announcement, DEFAULT_DJ, planMix, type MixStep } from "@/lib/mixPlan";
+import { speak, stopSpeaking } from "@/lib/djVoice";
 
 const NO_IDS: ReadonlySet<string> = new Set();
 
@@ -829,6 +833,16 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     flash(`Set « ${name} » enregistré : ${draft.trackIds.length} titres`);
     return id;
   }
+  // the DJ plan of a set: computed from its songs (kept in the set), or switched off
+  function setMixPlan(plId: string, on: boolean) {
+    const cur = dataRef.current.playlists.find((p) => p.id === plId);
+    if (!cur) return;
+    const byId = new Map(dataRef.current.tracks.map((t) => [t.id, t]));
+    const tracks = cur.trackIds.map((id) => byId.get(id)).filter((t): t is LibTrack => !!t);
+    const dj = { ...DEFAULT_DJ, ...cur.dj, auto: on };
+    persist((d) => ({ ...d, playlists: d.playlists.map((p) => (p.id === plId ? { ...p, dj, mixPlan: on ? planMix(tracks, "flow", dj, p.mixPlan) : p.mixPlan } : p)) }));
+    flash(on ? "Plan DJ calculé : le relais suit ces enchaînements" : "Plan DJ désactivé : un seul style pour tout le set");
+  }
   function renameNow(id: string, name: string) {
     persist((d) => ({ ...d, playlists: d.playlists.map((pl) => (pl.id === id ? { ...pl, name } : pl)) }));
   }
@@ -1259,11 +1273,23 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   //             filter (like closing the filter knob before pulling out a
   //             track) — the classic "filter transition" DJs use to tuck a
   //             song away instead of just fading its volume
-  function relayFade(to: "A" | "B", secs: number, type: TransitionType = "fade") {
+  function relayFade(to: "A" | "B", secs: number, type: TransitionType = "fade", bassSwap = false) {
     relayFading.current = true;
     const from = engine.getCrossfade();
     const target = to === "B" ? 1 : 0;
     const outDeck = to === "B" ? engine.deckA : engine.deckB;
+    const inDeck = to === "B" ? engine.deckB : engine.deckA;
+    const BASS_CUT = -24; // dB
+    // bass swap: the incoming song's low end is held back, then the two lows trade places around the middle of the blend
+    const swap = (k: number) => {
+      const s = Math.max(0, Math.min(1, (k - 0.4) / 0.2));
+      inDeck.setEQ("low", BASS_CUT * (1 - s));
+      outDeck.setEQ("low", BASS_CUT * s);
+    };
+    const swapDone = () => {
+      inDeck.setEQ("low", 0);
+      outDeck.setEQ("low", 0);
+    };
     if (type === "cut") {
       engine.setCrossfade(target);
       relayFading.current = false;
@@ -1275,16 +1301,19 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       if (!relayRef.current) {
         relayFading.current = false;
         if (type === "filter") outDeck.setFilter(0);
+        if (bassSwap) swapDone();
         return;
       }
       const k = Math.min(1, (performance.now() - t0) / (secs * 1000));
       const eased = type === "smooth" ? (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2) : k;
       engine.setCrossfade(from + (target - from) * eased);
       if (type === "filter") outDeck.setFilter(-eased); // sweep toward closed low-pass as it fades out
+      if (bassSwap) swap(k);
       if (k < 1) requestAnimationFrame(step);
       else {
         relayFading.current = false;
         if (type === "filter") outDeck.setFilter(0); // reset — this deck gets reused for the next song
+        if (bassSwap) swapDone();
       }
     };
     requestAnimationFrame(step);
@@ -1313,6 +1342,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     engine.setCrossfade(0); // start fully on Deck A
     (async () => {
       const okA = await relayLoadNext("A", true); // A in the foreground, playing
+      if (okA) announceOver("A", true);
       const okB = await relayLoadNext("B", false); // B cued, ready to fade in
       if (!okA || !okB) {
         flash("A→B→A : classe au moins 1 single sur le Deck A et le Deck B");
@@ -1325,6 +1355,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     })();
   }
   function stopRelay() {
+    stopSpeaking();
     setRelay(false);
     relayRef.current = false;
     setRelayCur({ A: -1, B: -1 }); // clear "en cours" markers
@@ -1350,7 +1381,45 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     const pl = plId ? dataRef.current.playlists.find((p) => p.id === plId) : null;
     return pl?.transitionType ?? "fade";
   }
-  // preload lead-time for a given deck's LIVE loop, from whichever set drives it
+  // The relay's playlist (the one queued on Deck A) and the step of its mix plan for the song playing on `side`
+  function relayPlaylist() {
+    const plId = queueSrcRef.current.A;
+    return plId ? dataRef.current.playlists.find((p) => p.id === plId) : undefined;
+  }
+  function relayStepFor(side: "A" | "B"): MixStep | undefined {
+    const pl = relayPlaylist();
+    // a plan made for another order of the set (songs added, removed or moved since) is not followed
+    if (!pl?.mixPlan || pl.dj?.auto === false || pl.mixPlan.length !== pl.trackIds.length - 1) return undefined;
+    const idx = relayIdx.current[side];
+    return idx >= 0 ? pl.mixPlan[idx] : undefined;
+  }
+  // the radio voice announces the song coming in; the music steps down while it speaks
+  function announceOver(side: "A" | "B", first = false) {
+    const pl = relayPlaylist();
+    const style = pl?.dj?.voice ?? "off";
+    if (style === "off") return;
+    const t = liveQueue(side)[relayIdx.current[side]];
+    if (!t) return;
+    const decks = [engine.deckA, engine.deckB];
+    const base = decks.map((d) => d.volumeValue);
+    speak(announcement(t, style, first), {
+      onStart: () => decks.forEach((d, i) => d.setVolume(base[i] * 0.5)),
+      onEnd: () => decks.forEach((d, i) => d.setVolume(base[i])),
+    });
+  }
+  // after a beat-matched blend the incoming song drifts back to its own tempo instead of staying pitched
+  function pitchHome(deck: typeof engine.deckA) {
+    const id = deck.origin?.id;
+    const timer = window.setInterval(() => {
+      const p = deck.pitchPct;
+      if (!relayRef.current || deck.origin?.id !== id || Math.abs(p) < 0.05) {
+        window.clearInterval(timer);
+        if (relayRef.current && deck.origin?.id === id) deck.setPitch(0);
+        return;
+      }
+      deck.setPitch(p * 0.93);
+    }, 400);
+  }
 
   // Watch the foreground deck; when a song is ~ending, start the other deck and
   // autofade across to it, then cue the next single on the deck that just freed up.
@@ -1362,10 +1431,12 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       // re-read the transition length/type/preload EVERY tick, not once when
       // the relay started — otherwise changing the style/duration mid-set
       // (a very normal thing to do) was silently ignored until stop+restart.
-      const FADE = relayTransitionSec();
-      const TYPE = relayTransitionType();
       const side = relaySide.current;
       const other = side === "A" ? "B" : "A";
+      // the mix plan (prepared in advance, one step per song) wins over the set's single style and length
+      const step = relayStepFor(side);
+      const FADE = step ? Math.max(step.sec, 0) : relayTransitionSec();
+      const TYPE = step?.type ?? relayTransitionType();
       const preload = livePreloadSec(other);
       const deck = side === "A" ? engine.deckA : engine.deckB;
       const otherDeck = other === "A" ? engine.deckA : engine.deckB;
@@ -1375,8 +1446,22 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       if (remain > preFadeWindow + 0.3) return;
       relayArmed.current = false;
       const secs = TYPE === "cut" ? 0 : Math.min(FADE, Math.max(2, remain));
-      otherDeck.play(); // bring in the cued deck
-      relayFade(other, Math.max(secs, 0.05), TYPE);
+      // beat-matched: the incoming tempo follows the outgoing one and it starts exactly on a beat
+      let wait = 0;
+      if (step?.sync && TYPE !== "cut") {
+        engine.sync(other);
+        wait = alignDelaySec(deck, otherDeck);
+      }
+      const go = () => {
+        if (!relayRef.current) return;
+        if (step?.bassSwap) otherDeck.setEQ("low", -24);
+        otherDeck.play(); // bring in the cued deck
+        relayFade(other, Math.max(secs, 0.05), TYPE, !!step?.bassSwap);
+        if (step?.sync && TYPE !== "cut") window.setTimeout(() => pitchHome(otherDeck), (secs + 1) * 1000);
+        window.setTimeout(() => announceOver(other), TYPE === "cut" ? 300 : Math.min(secs * 0.35, 4) * 1000);
+      };
+      if (wait > 0) window.setTimeout(go, wait * 1000);
+      else go();
       relaySide.current = other;
       setRelayFg(other); // the incoming deck is now "en cours" in the list
       // once the fade is done, stop the old deck and cue its next single
@@ -1384,10 +1469,12 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
         if (!relayRef.current) return;
         deck.pause();
         deck.setFilter(0); // reset — this deck gets reused for the next song
+        deck.setPitch(0);
+        deck.setEQ("low", 0);
         relayLoadNext(side, false).then(() => {
           relayArmed.current = true;
         });
-      }, (secs + 0.4) * 1000);
+      }, (secs + wait + 0.4) * 1000);
     }, 300);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1521,7 +1608,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
         <div className={`${inPl ? "h-24 w-24" : "h-16 w-16"} hw-cover shrink-0 rounded-md bg-neutral-900`}>
           {t.art ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={t.art} alt="" className="h-full w-full object-cover" />
+            <img src={thumbSrc(t.art, 120)} alt="" className="h-full w-full object-cover" />
           ) : (
             <div
               className="hw-vinyl flex h-full w-full items-center justify-center text-base font-black text-white drop-shadow"
@@ -2568,6 +2655,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           },
           analyzing: analyzingIds,
           onAnalyze: analyzeIds,
+          onMixPlan: (on) => ap && setMixPlan(ap.id, on),
         }}
         library={{
           tabs: [
@@ -2836,7 +2924,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                   >
                     {a?.art ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={a.art} alt="" className="h-full w-full object-cover" />
+                      <img src={thumbSrc(a.art, 120)} alt="" className="h-full w-full object-cover" />
                     ) : (
                       <div
                         className="hw-vinyl flex h-full w-full items-center justify-center text-2xl font-black drop-shadow"
@@ -2875,7 +2963,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                       >
                         {nextT.art ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={nextT.art} alt="" className="h-full w-full object-cover" />
+                          <img src={thumbSrc(nextT.art, 120)} alt="" className="h-full w-full object-cover" />
                         ) : (
                           <div
                             className="flex h-full w-full items-center justify-center text-base"

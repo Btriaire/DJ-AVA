@@ -1,16 +1,19 @@
 "use client";
 import { Fragment } from "react";
 import { BpmChip, Cover, Icon, KeyChip, fmtDur, keyCompat } from "../prep/parts";
-import type { LibTrack } from "@/lib/library";
+import type { LibTrack, TransitionType } from "@/lib/library";
+import { STEP_LABEL, type MixStep } from "@/lib/mixPlan";
 
 export interface OrderPreviewProps {
   tracks: LibTrack[];
   onMove?: (index: number, dir: -1 | 1) => void;
   onRemove?: (index: number) => void;
   maxHeight?: string;
+  plan?: MixStep[]; // the DJ plan: one step per transition, shown (and editable) on the connector rows
+  onStepType?: (index: number, type: TransitionType) => void;
 }
 
-export function OrderPreview({ tracks, onMove, onRemove, maxHeight = "46vh" }: OrderPreviewProps) {
+export function OrderPreview({ tracks, onMove, onRemove, maxHeight = "46vh", plan, onStepType }: OrderPreviewProps) {
   const hasControls = onMove !== undefined && onRemove !== undefined;
 
   if (tracks.length === 0) {
@@ -108,7 +111,7 @@ export function OrderPreview({ tracks, onMove, onRemove, maxHeight = "46vh" }: O
               )}
             </li>
             {i < tracks.length - 1 && (
-              <li aria-hidden className="flex items-center gap-2 pl-9 pr-2">
+              <li aria-hidden={!plan?.[i]} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 pl-9 pr-2">
                 <div
                   className="h-3 w-2.5 shrink-0"
                   style={{ backgroundColor: keyCompat(t.camelot, tracks[i + 1].camelot).color }}
@@ -126,6 +129,26 @@ export function OrderPreview({ tracks, onMove, onRemove, maxHeight = "46vh" }: O
                 <div className="text-[10px]" style={{ color: keyCompat(t.camelot, tracks[i + 1].camelot).color }}>
                   {keyCompat(t.camelot, tracks[i + 1].camelot).label}
                 </div>
+                {plan?.[i] && (
+                  <div className="ml-auto flex items-center gap-1.5 text-[10px] text-neutral-400" title={plan[i].note}>
+                    <select
+                      className="prep-input px-1.5 py-0.5 text-[10px]"
+                      aria-label={`Style de la transition ${i + 1}`}
+                      value={plan[i].type}
+                      disabled={!onStepType}
+                      onChange={(e) => onStepType?.(i, e.target.value as TransitionType)}
+                    >
+                      {(Object.keys(STEP_LABEL) as TransitionType[]).map((k) => (
+                        <option key={k} value={k}>
+                          {STEP_LABEL[k]}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="font-mono">{plan[i].type === "cut" ? "net" : `${plan[i].sec} s`}</span>
+                    {plan[i].sync && <span className="rounded bg-white/5 px-1">calé</span>}
+                    {plan[i].bassSwap && <span className="rounded bg-white/5 px-1">basses</span>}
+                  </div>
+                )}
               </li>
             )}
           </Fragment>

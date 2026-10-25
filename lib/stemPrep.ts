@@ -1,3 +1,4 @@
+import { getMemLevel } from "@/lib/memoryGovernor";
 import { idbGetBlob, idbPutBlob, loadLibrary, saveLibrary, uid, extractCover, type LibTrack, type TrackSource } from "@/lib/library";
 
 // htdemucs_ft overruns the Metal GPU watchdog on MLX; htdemucs stays reliable
@@ -96,7 +97,7 @@ async function processQueue(): Promise<void> {
   while (true) {
     const job = state.jobs.find(j => j.status === "queued" || (j.status === "running" && j.hash));
     if (!job) break;
-    while (!canRun()) await new Promise(r => setTimeout(r, 2000)); // wait for playback to stop
+    while (!canRun() || getMemLevel() === "critical") await new Promise(r => setTimeout(r, 2000)); // wait for playback to stop, and for memory to come back
 
     if (job.hash) {
       // Resume existing job

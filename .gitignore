@@ -58,3 +58,5 @@ __pycache__/
 .bench-*
 .venv-mlx
 .analysis-cache/
+
+.audio-cache/

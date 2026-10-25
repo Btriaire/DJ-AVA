@@ -30,6 +30,7 @@ export interface SetDetailProps {
   onPrepareStems: (ids: string[]) => void;
   analyzing: ReadonlySet<string>;
   onAnalyze: (ids: string[]) => void;
+  onMixPlan: (on: boolean) => void; // (re)computes the DJ plan of the set / switches it off
 }
 
 export function SetDetail(props: SetDetailProps) {
@@ -229,6 +230,17 @@ export function SetDetail(props: SetDetailProps) {
           >
             <Icon name="stems" size={14} />
             Stems
+          </button>
+
+          <button
+            className="prep-btn-ghost flex items-center gap-1.5 px-3 py-1 text-xs disabled:opacity-40"
+            onClick={() => props.onMixPlan(!(props.playlist!.mixPlan && props.playlist!.dj?.auto !== false))}
+            aria-pressed={!!props.playlist!.mixPlan && props.playlist!.dj?.auto !== false}
+            disabled={list.length < 2}
+            title="DJ intelligent : un style, une durée et un calage choisis pour chaque enchaînement, d'après les tempos et les tonalités. Le relais les suit."
+          >
+            <Icon name="swap" size={14} />
+            {props.playlist!.mixPlan && props.playlist!.dj?.auto !== false ? "Plan DJ actif" : "Plan DJ"}
           </button>
 
           <button

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createMp3Stream, getTitle } from "@/lib/youtube";
+import { cachedFile, isVideoId, teeToCache } from "@/lib/audioCache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +16,7 @@ export async function GET(req: NextRequest) {
   if (!target) return new NextResponse("missing id/url", { status: 400 });
 
   const dl = req.nextUrl.searchParams.get("dl") === "1";
+  const cacheable = !dl && isVideoId(id) ? id : null;
   const isVercel = process.env.VERCEL === "1" || process.env.NEXT_PUBLIC_VERCEL_ENV != null;
 
   // 1. Direct local streaming when running locally (not on Vercel) or on VPS
@@ -30,7 +32,12 @@ export async function GET(req: NextRequest) {
         const safe = title.replace(/[^\w\sÀ-ÿ.\-]/g, "").trim().slice(0, 80) || "youtube-audio";
         headers["Content-Disposition"] = `attachment; filename="${safe}.mp3"`;
       }
-      return new NextResponse(createMp3Stream(target), { headers });
+      if (cacheable) {
+        const hit = cachedFile(cacheable);
+        if (hit) return new NextResponse(hit.stream, { headers: { ...headers, "Content-Length": String(hit.size) } });
+      }
+      const stream = createMp3Stream(target);
+      return new NextResponse(cacheable ? teeToCache(cacheable, stream) : stream, { headers });
     } catch (e) {
       console.warn("[youtube stream local] local streaming failed, trying VPS fallback:", (e as Error).message);
     }

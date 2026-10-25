@@ -1,4 +1,5 @@
 import type { VideoMeta } from "@/lib/videoMeta";
+import type { DjOptions, MixStep } from "@/lib/mixPlan";
 import type { QualityLevel } from "@/lib/quality";
 // Persistent media library for the DJ app.
 // - Track/playlist metadata lives in localStorage (small, synchronous).
@@ -41,6 +42,8 @@ export interface Playlist {
   transitionSec?: number; // crossfade length (s) used between tracks when this set auto-mixes
   transitionType?: TransitionType; // crossfade curve/style — see TRANSITION_TYPES in MediaLibrary
   preloadSec?: number; // seconds before a track ends to start warming the next one (fewer gaps)
+  mixPlan?: MixStep[]; // how to go from each song to the next (lib/mixPlan.ts), followed by the relay when dj.auto is not false
+  dj?: DjOptions; // the DJ options this set was prepared with
 }
 
 export interface LibraryData {

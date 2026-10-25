@@ -43,4 +43,29 @@ assert.ok(zones[0].every((t) => t.bpm! >= 112 && t.bpm! <= 129), "the biggest zo
 assert.ok(zones[0].length >= 8);
 assert.equal(tempoGroups(tempo([100, 101, 102])).length, 0, "too few songs for a zone: the caller falls back to everything");
 assert.ok(composeShows(tempo([100, 101, 102]), prefs, 0)[0].trackIds.length === 3, "small pools are still composed");
+// advanced options: tempo window, versions, artist rule, plan per show
+const advanced = { ...prefs, tempoMin: 0, tempoMax: 0, avoidUsed: false, maxShows: 1 as const };
+const wide = [100, 102, 104, 106, 108, 110, 140, 142, 144, 146, 148, 150].map((b, i): LibTrack => ({ id: "w" + i, name: "W" + i, source: "youtube", deck: null, addedAt: 0, bpm: b, camelot: "8A", durationSec: 200, group: i % 2 ? "A" : "B" }));
+assert.equal(composeShows(wide, { ...advanced, soloSets: false }, 0).length, 1, "maxShows 1: one tempo zone only");
+assert.equal(composeShows(wide, { ...advanced, soloSets: false, maxShows: 2 }, 0).length, 2, "two zones: two mixes");
+const windowed = composeShows(wide, { ...advanced, soloSets: false, tempoMin: 140 }, 0)[0];
+assert.ok(windowed.trackIds.every((id) => Number(id.slice(1)) >= 6), "tempo window keeps only 140+");
+assert.equal(windowed.plan.length, windowed.trackIds.length - 1, "one plan step per transition");
+const used = new Set(["w0", "w1", "w2", "w3", "w4", "w5"]);
+const avoided = composeShows(wide, { ...advanced, soloSets: false, avoidUsed: true }, 0, used);
+assert.ok(avoided.every((s) => s.trackIds.every((id) => !used.has(id))), "songs already in a set are left out");
+const alt = composeShows(wide, { ...advanced, soloSets: false, mixArtists: "alternate", tempoSpread: 15 }, 0)[0];
+const grp = (id: string) => wide.find((t) => t.id === id)!.group;
+let sameInARow = 0;
+alt.trackIds.forEach((id, i) => { if (i && grp(id) === grp(alt.trackIds[i - 1])) sameInARow++; });
+assert.ok(sameInARow <= 1, `artists alternate (${sameInARow} repeats)`);
+const orig = pickCandidates([yt("o1", "Daft Punk - Around The World"), yt("o2", "Daft Punk - Around The World (Hardwell Remix)")], "Daft Punk", 5, new Set(), { version: "original" });
+assert.deepEqual(orig.map((r) => r.id), ["o1"]);
+const rmx = pickCandidates([yt("o1", "Daft Punk - Around The World"), yt("o2", "Daft Punk - Around The World (Hardwell Remix)")], "Daft Punk", 5, new Set(), { version: "remix" });
+assert.deepEqual(rmx.map((r) => r.id), ["o2"]);
+assert.equal(pickCandidates([yt("l", "Daft Punk - Veridis Quo", "Daft Punk - Topic", 400)], "Daft Punk", 5, new Set(), { maxSec: 300 }).length, 0, "max length honoured");
+// guests do not make a different song; a remix does
+assert.equal(normTitle("Daft Punk - Get Lucky (Official Audio) ft. Pharrell Williams, Nile Rodgers", "Daft Punk"), normTitle("Daft Punk - Get Lucky (Feat. Pharrell Williams)", "Daft Punk"));
+const dup = ["Daft Punk - Get Lucky (Official Audio) ft. Pharrell", "Daft Punk - Get Lucky (Feat. Pharrell Williams)", "Daft Punk - Get Lucky (Hardwell Remix)", "Daft Punk - Digital Love", "Daft Punk - Aerodynamic", "Daft Punk - Robot Rock"].map((n, i): LibTrack => ({ id: "d" + i, name: n, source: "youtube", deck: null, addedAt: 0, bpm: 120 + i, camelot: "8A", durationSec: 200, group: "Daft Punk" }));
+assert.equal(composeShows(dup, { ...advanced, soloSets: false, durationMin: 0 }, 0)[0].trackIds.length, 5, "the duplicate upload is dropped, the remix kept");
 console.log("radio ok");

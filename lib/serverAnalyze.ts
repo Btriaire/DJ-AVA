@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
+import { totalmem } from "node:os";
 import { downloadAudioClip } from "@/lib/youtube";
 
 // Server-side tempo / key analysis (ffmpeg + scripts/analyze_audio.py), shared by the upload route and the radio.
@@ -46,8 +47,27 @@ export interface ClipAnalysis {
   keyName: string;
 }
 
+// one analysis is a python process with librosa (hundreds of MB): on a small machine only two run at a time
+const MAX_PARALLEL = totalmem() <= 9 * 1024 ** 3 ? 2 : 3;
+let running = 0;
+const waiting: (() => void)[] = [];
+async function slot<T>(job: () => Promise<T>): Promise<T> {
+  if (running >= MAX_PARALLEL) await new Promise<void>((r) => waiting.push(r));
+  running++;
+  try {
+    return await job();
+  } finally {
+    running--;
+    waiting.shift()?.();
+  }
+}
+
 // tempo and key of a YouTube video from a 90 s excerpt of the middle of the song; cached by video id
-export async function analyzeYoutubeClip(id: string, durationSec: number): Promise<ClipAnalysis | null> {
+export function analyzeYoutubeClip(id: string, durationSec: number): Promise<ClipAnalysis | null> {
+  return slot(() => analyzeClip(id, durationSec));
+}
+
+async function analyzeClip(id: string, durationSec: number): Promise<ClipAnalysis | null> {
   const cacheDir = join(process.cwd(), ".analysis-cache");
   const cachePath = join(cacheDir, `yt-${id}.json`);
   await mkdir(cacheDir, { recursive: true });
