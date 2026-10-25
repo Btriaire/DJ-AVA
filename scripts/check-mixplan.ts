@@ -153,4 +153,13 @@ assert.ok([0, 1, 2, 3].every((i) => pickTransitionMove(5, i, { bpm: 124, genre: 
 assert.ok(transitionPalette("pop", 110).includes("echo") && !transitionPalette("pop", 110).includes("roll"), "pop transitions: no roll");
 assert.ok(!["roll", "gate", "noise", "drop"].includes(planStep(t(124, "8A"), t(125, "9A"), "flow", { ...applyForce(DEFAULT_DJ, 5), genre: "pop" }, 0).type), "pop: no club effect on the change");
 assert.ok(["echo", "brake", "reverse", "drop", "dub", "roll"].includes(planStep(t(124, "8A"), t(125, "9A"), "flow", { ...applyForce(DEFAULT_DJ, 5), genre: "hiphop" }, 0).type), "hip-hop transitions come from its palette");
+// zen and calm: only the softest moves, whatever the force and the tempo, and no touch on the changes
+for (const genre of ["zen", "calm"] as const) {
+  const soft = new Set(Array.from({ length: 30 }, (_, n) => pickAccent(5, n, { bpm: 124, genre, stems: FOUR })));
+  assert.ok([...soft].every((k) => ["filterbreath", "reverbwash", "echothrow", "echoexit", "freezehold"].includes(k!)), `${genre}: soft moves only`);
+  assert.ok(![...soft].some((k) => ["roll", "gatechop", "noiseburst", "drumsolo", "bassdrop", "riserbuild"].includes(k!)));
+  assert.equal(pickTransitionMove(5, 0, { bpm: 124, genre }), null, `${genre}: no touch on the changes`);
+  assert.ok(transitionPalette(genre, 124).every((x) => ["wash", "echo"].includes(x)));
+}
+assert.ok(!moves(5, { bpm: 124, genre: "calm", stems: FOUR }).has("echothrow" as never), "calm: no plain echo");
 console.log("mixplan ok");

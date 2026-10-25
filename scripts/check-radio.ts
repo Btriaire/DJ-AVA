@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { plainOrder, artistOfName, composeShows, tempoGroups, isRelevant, normTitle, pickCandidates, suggestArtists, DEFAULT_PREFS, type YtResult } from "../lib/radio";
+import { djFor, isGentle, plainOrder, artistOfName, composeShows, tempoGroups, isRelevant, normTitle, pickCandidates, suggestArtists, DEFAULT_PREFS, type YtResult } from "../lib/radio";
 import type { LibTrack } from "../lib/library";
 
 const yt = (id: string, title: string, artist = "Daft Punk - Topic", duration = 240): YtResult => ({ id, title, artist, duration, artwork: null });
@@ -97,4 +97,17 @@ assert.ok(STYLES.every((st) => st.artists.length >= 5) && COLLECTIONS.every((c) 
 const col = findCollection("hits des années 80")!;
 assert.equal(pickSongs(col, 4, 0).length, 4);
 assert.notDeepEqual(pickSongs(col, 4, 0), pickSongs(col, 4, 1), "another offset gives other songs");
+// zen and calm: one soft programme, a classical plan (long blends, no beat-matching), whatever the tempos
+const zenTracks = ["Brian Eno", "Marconi Union", "Max Richter", "Hammock", "Brian Eno", "Max Richter"].map((g, i): LibTrack => ({ id: "z" + i, name: `${g} - piece ${i}`, source: "youtube", deck: null, addedAt: 0, bpm: [70, 90, 128, 60, 100, 80][i], camelot: `${i + 1}A`, durationSec: 420, group: g }));
+for (const mode of ["zen", "calm"] as const) {
+  const zs = composeShows(zenTracks, { ...prefs, mode, durationMin: 0, soloSets: false }, 0);
+  assert.equal(zs.length, 1, `${mode}: no tempo zones`);
+  assert.ok(zs[0].plan.every((st) => st.type === "smooth" && !st.sync && !st.bassSwap && st.sec >= 5), `${mode}: soft blends only`);
+  assert.equal(djFor({ ...prefs, mode }).style, "classical");
+  assert.ok(isGentle({ mode }));
+}
+assert.ok(!isGentle({ mode: "style" }) && !isGentle({ mode: "artists" }));
+import { CALM_COLLECTIONS, ZEN_COLLECTIONS } from "../lib/styles";
+assert.ok(ZEN_COLLECTIONS.every((c) => c.genre === "zen" && c.songs.length >= 8) && CALM_COLLECTIONS.every((c) => c.genre === "calm" && c.songs.length >= 8));
+assert.equal(findCollection("piano calme")?.genre, "calm", "zen and calm lists are found by name");
 console.log("radio ok");

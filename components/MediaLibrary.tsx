@@ -44,7 +44,7 @@ import { useStemsShared } from "@/lib/stemsShared";
 import { getRelayHost, publishRelayHost, registerRelayHost, relayHostStart, relayHostStop, subscribeRelayHost } from "@/lib/relayHost";
 import { cachedLoudness, loudnessFor, matchTrimDb } from "@/lib/audio/levelMatch";
 import { getDjLive, setDjStems, showDjAction, useDjLive } from "@/lib/djLive";
-import { ACCENT_LABEL, MASTER_MOVES, PROFILE as FORCE_PROFILE, accentDue, amountFor, forceOf, isCalm, isMasterMove, pickAccent, pickTransitionMove, type AccentKind, type Feel } from "@/lib/djForce";
+import { ACCENT_LABEL, MASTER_MOVES, isGentleGenre, PROFILE as FORCE_PROFILE, accentDue, amountFor, forceOf, isCalm, isMasterMove, pickAccent, pickTransitionMove, type AccentKind, type Feel } from "@/lib/djForce";
 import type { FxName } from "@/lib/audio/FXRack";
 import { pickTech, stemFrame, STEM_TECH_LABEL, type StemMode, type StemName, type StemTech } from "@/lib/stemMix";
 import { getMemLevel } from "@/lib/memoryGovernor";
@@ -1718,7 +1718,9 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     // the top-bar switch rules (and works on songs played by hand); otherwise the set's own DJ options
     const active = live.on || (!!dj && dj.auto !== false);
     if (!active || !deck.playing || !(deck.bpm > 0)) return;
-    const force = live.on ? live.force : forceOf(dj);
+    // a zen or calm set keeps its own gentle force and style, whatever the top-bar DJ says
+    const gentle = isGentleGenre(dj?.genre);
+    const force = live.on && !gentle ? live.force : forceOf(dj);
     const st = accentRef.current[side];
     const id = deck.origin?.id ?? deck.name;
     if (st.id !== id) {
@@ -1733,7 +1735,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     // the first move comes after about half an interval, the next ones at the full interval
     if (st.lastBar === Number.NEGATIVE_INFINITY) st.lastBar = barIdx - Math.round(FORCE_PROFILE[force].everyBars / 2);
     // what the DJ knows of the song: its tempo, whether it is classical, the stems it really has
-    const feel: Feel = { bpm: deck.bpm, classical: dj?.style === "classical", stems: deck.stemsActive && deck.stemReady ? deck.stemNames : [], genre: live.on ? live.genre : dj?.genre };
+    const feel: Feel = { bpm: deck.bpm, classical: dj?.style === "classical", stems: deck.stemsActive && deck.stemReady ? deck.stemNames : [], genre: live.on && !gentle ? live.genre : dj?.genre };
     if (!accentDue(force, barIdx, st.lastBar, deck.position(), remain, fadeSec, isCalm(feel))) return;
     const kind = pickAccent(force, st.count, feel);
     if (!kind) return;
@@ -1871,8 +1873,9 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
         // the style's own touch on the change: an echo out, a riser, a phaser... on top of the blend (from force 3)
         const live = getDjLive();
         if (TYPE !== "cut" && !braking && (live.on || (!!dj && dj.auto !== false))) {
-          const force = live.on ? live.force : forceOf(dj);
-          const feelT: Feel = { bpm: Math.min(deck.bpm || 120, otherDeck.bpm || 120), classical: dj?.style === "classical", genre: live.on ? live.genre : dj?.genre };
+          const gentle = isGentleGenre(dj?.genre);
+          const force = live.on && !gentle ? live.force : forceOf(dj);
+          const feelT: Feel = { bpm: Math.min(deck.bpm || 120, otherDeck.bpm || 120), classical: dj?.style === "classical", genre: live.on && !gentle ? live.genre : dj?.genre };
           const move = deck.bpm > 0 ? pickTransitionMove(force, relayIdx.current[side], feelT) : null;
           if (move) {
             runAccent(deck, move, amountFor(FORCE_PROFILE[force].amount, feelT), Math.max(2, secs));

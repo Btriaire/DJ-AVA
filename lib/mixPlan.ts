@@ -92,7 +92,7 @@ export function planStep(a: LibTrack, b: LibTrack, arc: SetArc, opts: DjOptions 
   if (opts.style === "classical") {
     // no beat to match, no bass to swap: a long, soft blend, never longer than a tenth of the shortest piece
     const shortest = Math.min(a.durationSec || 300, b.durationSec || 300);
-    return { type: "smooth", sec: Math.round(Math.max(5, Math.min(14 * BLEND_FACTOR[opts.blend ?? "normal"], shortest * 0.1 * BLEND_FACTOR[opts.blend ?? "normal"]))), sync: false, bassSwap: false, tail: "none", note: "Enchaînement classique : fondu long et doux, sans caler les tempos." };
+    return { type: "smooth", sec: Math.round(Math.max(5, Math.min(14 * BLEND_FACTOR[opts.blend ?? "normal"], shortest * 0.1 * BLEND_FACTOR[opts.blend ?? "normal"]))), sync: false, bassSwap: false, tail: "none", note: "Enchaînement doux : fondu long, sans caler les tempos." };
   }
   const { pct, folded } = tempoGap(a.bpm ?? 0, b.bpm ?? 0);
   const gap = Math.abs(pct);

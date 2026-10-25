@@ -31,7 +31,7 @@ export interface RadioPrefs {
   // advanced
   version: "original" | "remix" | "any"; // which versions of the songs to look for
   content: "studio" | "live" | "instrumental" | "acapella" | "acoustic"; // what kind of recording to look for
-  mode: "artists" | "classical" | "style" | "collection"; // artists, composers and their works, a music style (its artists), a collection (named songs)
+  mode: "artists" | "classical" | "style" | "collection" | "zen" | "calm"; // zen: ambient and meditation, calm: quiet piano (soft blends, almost no effect); artists, composers and their works, a music style (its artists), a collection (named songs)
   analysis: "full" | "none"; // "none": the sets are built without analysing tempo and key (instant, ordered by artist alternation)
   classical: { eras: Era[]; instrument: Instrument | "all"; mood: Mood | "all" };
   maxTrackMin: 5 | 8 | 12 | 20; // longest song kept
@@ -72,6 +72,9 @@ export const DEFAULT_PREFS: RadioPrefs = {
 
 const pick = <T,>(v: unknown, allowed: readonly T[], fallback: T): T => (allowed.includes(v as T) ? (v as T) : fallback);
 
+// classical, zen and calm radios are programmes, not dance sets: long soft blends, no beat-matching, no tempo zones
+export const isGentle = (p: Pick<RadioPrefs, "mode">) => p.mode === "classical" || p.mode === "zen" || p.mode === "calm";
+
 const LS_KEY = "djsynth.radio.v1";
 
 function normalizePrefs(p: Partial<RadioPrefs>): RadioPrefs {
@@ -85,7 +88,7 @@ function normalizePrefs(p: Partial<RadioPrefs>): RadioPrefs {
     soloSets: !!p.soloSets,
     version: pick(p.version, ["original", "remix", "any"] as const, D.version),
     content: pick(p.content, ["studio", "live", "instrumental", "acapella", "acoustic"] as const, D.content),
-    mode: pick(p.mode, ["artists", "classical", "style", "collection"] as const, D.mode),
+    mode: pick(p.mode, ["artists", "classical", "style", "collection", "zen", "calm"] as const, D.mode),
     analysis: pick(p.analysis, ["full", "none"] as const, D.analysis),
     classical: {
       eras: Array.isArray(p.classical?.eras) ? p.classical!.eras.filter((e) => ["baroque", "classique", "romantique", "impressionniste", "moderne"].includes(e)) : [],
@@ -323,7 +326,7 @@ const HARMONY_WEIGHT = { strict: 1.3, balanced: 0.5, free: 0.15 } as const;
 
 // the DJ options a radio really uses: a classical one never beat-matches, swaps bass or brakes
 export function djFor(prefs: RadioPrefs): DjOptions {
-  return prefs.mode === "classical" ? { ...prefs.dj, style: "classical", sync: false, bassSwap: false, tails: false, keyFix: false } : { ...prefs.dj, style: "club" };
+  return isGentle(prefs) ? { ...prefs.dj, style: "classical", sync: false, bassSwap: false, tails: false, keyFix: false } : { ...prefs.dj, style: "club" };
 }
 
 // order without analysis: artists take turns (or follow each other in blocks / at random), the seed shuffles the rest,
@@ -375,10 +378,10 @@ export function composeShows(tracks: LibTrack[], prefs: RadioPrefs, seed: number
   const shows: RadioShow[] = [];
   if (ready.length >= 2) {
     // a classical concert is one programme: tempos are not matched, so the songs are not split into tempo zones
-    const groups = prefs.mode === "classical" || plain ? [] : tempoGroups(ready, 1 + prefs.tempoSpread / 100, 5, prefs.maxShows);
+    const groups = isGentle(prefs) || plain ? [] : tempoGroups(ready, 1 + prefs.tempoSpread / 100, 5, prefs.maxShows);
     (groups.length ? groups : [ready]).forEach((g, i) => {
       const ids = order(g, prefs.arc, prefs.durationMin);
-      const label = prefs.mode === "classical" ? `Classique · ${ARC_LABEL[prefs.arc]}` : plain ? "sans analyse" : `${ARC_LABEL[prefs.arc]} · ${bpmSpan(g)}`;
+      const label = prefs.mode === "classical" ? `Classique · ${ARC_LABEL[prefs.arc]}` : prefs.mode === "zen" ? "Zen" : prefs.mode === "calm" ? "Calm · piano" : plain ? "sans analyse" : `${ARC_LABEL[prefs.arc]} · ${bpmSpan(g)}`;
       shows.push({ key: i === 0 ? "mix" : `mix-${i + 1}`, name: `Radio-AVA · ${label}`, arc: prefs.arc, trackIds: ids, plan: planFor(ids, prefs.arc) });
     });
   }
@@ -455,7 +458,7 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 // the theme written on the songs a radio adds, so that a live radio does not reuse studio songs (and the reverse)
 export function themeFor(prefs: RadioPrefs): string {
-  return prefs.mode === "classical" ? "Radio-AVA · classique" : prefs.mode === "collection" ? "Radio-AVA · collection" : prefs.content === "studio" ? "Radio-AVA" : `Radio-AVA · ${prefs.content}`;
+  return prefs.mode === "classical" ? "Radio-AVA · classique" : prefs.mode === "collection" ? "Radio-AVA · collection" : prefs.mode === "zen" ? "Radio-AVA · zen" : prefs.mode === "calm" ? "Radio-AVA · calm" : prefs.content === "studio" ? "Radio-AVA" : `Radio-AVA · ${prefs.content}`;
 }
 
 const CONTENT_QUERY: Record<Exclude<Content, "studio">, string[]> = {
@@ -504,15 +507,16 @@ async function searchArtist(name: string, count: number, skip: ReadonlySet<strin
     }
     return out;
   }
-  if (prefs.mode === "collection") {
+  if (prefs.mode === "collection" || prefs.mode === "zen" || prefs.mode === "calm") {
     const col = findCollection(name);
+    const gentle = isGentle(prefs); // zen and calm songs are long and often called "instrumental" or "live": no studio filter
     if (col) {
       // one search per named song of the collection
       const taken = new Set(skip);
       const out: YtResult[] = [];
       for (const song of pickSongs(col, count + 2, offset)) {
         if (out.length >= count) break;
-        const [hit] = await runQueries([`${song.artist} ${song.title} official audio`, `${song.artist} ${song.title}`], song.artist, 1, taken, maxSec, prefs);
+        const [hit] = await runQueries(gentle ? [`${song.artist} ${song.title}`] : [`${song.artist} ${song.title} official audio`, `${song.artist} ${song.title}`], song.artist, 1, taken, maxSec, prefs, gentle);
         if (hit) {
           out.push(hit);
           taken.add(hit.id);

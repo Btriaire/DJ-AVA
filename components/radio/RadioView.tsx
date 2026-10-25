@@ -73,6 +73,9 @@ export default function RadioView({
     book.stations.find((st) => st.id === book.current) ?? book.stations[0];
   const prefs = station.prefs;
   const classical = prefs.mode === "classical";
+  const gentleCatalog = prefs.mode === "zen" || prefs.mode === "calm"; // soft radios: titles by name, soft blends, almost no DJ effect
+  // leaving zen / calm: the DJ goes back to its normal force, blends and style
+  const normalDj = (dj: RadioPrefs["dj"]): RadioPrefs["dj"] => (dj.genre === "zen" || dj.genre === "calm" ? { ...dj, genre: "auto", force: 3, blend: "normal", stems: "punchy" } : dj);
   const commit = (next: StationsData) => {
     setBook(next);
     saveStations(next);
@@ -616,7 +619,7 @@ export default function RadioView({
                 Type de radio
               </span>
               <div className="prep-seg" role="group" aria-label="Type de radio">
-                <button type="button" aria-pressed={prefs.mode === "artists"} disabled={busy} onClick={() => change({ mode: "artists" })}>
+                <button type="button" aria-pressed={prefs.mode === "artists"} disabled={busy} onClick={() => change({ mode: "artists", dj: normalDj(prefs.dj) })}>
                   Artistes
                 </button>
                 <button
@@ -624,7 +627,7 @@ export default function RadioView({
                   aria-pressed={prefs.mode === "style"}
                   disabled={busy}
                   onClick={() => {
-                    change({ mode: "style" });
+                    change({ mode: "style", dj: normalDj(prefs.dj) });
                     flash("Radio par style : touche un style pour ajouter ses artistes");
                   }}
                   title="Un style de musique apporte ses artistes typiques"
@@ -636,12 +639,36 @@ export default function RadioView({
                   aria-pressed={prefs.mode === "collection"}
                   disabled={busy}
                   onClick={() => {
-                    change({ mode: "collection" });
+                    change({ mode: "collection", dj: normalDj(prefs.dj) });
                     flash("Radio par collection : choisis des listes de titres");
                   }}
                   title="Des listes de titres précis : hits d'une époque, soirée disco..."
                 >
                   Collection
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={prefs.mode === "zen"}
+                  disabled={busy}
+                  onClick={() => {
+                    change({ mode: "zen", content: "studio", arc: "flow", maxTrackMin: 12, mixArtists: "alternate", analysis: "none", dj: { ...prefs.dj, genre: "zen", force: 1, blend: "xlong", stems: "off", voice: "off" } });
+                    flash("Radio Zen : choisis des ambiances. Fondus très longs, presque aucun effet.");
+                  }}
+                  title="Ambient et méditation : des titres très calmes, enchaînés par de longs fondus, presque sans effet DJ"
+                >
+                  Zen
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={prefs.mode === "calm"}
+                  disabled={busy}
+                  onClick={() => {
+                    change({ mode: "calm", content: "studio", arc: "flow", maxTrackMin: 12, mixArtists: "alternate", analysis: "none", dj: { ...prefs.dj, genre: "calm", force: 1, blend: "long", stems: "off", voice: "off" } });
+                    flash("Radio Calm : choisis un style de piano. Fondus doux, réverb légère seulement.");
+                  }}
+                  title="Piano calme : fondus doux, juste une réverb ou un écho léger"
+                >
+                  Calm
                 </button>
                 <button
                   type="button"
@@ -654,6 +681,7 @@ export default function RadioView({
                       arc: "flow",
                       maxTrackMin: 12,
                       mixArtists: "alternate",
+                      dj: normalDj(prefs.dj),
                     });
                     flash(
                       "Radio classique : choisis des compositeurs (la liste d'artistes actuelle est conservée)",
@@ -719,7 +747,7 @@ export default function RadioView({
             </p>
           </div>
           <div
-            className="flex flex-wrap items-stretch gap-2"
+            className={`${gentleCatalog ? "hidden" : "flex"} flex-wrap items-stretch gap-2`}
             role="group"
             aria-label="Ambiances rapides"
           >
@@ -745,7 +773,7 @@ export default function RadioView({
           <div className="grid items-start gap-4 lg:grid-cols-2">
             <div className="flex flex-col gap-4">
               <ArtistsPanel
-                variant={classical ? "composer" : prefs.mode === "collection" ? "collection" : "artist"}
+                variant={classical ? "composer" : prefs.mode === "collection" || gentleCatalog ? "collection" : "artist"}
                 onRegenerate={
                   radio.phase === "done" || radio.phase === "cancelled"
                     ? (id) => void regen(id)
@@ -772,9 +800,9 @@ export default function RadioView({
                 }
                 onClear={() => change({ artists: [] })}
               />
-              {(prefs.mode === "style" || prefs.mode === "collection") && (
+              {(prefs.mode === "style" || prefs.mode === "collection" || gentleCatalog) && (
                 <CatalogPanel
-                  kind={prefs.mode}
+                  kind={prefs.mode as "style" | "collection" | "zen" | "calm"}
                   chosen={prefs.artists.map((a) => a.name)}
                   locked={busy}
                   onToggleStyle={(names, on, genre) => {

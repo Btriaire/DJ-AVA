@@ -51,8 +51,10 @@ export type AccentKind =
   | "ringmod";
 
 // What the DJ plays: each style has its own effects (see PALETTE). "auto" reads it from the tempo.
-export type Genre = "auto" | "club" | "hiphop" | "pop" | "disco" | "dub" | "latino" | "chill";
-export const GENRES: Genre[] = ["auto", "club", "hiphop", "pop", "disco", "dub", "latino", "chill"];
+export type Genre = "auto" | "club" | "hiphop" | "pop" | "disco" | "dub" | "latino" | "chill" | "zen" | "calm";
+export const GENRES: Genre[] = ["auto", "club", "hiphop", "pop", "disco", "dub", "latino", "chill", "zen", "calm"];
+// zen and calm are gentle by nature: very few effects, only the softest ones, whatever the force says
+export const isGentleGenre = (g: Genre | undefined): boolean => g === "zen" || g === "calm";
 export const GENRE_LABEL: Record<Genre, string> = {
   auto: "Auto (selon le tempo)",
   club: "House / techno / électro",
@@ -62,6 +64,8 @@ export const GENRE_LABEL: Record<Genre, string> = {
   dub: "Reggae / dub",
   latino: "Latino / afro",
   chill: "Chill / jazz / calme",
+  zen: "Zen (ambient, méditation)",
+  calm: "Calm (piano calme)",
 };
 export const GENRE_HINT: Record<Genre, string> = {
   auto: "Le DJ devine : tempo rapide = club, moyen = pop, lent = chill.",
@@ -72,6 +76,8 @@ export const GENRE_HINT: Record<Genre, string> = {
   dub: "Écho dub avec retour sur le temps, réverb, voix coupée, basse coupée puis claquée.",
   latino: "Rolls et gate courts sur les percussions, scatter, montées, échos. Batterie seule.",
   chill: "Réverb, écho, phaser très doux, gel du son. Rien de rapide.",
+  zen: "Presque aucun effet : un souffle de filtre, une réverb ou un écho très doux, un gel du son. Fondus très longs.",
+  calm: "Piano et douceur : réverb, queue d'écho en fin de morceau, souffle de filtre. Rien d'autre.",
 };
 
 export const ACCENT_LABEL: Record<AccentKind, string> = {
@@ -195,6 +201,8 @@ const PALETTE: Record<Exclude<Genre, "auto">, readonly AccentKind[]> = {
   dub: ["echothrow", "dubthrow", "echoexit", "reverbwash", "filterbreath", "vowelwah", "tapestop", "drumsout", "bassdrop", "voiceout", "vocalecho"],
   latino: ["echothrow", "echoexit", "reverbwash", "filterbreath", "roll", "gatechop", "scatterslice", "riserbuild", "panswing", "drumsout", "drumsolo", "vocalecho", "vocalsolo"],
   chill: ["reverbwash", "echothrow", "echoexit", "filterbreath", "phaserswirl", "panswing", "freezehold", "tapestop", "vocalecho", "otherout"],
+  zen: ["filterbreath", "reverbwash", "echothrow", "echoexit", "freezehold"],
+  calm: ["reverbwash", "echoexit", "filterbreath", "freezehold"],
 };
 const STEM_MOVES: readonly AccentKind[] = ["drumsout", "drumsolo", "bassdrop", "otherout", "vocalecho", "vocalsolo", "voiceout"];
 
@@ -211,6 +219,8 @@ const TRANSITION_PALETTE: Record<Exclude<Genre, "auto">, readonly TransitionType
   dub: ["echo", "dub", "wash", "reverse", "eq"],
   latino: ["echo", "roll", "gate", "brake", "noise", "wash", "loop"],
   chill: ["wash", "echo", "eq", "highpass", "reverse"],
+  zen: ["wash", "echo"],
+  calm: ["wash", "echo"],
 };
 // the effects a style uses to carry a transition (the tempo rules of fitsEffect apply on top)
 export const transitionPalette = (g: Genre, bpm: number): readonly TransitionType[] => TRANSITION_PALETTE[genreOf({ bpm, genre: g })];
@@ -266,8 +276,10 @@ const ALL_STEMS = ["drums", "bass", "other", "vocals"] as const;
 // song (see RULE). `feel` = the song; `true` stands for a 120 BPM song with all its stems, `false` for one without.
 export function pickAccent(force: DjForce, n: number, feel: Feel | boolean): AccentKind | null {
   const f: Feel = typeof feel === "boolean" ? { bpm: 120, stems: feel ? ALL_STEMS : [], genre: "club" } : feel;
-  const palette = PALETTE[genreOf(f)];
-  const pool = PROFILE[force].pool.filter((k) => RULE[k](f) && palette.includes(k));
+  const genre = genreOf(f);
+  const palette = PALETTE[genre];
+  // zen and calm take their whole (short) palette, whatever the force: the force only sets how often
+  const pool = (isGentleGenre(genre) ? [...palette] : PROFILE[force].pool.filter((k) => palette.includes(k))).filter((k) => RULE[k](f));
   if (!pool.length) return null;
   // a song that has its stems gets them used on every other move (from force 3): that is what they are prepared for
   const stemPool = pool.filter((k) => STEM_MOVES.includes(k));
@@ -286,6 +298,8 @@ const TRANSITION_MOVES: Record<Exclude<Genre, "auto">, readonly MasterKind[]> = 
   dub: ["echoexit", "tapestop"],
   latino: ["echoexit", "riserbuild", "scatterslice"],
   chill: ["echoexit", "freezehold", "phaserswirl"],
+  zen: [],
+  calm: [],
 };
 export function pickTransitionMove(force: DjForce, index: number, feel: Feel): MasterKind | null {
   if (force < 3 || isCalm(feel) && force < 5 || index % (force >= 5 ? 1 : 2) !== 0) return null;

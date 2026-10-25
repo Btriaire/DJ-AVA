@@ -83,8 +83,62 @@ export const COLLECTIONS: Collection[] = [
   },
 ];
 
+// Zen: ambient and meditation, slow and without a beat. Calm: quiet piano. Both are played with soft blends and almost no DJ effect.
+export const ZEN_COLLECTIONS: Collection[] = [
+  {
+    key: "zen-ambient",
+    genre: "zen",
+    label: "Ambient et méditation",
+    songs: [s("Brian Eno", "An Ending (Ascent)"), s("Marconi Union", "Weightless"), s("Brian Eno", "Music for Airports 1/1"), s("Stars of the Lid", "Down 3"), s("Max Richter", "Sleep Dream 3"), s("Jon Hopkins", "Abandon Window"), s("Nils Frahm", "Says"), s("Hammock", "Breathturn"), s("Steve Roach", "Structures from Silence"), s("Ólafur Arnalds", "Near Light")],
+  },
+  {
+    key: "zen-electro",
+    genre: "zen",
+    label: "Électronique planante",
+    songs: [s("Jean-Michel Jarre", "Oxygène Part 4"), s("Vangelis", "Rachel's Song"), s("Tangerine Dream", "Love on a Real Train"), s("Moby", "God Moving Over the Face of the Waters"), s("Boards of Canada", "Roygbiv"), s("Air", "Alone in Kyoto"), s("Bonobo", "Kerala"), s("Tycho", "A Walk"), s("Brian Eno", "Thursday Afternoon"), s("Aphex Twin", "Rhubarb")],
+  },
+  {
+    key: "zen-orient",
+    genre: "zen",
+    label: "Voix et horizons",
+    songs: [s("Enya", "Only Time"), s("Enya", "Orinoco Flow"), s("Enya", "May It Be"), s("Kitaro", "Silk Road"), s("Deva Premal", "Gayatri Mantra"), s("Yanni", "Nightingale"), s("Lisa Gerrard", "Now We Are Free"), s("Sigur Rós", "Svefn-g-englar"), s("Loreena McKennitt", "The Mummers' Dance"), s("Dead Can Dance", "Rakim")],
+  },
+  {
+    key: "zen-sleep",
+    genre: "zen",
+    label: "Sommeil profond",
+    songs: [s("Max Richter", "On the Nature of Daylight"), s("Brian Eno", "An Ending (Ascent)"), s("Stars of the Lid", "Requiem for Dying Mothers"), s("Max Richter", "Sleep Dream 3"), s("Marconi Union", "Weightless"), s("Ólafur Arnalds", "Saman"), s("Hammock", "Tape Recorder"), s("Johann Johannsson", "Flight from the City"), s("Nils Frahm", "Ambre"), s("Hania Rani", "Esja")],
+  },
+];
+export const CALM_COLLECTIONS: Collection[] = [
+  {
+    key: "calm-piano",
+    genre: "calm",
+    label: "Piano calme",
+    songs: [s("Ludovico Einaudi", "Nuvole Bianche"), s("Ludovico Einaudi", "Una Mattina"), s("Yiruma", "River Flows in You"), s("Yiruma", "Kiss the Rain"), s("Ludovico Einaudi", "Experience"), s("Ludovico Einaudi", "Primavera"), s("Joep Beving", "Sleeping Lotus"), s("Dustin O'Halloran", "Opus 23"), s("Erik Satie", "Gymnopédie No. 1"), s("Claude Debussy", "Clair de lune")],
+  },
+  {
+    key: "calm-cinema",
+    genre: "calm",
+    label: "Piano de cinéma",
+    songs: [s("Yann Tiersen", "Comptine d'un autre été"), s("Yann Tiersen", "La Valse d'Amélie"), s("Joe Hisaishi", "One Summer's Day"), s("Joe Hisaishi", "Merry-Go-Round of Life"), s("Ryuichi Sakamoto", "Merry Christmas Mr. Lawrence"), s("Ryuichi Sakamoto", "Energy Flow"), s("Hans Zimmer", "Time"), s("Ennio Morricone", "Cinema Paradiso Love Theme"), s("Max Richter", "On the Nature of Daylight"), s("Ludovico Einaudi", "Fly")],
+  },
+  {
+    key: "calm-jazz",
+    genre: "calm",
+    label: "Piano jazz doux",
+    songs: [s("Bill Evans", "Waltz for Debby"), s("Bill Evans", "Peace Piece"), s("Miles Davis", "Blue in Green"), s("Keith Jarrett", "My Song"), s("Brad Mehldau", "Exit Music"), s("Norah Jones", "Don't Know Why"), s("Bill Evans", "Some Other Time"), s("Herbie Hancock", "Maiden Voyage"), s("Chet Baker", "My Funny Valentine"), s("Thelonious Monk", "Round Midnight")],
+  },
+  {
+    key: "calm-strings",
+    genre: "calm",
+    label: "Piano et cordes",
+    songs: [s("Hania Rani", "Esja"), s("Nils Frahm", "Says"), s("Ólafur Arnalds", "Saman"), s("Poppy Ackroyd", "Sinking"), s("Max Richter", "Vladimir's Blues"), s("Dustin O'Halloran", "Opus 55"), s("Chilly Gonzales", "Gogol"), s("Ludovico Einaudi", "I Giorni"), s("Yiruma", "Maybe"), s("Arvo Pärt", "Spiegel im Spiegel")],
+  },
+];
+
 export const findStyle = (key: string): Style | undefined => STYLES.find((x) => x.key === key);
-export const findCollection = (name: string): Collection | undefined => COLLECTIONS.find((c) => c.label.toLowerCase() === name.trim().toLowerCase());
+export const findCollection = (name: string): Collection | undefined => [...COLLECTIONS, ...ZEN_COLLECTIONS, ...CALM_COLLECTIONS].find((c) => c.label.toLowerCase() === name.trim().toLowerCase());
 
 // `count` songs of the collection, moving along the list on every call (`offset`): "Autre" and "Régénérer" get other songs
 export function pickSongs(c: Collection, count: number, offset = 0): { artist: string; title: string }[] {
