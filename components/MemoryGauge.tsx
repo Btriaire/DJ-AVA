@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { freeMemoryNow, getMemSnap, startMemoryGovernor, subscribeMem } from "@/lib/memoryGovernor";
+import { MEM_PROFILE_LABEL, freeMemoryNow, getMemSnap, setMemProfile, startMemoryGovernor, subscribeMem, type MemProfile } from "@/lib/memoryGovernor";
 
 const COLOR = { ok: "#34d399", warn: "#ffcc00", critical: "#ef4444" } as const;
 
@@ -31,13 +31,28 @@ export function MemoryGauge() {
   };
 
   return (
-    <button
-      onClick={handleClick}
-      className="hw-btn inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold"
-      style={{ ["--led" as string]: color, color }}
-      title={`${detail} DJSynth : appli ${snap.appMB} Mo, serveur et outils ${snap.serverMB} Mo, sur ${Math.round(snap.totalMB / 1024)} Go de mémoire. Limites : ${snap.warnMB} Mo / ${snap.criticalMB} Mo. Libéré automatiquement ${snap.autoFrees} fois. Clic : libérer maintenant.`}
-    >
-      {isFreeing ? "Libéré" : `MÉM ${value}${snap.level === "critical" ? " · éco" : ""}`}
-    </button>
+    <span className="inline-flex items-center gap-1">
+      <button
+        onClick={handleClick}
+        className="hw-btn inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold"
+        style={{ ["--led" as string]: color, color }}
+        title={`${detail} DJSynth : appli ${snap.appMB} Mo, serveur et outils ${snap.serverMB} Mo, sur ${Math.round(snap.totalMB / 1024)} Go de mémoire. Limites (${MEM_PROFILE_LABEL[snap.profile]}) : alerte ${snap.warnMB} Mo, critique ${snap.criticalMB} Mo. Libéré automatiquement ${snap.autoFrees} fois. Clic : libérer maintenant.`}
+      >
+        {isFreeing ? "Libéré" : `MÉM ${value}${snap.level === "critical" ? " · éco" : ""}`}
+      </button>
+      <select
+        className="hw-btn px-1.5 py-1.5 text-[11px] font-bold"
+        value={snap.profile}
+        onChange={(e) => setMemProfile(e.target.value as MemProfile)}
+        aria-label="Mémoire allouée à DJSynth"
+        title={`Mémoire que DJSynth s'autorise : Économe ${Math.round(snap.totalMB * 0.36 / 1024 * 10) / 10} Go, Normal ${Math.round(snap.totalMB * 0.6 / 1024 * 10) / 10} Go, Maximum ${Math.round(snap.totalMB * 0.8 / 1024 * 10) / 10} Go avant de ralentir les tâches lourdes`}
+      >
+        {(Object.keys(MEM_PROFILE_LABEL) as MemProfile[]).map((p) => (
+          <option key={p} value={p}>
+            {MEM_PROFILE_LABEL[p]}
+          </option>
+        ))}
+      </select>
+    </span>
   );
 }

@@ -34,10 +34,11 @@ import { SetWizard, type SetDraft, type WizardInitial } from "./playlist/SetWiza
 import { buildJourney } from "./prep/Journey";
 import { analyzeLibraryTrack } from "@/lib/analyzeTrack";
 import { alignDelaySec } from "@/lib/audio/beatAlign";
+import { TRANSITIONS, TRANSITION_FX, crossfadeAt } from "@/lib/transitions";
 import { announcement, DEFAULT_DJ, planMix, type MixStep } from "@/lib/mixPlan";
 import { playLines, speak, stopSpeaking } from "@/lib/djVoice";
 import { INTRO_LINE, OUTRO_LINE, djLineFor } from "@/lib/djLines";
-import { loudnessFor, matchTrimDb } from "@/lib/audio/levelMatch";
+import { cachedLoudness, loudnessFor, matchTrimDb } from "@/lib/audio/levelMatch";
 import { pickTech, stemFrame, STEM_TECH_LABEL, type StemMode, type StemName, type StemTech } from "@/lib/stemMix";
 import { getMemLevel } from "@/lib/memoryGovernor";
 
@@ -111,12 +112,7 @@ const SRC_BADGE: Record<TrackSource, { label: string; color: string }> = {
 // transition styles for the A→B→A auto-mix — inspired by the crossfade curves
 // found on real DJ mixers/controllers (Pioneer DJM "smooth/sharp", Traktor's
 // auto-crossfader curve, Serato's quick-cut vs. smooth-blend transitions).
-const TRANSITION_TYPES: { key: TransitionType; label: string; hint: string }[] = [
-  { key: "fade", label: "Fondu", hint: "Fondu enchaîné linéaire, classique" },
-  { key: "cut", label: "Coupe", hint: "Bascule instantanée, sans fondu — punch-in de scratch DJ" },
-  { key: "smooth", label: "Doux", hint: "Courbe en S — doux au début et à la fin, imperceptible" },
-  { key: "filter", label: "Filtre", hint: "Fondu + coupe le filtre passe-bas du morceau sortant, comme fermer le knob FILTER avant de le retirer" },
-];
+const TRANSITION_TYPES = TRANSITIONS;
 
 // Docked media database under the Synth: a persistent collection of local files,
 // Audius/YouTube finds and playlists. Each track can be filed for Deck A or B,
@@ -1266,8 +1262,20 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     await loadToDeck(q[relayIdx.current[side]], side);
     if (andPlay) deck.play();
     else void armStems(side); // a cued song loads its prepared stems in the background, to mix with them
+    void measureLevel(side);
     setRelayCur({ A: relayIdx.current.A, B: relayIdx.current.B }); // refresh list markers
     return true;
+  }
+  // The loudness of a song is measured as soon as it is decoded, long before its transition: measuring takes
+  // a moment of CPU, and doing it at the transition delayed the start of the blend.
+  async function measureLevel(side: "A" | "B") {
+    if (relayPlaylist()?.dj?.loudness === false) return;
+    const deck = side === "A" ? engine.deckA : engine.deckB;
+    const id = deck.origin?.id;
+    for (let i = 0; i < 60 && !deck.audioBuffer; i++) await new Promise((r) => setTimeout(r, 1000));
+    if (!id || deck.origin?.id !== id || !deck.audioBuffer) return;
+    await new Promise((r) => setTimeout(r, 1500)); // let the decode and the first beats settle
+    if (deck.origin?.id === id) loudnessFor(id, deck.audioBuffer);
   }
   // A cued song whose stems are ready loads them and switches its deck to stem playback (while it is silent, so
   // there is no glitch). The DJ plan then mixes with them. Skipped when memory is tight or the set says no.
@@ -1329,6 +1337,24 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       inDeck.stemNames.forEach((_, i) => inDeck.setStemVol(i, 1)); // the incoming song ends with all its stems
     };
     applyStems(0); // the incoming song starts with the stems it comes in with, before it is heard
+    // effect transitions: the deck effect of the outgoing song goes on at its moment, its dry sound may stop
+    // (its echoes / reverb keep ringing), a loop holds its last bar
+    const fx = TRANSITION_FX[type];
+    let fxOn = false;
+    let dryCut = false;
+    const dryTrim = outDeck.trimValue;
+    const applyFx = (k: number) => {
+      if (fx && !fxOn && k >= fx.at) {
+        fxOn = true;
+        outDeck.setFxWet(fx.fx, fx.wet);
+      }
+      if (fx?.dryCut !== undefined && !dryCut && k >= fx.dryCut) {
+        dryCut = true;
+        outDeck.setTrim(0); // the trim is before the effects: the tail still sounds
+      }
+      if (type === "highpass") outDeck.setFilter(Math.min(0.95, k * 1.1)); // positive = high-pass sweep
+    };
+    if (type === "loop") outDeck.setBeatLoop(4);
     if (type === "cut") {
       engine.setCrossfade(target);
       relayFading.current = false;
@@ -1336,29 +1362,40 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     }
     // eslint-disable-next-line react-hooks/purity -- appel dans un gestionnaire d'événement, hors rendu
     const t0 = performance.now();
+    // the outgoing deck gets its effects, loop and trim back once it is silent (it is reused for the next song)
+    const fxEnd = () => {
+      if (fx) outDeck.setFxWet(fx.fx, 0);
+      if (dryCut) outDeck.setTrim(dryTrim);
+      if (type === "loop") outDeck.clearLoop();
+      if (type === "filter" || type === "highpass") outDeck.setFilter(0);
+    };
+    // Driven by a timer, not by requestAnimationFrame: animation frames stop when the window is hidden or
+    // behind another one, and the blend froze half-way (no song change at all). A timer keeps running.
     const step = () => {
       if (!relayRef.current) {
         relayFading.current = false;
-        if (type === "filter") outDeck.setFilter(0);
         if (bassSwap) swapDone();
         stemsEnd();
+        fxEnd();
         return;
       }
       const k = Math.min(1, (performance.now() - t0) / (secs * 1000));
-      const eased = stem ? stemFrame(stem.tech, k, stem.mode).cross : type === "smooth" ? (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2) : k;
+      const eased = stem ? stemFrame(stem.tech, k, stem.mode).cross : crossfadeAt(type, k);
       applyStems(k);
+      applyFx(k);
       engine.setCrossfade(from + (target - from) * eased);
       if (type === "filter") outDeck.setFilter(-eased); // sweep toward closed low-pass as it fades out
       if (bassSwap) swap(k);
-      if (k < 1) requestAnimationFrame(step);
+      if (k < 1) window.setTimeout(step, 25);
       else {
         relayFading.current = false;
-        if (type === "filter") outDeck.setFilter(0); // reset — this deck gets reused for the next song
         if (bassSwap) swapDone();
         stemsEnd();
+        // effect tails ring a little after the crossfader has moved on
+        window.setTimeout(fxEnd, fx ? 2500 : 0);
       }
     };
-    requestAnimationFrame(step);
+    window.setTimeout(step, 0);
   }
   // `startIdx` (default 0) is where the SHARED relay pointer picks up — Deck A
   // starts there, Deck B cues the track right after it, and the relay carries
@@ -1523,11 +1560,6 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
         return;
       }
 
-      // volumes of both songs are measured a little before the blend (a few hundred ms, once per song)
-      if (dj?.loudness !== false && step && remain < FADE + 25) {
-        loudnessFor(deck.origin?.id ?? "", deck.audioBuffer);
-        loudnessFor(otherDeck.origin?.id ?? "", otherDeck.audioBuffer);
-      }
 
       // a beat-matched start waits for the next beat or bar: begin that much earlier so the blend keeps its length
       const lead = step?.sync && TYPE !== "cut" ? (dj?.phrase === false ? 0.8 : 2.6) : 0;
@@ -1554,8 +1586,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
         if (!relayRef.current) return;
         // same volume as the song that is leaving
         if (dj?.loudness !== false && step) {
-          const lo = loudnessFor(deck.origin?.id ?? "", deck.audioBuffer);
-          const li = loudnessFor(otherDeck.origin?.id ?? "", otherDeck.audioBuffer);
+          const lo = cachedLoudness(deck.origin?.id ?? "");
+          const li = cachedLoudness(otherDeck.origin?.id ?? "");
           if (lo !== null && li !== null) {
             const outDb = 20 * Math.log10(Math.max(deck.trimValue, 1e-3));
             if (baseTrim.current[other] === undefined) baseTrim.current[other] = otherDeck.trimValue;
@@ -1599,9 +1631,12 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           baseTrim.current[side] = undefined;
         }
         deck.scratch(0);
-        relayLoadNext(side, false).then(() => {
-          relayArmed.current = true;
-        });
+        // re-armed whatever happens: a song that fails to load must not freeze the relay for good
+        relayLoadNext(side, false)
+          .catch(() => false)
+          .finally(() => {
+            relayArmed.current = true;
+          });
       }, ((braking ? 0.9 : secs) + wait + 0.5) * 1000);
     }, 300);
     return () => clearInterval(id);
@@ -2743,7 +2778,13 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           },
           onNext: (side) => stepSingle(side, 1),
           onToggleLive: (side) => toggleLive(side),
-          onToggleRelay: () => toggleRelay(),
+          // the relay button of the Playlist view plays the set that is open (it used to look for singles filed on
+          // the decks, found none and silently did nothing)
+          onToggleRelay: () => {
+            if (relay) stopRelay();
+            else if (ap && ap.trackIds.length >= 2) playPlaylistRelay(ap.id);
+            else flash("Relais : ouvre un set d'au moins 2 titres, puis relance");
+          },
         }}
         rail={{
           tracks: data.tracks,

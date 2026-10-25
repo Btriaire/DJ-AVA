@@ -33,7 +33,7 @@ export interface LibTrack {
   addedAt: number;
 }
 
-export type TransitionType = "fade" | "cut" | "smooth" | "filter";
+export type TransitionType = "fade" | "cut" | "smooth" | "filter" | "highpass" | "loop" | "echo" | "wash" | "brake" | "reverse";
 
 export interface Playlist {
   id: string;

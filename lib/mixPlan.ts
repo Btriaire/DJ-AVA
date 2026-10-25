@@ -47,7 +47,7 @@ export const DEFAULT_DJ: DjOptions = {
   stems: "punchy",
 };
 
-export const STEP_LABEL: Record<TransitionType, string> = { smooth: "Fondu doux", fade: "Fondu", filter: "Filtre", cut: "Coupe" };
+export { TRANSITION_LABEL as STEP_LABEL } from "@/lib/transitions";
 
 // % between two tempos, folding a double or half tempo onto the same beat (130 and 65 mix on the beat)
 export function tempoGap(a: number, b: number): { pct: number; folded: boolean } {
@@ -58,7 +58,8 @@ export function tempoGap(a: number, b: number): { pct: number; folded: boolean }
   return { pct: (r - 1) * 100, folded: false };
 }
 
-export function planStep(a: LibTrack, b: LibTrack, arc: SetArc, opts: DjOptions = DEFAULT_DJ): MixStep {
+// `index` (position of the transition in the set) varies the effect transitions so a set does not repeat itself
+export function planStep(a: LibTrack, b: LibTrack, arc: SetArc, opts: DjOptions = DEFAULT_DJ, index = 0): MixStep {
   if (opts.style === "classical") {
     // no beat to match, no bass to swap: a long, soft blend, never longer than a tenth of the shortest piece
     const shortest = Math.min(a.durationSec || 300, b.durationSec || 300);
@@ -74,13 +75,19 @@ export function planStep(a: LibTrack, b: LibTrack, arc: SetArc, opts: DjOptions 
   if (!known) {
     step = { type: "fade", sec: 8, sync: false, note: "Tempo inconnu : fondu classique, sans calage." };
   } else if (folded) {
-    step = { type: "filter", sec: 8, sync: false, note: "Tempo double ou moitié : fondu filtré, sans calage (les temps tombent ensemble)." };
+    step = opts.tails
+      ? { type: "echo", sec: 6, sync: false, note: "Tempo double ou moitié : le titre qui sort part en échos sous le nouveau." }
+      : { type: "filter", sec: 8, sync: false, note: "Tempo double ou moitié : fondu filtré, sans calage (les temps tombent ensemble)." };
   } else if (gap <= 3) {
     step = friendly
-      ? { type: "smooth", sec: 16, sync: true, note: `Même tempo (${gap.toFixed(1)} %) et tonalités amies : long fondu calé sur les temps.` }
+      ? index % 5 === 4 && opts.tails
+        ? { type: "loop", sec: 12, sync: true, note: "Même tempo et tonalités amies : la dernière mesure tourne en boucle pendant que le nouveau titre entre." }
+        : { type: "smooth", sec: 16, sync: true, note: `Même tempo (${gap.toFixed(1)} %) et tonalités amies : long fondu calé sur les temps.` }
       : level === "boost"
         ? { type: "smooth", sec: 12, sync: true, note: "Même tempo, montée d'énergie en tonalité : fondu calé, l'ensemble monte." }
-        : { type: "filter", sec: 10, sync: true, note: "Même tempo mais tonalités qui s'opposent : le filtre cache le choc." };
+        : index % 2
+          ? { type: "highpass", sec: 10, sync: true, note: "Même tempo mais tonalités qui s'opposent : le titre qui sort monte dans les aigus et s'efface." }
+          : { type: "filter", sec: 10, sync: true, note: "Même tempo mais tonalités qui s'opposent : le filtre cache le choc." };
   } else if (gap <= 6) {
     step =
       friendly || level === "boost"
@@ -88,6 +95,12 @@ export function planStep(a: LibTrack, b: LibTrack, arc: SetArc, opts: DjOptions 
         : { type: "filter", sec: 8, sync: true, note: "Tonalités qui s'opposent : fondu filtré, tempo calé." };
   } else if (gap <= 10) {
     step = { type: "filter", sec: 6, sync: false, note: `Écart de tempo de ${gap.toFixed(0)} % : fondu filtré court, sans caler (un calage s'entendrait).` };
+  } else if (opts.tails) {
+    // too far apart to blend: an effect takes the old song away instead of a bare cut
+    const fx = (["echo", "brake", "wash", "reverse"] as const)[index % 4];
+    const sec = { echo: 6, brake: 4, wash: 8, reverse: 4 }[fx];
+    const how = { echo: "part en échos", brake: "freine comme un vinyle", wash: "se noie dans la réverb", reverse: "repart à l'envers" }[fx];
+    step = { type: fx, sec, sync: false, note: `Saut de tempo de ${gap.toFixed(0)} % : pas de fondu possible, le titre qui sort ${how}.` };
   } else {
     step = { type: "cut", sec: 0, sync: false, note: `Saut de tempo de ${gap.toFixed(0)} % : coupure nette, mieux qu'un fondu qui boite.` };
   }
@@ -96,12 +109,13 @@ export function planStep(a: LibTrack, b: LibTrack, arc: SetArc, opts: DjOptions 
   const arcFactor = arc === "rise" ? 0.85 : arc === "fall" ? 1.15 : 1;
   // never longer than a fifth of the shortest song
   const shortest = Math.min(a.durationSec || 240, b.durationSec || 240);
-  const sec = step.type === "cut" ? 0 : Math.round(Math.max(3, Math.min(20, step.sec * arcFactor, shortest * 0.2)));
+  const fxType = step.type === "echo" || step.type === "brake" || step.type === "wash" || step.type === "reverse";
+  const sec = step.type === "cut" ? 0 : fxType ? step.sec : Math.round(Math.max(3, Math.min(20, step.sec * arcFactor, shortest * 0.2)));
   return {
     ...step,
     sec,
     sync: step.sync && opts.sync,
-    bassSwap: opts.bassSwap && step.type !== "cut" && sec >= 6,
+    bassSwap: opts.bassSwap && !fxType && step.type !== "cut" && sec >= 6,
     tail: step.type === "cut" && opts.tails ? "brake" : "none",
   };
 }
@@ -130,7 +144,7 @@ export function planMix(tracks: LibTrack[], arc: SetArc, opts: DjOptions = DEFAU
     }
     const a = { ...tracks[i], camelot: shiftCamelot(tracks[i].camelot, carry) };
     const fix = opts.keyFix ? keyFixFor(a, b, 0) : null;
-    const step = planStep(a, b, arc, opts);
+    const step = planStep(a, b, arc, opts, i);
     carry = fix?.shift ?? 0;
     return fix ? { ...step, keyShift: fix.shift, note: `${step.note} ${fix.note}` } : step;
   });

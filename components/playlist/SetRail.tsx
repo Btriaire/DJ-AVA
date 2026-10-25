@@ -5,6 +5,7 @@ import { Icon, Mosaic, fmtDur } from "../prep/parts";
 import { STATUS_LABEL, setHealth } from "@/lib/setHealth";
 import { STATUS_COLOR } from "./NextStep";
 import { DECK_COLOR, DRAG_TYPE, type SendDest } from "./types";
+import { TRANSITION_LABEL } from "@/lib/transitions";
 
 const LIST_ACCENTS = ["#22d3ee", "#34d399", "#ffcc00", "#a78bfa", "#f97316", "#f472b6"];
 
@@ -41,12 +42,7 @@ export function SetRail(props: SetRailProps) {
   const transitionLabel = (p: Playlist) => {
     const type = p.transitionType ?? "fade";
     const sec = p.transitionSec ?? 12;
-    switch (type) {
-      case "smooth": return `Doux ${sec} s`;
-      case "fade": return `Fondu ${sec} s`;
-      case "filter": return `Filtre ${sec} s`;
-      case "cut": return "Coupe";
-    }
+    return type === "cut" ? "Coupe" : `${TRANSITION_LABEL[type]} ${sec} s`;
   };
 
   return (

@@ -5,6 +5,7 @@ import type { SetArc } from "@/lib/setBuilder";
 import { BpmChip, Cover, Icon, KeyChip, StemPill, fmtDur, keyCompat } from "../prep/parts";
 import { setHealth } from "@/lib/setHealth";
 import { NextStepBar } from "./NextStep";
+import { TRANSITIONS } from "@/lib/transitions";
 import { DECK_COLOR, DRAG_TYPE, type SendDest, type StemInfo, type TrackMark } from "./types";
 
 const ROW_DRAG = "application/x-djsynth-setrow";
@@ -330,24 +331,16 @@ export function SetDetail(props: SetDetailProps) {
           <div className="mt-2 grid gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1 sm:col-span-2">
               <div className="text-[10px] uppercase tracking-[0.15em] text-neutral-500">Style</div>
-              <div className="prep-seg flex">
-                {(["smooth", "fade", "filter", "cut"] as const).map(type => (
+              <div className="prep-seg flex flex-wrap">
+                {TRANSITIONS.map(t => (
                   <button
-                    key={type}
-                    className="flex-1 px-2 py-1 text-[11px]"
-                    onClick={() => props.onTransitionType(type)}
-                    aria-pressed={props.playlist!.transitionType === type}
-                    title={
-                      type === "smooth" ? "Courbe en S, imperceptible" :
-                      type === "fade" ? "Fondu enchaîné linéaire" :
-                      type === "filter" ? "Ferme le filtre du titre sortant pendant le fondu" :
-                      "Bascule instantanée"
-                    }
+                    key={t.key}
+                    className="px-2 py-1 text-[11px]"
+                    onClick={() => props.onTransitionType(t.key)}
+                    aria-pressed={(props.playlist!.transitionType ?? "fade") === t.key}
+                    title={t.hint}
                   >
-                    {type === "smooth" && "Doux"}
-                    {type === "fade" && "Fondu"}
-                    {type === "filter" && "Filtre"}
-                    {type === "cut" && "Coupe"}
+                    {t.label}
                   </button>
                 ))}
               </div>

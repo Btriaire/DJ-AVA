@@ -7,6 +7,7 @@ import { setHealth } from "@/lib/setHealth";
 import { ARC_HINT, ARC_LABEL, ARC_ORDER, DURATIONS, computeOrder, durationLabel, estimateCount, needsAnalysis, resolveSource, type WizardSource } from "@/lib/setWizard";
 import { Icon, fmtDur } from "../prep/parts";
 import { OrderPreview } from "./OrderPreview";
+import { TRANSITIONS, TRANSITION_HINT } from "@/lib/transitions";
 
 export type WizardDest = "relay" | "A" | "B" | "open";
 export interface SetDraft { id?: string; name: string; trackIds: string[]; transitionType: TransitionType; transitionSec: number }
@@ -173,12 +174,7 @@ export function SetWizard({
     savedId ? finalName : "à enregistrer"
   ];
 
-  const transitionLabels: Record<TransitionType, string> = {
-    smooth: "Courbe en S, presque imperceptible.",
-    fade: "Fondu enchaîné linéaire, classique.",
-    filter: "Le titre sortant se ferme au filtre pendant le fondu.",
-    cut: "Bascule instantanée, sans fondu."
-  };
+  const transitionLabels = TRANSITION_HINT;
 
   return (
     <div className="flex flex-col gap-3">
@@ -465,35 +461,12 @@ export function SetWizard({
 
             <div className="flex flex-col gap-2">
               <div className="text-[10px] uppercase tracking-[0.15em] text-neutral-500">Transition</div>
-              <div className="prep-seg">
-                <button
-                  type="button"
-                  aria-pressed={transitionType === "smooth"}
-                  onClick={() => setTransitionType("smooth")}
-                >
-                  Doux
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={transitionType === "fade"}
-                  onClick={() => setTransitionType("fade")}
-                >
-                  Fondu
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={transitionType === "filter"}
-                  onClick={() => setTransitionType("filter")}
-                >
-                  Filtre
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={transitionType === "cut"}
-                  onClick={() => setTransitionType("cut")}
-                >
-                  Coupe
-                </button>
+              <div className="prep-seg flex flex-wrap">
+                {TRANSITIONS.map((t) => (
+                  <button key={t.key} type="button" aria-pressed={transitionType === t.key} onClick={() => setTransitionType(t.key)} title={t.hint}>
+                    {t.label}
+                  </button>
+                ))}
               </div>
               <div className="text-[11px] text-neutral-400">{transitionLabels[transitionType]}</div>
               <div className="flex items-center gap-2">

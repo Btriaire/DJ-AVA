@@ -1,4 +1,5 @@
-const { app, BrowserWindow, dialog, ipcMain } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, powerSaveBlocker } = require("electron");
+const os = require("node:os");
 const { spawn, execFileSync } = require("node:child_process");
 const path = require("node:path");
 const http = require("node:http");
@@ -6,6 +7,12 @@ const net = require("node:net");
 const fs = require("node:fs");
 
 const PROJECT = process.env.DJSYNTH_HOME || "/Users/bruno/dj-app";
+
+// More memory for the page: by default V8 caps the JavaScript heap of a window at about a quarter of the RAM
+// (2 GB on an 8 GB Mac). Half the RAM, up to 8 GB, leaves room for long sets and stems. Decoded audio lives
+// outside this heap and was never capped.
+const HEAP_MB = Math.min(8192, Math.max(2048, Math.round(os.totalmem() / 1024 / 1024 / 2)));
+app.commandLine.appendSwitch("js-flags", `--max-old-space-size=${HEAP_MB}`);
 
 let server = null;
 let pidFile = "";
@@ -78,6 +85,7 @@ function startServer(port) {
       ELECTRON_RUN_AS_NODE: "1",
       // Demucs sur le GPU Apple (MPS) : ~1/3 plus rapide que le CPU mesuré sur un extrait de 30 s
       DEMUCS_DEVICE: process.env.DEMUCS_DEVICE || "mps",
+      NODE_OPTIONS: `--max-old-space-size=${Math.min(4096, Math.round(HEAP_MB * 0.75))}`, // the local server too
       PYTHON3_PATH: process.env.PYTHON3_PATH || path.join(PROJECT, ".venv-stems", "bin", "python"),
       PATH: `/opt/homebrew/bin:/usr/local/bin:${path.join(PROJECT, ".venv-stems", "bin")}:${process.env.PATH || ""}`,
     },
@@ -99,7 +107,9 @@ async function createWindow(url) {
     backgroundColor: "#050506",
     title: "DJSynth",
     titleBarStyle: "hiddenInset",
-    webPreferences: { contextIsolation: true, preload: path.join(__dirname, "preload.cjs") },
+    // backgroundThrottling off: a DJ app keeps mixing when its window is hidden or behind another one
+    // (timers were slowed down to once a second, then once a minute, and the relay missed its transitions)
+    webPreferences: { contextIsolation: true, backgroundThrottling: false, preload: path.join(__dirname, "preload.cjs") },
   });
   // A renderer killed for lack of memory must not leave a white window: log it, reload (the library is stored on disk)
   // and tell the page why. Three reloads in two minutes means something is really wrong: ask instead.
@@ -130,6 +140,8 @@ function logCrash(line) {
 app.on("child-process-gone", (_e, details) => logCrash(`child-process-gone type=${details.type} reason=${details.reason} exit=${details.exitCode}`));
 
 app.whenReady().then(async () => {
+  // macOS App Nap would also put a hidden DJSynth to sleep: not while it may be playing
+  powerSaveBlocker.start("prevent-app-suspension");
   pidFile = path.join(app.getPath("userData"), "server.pid");
   killStaleServer();
   // real memory of every DJSynth process (window, GPU, audio…) plus the local Next server AND its children

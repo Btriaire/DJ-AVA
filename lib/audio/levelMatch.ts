@@ -4,6 +4,9 @@ import { measureLoudness } from "./loudness";
 // and the incoming song is trimmed so that it arrives at the level of the one leaving.
 const cache = new Map<string, number>();
 
+// the measure if it was already taken (never computes: safe at the moment of a transition)
+export const cachedLoudness = (id: string): number | null => cache.get(id) ?? null;
+
 export function loudnessFor(id: string, buffer: AudioBuffer | null): number | null {
   const known = cache.get(id);
   if (known !== undefined) return known;
