@@ -66,4 +66,8 @@ const all = djLinesForShow(songs, radio);
 assert.equal(all[0], INTRO_LINE);
 assert.equal(all[all.length - 1], OUTRO_LINE);
 assert.equal(new Set(all).size, all.length, "no duplicate clip");
+// classical style: soft, long, never synced, whatever the tempos say
+const cl = planStep(t(60, "8A", { durationSec: 600 }), t(140, "3B", { durationSec: 600 }), "flow", { ...DEFAULT_DJ, style: "classical" });
+assert.equal(cl.type, "smooth");
+assert.ok(!cl.sync && !cl.bassSwap && cl.tail === "none" && cl.sec >= 10 && cl.sec <= 14);
 console.log("mixplan ok");

@@ -131,6 +131,7 @@ export function AdvancedPanel({ prefs, busy, onChange }: AdvancedPanelProps) {
                   { value: 5, label: "5 min" },
                   { value: 8, label: "8 min" },
                   { value: 12, label: "12 min" },
+                  { value: 20, label: "20 min" },
                 ]}
                 onPick={(maxTrackMin) => onChange({ maxTrackMin })}
                 disabled={busy}

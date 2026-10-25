@@ -28,6 +28,7 @@ export interface DjOptions {
   keyFix: boolean; // transpose the incoming song by up to a semitone when the keys clash
   tails: boolean; // brake the outgoing song on hard cuts
   endOfSet: "loop" | "stop"; // at the end of the set: start again, or finish with an outro
+  style?: "club" | "classical"; // classical: long soft blends, never beat-matched
 }
 
 export const DEFAULT_DJ: DjOptions = {
@@ -56,6 +57,11 @@ export function tempoGap(a: number, b: number): { pct: number; folded: boolean }
 }
 
 export function planStep(a: LibTrack, b: LibTrack, arc: SetArc, opts: DjOptions = DEFAULT_DJ): MixStep {
+  if (opts.style === "classical") {
+    // no beat to match, no bass to swap: a long, soft blend, never longer than a tenth of the shortest piece
+    const shortest = Math.min(a.durationSec || 300, b.durationSec || 300);
+    return { type: "smooth", sec: Math.round(Math.max(5, Math.min(14, shortest * 0.1))), sync: false, bassSwap: false, tail: "none", note: "Enchaînement classique : fondu long et doux, sans caler les tempos." };
+  }
   const { pct, folded } = tempoGap(a.bpm ?? 0, b.bpm ?? 0);
   const gap = Math.abs(pct);
   const level = keyCompat(a.camelot, b.camelot).level;

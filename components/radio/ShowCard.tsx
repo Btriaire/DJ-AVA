@@ -28,6 +28,7 @@ export interface ShowCardProps {
   stemOf: (trackId: string) => StemInfo;
   stemWait: PrepWait; // why the stems are not moving, if they are not
   onRename: (name: string) => void;
+  onRegenerate?: () => void; // a set about one artist: new songs for that artist
 }
 
 export function ShowCard({
@@ -49,6 +50,7 @@ export function ShowCard({
   stemOf,
   stemWait,
   onRename,
+  onRegenerate,
 }: ShowCardProps) {
   const [open, setOpen] = useState(defaultOpen);
   const [editing, setEditing] = useState(false);
@@ -293,6 +295,18 @@ export function ShowCard({
           <Icon name="send" />
           Ouvrir dans Playlist
         </button>
+
+        {onRegenerate && show.artist && (
+          <button
+            type="button"
+            className="prep-btn-ghost flex items-center gap-1.5 px-3 py-1.5 text-xs"
+            onClick={onRegenerate}
+            title={`Remplace cette liste par de nouveaux titres de ${show.artist}`}
+          >
+            <Icon name="refresh" />
+            Régénérer la liste
+          </button>
+        )}
 
         {canPrepareStems && (
           <button

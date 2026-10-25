@@ -68,4 +68,19 @@ assert.equal(pickCandidates([yt("l", "Daft Punk - Veridis Quo", "Daft Punk - Top
 assert.equal(normTitle("Daft Punk - Get Lucky (Official Audio) ft. Pharrell Williams, Nile Rodgers", "Daft Punk"), normTitle("Daft Punk - Get Lucky (Feat. Pharrell Williams)", "Daft Punk"));
 const dup = ["Daft Punk - Get Lucky (Official Audio) ft. Pharrell", "Daft Punk - Get Lucky (Feat. Pharrell Williams)", "Daft Punk - Get Lucky (Hardwell Remix)", "Daft Punk - Digital Love", "Daft Punk - Aerodynamic", "Daft Punk - Robot Rock"].map((n, i): LibTrack => ({ id: "d" + i, name: n, source: "youtube", deck: null, addedAt: 0, bpm: 120 + i, camelot: "8A", durationSec: 200, group: "Daft Punk" }));
 assert.equal(composeShows(dup, { ...advanced, soloSets: false, durationMin: 0 }, 0)[0].trackIds.length, 5, "the duplicate upload is dropped, the remix kept");
+// kinds of recording: each search keeps only titles of the wanted kind
+const kinds = [yt("k1", "Daft Punk - Around The World (Official Audio)"), yt("k2", "Daft Punk - Around The World (Live at Coachella)"), yt("k3", "Daft Punk - Around The World (Instrumental)"), yt("k4", "Daft Punk - Around The World (Acapella)"), yt("k5", "Daft Punk - Around The World (Karaoke Instrumental)"), yt("k6", "Daft Punk - Around The World (Acoustic Version)")];
+const ids = (content: "studio" | "live" | "instrumental" | "acapella" | "acoustic") => pickCandidates(kinds.map((k, i) => ({ ...k, title: k.title + " " + "x".repeat(0), id: k.id })), "Daft Punk", 9, new Set(), { content }).map((r) => r.id);
+assert.deepEqual(ids("studio").sort(), ["k1"]);
+assert.deepEqual(ids("live"), ["k2"]);
+assert.deepEqual(ids("instrumental"), ["k3"], "karaoke is not an instrumental");
+assert.deepEqual(ids("acapella"), ["k4"]);
+assert.deepEqual(ids("acoustic"), ["k6"]);
+assert.equal(pickCandidates([yt("l1", "Daft Punk - Alive (Live)", "Daft Punk", 600)], "Daft Punk", 5, new Set(), { content: "live", maxSec: 480 }).length, 1, "a concert may run longer");
+// classical radio: one programme, a classical plan (no beat-matching), whatever the tempos
+const classic = ["Bach", "Bach", "Bach", "Bach", "Bach"].map((g, i): LibTrack => ({ id: "c" + i, name: "Bach - piece " + i, source: "youtube", deck: null, addedAt: 0, bpm: [60, 72, 100, 130, 80][i], camelot: `${i + 1}A`, durationSec: 360, group: g }));
+const cs = composeShows(classic, { ...prefs, mode: "classical", durationMin: 0, soloSets: false }, 0);
+assert.equal(cs.length, 1, "no tempo zones for a concert");
+assert.ok(cs[0].name.includes("Classique"));
+assert.ok(cs[0].plan.every((st) => st.type === "smooth" && !st.sync && !st.bassSwap));
 console.log("radio ok");

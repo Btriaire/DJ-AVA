@@ -5,6 +5,7 @@ import { getMemLevel } from "@/lib/memoryGovernor";
 import { DEFAULT_DJ, planMix, type DjOptions, type MixStep } from "@/lib/mixPlan";
 import { enqueuePrep } from "@/lib/stemPrep";
 import { djLinesForShow } from "@/lib/djLines";
+import { findComposer, pickWorks, type ClassicalFilters, type Era, type Instrument, type Mood } from "@/lib/classical";
 import { lineUrl } from "@/lib/djVoice";
 import type { SetArc } from "@/lib/setBuilder";
 
@@ -28,7 +29,10 @@ export interface RadioPrefs {
   soloSets: boolean; // one extra set per artist
   // advanced
   version: "original" | "remix" | "any"; // which versions of the songs to look for
-  maxTrackMin: 5 | 8 | 12; // longest song kept
+  content: "studio" | "live" | "instrumental" | "acapella" | "acoustic"; // what kind of recording to look for
+  mode: "artists" | "classical"; // a radio of artists, or of composers and their works
+  classical: { eras: Era[]; instrument: Instrument | "all"; mood: Mood | "all" };
+  maxTrackMin: 5 | 8 | 12 | 20; // longest song kept
   tempoMin: number; // BPM window of the songs used (0 = no limit)
   tempoMax: number;
   tempoSpread: 4 | 8 | 15; // widest tempo gap inside one set, in %
@@ -48,6 +52,9 @@ export const DEFAULT_PREFS: RadioPrefs = {
   durationMin: 60,
   soloSets: false,
   version: "original",
+  content: "studio",
+  mode: "artists",
+  classical: { eras: [], instrument: "all", mood: "all" },
   maxTrackMin: 8,
   tempoMin: 0,
   tempoMax: 0,
@@ -74,7 +81,14 @@ function normalizePrefs(p: Partial<RadioPrefs>): RadioPrefs {
     durationMin: typeof p.durationMin === "number" ? p.durationMin : D.durationMin,
     soloSets: !!p.soloSets,
     version: pick(p.version, ["original", "remix", "any"] as const, D.version),
-    maxTrackMin: pick(p.maxTrackMin, [5, 8, 12] as const, D.maxTrackMin),
+    content: pick(p.content, ["studio", "live", "instrumental", "acapella", "acoustic"] as const, D.content),
+    mode: pick(p.mode, ["artists", "classical"] as const, D.mode),
+    classical: {
+      eras: Array.isArray(p.classical?.eras) ? p.classical!.eras.filter((e) => ["baroque", "classique", "romantique", "impressionniste", "moderne"].includes(e)) : [],
+      instrument: pick(p.classical?.instrument, ["all", "piano", "orchestre", "cordes", "orgue", "voix", "guitare"] as const, "all"),
+      mood: pick(p.classical?.mood, ["all", "calme", "joyeux", "dramatique", "intense"] as const, "all"),
+    },
+    maxTrackMin: pick(p.maxTrackMin, [5, 8, 12, 20] as const, D.maxTrackMin),
     tempoMin: num(p.tempoMin, 0),
     tempoMax: num(p.tempoMax, 0),
     tempoSpread: pick(p.tempoSpread, [4, 8, 15] as const, D.tempoSpread),
@@ -183,8 +197,18 @@ export function suggestArtists(tracks: { name: string }[], chosen: string[], max
   return [...counts.values()].sort((x, y) => y.count - x.count || x.name.localeCompare(y.name)).slice(0, max);
 }
 
-const BAD_TITLE =
-  /\b(live|en concert|concert|cover|karaoke|reaction|r[ée]action|compilation|best of|greatest hits|megamix|dj mix|mixtape|non-?stop|medley|full album|album complet|tutorial|interview|nightcore|slowed|sped up|8d audio|1 hour|10 hours|trailer|teaser|making of|parodie|parody|lesson)\b/i;
+const BAD_WORDS = "live|en concert|concert|cover|karaoke|reaction|r[ée]action|compilation|best of|greatest hits|megamix|dj mix|mixtape|non-?stop|medley|full album|album complet|tutorial|interview|nightcore|slowed|sped up|8d audio|1 hour|10 hours|trailer|teaser|making of|parodie|parody|lesson";
+const BAD_TITLE = new RegExp(`\\b(${BAD_WORDS})\\b`, "i");
+// same list without the words that are the point of a live search
+const BAD_TITLE_LIVE = new RegExp(`\\b(${BAD_WORDS.replace("live|en concert|concert|", "")})\\b`, "i");
+export type Content = "studio" | "live" | "instrumental" | "acapella" | "acoustic";
+// what a title must say to be of the wanted kind (studio: nothing special, it must not be one of the others)
+const CONTENT_RULE: Record<Exclude<Content, "studio">, RegExp> = {
+  live: /\b(live|en concert|concert|en direct|unplugged|session|tour)\b/i,
+  instrumental: /\b(instrumental|no vocals|sans voix)\b/i,
+  acapella: /a ?cappella|acappella|acapella|vocals? only|isolated vocals?|voice only|vocal stem|voix seule/i,
+  acoustic: /\b(acoustic|acoustique|unplugged|stripped|piano version)\b/i,
+};
 
 export interface YtResult {
   id: string;
@@ -219,16 +243,26 @@ export function pickCandidates(
   artist: string,
   count: number,
   skipKeys: ReadonlySet<string> = new Set(),
-  opts: { maxSec?: number; version?: RadioPrefs["version"] } = {}
+  opts: { maxSec?: number; version?: RadioPrefs["version"]; content?: Content; classical?: boolean } = {}
 ): YtResult[] {
-  const maxSec = opts.maxSec ?? 480;
+  const content = opts.content ?? "studio";
+  // a concert recording runs longer than the studio song
+  const maxSec = Math.max(opts.maxSec ?? 480, content === "live" ? 720 : 0);
+  const bad = content === "live" ? BAD_TITLE_LIVE : BAD_TITLE;
   const seen = new Set<string>();
   const scored: { r: YtResult; score: number; rank: number }[] = [];
   results.forEach((r, rank) => {
-    if (!r.id || skipKeys.has(r.id) || BAD_TITLE.test(r.title)) return;
+    if (!r.id || skipKeys.has(r.id) || bad.test(r.title)) return;
     if (r.duration < 130 || r.duration > maxSec) return;
-    if (opts.version === "original" && /remix|bootleg|mashup|rework/i.test(r.title)) return;
-    if (opts.version === "remix" && !REMIXISH.test(r.title)) return;
+    if (content !== "studio") {
+      if (!CONTENT_RULE[content].test(r.title)) return;
+      if (/karaoke/i.test(r.title)) return;
+    } else if (!opts.classical) {
+      // a studio search keeps clear of the other kinds, whatever the version asked
+      if (/\b(live|instrumental|acoustic|a ?cappella)\b/i.test(r.title) && !/\b(live|instrumental|acoustic)\b/i.test(artist)) return;
+      if (opts.version === "original" && /remix|bootleg|mashup|rework/i.test(r.title)) return;
+      if (opts.version === "remix" && !REMIXISH.test(r.title)) return;
+    }
     if (!isRelevant(r, artist)) return;
     const key = normTitle(r.title, artist);
     if (!key || seen.has(key)) return;
@@ -281,6 +315,11 @@ const bpmSpan = (ts: LibTrack[]) => {
 
 const HARMONY_WEIGHT = { strict: 1.3, balanced: 0.5, free: 0.15 } as const;
 
+// the DJ options a radio really uses: a classical one never beat-matches, swaps bass or brakes
+export function djFor(prefs: RadioPrefs): DjOptions {
+  return prefs.mode === "classical" ? { ...prefs.dj, style: "classical", sync: false, bassSwap: false, tails: false, keyFix: false } : { ...prefs.dj, style: "club" };
+}
+
 // the sets to propose from the analysed songs: mixes of everybody, each inside one tempo zone
 // (a second one when enough songs are left), plus one set per artist if asked. Each comes with its mix plan.
 export function composeShows(tracks: LibTrack[], prefs: RadioPrefs, seed: number, avoid: ReadonlySet<string> = new Set()): RadioShow[] {
@@ -301,14 +340,16 @@ export function composeShows(tracks: LibTrack[], prefs: RadioPrefs, seed: number
   const order = (pool: LibTrack[], arc: SetArc, minutes: number) => computeOrder(pool, arc, minutes, "", seed || null, tuning);
   const planFor = (ids: string[], arc: SetArc) => {
     const byId = new Map(tracks.map((t) => [t.id, t]));
-    return planMix(ids.map((id) => byId.get(id)).filter((t): t is LibTrack => !!t), arc, prefs.dj);
+    return planMix(ids.map((id) => byId.get(id)).filter((t): t is LibTrack => !!t), arc, djFor(prefs));
   };
   const shows: RadioShow[] = [];
   if (ready.length >= 2) {
-    const groups = tempoGroups(ready, 1 + prefs.tempoSpread / 100, 5, prefs.maxShows);
+    // a classical concert is one programme: tempos are not matched, so the songs are not split into tempo zones
+    const groups = prefs.mode === "classical" ? [] : tempoGroups(ready, 1 + prefs.tempoSpread / 100, 5, prefs.maxShows);
     (groups.length ? groups : [ready]).forEach((g, i) => {
       const ids = order(g, prefs.arc, prefs.durationMin);
-      shows.push({ key: i === 0 ? "mix" : `mix-${i + 1}`, name: `Radio-AVA · ${ARC_LABEL[prefs.arc]} · ${bpmSpan(g)}`, arc: prefs.arc, trackIds: ids, plan: planFor(ids, prefs.arc) });
+      const label = prefs.mode === "classical" ? `Classique · ${ARC_LABEL[prefs.arc]}` : `${ARC_LABEL[prefs.arc]} · ${bpmSpan(g)}`;
+      shows.push({ key: i === 0 ? "mix" : `mix-${i + 1}`, name: `Radio-AVA · ${label}`, arc: prefs.arc, trackIds: ids, plan: planFor(ids, prefs.arc) });
     });
   }
   if (prefs.soloSets) {
@@ -389,19 +430,28 @@ export const radioBusy = () => state.phase === "search" || state.phase === "anal
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-async function searchArtist(name: string, count: number, skip: ReadonlySet<string>, prefs: RadioPrefs): Promise<YtResult[]> {
-  const maxSec = prefs.maxTrackMin * 60;
-  const queries =
-    prefs.version === "remix" ? [`${name} remix`, `${name} club mix`] : prefs.version === "any" ? [`${name} official audio`, `${name} remix`, `${name} topic`] : [`${name} official audio`, `${name} topic`];
+// the theme written on the songs a radio adds, so that a live radio does not reuse studio songs (and the reverse)
+export function themeFor(prefs: RadioPrefs): string {
+  return prefs.mode === "classical" ? "Radio-AVA · classique" : prefs.content === "studio" ? "Radio-AVA" : `Radio-AVA · ${prefs.content}`;
+}
+
+const CONTENT_QUERY: Record<Exclude<Content, "studio">, string[]> = {
+  live: ["live", "concert live performance"],
+  instrumental: ["instrumental", "instrumental version"],
+  acapella: ["acapella", "vocals only"],
+  acoustic: ["acoustic", "unplugged"],
+};
+
+async function runQueries(queries: string[], name: string, count: number, skip: ReadonlySet<string>, maxSec: number, prefs: RadioPrefs, classical = false): Promise<YtResult[]> {
   const all: YtResult[] = [];
   let picked: YtResult[] = [];
   for (const q of queries) {
     try {
-      const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(q)}&n=40&min=130&max=${maxSec}`);
+      const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(q)}&n=40&min=${classical ? 90 : 130}&max=${Math.max(maxSec, prefs.content === "live" ? 720 : 0)}`);
       if (!res.ok) continue;
       const data = (await res.json()) as { tracks?: YtResult[] };
       all.push(...(data.tracks ?? []));
-      picked = pickCandidates(all, name, count, skip, { maxSec, version: prefs.version });
+      picked = pickCandidates(all, name, count, skip, { maxSec, version: prefs.version, content: prefs.content, classical });
       if (picked.length >= count) break;
     } catch {
       // one failed query: the next one (or the next artist) goes on
@@ -410,8 +460,40 @@ async function searchArtist(name: string, count: number, skip: ReadonlySet<strin
   return picked;
 }
 
+// `offset` moves a classical radio along the works of the composer: each regeneration gets other pieces
+async function searchArtist(name: string, count: number, skip: ReadonlySet<string>, prefs: RadioPrefs, offset = 0): Promise<YtResult[]> {
+  const maxSec = prefs.maxTrackMin * 60;
+  if (prefs.mode === "classical") {
+    const composer = findComposer(name);
+    const filters: ClassicalFilters = { instrument: prefs.classical.instrument, mood: prefs.classical.mood };
+    const kind = prefs.content === "live" ? " live concert" : prefs.content === "instrumental" ? "" : "";
+    if (!composer) return runQueries([`${name} best works${kind}`, `${name} orchestra${kind}`, `${name} piano`], name, count, skip, maxSec, prefs, true);
+    // one search per work: precise, and the pieces are the ones named in the catalogue
+    const taken = new Set(skip);
+    const out: YtResult[] = [];
+    for (const work of pickWorks(composer, count + 2, filters, offset)) {
+      if (out.length >= count) break;
+      const [hit] = await runQueries([`${composer.name} ${work.q}${kind}`], composer.name, 1, taken, maxSec, prefs, true);
+      if (hit) {
+        out.push(hit);
+        taken.add(hit.id);
+      }
+    }
+    return out;
+  }
+  const queries =
+    prefs.content !== "studio"
+      ? CONTENT_QUERY[prefs.content].map((w) => `${name} ${w}`)
+      : prefs.version === "remix"
+        ? [`${name} remix`, `${name} club mix`]
+        : prefs.version === "any"
+          ? [`${name} official audio`, `${name} remix`, `${name} topic`]
+          : [`${name} official audio`, `${name} topic`];
+  return runQueries(queries, name, count, skip, maxSec, prefs);
+}
+
 // the library as the pipeline sees it: songs already there (same YouTube id) are reused, not duplicated
-function ensureTracks(found: { artist: string; r: YtResult }[]): Map<string, LibTrack> {
+function ensureTracks(found: { artist: string; r: YtResult }[], theme: string): Map<string, LibTrack> {
   const lib = loadLibrary();
   const out = new Map<string, LibTrack>();
   const fresh: LibTrack[] = [];
@@ -421,7 +503,7 @@ function ensureTracks(found: { artist: string; r: YtResult }[]): Map<string, Lib
       out.set(r.id, had);
       continue;
     }
-    const t: LibTrack = { id: uid(), name: r.title, source: "youtube", url: r.id, deck: null, art: r.artwork ?? undefined, durationSec: r.duration, later: true, theme: "Radio-AVA", group: artist, addedAt: Date.now() };
+    const t: LibTrack = { id: uid(), name: r.title, source: "youtube", url: r.id, deck: null, art: r.artwork ?? undefined, durationSec: r.duration, later: true, theme, group: artist, addedAt: Date.now() };
     fresh.push(t);
     out.set(r.id, t);
   }
@@ -485,11 +567,107 @@ const SEARCH_PARALLEL = 2;
 const ANALYZE_PARALLEL = 3;
 const SPARES = 2;
 
+const setItem = (key: string, patch: Partial<RadioItem>) => emit({ items: state.items.map((i) => (i.key === key ? { ...i, ...patch } : i)) });
+
+// Analysis, three songs at a time: reserve songs only replace a song that failed.
+// `searching` says whether more songs may still arrive (the queue is then waited for).
+async function analyzeQueue(alive: () => boolean, wantedOf: ReadonlyMap<string, number>, searching: () => boolean): Promise<void> {
+  const start = Date.now();
+  let finished = 0;
+  const missing = (artist: string) => (wantedOf.get(artist) ?? 0) - state.items.filter((i) => i.artist === artist && (i.status === "ready" || i.status === "analyzing")).length;
+  const pick = () => {
+    const next = state.items.find((i) => i.status === "found" && !i.spare) ?? state.items.find((i) => i.status === "found" && i.spare && missing(i.artist) > 0);
+    if (next) setItem(next.key, { status: "analyzing" });
+    return next;
+  };
+  const updateEta = () => {
+    const left = state.items.filter((i) => (i.status === "found" && !i.spare) || i.status === "analyzing").length;
+    emit({ etaSec: finished > 0 ? Math.round((((Date.now() - start) / finished) * left) / 1000) : null });
+  };
+  // memory tight: only the first analyst keeps working; critical: nobody starts a new song
+  const analyst = async (index: number) => {
+    for (;;) {
+      if (!alive()) return;
+      const level = getMemLevel();
+      if (level === "critical" || (level === "warn" && index > 0)) {
+        await sleep(1000);
+        continue;
+      }
+      const item = pick();
+      if (!item) {
+        if (!searching() && !state.items.some((i) => i.status === "analyzing")) return;
+        await sleep(150);
+        continue;
+      }
+      const track = loadLibrary().tracks.find((t) => t.id === item.trackId);
+      const r = track ? await analyzeItem(track, item.key, item.durationSec) : null;
+      if (!alive()) return;
+      finished++;
+      if (!track || !r) {
+        setItem(item.key, { status: "failed" });
+      } else {
+        patchTrack(track.id, { bpm: r.bpm, bpmEstimated: true, bpmConfidence: r.bpmConfidence, camelot: r.camelot });
+        setItem(item.key, { status: "ready", bpm: r.bpm, camelot: r.camelot });
+      }
+      updateEta();
+    }
+  };
+  await Promise.all(Array.from({ length: ANALYZE_PARALLEL }, (_, i) => analyst(i)));
+}
+
+const regenerations = new Map<string, number>(); // artist id -> times regenerated (moves a classical radio along the works)
+
+// "Régénérer": a new list for one artist, with songs the radio has not used for them yet. The other artists keep
+// their songs; the sets are composed again. Resolves to the number of new songs (0 = nothing new was found).
+export async function regenerateArtist(artistId: string): Promise<number> {
+  const prefs = state.prefs;
+  const entry = state.artists.find((a) => a.id === artistId);
+  const artist = prefs?.artists.find((a) => a.id === artistId);
+  if (!prefs || !entry || !artist || radioBusy() || (state.phase !== "done" && state.phase !== "cancelled")) return 0;
+  const run = ++runId;
+  const alive = () => run === runId;
+  const wanted = wantedCount(artist, prefs.perArtist);
+  const upd = (patch: Partial<RadioArtistState>) => emit({ artists: state.artists.map((x) => (x.id === artistId ? { ...x, ...patch } : x)) });
+  emit({ phase: "search", etaSec: null });
+  upd({ status: "search" });
+
+  // everything known for this artist (shown now, or already in the library from earlier radios) is not proposed again
+  const lib = loadLibrary();
+  const known = new Set<string>([
+    ...state.items.filter((i) => i.artist === artist.name).map((i) => i.key),
+    ...lib.tracks.filter((t) => t.source === "youtube" && t.url && t.group && normArtist(t.group) === normArtist(artist.name)).map((t) => t.url!),
+    ...state.items.filter((i) => i.artist !== artist.name).map((i) => i.key),
+  ]);
+  const offset = (regenerations.get(artistId) ?? 0) + 1;
+  regenerations.set(artistId, offset);
+  const results = await searchArtist(artist.name, wanted + SPARES, known, prefs, offset);
+  if (!alive()) return 0;
+  if (results.length === 0) {
+    upd({ status: "done" });
+    emit({ phase: "done" });
+    return 0;
+  }
+
+  const tracks = ensureTracks(results.map((r) => ({ artist: artist.name, r })), themeFor(prefs));
+  const fresh: RadioItem[] = results.map((r, i) => {
+    const t = tracks.get(r.id)!;
+    return { key: r.id, artist: artist.name, title: r.title, durationSec: r.duration, art: r.artwork ?? undefined, trackId: t.id, status: t.bpm ? "ready" : "found", spare: i >= wanted, bpm: t.bpm, camelot: t.camelot };
+  });
+  emit({ items: [...state.items.filter((i) => i.artist !== artist.name), ...fresh], phase: "analyze" });
+  upd({ status: "done", found: fresh.filter((i) => !i.spare).length });
+  await analyzeQueue(alive, new Map([[artist.name, wanted]]), () => false);
+  if (!alive()) return 0;
+  emit({ phase: "done", etaSec: null, items: state.items.filter((i) => !(i.spare && i.status === "found")) });
+  composeNow(state.seed);
+  return state.items.filter((i) => i.artist === artist.name && i.status === "ready").length;
+}
+
 // Songs of the artist already in the library (and analysed) are reused: a second radio is instant.
 // `fresh` looks for songs not heard yet instead (the cached ones only fill the gaps).
 export async function startRadio(prefs: RadioPrefs, opts: { fresh?: boolean } = {}): Promise<void> {
   if (radioBusy() || prefs.artists.length === 0) return;
   const fresh = !!opts.fresh;
+  regenerations.clear();
   const run = ++runId;
   const alive = () => run === runId;
   emit({
@@ -509,13 +687,11 @@ export async function startRadio(prefs: RadioPrefs, opts: { fresh?: boolean } = 
   avoidIds = new Set(lib0.playlists.flatMap((p) => p.trackIds));
   const cachedOf = (name: string) =>
     lib0.tracks
-      .filter((t) => t.source === "youtube" && !!t.url && !!t.group && normArtist(t.group) === normArtist(name) && (t.bpm ?? 0) > 0)
+      .filter((t) => t.source === "youtube" && !!t.url && !!t.group && normArtist(t.group) === normArtist(name) && (t.bpm ?? 0) > 0 && (t.theme ?? "Radio-AVA") === themeFor(prefs))
       .sort((x, y) => y.addedAt - x.addedAt);
   const wantedOf = new Map(prefs.artists.map((a) => [a.name, wantedCount(a, prefs.perArtist)]));
   const taken = new Set<string>();
   let searching = true;
-  let analysisStart = 0;
-  let finished = 0;
 
   const toItem = (t: LibTrack, ready: boolean, spare = false): RadioItem => ({
     key: t.url ?? t.id,
@@ -547,7 +723,7 @@ export async function startRadio(prefs: RadioPrefs, opts: { fresh?: boolean } = 
       keep = fresh ? have.slice(0, Math.max(0, wanted - results.length)) : have;
     }
     results.forEach((r) => taken.add(r.id));
-    const tracks = ensureTracks(results.map((r) => ({ artist: a.name, r })));
+    const tracks = ensureTracks(results.map((r) => ({ artist: a.name, r })), themeFor(prefs));
     const need = Math.max(0, wanted - keep.length);
     const items = [
       ...keep.map((t) => toItem(t, true)),
@@ -568,53 +744,11 @@ export async function startRadio(prefs: RadioPrefs, opts: { fresh?: boolean } = 
     }
   };
 
-  // 2. analysis (three songs at a time): reserve songs only replace a song that failed
-  const setItem = (key: string, patch: Partial<RadioItem>) => emit({ items: state.items.map((i) => (i.key === key ? { ...i, ...patch } : i)) });
-  const missing = (artist: string) => (wantedOf.get(artist) ?? 0) - state.items.filter((i) => i.artist === artist && (i.status === "ready" || i.status === "analyzing")).length;
-  const pick = () => {
-    const next = state.items.find((i) => i.status === "found" && !i.spare) ?? state.items.find((i) => i.status === "found" && i.spare && missing(i.artist) > 0);
-    if (next) setItem(next.key, { status: "analyzing" });
-    return next;
-  };
-  const updateEta = () => {
-    const left = state.items.filter((i) => (i.status === "found" && !i.spare) || i.status === "analyzing").length;
-    emit({ etaSec: finished > 0 ? Math.round((((Date.now() - analysisStart) / finished) * left) / 1000) : null });
-  };
-  // memory tight: only the first analyst keeps working; critical: nobody starts a new song
-  const analyst = async (index: number) => {
-    for (;;) {
-      if (!alive()) return;
-      const level = getMemLevel();
-      if (level === "critical" || (level === "warn" && index > 0)) {
-        await sleep(1000);
-        continue;
-      }
-      const item = pick();
-      if (!item) {
-        if (!searching && !state.items.some((i) => i.status === "analyzing")) return;
-        await sleep(150);
-        continue;
-      }
-      const track = loadLibrary().tracks.find((t) => t.id === item.trackId);
-      const r = track ? await analyzeItem(track, item.key, item.durationSec) : null;
-      if (!alive()) return;
-      finished++;
-      if (!track || !r) {
-        setItem(item.key, { status: "failed" });
-      } else {
-        patchTrack(track.id, { bpm: r.bpm, bpmEstimated: true, bpmConfidence: r.bpmConfidence, camelot: r.camelot });
-        setItem(item.key, { status: "ready", bpm: r.bpm, camelot: r.camelot });
-      }
-      updateEta();
-    }
-  };
-
-  analysisStart = Date.now();
   const searchDone = Promise.all(Array.from({ length: SEARCH_PARALLEL }, searcher)).then(() => {
     searching = false;
   });
   emit({ phase: "analyze" });
-  await Promise.all([searchDone, ...Array.from({ length: ANALYZE_PARALLEL }, (_, i) => analyst(i))]);
+  await Promise.all([searchDone, analyzeQueue(alive, wantedOf, () => searching)]);
   if (!alive()) return;
 
   // 3. compose from what is ready (unused reserve songs are dropped from the list)
@@ -636,7 +770,7 @@ export function updateShow(key: string, trackIds: string[]) {
   const prep = { ...state.prep };
   delete prep[key];
   emit({
-    shows: state.shows.map((s) => (s.key === key ? { ...s, trackIds, plan: planMix(tracksOfShow(trackIds), s.arc, state.prefs?.dj ?? DEFAULT_DJ, s.plan) } : s)),
+    shows: state.shows.map((s) => (s.key === key ? { ...s, trackIds, plan: planMix(tracksOfShow(trackIds), s.arc, state.prefs ? djFor(state.prefs) : DEFAULT_DJ, s.plan) } : s)),
     savedShows: saved,
     prep,
   });
@@ -719,7 +853,7 @@ export function saveShow(key: string): string | null {
   const taken = new Set(lib.playlists.filter((p) => p.id !== id).map((p) => p.name));
   let name = show.name;
   for (let n = 2; taken.has(name); n++) name = `${show.name} (${n})`;
-  const set: Playlist = { id, name, trackIds: show.trackIds, transitionSec: 8, transitionType: "smooth", preloadSec: 15, mixPlan: show.plan, dj: state.prefs?.dj ?? DEFAULT_DJ };
+  const set: Playlist = { id, name, trackIds: show.trackIds, transitionSec: 8, transitionType: "smooth", preloadSec: 15, mixPlan: show.plan, dj: state.prefs ? djFor(state.prefs) : DEFAULT_DJ };
   const has = lib.playlists.some((p) => p.id === id);
   saveLibrary({ ...lib, playlists: has ? lib.playlists.map((p) => (p.id === id ? set : p)) : [...lib.playlists, set] });
   emit({ savedShows: { ...state.savedShows, [key]: id } });

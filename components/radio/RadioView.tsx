@@ -1,12 +1,19 @@
 "use client";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { loadLibrary, uid, type LibTrack } from "@/lib/library";
-import { enqueuePrep, getPrepState, getPrepWait, subscribePrep } from "@/lib/stemPrep";
+import {
+  cancelPrep,
+  enqueuePrep,
+  getPrepState,
+  getPrepWait,
+  subscribePrep,
+} from "@/lib/stemPrep";
 import {
   cancelRadio,
   getRadioState,
   loadStations,
   prepareShow,
+  regenerateArtist,
   radioBusy,
   recomposeRadio,
   renameShow,
@@ -27,6 +34,9 @@ import { ARC_LABEL, durationLabel } from "@/lib/setWizard";
 import { Icon, StatTile, stemInfoFrom } from "../prep/parts";
 import { Journey, type JourneyStep } from "../prep/Journey";
 import { AdvancedPanel } from "./AdvancedPanel";
+import { ClassicalPanel } from "./ClassicalPanel";
+import { PrepDock, type PrepRow } from "./PrepDock";
+import { findComposer } from "@/lib/classical";
 import { ArtistsPanel } from "./ArtistsPanel";
 import { StationBar } from "./StationBar";
 import { ProgramPanel } from "./ProgramPanel";
@@ -53,8 +63,10 @@ export default function RadioView({
 }) {
   // several radios: each station has its own artists and settings; `prefs` is the one on screen
   const [book, setBook] = useState<StationsData>(() => loadStations());
-  const station = book.stations.find((st) => st.id === book.current) ?? book.stations[0];
+  const station =
+    book.stations.find((st) => st.id === book.current) ?? book.stations[0];
   const prefs = station.prefs;
+  const classical = prefs.mode === "classical";
   const commit = (next: StationsData) => {
     setBook(next);
     saveStations(next);
@@ -120,7 +132,12 @@ export default function RadioView({
   const byId = useMemo(() => new Map(lib.tracks.map((t) => [t.id, t])), [lib]);
 
   const change = (patch: Partial<RadioPrefs>) =>
-    commit({ ...book, stations: book.stations.map((st) => (st.id === station.id ? { ...st, prefs: { ...st.prefs, ...patch } } : st)) });
+    commit({
+      ...book,
+      stations: book.stations.map((st) =>
+        st.id === station.id ? { ...st, prefs: { ...st.prefs, ...patch } } : st,
+      ),
+    });
 
   const selectStation = (id: string) => {
     if (busy) return;
@@ -130,7 +147,17 @@ export default function RadioView({
   };
   const addStation = () => {
     const id = uid();
-    commit({ current: id, stations: [...book.stations, { id, name: `Radio ${book.stations.length + 1}`, prefs: { ...DEFAULT_PREFS, dj: { ...prefs.dj } } }] });
+    commit({
+      current: id,
+      stations: [
+        ...book.stations,
+        {
+          id,
+          name: `Radio ${book.stations.length + 1}`,
+          prefs: { ...DEFAULT_PREFS, dj: { ...prefs.dj } },
+        },
+      ],
+    });
     resetRadio();
     setFolded(false);
   };
@@ -138,7 +165,17 @@ export default function RadioView({
     const src = book.stations.find((st) => st.id === id);
     if (!src) return;
     const copy = uid();
-    commit({ current: copy, stations: [...book.stations, { id: copy, name: `${src.name} (copie)`, prefs: JSON.parse(JSON.stringify(src.prefs)) as RadioPrefs }] });
+    commit({
+      current: copy,
+      stations: [
+        ...book.stations,
+        {
+          id: copy,
+          name: `${src.name} (copie)`,
+          prefs: JSON.parse(JSON.stringify(src.prefs)) as RadioPrefs,
+        },
+      ],
+    });
     resetRadio();
   };
   const deleteStation = (id: string) => {
@@ -149,13 +186,124 @@ export default function RadioView({
   };
 
   // quick moods: one click sets the shape, the length and the advanced options together
-  const MOODS: { key: string; label: string; hint: string; patch: Partial<RadioPrefs> }[] = [
-    { key: "party", label: "Soirée", hint: "Monte jusqu'au pic, 1 h 30", patch: { arc: "peak", durationMin: 90, tempoSpread: 15, tempoMin: 0, tempoMax: 0, harmony: "balanced", maxShows: 2 } },
-    { key: "warm", label: "Échauffement", hint: "Tempo qui monte, 45 min", patch: { arc: "rise", durationMin: 45, tempoSpread: 8, tempoMin: 0, tempoMax: 0, harmony: "balanced" } },
-    { key: "chill", label: "Chill", hint: "Doux et accordé, 1 h", patch: { arc: "flow", durationMin: 60, tempoSpread: 4, tempoMin: 0, tempoMax: 115, harmony: "strict" } },
-    { key: "sport", label: "Sport", hint: "120 à 160 BPM qui montent", patch: { arc: "rise", durationMin: 45, tempoSpread: 15, tempoMin: 120, tempoMax: 160, harmony: "free" } },
-    { key: "discover", label: "Découverte", hint: "Des titres pas encore rangés", patch: { avoidUsed: true, version: "any", maxShows: 3, mixArtists: "alternate" } },
+  const MOODS: {
+    key: string;
+    label: string;
+    hint: string;
+    patch: Partial<RadioPrefs>;
+  }[] = [
+    {
+      key: "party",
+      label: "Soirée",
+      hint: "Monte jusqu'au pic, 1 h 30",
+      patch: {
+        arc: "peak",
+        durationMin: 90,
+        tempoSpread: 15,
+        tempoMin: 0,
+        tempoMax: 0,
+        harmony: "balanced",
+        maxShows: 2,
+      },
+    },
+    {
+      key: "warm",
+      label: "Échauffement",
+      hint: "Tempo qui monte, 45 min",
+      patch: {
+        arc: "rise",
+        durationMin: 45,
+        tempoSpread: 8,
+        tempoMin: 0,
+        tempoMax: 0,
+        harmony: "balanced",
+      },
+    },
+    {
+      key: "chill",
+      label: "Chill",
+      hint: "Doux et accordé, 1 h",
+      patch: {
+        arc: "flow",
+        durationMin: 60,
+        tempoSpread: 4,
+        tempoMin: 0,
+        tempoMax: 115,
+        harmony: "strict",
+      },
+    },
+    {
+      key: "sport",
+      label: "Sport",
+      hint: "120 à 160 BPM qui montent",
+      patch: {
+        arc: "rise",
+        durationMin: 45,
+        tempoSpread: 15,
+        tempoMin: 120,
+        tempoMax: 160,
+        harmony: "free",
+      },
+    },
+    {
+      key: "discover",
+      label: "Découverte",
+      hint: "Des titres pas encore rangés",
+      patch: {
+        avoidUsed: true,
+        version: "any",
+        maxShows: 3,
+        mixArtists: "alternate",
+      },
+    },
   ];
+  const MOODS_CLASSICAL: typeof MOODS = [
+    {
+      key: "focus",
+      label: "Concentration",
+      hint: "Piano et cordes calmes, 1 h",
+      patch: {
+        arc: "flow",
+        durationMin: 60,
+        classical: { ...prefs.classical, mood: "calme", instrument: "all" },
+      },
+    },
+    {
+      key: "dinner",
+      label: "Dîner",
+      hint: "Calme et joyeux, 1 h",
+      patch: {
+        arc: "flow",
+        durationMin: 60,
+        classical: { ...prefs.classical, mood: "joyeux", instrument: "all" },
+      },
+    },
+    {
+      key: "drama",
+      label: "Grand frisson",
+      hint: "Dramatique et intense qui monte",
+      patch: {
+        arc: "rise",
+        durationMin: 45,
+        classical: {
+          ...prefs.classical,
+          mood: "intense",
+          instrument: "orchestre",
+        },
+      },
+    },
+    {
+      key: "sleep",
+      label: "Sommeil",
+      hint: "Calme qui descend, 45 min",
+      patch: {
+        arc: "fall",
+        durationMin: 45,
+        classical: { ...prefs.classical, mood: "calme", instrument: "piano" },
+      },
+    },
+  ];
+  const moods = classical ? MOODS_CLASSICAL : MOODS;
   const applyMood = (m: (typeof MOODS)[number]) => {
     change(m.patch);
     flash(`Ambiance « ${m.label} » appliquée`);
@@ -199,7 +347,12 @@ export default function RadioView({
     const job = prep.jobs.find((j) => j.trackId === id);
     if (!job) return stemInfoFrom(stemReady(id) ? "done" : "none");
     if (job.status === "error") return stemInfoFrom("error", job.error);
-    if (job.status === "running") return stemInfoFrom(job.phase === "download" ? "download" : `separate ${Math.round(job.progress)}`);
+    if (job.status === "running")
+      return stemInfoFrom(
+        job.phase === "download"
+          ? "download"
+          : `separate ${Math.round(job.progress)}`,
+      );
     return stemInfoFrom("queued");
   };
 
@@ -209,11 +362,103 @@ export default function RadioView({
     document
       .getElementById(id)
       ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  // ---- the preparation dock: songs on disk, DJ voice clips, stems, each with its own bar ----
+  const allIds = [...new Set(radio.shows.flatMap((sh) => sh.trackIds))];
+  const preps = Object.values(radio.prep);
+  const dockRows: PrepRow[] = [];
+  if (preps.length) {
+    const warmed = preps.reduce((n, pp) => n + pp.warmed, 0);
+    const wTotal = preps.reduce((n, pp) => n + pp.total, 0);
+    dockRows.push({
+      key: "audio",
+      label: "Titres téléchargés",
+      done: warmed,
+      total: wTotal,
+      state: warmed < wTotal ? "running" : "done",
+      color: "#38bdf8",
+      detail:
+        warmed < wTotal
+          ? `Copie sur le disque pour un démarrage instantané : encore ${wTotal - warmed} titre(s)`
+          : "Tous les titres démarrent sans attente",
+    });
+    const vTotal = preps.reduce((n, pp) => n + pp.voiceTotal, 0);
+    if (vTotal > 0) {
+      const voiced = preps.reduce((n, pp) => n + pp.voiced, 0);
+      const failed = preps.some((pp) => pp.voiceFailed);
+      const left = vTotal - voiced;
+      dockRows.push({
+        key: "voice",
+        label: "Voix du DJ (anglais)",
+        done: voiced,
+        total: vTotal,
+        state: failed ? "warn" : left > 0 ? "running" : "done",
+        color: "#e879f9",
+        detail: failed
+          ? "Le serveur de voix ne répond pas : l'émission jouera sans annonces"
+          : left > 0
+            ? `Fabriquée sur le serveur MaRuche : encore ${left} phrase(s), environ ${Math.ceil((left * 105) / 60)} min`
+            : "Toutes les annonces sont prêtes",
+      });
+    }
+  }
+  const stemJobs = prep.jobs.filter((j) => allIds.includes(j.trackId));
+  const stemsDone = allIds.filter(stemReady).length;
+  if (
+    allIds.length &&
+    (stemJobs.length > 0 || stemsDone > 0) &&
+    (preps.length > 0 || stemJobs.length > 0)
+  ) {
+    const running = stemJobs.find((j) => j.status === "running");
+    const queuedN = stemJobs.filter((j) => j.status === "queued").length;
+    const errorsN = stemJobs.filter((j) => j.status === "error").length;
+    dockRows.push({
+      key: "stems",
+      label: "Stems (batterie, basse, voix, autres)",
+      done: stemsDone,
+      total: allIds.length,
+      state: running || queuedN > 0 ? "running" : errorsN > 0 ? "warn" : "done",
+      color: "#ffcc00",
+      detail: running
+        ? `En cours : ${running.name.slice(0, 48)} · ${running.phase === "download" ? "téléchargement" : `séparation ${Math.round(running.progress)} %`}${queuedN ? ` · ${queuedN} en file` : ""}`
+        : queuedN > 0
+          ? `${queuedN} titre(s) en file`
+          : errorsN > 0
+            ? `${errorsN} titre(s) en erreur : relance « Préparer les stems »`
+            : "Tous les stems sont prêts",
+    });
+  }
+  const dockTotal = dockRows.reduce((n, r) => n + r.total, 0);
+  const dockPct = dockTotal
+    ? Math.round(
+        (dockRows.reduce((n, r) => n + Math.min(r.done, r.total), 0) /
+          dockTotal) *
+          100,
+      )
+    : 0;
+  const dockDone =
+    dockRows.length > 0 && dockRows.every((r) => r.state === "done");
+  const waitMsg = getPrepWait();
+  const prepareAll = async () => {
+    for (const sh of radio.shows)
+      if (!radio.prep[sh.key]) await prepareShow(sh.key);
+  };
+  const regen = async (artistId: string) => {
+    const name =
+      prefs.artists.find((a) => a.id === artistId)?.name ?? "cet artiste";
+    flash(`${name} : recherche de nouveaux titres…`);
+    const n = await regenerateArtist(artistId);
+    flash(
+      n > 0
+        ? `${name} : ${n} nouveau(x) titre(s), les sets sont recomposés`
+        : `${name} : aucun nouveau titre trouvé pour l'instant`,
+    );
+  };
   const flags = [
     prefs.artists.length > 0,
     radio.phase !== "idle",
     radio.phase === "done" || radio.phase === "cancelled",
     radio.shows.length > 0,
+    dockDone,
   ];
   const current = flags.findIndex((f) => !f);
   const st = (k: number): JourneyStep["state"] =>
@@ -252,6 +497,17 @@ export default function RadioView({
         : "sets qui s'enchaînent",
       state: st(3),
       onClick: radio.shows.length ? () => scrollTo("radio-shows") : undefined,
+    },
+    {
+      key: "prep",
+      label: "Préparation",
+      detail: dockRows.length
+        ? dockDone
+          ? "tout est prêt"
+          : `${dockPct} % prêt`
+        : "audio, voix, stems",
+      state: st(4),
+      onClick: radio.shows.length ? () => scrollTo("radio-prep") : undefined,
     },
   ];
 
@@ -314,12 +570,23 @@ export default function RadioView({
       </header>
 
       <StationBar
-        stations={book.stations.map((st) => ({ id: st.id, name: st.name, artistCount: st.prefs.artists.length }))}
+        stations={book.stations.map((st) => ({
+          id: st.id,
+          name: st.name,
+          artistCount: st.prefs.artists.length,
+        }))}
         currentId={station.id}
         locked={busy}
         onSelect={selectStation}
         onCreate={addStation}
-        onRename={(id, name) => commit({ ...book, stations: book.stations.map((st) => (st.id === id ? { ...st, name: name.slice(0, 40) } : st)) })}
+        onRename={(id, name) =>
+          commit({
+            ...book,
+            stations: book.stations.map((st) =>
+              st.id === id ? { ...st, name: name.slice(0, 40) } : st,
+            ),
+          })
+        }
         onDuplicate={duplicateStation}
         onDelete={deleteStation}
       />
@@ -328,33 +595,169 @@ export default function RadioView({
 
       {setupVisible ? (
         <div className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-stretch gap-2" role="group" aria-label="Ambiances rapides">
-            <span className="flex items-center px-1 text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500">Ambiances</span>
-            {MOODS.map((m) => (
-              <button key={m.key} type="button" disabled={busy} onClick={() => applyMood(m)} title={m.hint} className="prep-btn-ghost flex flex-col items-start px-3 py-1.5 text-left disabled:opacity-40">
-                <span className="text-xs font-bold text-neutral-100">{m.label}</span>
+          <div className="prep-card flex flex-col gap-3 p-3">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500">
+                Type de radio
+              </span>
+              <div className="prep-seg" role="group" aria-label="Type de radio">
+                <button
+                  type="button"
+                  aria-pressed={!classical}
+                  disabled={busy}
+                  onClick={() => change({ mode: "artists" })}
+                >
+                  Artistes
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={classical}
+                  disabled={busy}
+                  onClick={() => {
+                    change({
+                      mode: "classical",
+                      content: "studio",
+                      arc: "flow",
+                      maxTrackMin: 12,
+                      mixArtists: "alternate",
+                    });
+                    flash(
+                      "Radio classique : choisis des compositeurs (la liste d'artistes actuelle est conservée)",
+                    );
+                  }}
+                  title="Compositeurs et leurs pièces les plus connues, enchaînées en douceur"
+                >
+                  Musique classique
+                </button>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500">
+                Type de titres
+              </span>
+              <div
+                className="prep-seg"
+                role="group"
+                aria-label="Type de titres"
+              >
+                {(
+                  [
+                    ["studio", "Studio"],
+                    ["live", "Live / concert"],
+                    ["instrumental", "Instrumental"],
+                    ["acapella", "Voix seule"],
+                    ["acoustic", "Acoustique"],
+                  ] as const
+                ).map(([k, label]) => (
+                  <button
+                    key={k}
+                    type="button"
+                    aria-pressed={prefs.content === k}
+                    disabled={busy}
+                    onClick={() => change({ content: k })}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="text-[11px] text-neutral-500">
+              {prefs.content === "live"
+                ? "Enregistrements de concerts : plus longs, le tempo est moins régulier, l'analyse est moins sûre."
+                : prefs.content === "instrumental"
+                  ? "Versions sans chant (les karaokés sont écartés)."
+                  : prefs.content === "acapella"
+                    ? "Voix seule, sans musique : pas de tempo fiable, les enchaînements se font surtout à la tonalité."
+                    : prefs.content === "acoustic"
+                      ? "Versions acoustiques et unplugged."
+                      : "Versions studio officielles."}
+            </p>
+          </div>
+          <div
+            className="flex flex-wrap items-stretch gap-2"
+            role="group"
+            aria-label="Ambiances rapides"
+          >
+            <span className="flex items-center px-1 text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500">
+              Ambiances
+            </span>
+            {moods.map((m) => (
+              <button
+                key={m.key}
+                type="button"
+                disabled={busy}
+                onClick={() => applyMood(m)}
+                title={m.hint}
+                className="prep-btn-ghost flex flex-col items-start px-3 py-1.5 text-left disabled:opacity-40"
+              >
+                <span className="text-xs font-bold text-neutral-100">
+                  {m.label}
+                </span>
                 <span className="text-[10px] text-neutral-500">{m.hint}</span>
               </button>
             ))}
           </div>
           <div className="grid items-start gap-4 lg:grid-cols-2">
-            <ArtistsPanel
-              artists={prefs.artists}
-              suggestions={suggestions}
-              locked={busy}
-              onAdd={addMany}
-              onRemove={(id) =>
-                change({ artists: prefs.artists.filter((a) => a.id !== id) })
-              }
-              onLove={(id, love) =>
-                change({
-                  artists: prefs.artists.map((a) =>
-                    a.id === id ? { ...a, love } : a,
-                  ),
-                })
-              }
-              onClear={() => change({ artists: [] })}
-            />
+            <div className="flex flex-col gap-4">
+              <ArtistsPanel
+                variant={classical ? "composer" : "artist"}
+                onRegenerate={
+                  radio.phase === "done" || radio.phase === "cancelled"
+                    ? (id) => void regen(id)
+                    : undefined
+                }
+                artists={prefs.artists}
+                suggestions={suggestions}
+                locked={busy}
+                onAdd={addMany}
+                onRemove={(id) =>
+                  change({ artists: prefs.artists.filter((a) => a.id !== id) })
+                }
+                onLove={(id, love) =>
+                  change({
+                    artists: prefs.artists.map((a) =>
+                      a.id === id ? { ...a, love } : a,
+                    ),
+                  })
+                }
+                onClear={() => change({ artists: [] })}
+              />
+              {classical && (
+                <ClassicalPanel
+                  chosen={prefs.artists.map((a) => a.name)}
+                  eras={prefs.classical.eras}
+                  instrument={prefs.classical.instrument}
+                  mood={prefs.classical.mood}
+                  locked={busy}
+                  onToggleComposer={(name) => {
+                    const have = prefs.artists.find(
+                      (a) => a.name.toLowerCase() === name.toLowerCase(),
+                    );
+                    change({
+                      artists: have
+                        ? prefs.artists.filter((a) => a.id !== have.id)
+                        : [
+                            ...prefs.artists,
+                            {
+                              id: uid(),
+                              name: findComposer(name)?.name ?? name,
+                              love: 2,
+                            },
+                          ],
+                    });
+                  }}
+                  onEras={(eras) =>
+                    change({ classical: { ...prefs.classical, eras } })
+                  }
+                  onInstrument={(instrument) =>
+                    change({ classical: { ...prefs.classical, instrument } })
+                  }
+                  onMood={(mood) =>
+                    change({ classical: { ...prefs.classical, mood } })
+                  }
+                />
+              )}
+            </div>
             <ProgramPanel
               arc={prefs.arc}
               durationMin={prefs.durationMin}
@@ -376,15 +779,29 @@ export default function RadioView({
                 : `${prefs.artists.length} artiste(s) · ${ARC_LABEL[prefs.arc]} · ${durationLabel(prefs.durationMin)} · ${wantedTotal} titres à chercher, environ ${Math.max(1, Math.round((wantedTotal * 3.5) / 60))} min (presque instantané pour les titres déjà connus)`}
             </div>
             {busy ? (
-              <button type="button" className="prep-btn-ghost flex items-center gap-1.5 px-4 py-2 text-xs font-bold" onClick={cancelRadio}>
+              <button
+                type="button"
+                className="prep-btn-ghost flex items-center gap-1.5 px-4 py-2 text-xs font-bold"
+                onClick={cancelRadio}
+              >
                 <Icon name="x" size={14} />
                 Arrêter la radio
               </button>
             ) : (
-              <button type="button" className="prep-btn-accent flex items-center gap-2 px-5 py-2.5 text-sm font-black" onClick={() => launch()} disabled={prefs.artists.length === 0} title="Raccourci : Cmd ou Ctrl + Entrée">
+              <button
+                type="button"
+                className="prep-btn-accent flex items-center gap-2 px-5 py-2.5 text-sm font-black"
+                onClick={() => launch()}
+                disabled={prefs.artists.length === 0}
+                title="Raccourci : Cmd ou Ctrl + Entrée"
+              >
                 <Icon name="play" size={15} />
-                {radio.phase === "done" || radio.phase === "cancelled" ? "Relancer la radio" : "Lancer la radio"}
-                <kbd className="hidden rounded bg-black/30 px-1.5 py-px font-mono text-[10px] font-normal sm:inline">⌘↵</kbd>
+                {radio.phase === "done" || radio.phase === "cancelled"
+                  ? "Relancer la radio"
+                  : "Lancer la radio"}
+                <kbd className="hidden rounded bg-black/30 px-1.5 py-px font-mono text-[10px] font-normal sm:inline">
+                  ⌘↵
+                </kbd>
               </button>
             )}
           </div>
@@ -398,15 +815,26 @@ export default function RadioView({
             {prefs.artists.slice(0, 6).map((a) => (
               <span
                 key={a.id}
-                className="rounded-full bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-neutral-200"
+                className="flex items-center gap-1 rounded-full bg-white/5 py-1 pl-2.5 pr-1 text-[11px] font-semibold text-neutral-200"
               >
                 {a.name}
+                {(radio.phase === "done" || radio.phase === "cancelled") && (
+                  <button
+                    type="button"
+                    className="flex h-5 w-5 items-center justify-center rounded-full text-neutral-400 hover:bg-white/10 hover:text-white"
+                    onClick={() => void regen(a.id)}
+                    aria-label={`Régénérer la liste de ${a.name}`}
+                    title={`Régénérer : une nouvelle liste de titres pour ${a.name}`}
+                  >
+                    <Icon name="refresh" size={11} />
+                  </button>
+                )}
               </span>
             ))}
             {prefs.artists.length > 6 && (
               <span className="text-[11px] text-neutral-500">{`+${prefs.artists.length - 6}`}</span>
             )}
-            <span className="text-[11px] text-neutral-500">{`${ARC_LABEL[prefs.arc]} · ${durationLabel(prefs.durationMin)} · ${prefs.perArtist} titres par artiste${prefs.dj.auto ? " · DJ intelligent" : ""}`}</span>
+            <span className="text-[11px] text-neutral-500">{`${ARC_LABEL[prefs.arc]} · ${durationLabel(prefs.durationMin)} · ${prefs.perArtist} ${classical ? "pièces par compositeur" : "titres par artiste"}${prefs.content !== "studio" ? ` · ${prefs.content}` : ""}${prefs.dj.auto ? " · DJ intelligent" : ""}`}</span>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
@@ -443,8 +871,35 @@ export default function RadioView({
       )}
 
       <div id="radio-run" className="scroll-mt-4 empty:hidden">
-        <RunPanel state={radio} onCancel={cancelRadio} />
+        <RunPanel
+          state={radio}
+          onCancel={cancelRadio}
+          onRegenerate={(id) => void regen(id)}
+        />
       </div>
+
+      {radio.shows.length > 0 && (
+        <div id="radio-prep" className="scroll-mt-4">
+          <PrepDock
+            rows={dockRows}
+            wait={
+              waitMsg === "memory"
+                ? "Les stems attendent : la mémoire est presque pleine, ils repartent dès qu'elle se libère."
+                : waitMsg === "playback"
+                  ? "Les stems attendent : une platine joue, la séparation reprend à l'arrêt de la lecture."
+                  : null
+            }
+            canPrepare={radio.shows.some((sh) => !radio.prep[sh.key])}
+            onPrepareAll={() => void prepareAll()}
+            queuedStems={stemJobs.filter((j) => j.status === "queued").length}
+            onCancelStems={() =>
+              stemJobs
+                .filter((j) => j.status === "queued")
+                .forEach((j) => cancelPrep(j.trackId))
+            }
+          />
+        </div>
+      )}
 
       {radio.shows.length > 0 && (
         <section
@@ -508,13 +963,30 @@ export default function RadioView({
                 onPrepareStems={(ids) => {
                   const list = tracksOf(ids);
                   const n = list.length ? enqueuePrep(list) : 0;
-                  flash(n > 0 ? `Stems : ${n} titre(s) mis en file, la séparation prend quelques minutes par titre` : "Ces stems sont déjà prêts ou en file");
+                  flash(
+                    n > 0
+                      ? `Stems : ${n} titre(s) mis en file, la séparation prend quelques minutes par titre`
+                      : "Ces stems sont déjà prêts ou en file",
+                  );
                 }}
                 stemOf={stemOf}
                 stemWait={getPrepWait()}
                 onRename={(name) => renameShow(show.key, name)}
+                onRegenerate={
+                  show.artist
+                    ? () => {
+                        const a = prefs.artists.find(
+                          (x) => x.name === show.artist,
+                        );
+                        if (a) void regen(a.id);
+                      }
+                    : undefined
+                }
                 prep={radio.prep[show.key]}
-                onPrepare={() => void prepareShow(show.key)}
+                onPrepare={() => {
+                  void prepareShow(show.key);
+                  setTimeout(() => scrollTo("radio-prep"), 150);
+                }}
                 onStepType={(idx, type) =>
                   setStep(
                     show.key,
@@ -537,7 +1009,15 @@ export default function RadioView({
         </div>
       )}
       {notice && (
-        <div role="status" className="fixed bottom-6 right-6 z-50 max-w-sm rounded-xl px-4 py-2.5 text-xs font-semibold text-neutral-100" style={{ background: "var(--prep-surface-2)", border: "1px solid var(--prep-accent)", boxShadow: "0 10px 30px rgba(0,0,0,.6)" }}>
+        <div
+          role="status"
+          className="fixed bottom-6 right-6 z-50 max-w-sm rounded-xl px-4 py-2.5 text-xs font-semibold text-neutral-100"
+          style={{
+            background: "var(--prep-surface-2)",
+            border: "1px solid var(--prep-accent)",
+            boxShadow: "0 10px 30px rgba(0,0,0,.6)",
+          }}
+        >
           {notice}
         </div>
       )}

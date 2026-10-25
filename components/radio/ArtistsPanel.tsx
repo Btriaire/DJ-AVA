@@ -11,9 +11,12 @@ export interface ArtistsPanelProps {
   onRemove: (id: string) => void;
   onLove: (id: string, love: 1 | 2 | 3) => void;
   onClear: () => void;
+  variant?: "artist" | "composer"; // a classical radio talks about composers
+  onRegenerate?: (id: string) => void; // a new list of songs for one artist
 }
 
-export function ArtistsPanel({ artists, suggestions, locked, onAdd, onRemove, onLove, onClear }: ArtistsPanelProps) {
+export function ArtistsPanel({ artists, suggestions, locked, onAdd, onRemove, onLove, onClear, variant = "artist", onRegenerate }: ArtistsPanelProps) {
+  const composer = variant === "composer";
   const [draft, setDraft] = useState("");
 
   const handleAdd = () => {
@@ -30,7 +33,7 @@ export function ArtistsPanel({ artists, suggestions, locked, onAdd, onRemove, on
   return (
     <section className="prep-card flex flex-col gap-3 p-4">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-200">Tes artistes</h2>
+        <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-200">{composer ? "Tes compositeurs" : "Tes artistes"}</h2>
         <div className="flex items-center gap-2">
           {artists.length > 0 && !locked && (
             <button
@@ -47,13 +50,13 @@ export function ArtistsPanel({ artists, suggestions, locked, onAdd, onRemove, on
         </div>
       </div>
       <p className="text-[12px] text-neutral-400">
-        Chanteurs ou groupes que tu aimes. Plus la priorité est haute, plus la radio en prend.
+        {composer ? "Les compositeurs de ta radio. Plus la priorité est haute, plus la radio en prend." : "Chanteurs ou groupes que tu aimes. Plus la priorité est haute, plus la radio en prend."}
       </p>
 
       <div className="flex gap-2">
         <input
           className="prep-input min-w-0 flex-1 px-3 py-2 text-sm"
-          placeholder="Un chanteur ou un groupe : Daft Punk, Indochine…"
+          placeholder={composer ? "Un compositeur : Bach, Chopin, Debussy…" : "Un chanteur ou un groupe : Daft Punk, Indochine…"}
           aria-label="Ajouter un artiste"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -74,12 +77,12 @@ export function ArtistsPanel({ artists, suggestions, locked, onAdd, onRemove, on
       {artists.length === 0 && (
         <div className="rounded-xl border border-dashed border-[var(--prep-line)] px-4 py-8 text-center">
           <span className="mx-auto mb-2 block w-fit opacity-70" style={{ color: "var(--prep-accent)" }}><Icon name="disc" size={36} /></span>
-          <p className="font-bold">Commence par 3 ou 4 artistes que tu adores</p>
-          <p className="text-neutral-400">Tape leur nom ci-dessus : la radio cherche leurs titres sur YouTube.</p>
+          <p className="font-bold">{composer ? "Choisis 2 ou 3 compositeurs" : "Commence par 3 ou 4 artistes que tu adores"}</p>
+          <p className="text-neutral-400">{composer ? "Touche leurs noms dans la liste ci-dessous, ou tape-les ici." : "Tape leur nom ci-dessus : la radio cherche leurs titres sur YouTube."}</p>
           {!locked && (
             <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
               <span className="text-[10px] uppercase tracking-[0.15em] text-neutral-500">Pour essayer</span>
-              {["Daft Punk", "Justice", "Stromae", "Indochine", "Depeche Mode"].map((n) => (
+              {(composer ? ["Bach", "Chopin", "Debussy", "Mozart", "Satie"] : ["Daft Punk", "Justice", "Stromae", "Indochine", "Depeche Mode"]).map((n) => (
                 <button key={n} type="button" onClick={() => onAdd([n])} className="rounded-full border border-dashed border-[var(--prep-line)] px-2.5 py-1 text-[11px] text-neutral-300 hover:border-[var(--prep-accent)] hover:text-white">
                   {`+ ${n}`}
                 </button>
@@ -106,6 +109,19 @@ export function ArtistsPanel({ artists, suggestions, locked, onAdd, onRemove, on
                 <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-neutral-100" title={a.name}>
                   {a.name}
                 </span>
+                {onRegenerate && (
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-neutral-300 hover:bg-[var(--prep-line)] disabled:opacity-40"
+                    onClick={() => onRegenerate(a.id)}
+                    disabled={locked}
+                    aria-label={`Régénérer la liste de ${a.name}`}
+                    title={`Régénérer : une nouvelle liste de titres pour ${a.name}`}
+                  >
+                    <Icon name="refresh" size={13} />
+                    <span className="hidden sm:inline">Régénérer</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   className="flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-neutral-300 hover:bg-[var(--prep-line)]"
@@ -139,7 +155,7 @@ export function ArtistsPanel({ artists, suggestions, locked, onAdd, onRemove, on
         </ul>
       )}
 
-      {suggestions.length > 0 && !locked && (
+      {suggestions.length > 0 && !locked && !composer && (
         <div className="flex flex-wrap gap-2">
           <p className="text-[10px] uppercase tracking-[0.15em] text-neutral-500">Dans ta bibliothèque</p>
           {suggestions.map((s) => (

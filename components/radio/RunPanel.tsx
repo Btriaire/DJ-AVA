@@ -6,13 +6,14 @@ import type { RadioState } from "@/lib/radio";
 export interface RunPanelProps {
   state: RadioState;
   onCancel: () => void;
+  onRegenerate?: (artistId: string) => void; // a new list of songs for one artist
 }
 
 const hueOf = (name: string) => (Array.from(name).reduce((sum, c) => sum + c.charCodeAt(0), 0) * 7) % 360;
 const fmtEta = (s: number) => (s < 60 ? `${Math.max(s, 1)} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, "0")}`);
 
 // Progress of the search and analysis. Detailed while it runs, one line once it is over (the list is a click away).
-export function RunPanel({ state, onCancel }: RunPanelProps) {
+export function RunPanel({ state, onCancel, onRegenerate }: RunPanelProps) {
   const [userOpen, setUserOpen] = useState<boolean | null>(null);
   if (state.phase === "idle") return null;
 
@@ -74,6 +75,17 @@ export function RunPanel({ state, onCancel }: RunPanelProps) {
                       .join("")}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-neutral-100">{a.name}</span>
+                  {onRegenerate && !running && a.status !== "wait" && (
+                    <button
+                      type="button"
+                      className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[10px]"
+                      onClick={() => onRegenerate(a.id)}
+                      title={`Une nouvelle liste de titres pour ${a.name}`}
+                    >
+                      <Icon name="refresh" size={11} />
+                      Régénérer
+                    </button>
+                  )}
                   <span className="text-[11px]">
                     {a.status === "wait" ? (
                       <span className="text-neutral-500">En attente</span>
