@@ -1,5 +1,4 @@
 "use client";
-import { Icon } from "../prep/parts";
 import type { SetArc } from "@/lib/setBuilder";
 import { arcTarget } from "@/lib/setBuilder";
 import { ARC_HINT, ARC_LABEL, ARC_ORDER, durationLabel } from "@/lib/setWizard";
@@ -9,16 +8,11 @@ export interface ProgramPanelProps {
   durationMin: number;
   perArtist: 3 | 5 | 8;
   soloSets: boolean;
-  artistCount: number;
-  wantedTotal: number;
   busy: boolean;
-  hasResult: boolean;
   onArc: (arc: SetArc) => void;
   onDuration: (min: number) => void;
   onPerArtist: (n: 3 | 5 | 8) => void;
   onSolo: (on: boolean) => void;
-  onLaunch: () => void;
-  onCancel: () => void;
 }
 
 export function ProgramPanel({
@@ -26,18 +20,12 @@ export function ProgramPanel({
   durationMin,
   perArtist,
   soloSets,
-  artistCount,
-  wantedTotal,
   busy,
-  hasResult,
   onArc,
   onDuration,
   onPerArtist,
   onSolo,
-  onLaunch,
-  onCancel,
 }: ProgramPanelProps) {
-  const minutes = Math.max(1, Math.round(wantedTotal * 12 / 60));
 
   return (
     <section className="prep-card flex flex-col gap-4 p-4">
@@ -138,35 +126,6 @@ export function ProgramPanel({
             En plus du mix, un set par artiste (3 titres analysés minimum).
           </p>
         </div>
-      </div>
-
-      <div className="rounded-lg border border-[var(--prep-line)] px-3 py-2 text-[12px] text-neutral-300">
-        {artistCount === 0
-          ? "Ajoute au moins un artiste pour lancer la radio."
-          : `${wantedTotal} titres à chercher sur YouTube puis à analyser : environ ${minutes} min`}
-      </div>
-
-      <div className="mt-auto">
-        {busy ? (
-          <button
-            type="button"
-            className="prep-btn-ghost w-full px-5 py-3 text-sm font-black"
-            onClick={onCancel}
-          >
-            <Icon name="x" size={16} className="mr-1.5" />
-            Arrêter la radio
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="prep-btn-accent w-full px-5 py-3 text-sm font-black"
-            onClick={onLaunch}
-            disabled={artistCount === 0}
-          >
-            <Icon name="play" size={16} className="mr-1.5" />
-            {hasResult ? "Relancer la radio" : "Lancer la radio"}
-          </button>
-        )}
       </div>
     </section>
   );

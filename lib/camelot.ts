@@ -30,3 +30,10 @@ export function keyCompat(a?: string | null, b?: string | null): Compat {
   return { level: "clash", label: "dissonant", color: "#f87171" };
 }
 
+
+// the key after transposing by `semitones` (one semitone up = seven steps up the wheel, same letter)
+export function shiftCamelot(k: string | null | undefined, semitones: number): string {
+  const c = parseCamelot(k);
+  if (!c) return k ?? "";
+  return `${((((c.n - 1 + 7 * semitones) % 12) + 12) % 12) + 1}${c.l}`;
+}

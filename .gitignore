@@ -60,3 +60,4 @@ __pycache__/
 .analysis-cache/
 
 .audio-cache/
+.voice-cache/

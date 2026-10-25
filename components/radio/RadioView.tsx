@@ -1,30 +1,34 @@
 "use client";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { loadLibrary, uid, type LibTrack } from "@/lib/library";
-import { enqueuePrep, getPrepState, subscribePrep } from "@/lib/stemPrep";
+import { enqueuePrep, getPrepState, getPrepWait, subscribePrep } from "@/lib/stemPrep";
 import {
   cancelRadio,
   getRadioState,
-  loadPrefs,
+  loadStations,
   prepareShow,
   radioBusy,
   recomposeRadio,
+  renameShow,
   resetRadio,
   saveShow,
   setStep,
-  savePrefs,
+  saveStations,
   startRadio,
   subscribeRadio,
   suggestArtists,
   updateShow,
   wantedCount,
+  DEFAULT_PREFS,
   type RadioPrefs,
+  type StationsData,
 } from "@/lib/radio";
 import { ARC_LABEL, durationLabel } from "@/lib/setWizard";
-import { Icon, StatTile } from "../prep/parts";
+import { Icon, StatTile, stemInfoFrom } from "../prep/parts";
 import { Journey, type JourneyStep } from "../prep/Journey";
 import { AdvancedPanel } from "./AdvancedPanel";
 import { ArtistsPanel } from "./ArtistsPanel";
+import { StationBar } from "./StationBar";
 import { ProgramPanel } from "./ProgramPanel";
 import { RunPanel } from "./RunPanel";
 import { ShowCard } from "./ShowCard";
@@ -47,13 +51,27 @@ export default function RadioView({
 }: {
   onLaunchSet?: (dest: RadioDest, playlistId: string) => void;
 }) {
-  const [prefs, setPrefs] = useState<RadioPrefs>(() => loadPrefs());
+  // several radios: each station has its own artists and settings; `prefs` is the one on screen
+  const [book, setBook] = useState<StationsData>(() => loadStations());
+  const station = book.stations.find((st) => st.id === book.current) ?? book.stations[0];
+  const prefs = station.prefs;
+  const commit = (next: StationsData) => {
+    setBook(next);
+    saveStations(next);
+  };
   const radio = useSyncExternalStore(
     subscribeRadio,
     getRadioState,
     getRadioState,
   );
   const prep = useSyncExternalStore(subscribePrep, getPrepState, getPrepState);
+
+  // a short message that confirms what a click did
+  const [notice, setNotice] = useState<string | null>(null);
+  const flash = (msg: string) => {
+    setNotice(msg);
+    window.setTimeout(() => setNotice((n) => (n === msg ? null : n)), 7000);
+  };
 
   const busy = radio.phase === "search" || radio.phase === "analyze";
   // once a radio has been launched the setup folds into a one-line summary, the results take the screen
@@ -72,15 +90,75 @@ export default function RadioView({
     );
     return () => clearTimeout(t);
   }, [radio.phase]);
+  const launch = (fresh = false) => {
+    setFolded(true);
+    void startRadio(prefs, { fresh });
+    setTimeout(
+      () =>
+        document
+          .getElementById("radio-run")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+      120,
+    );
+  };
+  // Cmd/Ctrl + Enter launches the radio from anywhere on the page
+  useEffect(() => {
+    if (!setupVisible || busy || prefs.artists.length === 0) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        launch();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setupVisible, busy, prefs]);
   // the library changes under our feet while the radio runs: read it again on every radio update
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const lib = useMemo(() => loadLibrary(), [radio]);
   const byId = useMemo(() => new Map(lib.tracks.map((t) => [t.id, t])), [lib]);
 
-  const change = (patch: Partial<RadioPrefs>) => {
-    const next = { ...prefs, ...patch };
-    setPrefs(next);
-    savePrefs(next);
+  const change = (patch: Partial<RadioPrefs>) =>
+    commit({ ...book, stations: book.stations.map((st) => (st.id === station.id ? { ...st, prefs: { ...st.prefs, ...patch } } : st)) });
+
+  const selectStation = (id: string) => {
+    if (busy) return;
+    if (radio.phase !== "idle") resetRadio(); // the results belong to the radio that made them
+    setFolded(false);
+    commit({ ...book, current: id });
+  };
+  const addStation = () => {
+    const id = uid();
+    commit({ current: id, stations: [...book.stations, { id, name: `Radio ${book.stations.length + 1}`, prefs: { ...DEFAULT_PREFS, dj: { ...prefs.dj } } }] });
+    resetRadio();
+    setFolded(false);
+  };
+  const duplicateStation = (id: string) => {
+    const src = book.stations.find((st) => st.id === id);
+    if (!src) return;
+    const copy = uid();
+    commit({ current: copy, stations: [...book.stations, { id: copy, name: `${src.name} (copie)`, prefs: JSON.parse(JSON.stringify(src.prefs)) as RadioPrefs }] });
+    resetRadio();
+  };
+  const deleteStation = (id: string) => {
+    if (book.stations.length < 2) return;
+    const left = book.stations.filter((st) => st.id !== id);
+    commit({ current: left[0].id, stations: left });
+    resetRadio();
+  };
+
+  // quick moods: one click sets the shape, the length and the advanced options together
+  const MOODS: { key: string; label: string; hint: string; patch: Partial<RadioPrefs> }[] = [
+    { key: "party", label: "Soirée", hint: "Monte jusqu'au pic, 1 h 30", patch: { arc: "peak", durationMin: 90, tempoSpread: 15, tempoMin: 0, tempoMax: 0, harmony: "balanced", maxShows: 2 } },
+    { key: "warm", label: "Échauffement", hint: "Tempo qui monte, 45 min", patch: { arc: "rise", durationMin: 45, tempoSpread: 8, tempoMin: 0, tempoMax: 0, harmony: "balanced" } },
+    { key: "chill", label: "Chill", hint: "Doux et accordé, 1 h", patch: { arc: "flow", durationMin: 60, tempoSpread: 4, tempoMin: 0, tempoMax: 115, harmony: "strict" } },
+    { key: "sport", label: "Sport", hint: "120 à 160 BPM qui montent", patch: { arc: "rise", durationMin: 45, tempoSpread: 15, tempoMin: 120, tempoMax: 160, harmony: "free" } },
+    { key: "discover", label: "Découverte", hint: "Des titres pas encore rangés", patch: { avoidUsed: true, version: "any", maxShows: 3, mixArtists: "alternate" } },
+  ];
+  const applyMood = (m: (typeof MOODS)[number]) => {
+    change(m.patch);
+    flash(`Ambiance « ${m.label} » appliquée`);
   };
 
   // several names typed in one go are added one after the other: each call must see the previous ones
@@ -116,20 +194,17 @@ export default function RadioView({
   );
 
   const stemReady = (id: string) => prep.ready.some((r) => r.trackId === id);
+  // state of the stems of a song, from the preparation queue
+  const stemOf = (id: string) => {
+    const job = prep.jobs.find((j) => j.trackId === id);
+    if (!job) return stemInfoFrom(stemReady(id) ? "done" : "none");
+    if (job.status === "error") return stemInfoFrom("error", job.error);
+    if (job.status === "running") return stemInfoFrom(job.phase === "download" ? "download" : `separate ${Math.round(job.progress)}`);
+    return stemInfoFrom("queued");
+  };
 
   const items = radio.items.filter((i) => !(i.spare && i.status === "found"));
   const analysed = items.filter((i) => i.status === "ready").length;
-  const launch = (fresh = false) => {
-    setFolded(true);
-    void startRadio(prefs, { fresh });
-    setTimeout(
-      () =>
-        document
-          .getElementById("radio-run")
-          ?.scrollIntoView({ behavior: "smooth", block: "start" }),
-      120,
-    );
-  };
   const scrollTo = (id: string) =>
     document
       .getElementById(id)
@@ -238,10 +313,30 @@ export default function RadioView({
         </div>
       </header>
 
+      <StationBar
+        stations={book.stations.map((st) => ({ id: st.id, name: st.name, artistCount: st.prefs.artists.length }))}
+        currentId={station.id}
+        locked={busy}
+        onSelect={selectStation}
+        onCreate={addStation}
+        onRename={(id, name) => commit({ ...book, stations: book.stations.map((st) => (st.id === id ? { ...st, name: name.slice(0, 40) } : st)) })}
+        onDuplicate={duplicateStation}
+        onDelete={deleteStation}
+      />
+
       <Journey steps={steps} />
 
       {setupVisible ? (
         <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-stretch gap-2" role="group" aria-label="Ambiances rapides">
+            <span className="flex items-center px-1 text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500">Ambiances</span>
+            {MOODS.map((m) => (
+              <button key={m.key} type="button" disabled={busy} onClick={() => applyMood(m)} title={m.hint} className="prep-btn-ghost flex flex-col items-start px-3 py-1.5 text-left disabled:opacity-40">
+                <span className="text-xs font-bold text-neutral-100">{m.label}</span>
+                <span className="text-[10px] text-neutral-500">{m.hint}</span>
+              </button>
+            ))}
+          </div>
           <div className="grid items-start gap-4 lg:grid-cols-2">
             <ArtistsPanel
               artists={prefs.artists}
@@ -265,19 +360,34 @@ export default function RadioView({
               durationMin={prefs.durationMin}
               perArtist={prefs.perArtist}
               soloSets={prefs.soloSets}
-              artistCount={prefs.artists.length}
-              wantedTotal={wantedTotal}
               busy={busy}
-              hasResult={radio.phase === "done" || radio.phase === "cancelled"}
               onArc={(arc) => change({ arc })}
               onDuration={(durationMin) => change({ durationMin })}
               onPerArtist={(perArtist) => change({ perArtist })}
               onSolo={(soloSets) => change({ soloSets })}
-              onLaunch={() => launch()}
-              onCancel={cancelRadio}
             />
           </div>
           <AdvancedPanel prefs={prefs} busy={busy} onChange={change} />
+          {/* always in reach: the launch button follows the page */}
+          <div className="sticky bottom-3 z-20 flex flex-wrap items-center gap-3 rounded-xl border border-[var(--prep-accent)] bg-[var(--prep-surface)] p-3 shadow-[0_10px_30px_rgba(0,0,0,.6)]">
+            <div className="min-w-0 flex-1 text-[12px] text-neutral-300">
+              {prefs.artists.length === 0
+                ? "Ajoute au moins un artiste pour lancer la radio."
+                : `${prefs.artists.length} artiste(s) · ${ARC_LABEL[prefs.arc]} · ${durationLabel(prefs.durationMin)} · ${wantedTotal} titres à chercher, environ ${Math.max(1, Math.round((wantedTotal * 3.5) / 60))} min (presque instantané pour les titres déjà connus)`}
+            </div>
+            {busy ? (
+              <button type="button" className="prep-btn-ghost flex items-center gap-1.5 px-4 py-2 text-xs font-bold" onClick={cancelRadio}>
+                <Icon name="x" size={14} />
+                Arrêter la radio
+              </button>
+            ) : (
+              <button type="button" className="prep-btn-accent flex items-center gap-2 px-5 py-2.5 text-sm font-black" onClick={() => launch()} disabled={prefs.artists.length === 0} title="Raccourci : Cmd ou Ctrl + Entrée">
+                <Icon name="play" size={15} />
+                {radio.phase === "done" || radio.phase === "cancelled" ? "Relancer la radio" : "Lancer la radio"}
+                <kbd className="hidden rounded bg-black/30 px-1.5 py-px font-mono text-[10px] font-normal sm:inline">⌘↵</kbd>
+              </button>
+            )}
+          </div>
         </div>
       ) : (
         <section
@@ -397,8 +507,12 @@ export default function RadioView({
                 onSend={(dest) => send(show.key, dest)}
                 onPrepareStems={(ids) => {
                   const list = tracksOf(ids);
-                  if (list.length) enqueuePrep(list);
+                  const n = list.length ? enqueuePrep(list) : 0;
+                  flash(n > 0 ? `Stems : ${n} titre(s) mis en file, la séparation prend quelques minutes par titre` : "Ces stems sont déjà prêts ou en file");
                 }}
+                stemOf={stemOf}
+                stemWait={getPrepWait()}
+                onRename={(name) => renameShow(show.key, name)}
                 prep={radio.prep[show.key]}
                 onPrepare={() => void prepareShow(show.key)}
                 onStepType={(idx, type) =>
@@ -420,6 +534,11 @@ export default function RadioView({
         <div className="prep-card px-4 py-6 text-center text-[12px] text-neutral-400">
           Pas assez de titres analysés pour composer un set (il en faut au moins
           2). Essaie d&apos;autres artistes, ou relance la radio.
+        </div>
+      )}
+      {notice && (
+        <div role="status" className="fixed bottom-6 right-6 z-50 max-w-sm rounded-xl px-4 py-2.5 text-xs font-semibold text-neutral-100" style={{ background: "var(--prep-surface-2)", border: "1px solid var(--prep-accent)", boxShadow: "0 10px 30px rgba(0,0,0,.6)" }}>
+          {notice}
         </div>
       )}
     </div>

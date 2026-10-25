@@ -8,12 +8,12 @@ export interface BeatDeck {
 
 // Seconds to wait before starting `inc` so that its beats fall exactly on the beats of `out`.
 // Both are played at their effective tempo (call after syncing the tempos): the wait is shorter than one beat.
-export function alignDelaySec(out: BeatDeck, inc: BeatDeck): number {
+export function alignDelaySec(out: BeatDeck, inc: BeatDeck, unitBeats = 1): number {
   if (!(out.bpm > 0 && inc.bpm > 0 && out.effectiveBPM > 0 && inc.effectiveBPM > 0)) return 0;
   const rateOut = out.effectiveBPM / out.bpm;
   const rateIn = inc.effectiveBPM / inc.bpm;
-  const spbOut = 60 / out.bpm; // song seconds per beat
-  const spbIn = 60 / inc.bpm;
+  const spbOut = (60 / out.bpm) * unitBeats; // song seconds per beat (or per bar when unitBeats is 4)
+  const spbIn = (60 / inc.bpm) * unitBeats;
   const wallBeat = spbOut / rateOut; // real seconds per beat
   const sinceBeat = (((out.position() - out.beatGridOffset) % spbOut) + spbOut) % spbOut;
   const toNextOut = (spbOut - sinceBeat) / rateOut; // real seconds until the next beat of the outgoing song

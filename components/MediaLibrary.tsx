@@ -35,7 +35,9 @@ import { buildJourney } from "./prep/Journey";
 import { analyzeLibraryTrack } from "@/lib/analyzeTrack";
 import { alignDelaySec } from "@/lib/audio/beatAlign";
 import { announcement, DEFAULT_DJ, planMix, type MixStep } from "@/lib/mixPlan";
-import { speak, stopSpeaking } from "@/lib/djVoice";
+import { playLines, speak, stopSpeaking } from "@/lib/djVoice";
+import { INTRO_LINE, OUTRO_LINE, djLineFor } from "@/lib/djLines";
+import { loudnessFor, matchTrimDb } from "@/lib/audio/levelMatch";
 
 const NO_IDS: ReadonlySet<string> = new Set();
 
@@ -251,6 +253,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   // instead of each side keeping its own counter and both starting on track0.
   const relayPos = useRef(-1);
   const relayFading = useRef(false);
+  const baseTrim = useRef<{ A?: number; B?: number }>({}); // trim of a deck before the volume matching touched it
   const relayArmed = useRef(true); // fade exactly once per song
   // mirror of liveIdx as state so the track list re-renders when the queue moves
   // (used to highlight the playing track + blink the next one in the deck color)
@@ -1393,19 +1396,45 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     const idx = relayIdx.current[side];
     return idx >= 0 ? pl.mixPlan[idx] : undefined;
   }
-  // the radio voice announces the song coming in; the music steps down while it speaks
+  // the radio voice announces the song coming in; the music steps down while it speaks.
+  // "dj": the English clips made ahead of time (a clip not ready is simply skipped); "system": the computer's voice
   function announceOver(side: "A" | "B", first = false) {
     const pl = relayPlaylist();
-    const style = pl?.dj?.voice ?? "off";
-    if (style === "off") return;
-    const t = liveQueue(side)[relayIdx.current[side]];
-    if (!t) return;
+    const dj = pl?.dj;
+    if (!dj || dj.voice === "off") return;
+    const queue = liveQueue(side);
+    const idx = relayIdx.current[side];
     const decks = [engine.deckA, engine.deckB];
     const base = decks.map((d) => d.volumeValue);
-    speak(announcement(t, style, first), {
-      onStart: () => decks.forEach((d, i) => d.setVolume(base[i] * 0.5)),
+    const duck = {
+      onStart: () => decks.forEach((d, i) => d.setVolume(base[i] * 0.45)),
       onEnd: () => decks.forEach((d, i) => d.setVolume(base[i])),
-    });
+    };
+    if (dj.voiceEngine === "system") {
+      const t = queue[idx];
+      if (t) speak(announcement(t, dj.voice, first), duck);
+      return;
+    }
+    const line = djLineFor(queue, idx, dj);
+    const clips = [...(first && dj.voice === "radio" ? [INTRO_LINE] : []), ...(line ? [line] : [])];
+    if (clips.length) playLines(clips, duck);
+  }
+  // the closing words, when the set is set to stop at its end
+  function outroOver() {
+    const dj = relayPlaylist()?.dj;
+    if (!dj || dj.voice === "off" || dj.voiceEngine !== "dj") return;
+    const decks = [engine.deckA, engine.deckB];
+    const base = decks.map((d) => d.volumeValue);
+    playLines([OUTRO_LINE], { onStart: () => decks.forEach((d, i) => d.setVolume(base[i] * 0.45)), onEnd: () => decks.forEach((d, i) => d.setVolume(base[i])) });
+  }
+  // vinyl brake: the song slows down to a stop in under a second
+  function brakeOut(deck: typeof engine.deckA) {
+    let a = 0.25;
+    const timer = window.setInterval(() => {
+      a = Math.min(1, a + 0.12);
+      deck.scratch(-a);
+      if (a >= 1) window.clearInterval(timer);
+    }, 90);
   }
   // after a beat-matched blend the incoming song drifts back to its own tempo instead of staying pitched
   function pitchHome(deck: typeof engine.deckA) {
@@ -1433,6 +1462,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       // (a very normal thing to do) was silently ignored until stop+restart.
       const side = relaySide.current;
       const other = side === "A" ? "B" : "A";
+      const pl = relayPlaylist();
+      const dj = pl?.dj;
       // the mix plan (prepared in advance, one step per song) wins over the set's single style and length
       const step = relayStepFor(side);
       const FADE = step ? Math.max(step.sec, 0) : relayTransitionSec();
@@ -1442,21 +1473,58 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       const otherDeck = other === "A" ? engine.deckA : engine.deckB;
       if (!deck.playing || deck.duration <= 0) return;
       const remain = deck.duration - deck.position();
-      const preFadeWindow = TYPE === "cut" ? Math.max(2, preload) : FADE;
+
+      // end of the set: no new song, the closing words, then the relay stops with the last song
+      if (dj?.endOfSet === "stop" && relayIdx.current[side] === liveQueue(side).length - 1) {
+        relayArmed.current = false;
+        window.setTimeout(outroOver, Math.max(0, remain - 10) * 1000);
+        window.setTimeout(() => {
+          if (relayRef.current) stopRelay();
+        }, (remain + 0.6) * 1000);
+        return;
+      }
+
+      // volumes of both songs are measured a little before the blend (a few hundred ms, once per song)
+      if (dj?.loudness !== false && step && remain < FADE + 25) {
+        loudnessFor(deck.origin?.id ?? "", deck.audioBuffer);
+        loudnessFor(otherDeck.origin?.id ?? "", otherDeck.audioBuffer);
+      }
+
+      // a beat-matched start waits for the next beat or bar: begin that much earlier so the blend keeps its length
+      const lead = step?.sync && TYPE !== "cut" ? (dj?.phrase === false ? 0.8 : 2.6) : 0;
+      const preFadeWindow = TYPE === "cut" ? Math.max(2, preload) : FADE + lead;
       if (remain > preFadeWindow + 0.3) return;
       relayArmed.current = false;
-      const secs = TYPE === "cut" ? 0 : Math.min(FADE, Math.max(2, remain));
-      // beat-matched: the incoming tempo follows the outgoing one and it starts exactly on a beat
+      // beat-matched: the incoming tempo follows the outgoing one and it starts exactly on a beat (or on a bar)
       let wait = 0;
       if (step?.sync && TYPE !== "cut") {
         engine.sync(other);
-        wait = alignDelaySec(deck, otherDeck);
+        wait = alignDelaySec(deck, otherDeck, dj?.phrase === false ? 1 : 4);
+        if (wait > Math.max(0, remain - 3)) wait = alignDelaySec(deck, otherDeck, 1); // too close to the end for a bar
       }
+      const secs = TYPE === "cut" ? 0 : Math.min(FADE, Math.max(2, remain - wait - 0.2));
+      const braking = TYPE === "cut" && step?.tail === "brake";
       const go = () => {
         if (!relayRef.current) return;
+        // same volume as the song that is leaving
+        if (dj?.loudness !== false && step) {
+          const lo = loudnessFor(deck.origin?.id ?? "", deck.audioBuffer);
+          const li = loudnessFor(otherDeck.origin?.id ?? "", otherDeck.audioBuffer);
+          if (lo !== null && li !== null) {
+            const outDb = 20 * Math.log10(Math.max(deck.trimValue, 1e-3));
+            if (baseTrim.current[other] === undefined) baseTrim.current[other] = otherDeck.trimValue;
+            otherDeck.setTrim(Math.pow(10, matchTrimDb(lo, outDb, li) / 20));
+          }
+        }
+        if (step?.keyShift) otherDeck.setKeyShift(step.keyShift); // transposed so the two keys agree
         if (step?.bassSwap) otherDeck.setEQ("low", -24);
         otherDeck.play(); // bring in the cued deck
-        relayFade(other, Math.max(secs, 0.05), TYPE, !!step?.bassSwap);
+        if (braking) {
+          relayFade(other, 0.9, "fade", false); // the old song slows down while it fades away
+          brakeOut(deck);
+        } else {
+          relayFade(other, Math.max(secs, 0.05), TYPE, !!step?.bassSwap);
+        }
         if (step?.sync && TYPE !== "cut") window.setTimeout(() => pitchHome(otherDeck), (secs + 1) * 1000);
         window.setTimeout(() => announceOver(other), TYPE === "cut" ? 300 : Math.min(secs * 0.35, 4) * 1000);
       };
@@ -1471,10 +1539,16 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
         deck.setFilter(0); // reset — this deck gets reused for the next song
         deck.setPitch(0);
         deck.setEQ("low", 0);
+        deck.setKeyShift(0);
+        if (baseTrim.current[side] !== undefined) {
+          deck.setTrim(baseTrim.current[side]!);
+          baseTrim.current[side] = undefined;
+        }
+        deck.scratch(0);
         relayLoadNext(side, false).then(() => {
           relayArmed.current = true;
         });
-      }, (secs + wait + 0.4) * 1000);
+      }, ((braking ? 0.9 : secs) + wait + 0.5) * 1000);
     }, 300);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps

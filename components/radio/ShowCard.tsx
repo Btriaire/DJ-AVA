@@ -1,6 +1,7 @@
 "use client";
 import { useState, useMemo } from "react";
-import { Icon, Mosaic, fmtDur } from "../prep/parts";
+import { Icon, Mosaic, fmtDur, type StemInfo } from "../prep/parts";
+import type { PrepWait } from "@/lib/stemPrep";
 import type { LibTrack } from "@/lib/library";
 import type { RadioShow, ShowPrep } from "@/lib/radio";
 import type { TransitionType } from "@/lib/library";
@@ -24,6 +25,9 @@ export interface ShowCardProps {
   prep?: ShowPrep; // state of the preparation in advance
   onPrepare: () => void;
   onStepType: (index: number, type: TransitionType) => void;
+  stemOf: (trackId: string) => StemInfo;
+  stemWait: PrepWait; // why the stems are not moving, if they are not
+  onRename: (name: string) => void;
 }
 
 export function ShowCard({
@@ -42,8 +46,17 @@ export function ShowCard({
   prep,
   onPrepare,
   onStepType,
+  stemOf,
+  stemWait,
+  onRename,
 }: ShowCardProps) {
   const [open, setOpen] = useState(defaultOpen);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const commitName = () => {
+    if (draft.trim() && draft.trim() !== show.name) onRename(draft.trim());
+    setEditing(false);
+  };
   const health = useMemo(() => setHealth(
     tracks.map(t => t.id),
     new Map(tracks.map(t => [t.id, t])),
@@ -58,6 +71,16 @@ export function ShowCard({
   }, [tracks, isStemReady]);
 
   const canPrepareStems = missingStems.length > 0;
+  const stemStates = useMemo(() => {
+    const c = { run: 0, queued: 0, error: 0 };
+    for (const t of tracks) {
+      const st = stemOf(t.id).state;
+      if (st === "run" || st === "download") c.run++;
+      else if (st === "queued") c.queued++;
+      else if (st === "error") c.error++;
+    }
+    return c;
+  }, [tracks, stemOf]);
 
   const planSummary = useMemo(() => {
     const count = (type: TransitionType) => show.plan.filter((st) => st.type === type).length;
@@ -78,9 +101,35 @@ export function ShowCard({
       <div className="flex items-start gap-3">
         <Mosaic tracks={tracks.slice(0, 4)} size={56} accent={accent} />
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-[14px] font-black text-neutral-100" title={show.name}>
-            {show.name}
-          </h3>
+          {editing ? (
+            <input
+              className="prep-input w-full px-2 py-1 text-[13px] font-bold"
+              aria-label="Nom du set"
+              value={draft}
+              autoFocus
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={commitName}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitName();
+                if (e.key === "Escape") setEditing(false);
+              }}
+            />
+          ) : (
+            <h3 className="min-w-0 text-[14px] font-black text-neutral-100">
+              <button
+                type="button"
+                className="group flex max-w-full items-center gap-1.5 text-left"
+                title="Renommer ce set"
+                onClick={() => {
+                  setDraft(show.name);
+                  setEditing(true);
+                }}
+              >
+                <span className="truncate">{show.name}</span>
+                <Icon name="edit" size={12} className="shrink-0 text-neutral-600 group-hover:text-neutral-200" />
+              </button>
+            </h3>
+          )}
           <div className="text-[11px] text-neutral-500">
             {`${health.count} titres · ${fmtDur(health.seconds)}`}{health.bpmMin > 0 ? ` · ${health.bpmMin}–${health.bpmMax} BPM` : ""}
           </div>
@@ -122,6 +171,14 @@ export function ShowCard({
         <span className="font-mono" style={{ color: health.stemsReady === health.count ? "#34d399" : "#9ca3af" }}>
           stems {health.stemsReady}/{health.count}
         </span>
+        {stemStates.run > 0 && <span className="font-mono text-[#ffcc00]">{`${stemStates.run} en cours`}</span>}
+        {stemStates.queued > 0 && <span className="font-mono text-neutral-400">{`${stemStates.queued} en file`}</span>}
+        {stemStates.error > 0 && <span className="font-mono text-[#f87171]">{`${stemStates.error} en erreur`}</span>}
+        {stemWait && (stemStates.queued > 0 || stemStates.run > 0) && (
+          <span className="text-amber-400" title="Les stems repartent dès que possible">
+            {stemWait === "memory" ? "en attente : mémoire presque pleine" : "en attente : une platine joue"}
+          </span>
+        )}
       </div>
 
       {show.plan.length > 0 && (
@@ -137,10 +194,16 @@ export function ShowCard({
             className="prep-btn-ghost flex items-center gap-1.5 px-3 py-1.5 text-xs"
             onClick={onPrepare}
             disabled={prep?.state === "running" || prep?.state === "done" || tracks.length < 2}
-            title="Télécharge les titres dans le cache de l'appli (démarrage instantané, pas de trou entre deux titres)"
+            title="Télécharge les titres dans le cache de l'appli (démarrage instantané, pas de trou) et fabrique les annonces de la voix DJ sur le serveur MaRuche (environ une minute par phrase)"
           >
             <Icon name={prep?.state === "done" ? "check" : "bolt"} />
-            {prep?.state === "running" ? `Préparation ${prep.warmed}/${prep.total}` : prep?.state === "done" ? "Émission prête" : "Préparer l'émission"}
+            {prep?.state === "running"
+              ? `Audio ${prep.warmed}/${prep.total}${prep.voiceTotal ? ` · Voix ${prep.voiced}/${prep.voiceTotal}` : ""}`
+              : prep?.state === "done"
+                ? prep.voiceFailed
+                  ? "Prête, sans voix"
+                  : "Émission prête"
+                : "Préparer l'émission"}
           </button>
         </div>
       )}
@@ -163,6 +226,8 @@ export function ShowCard({
           maxHeight="40vh"
           plan={show.plan}
           onStepType={onStepType}
+          stemOf={stemOf}
+          onPrepareStem={(id) => onPrepareStems([id])}
         />
       )}
 

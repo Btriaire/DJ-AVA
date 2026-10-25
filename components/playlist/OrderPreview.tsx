@@ -1,6 +1,6 @@
 "use client";
 import { Fragment } from "react";
-import { BpmChip, Cover, Icon, KeyChip, fmtDur, keyCompat } from "../prep/parts";
+import { BpmChip, Cover, Icon, KeyChip, StemPill, fmtDur, keyCompat, type StemInfo } from "../prep/parts";
 import type { LibTrack, TransitionType } from "@/lib/library";
 import { STEP_LABEL, type MixStep } from "@/lib/mixPlan";
 
@@ -11,9 +11,11 @@ export interface OrderPreviewProps {
   maxHeight?: string;
   plan?: MixStep[]; // the DJ plan: one step per transition, shown (and editable) on the connector rows
   onStepType?: (index: number, type: TransitionType) => void;
+  stemOf?: (trackId: string) => StemInfo; // stem state of each song (pill on every row)
+  onPrepareStem?: (trackId: string) => void;
 }
 
-export function OrderPreview({ tracks, onMove, onRemove, maxHeight = "46vh", plan, onStepType }: OrderPreviewProps) {
+export function OrderPreview({ tracks, onMove, onRemove, maxHeight = "46vh", plan, onStepType, stemOf, onPrepareStem }: OrderPreviewProps) {
   const hasControls = onMove !== undefined && onRemove !== undefined;
 
   if (tracks.length === 0) {
@@ -73,6 +75,7 @@ export function OrderPreview({ tracks, onMove, onRemove, maxHeight = "46vh", pla
               </div>
               <BpmChip bpm={t.bpm} estimated={t.bpmEstimated} />
               <KeyChip camelot={t.camelot} />
+              {stemOf && <StemPill info={stemOf(t.id)} onPrepare={onPrepareStem ? () => onPrepareStem(t.id) : undefined} />}
               <div className="hidden font-mono text-[10px] text-neutral-500 sm:block">
                 {fmtDur(t.durationSec)}
               </div>

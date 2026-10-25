@@ -2,7 +2,8 @@
 import { useState } from "react";
 import { Icon } from "../prep/parts";
 import type { RadioPrefs } from "@/lib/radio";
-import { speak, canSpeak } from "@/lib/djVoice";
+import { speak, canSpeak, lineUrl, playLines } from "@/lib/djVoice";
+import { INTRO_LINE } from "@/lib/djLines";
 
 export interface AdvancedPanelProps {
   prefs: RadioPrefs;
@@ -75,6 +76,18 @@ function Seg<T extends string | number>({
 
 export function AdvancedPanel({ prefs, busy, onChange }: AdvancedPanelProps) {
   const [open, setOpen] = useState(false);
+  const [sample, setSample] = useState<"idle" | "making" | "ready" | "error">("idle");
+  // makes (or finds) the intro clip on the server, then plays it: proves the whole voice chain works
+  const makeSample = () => {
+    setSample("making");
+    fetch(lineUrl(INTRO_LINE, false))
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        setSample("ready");
+        playLines([INTRO_LINE]);
+      })
+      .catch(() => setSample("error"));
+  };
 
   const summary = `${prefs.version === "original" ? "Originaux" : prefs.version === "remix" ? "Remixes" : "Les deux"} · ${prefs.harmony === "strict" ? "Strictes" : prefs.harmony === "balanced" ? "Équilibrées" : "Libres"} · tempo ±${prefs.tempoSpread} % · DJ ${prefs.dj.auto ? "intelligent" : "simple"}`;
 
@@ -256,31 +269,111 @@ export function AdvancedPanel({ prefs, busy, onChange }: AdvancedPanelProps) {
               disabled={busy || !prefs.dj.auto}
               onToggle={() => onChange({ dj: { ...prefs.dj, bassSwap: !prefs.dj.bassSwap } })}
             />
+            <Switch
+              on={prefs.dj.phrase}
+              label="Partir sur une mesure"
+              hint="Le nouveau titre démarre au début d'une mesure (4 temps) du précédent, pas seulement sur un temps."
+              disabled={busy || !prefs.dj.sync}
+              onToggle={() => onChange({ dj: { ...prefs.dj, phrase: !prefs.dj.phrase } })}
+            />
+            <Switch
+              on={prefs.dj.loudness}
+              label="Égaliser les volumes"
+              hint="Chaque titre est ramené au volume de celui qui sort : plus de saut de niveau entre deux morceaux."
+              disabled={busy}
+              onToggle={() => onChange({ dj: { ...prefs.dj, loudness: !prefs.dj.loudness } })}
+            />
+            <Switch
+              on={prefs.dj.keyFix}
+              label="Transposer quand les tonalités se heurtent"
+              hint="Si le tempo colle mais pas la tonalité, le titre qui arrive est décalé d'un demi-ton pour rester accordé."
+              disabled={busy}
+              onToggle={() => onChange({ dj: { ...prefs.dj, keyFix: !prefs.dj.keyFix } })}
+            />
+            <Switch
+              on={prefs.dj.tails}
+              label="Freinage vinyle sur les coupures"
+              hint="Quand l'écart de tempo est trop grand pour un fondu, l'ancien titre ralentit jusqu'à l'arrêt."
+              disabled={busy}
+              onToggle={() => onChange({ dj: { ...prefs.dj, tails: !prefs.dj.tails } })}
+            />
             <div>
+              <div className="text-[12px] font-semibold text-neutral-100">Fin du set</div>
+              <Seg
+                value={prefs.dj.endOfSet}
+                options={[
+                  { value: "loop", label: "Recommencer" },
+                  { value: "stop", label: "S'arrêter avec un mot de la fin" },
+                ]}
+                onPick={(endOfSet) => onChange({ dj: { ...prefs.dj, endOfSet } })}
+                disabled={busy}
+                label="Fin du set"
+              />
+            </div>
+            <div className="flex flex-col gap-2 rounded-lg border border-[var(--prep-line)] p-3">
               <div className="text-[12px] font-semibold text-neutral-100">Voix de la radio</div>
-              <div className="flex items-center gap-2">
-                <Seg
-                  value={prefs.dj.voice}
-                  options={[
-                    { value: "off", label: "Aucune" },
-                    { value: "discret", label: "Discrète" },
-                    { value: "radio", label: "Radio" },
-                  ]}
-                  onPick={(voice) => onChange({ dj: { ...prefs.dj, voice } })}
-                  disabled={busy}
-                  label="Voix de la radio"
-                />
-                <button
-                  type="button"
-                  disabled={busy || !canSpeak() || prefs.dj.voice === "off"}
-                  onClick={() => speak(prefs.dj.voice === "radio" ? "Sur Radio A V A : Genesis, de Justice." : "Genesis, de Justice")}
-                  className="prep-btn-ghost px-2 py-1 text-[11px]"
-                >
-                  <Icon name="play" size={12} />
-                  <span className="ml-1">Tester la voix</span>
-                </button>
-              </div>
-              <div className="text-[11px] text-neutral-500">Annonce chaque titre pendant le fondu ; la musique baisse le temps de la phrase.</div>
+              <Seg
+                value={prefs.dj.voice}
+                options={[
+                  { value: "off", label: "Aucune" },
+                  { value: "discret", label: "Discrète" },
+                  { value: "radio", label: "Radio" },
+                ]}
+                onPick={(voice) => onChange({ dj: { ...prefs.dj, voice } })}
+                disabled={busy}
+                label="Voix de la radio"
+              />
+              {prefs.dj.voice !== "off" && (
+                <>
+                  <Seg
+                    value={prefs.dj.voiceEngine}
+                    options={[
+                      { value: "dj", label: "DJ anglais (voix clonée)" },
+                      { value: "system", label: "Voix de l'ordinateur" },
+                    ]}
+                    onPick={(voiceEngine) => onChange({ dj: { ...prefs.dj, voiceEngine } })}
+                    disabled={busy}
+                    label="Moteur de la voix"
+                  />
+                  <Seg
+                    value={prefs.dj.voiceEvery}
+                    options={[
+                      { value: 1, label: "Chaque titre" },
+                      { value: 2, label: "Un titre sur deux" },
+                      { value: 0, label: "Quand l'artiste change" },
+                    ]}
+                    onPick={(voiceEvery) => onChange({ dj: { ...prefs.dj, voiceEvery } })}
+                    disabled={busy}
+                    label="Fréquence des annonces"
+                  />
+                  {prefs.dj.voiceEngine === "dj" ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button type="button" disabled={busy || sample === "making"} onClick={makeSample} className="prep-btn-ghost flex items-center gap-1.5 px-2.5 py-1 text-[11px]">
+                        <Icon name="play" size={12} />
+                        {sample === "making" ? "Fabrication en cours (1 à 2 min)…" : "Écouter un échantillon"}
+                      </button>
+                      {sample === "error" && <span className="text-[11px] text-red-400">Le serveur de voix ne répond pas.</span>}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={busy || !canSpeak()}
+                        onClick={() => speak(prefs.dj.voice === "radio" ? "Sur Radio A V A : Genesis, de Justice." : "Genesis, de Justice")}
+                        className="prep-btn-ghost flex items-center gap-1.5 px-2.5 py-1 text-[11px]"
+                      >
+                        <Icon name="play" size={12} />
+                        Tester la voix
+                      </button>
+                    </div>
+                  )}
+                  <div className="text-[11px] text-neutral-500">
+                    {prefs.dj.voiceEngine === "dj"
+                      ? "Voix de DJ américain conçue pour Radio-AVA, clonée sur le serveur MaRuche. Chaque phrase demande environ une minute : elles sont fabriquées pendant « Préparer l'émission » et gardées pour la suite."
+                      : "Annonce chaque titre pendant le fondu avec la voix du système ; la musique baisse le temps de la phrase."}
+                  </div>
+                </>
+              )}
             </div>
             <Switch
               on={prefs.prepStems}

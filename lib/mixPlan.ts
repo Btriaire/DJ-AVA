@@ -1,6 +1,6 @@
 import type { LibTrack, TransitionType } from "@/lib/library";
 import type { SetArc } from "@/lib/setBuilder";
-import { keyCompat } from "@/lib/camelot";
+import { keyCompat, shiftCamelot } from "@/lib/camelot";
 
 // The "DJ brain": for every pair of songs of a set, decide HOW to go from one to the other, in advance.
 // Pure and deterministic, so the plan can be shown, edited, saved with the set and replayed by the relay.
@@ -11,6 +11,8 @@ export interface MixStep {
   sync: boolean; // beat-match the incoming song to the outgoing one and start it on the beat
   bassSwap: boolean; // hold the incoming bass back, then swap the low end halfway through
   note: string; // why, in plain French
+  keyShift?: number; // semitones to transpose the INCOMING song by (-2..2) so the two keys agree
+  tail?: "none" | "brake"; // how the outgoing song leaves on a hard cut: vinyl brake instead of a bare cut
   manual?: boolean; // chosen by the user: kept when the plan is recomputed
 }
 
@@ -19,9 +21,28 @@ export interface DjOptions {
   sync: boolean;
   bassSwap: boolean;
   voice: "off" | "discret" | "radio"; // spoken announcements between the songs
+  voiceEngine: "dj" | "system"; // the English DJ voice made on the server, or the voice of the computer
+  voiceEvery: 0 | 1 | 2; // announce every song (1), every other song (2), or only when the artist changes (0)
+  phrase: boolean; // start the incoming song on a bar (4 beats), not just on a beat
+  loudness: boolean; // bring the incoming song to the volume of the outgoing one
+  keyFix: boolean; // transpose the incoming song by up to a semitone when the keys clash
+  tails: boolean; // brake the outgoing song on hard cuts
+  endOfSet: "loop" | "stop"; // at the end of the set: start again, or finish with an outro
 }
 
-export const DEFAULT_DJ: DjOptions = { auto: true, sync: true, bassSwap: true, voice: "off" };
+export const DEFAULT_DJ: DjOptions = {
+  auto: true,
+  sync: true,
+  bassSwap: true,
+  voice: "off",
+  voiceEngine: "dj",
+  voiceEvery: 1,
+  phrase: true,
+  loudness: true,
+  keyFix: false,
+  tails: true,
+  endOfSet: "loop",
+};
 
 export const STEP_LABEL: Record<TransitionType, string> = { smooth: "Fondu doux", fade: "Fondu", filter: "Filtre", cut: "Coupe" };
 
@@ -73,14 +94,37 @@ export function planStep(a: LibTrack, b: LibTrack, arc: SetArc, opts: DjOptions 
     sec,
     sync: step.sync && opts.sync,
     bassSwap: opts.bassSwap && step.type !== "cut" && sec >= 6,
+    tail: step.type === "cut" && opts.tails ? "brake" : "none",
   };
+}
+
+// when the keys clash and the tempos agree, a semitone up or down on the incoming song often makes them agree too
+function keyFixFor(a: LibTrack, b: LibTrack, carry: number): { shift: number; note: string } | null {
+  const bpmGap = Math.abs(tempoGap(a.bpm ?? 0, b.bpm ?? 0).pct);
+  if (!(bpmGap <= 6) || !a.camelot || !b.camelot) return null;
+  if (keyCompat(a.camelot, shiftCamelot(b.camelot, carry)).level !== "clash") return null;
+  for (const s of [1, -1, 2, -2]) {
+    const lvl = keyCompat(a.camelot, shiftCamelot(b.camelot, s)).level;
+    if (lvl === "same" || lvl === "good") return { shift: s, note: `Transposé de ${s > 0 ? "+" : ""}${s} demi-ton pour rester accordé.` };
+  }
+  return null;
 }
 
 // one step per transition (n songs -> n - 1 steps); steps the user fixed by hand are kept when `previous` is given
 export function planMix(tracks: LibTrack[], arc: SetArc, opts: DjOptions = DEFAULT_DJ, previous?: MixStep[]): MixStep[] {
+  // the song playing at each point may itself be transposed by the previous step: its key is the shifted one
+  let carry = 0;
   return tracks.slice(1).map((b, i) => {
     const kept = previous?.[i];
-    return kept?.manual ? kept : planStep(tracks[i], b, arc, opts);
+    if (kept?.manual) {
+      carry = kept.keyShift ?? 0;
+      return kept;
+    }
+    const a = { ...tracks[i], camelot: shiftCamelot(tracks[i].camelot, carry) };
+    const fix = opts.keyFix ? keyFixFor(a, b, 0) : null;
+    const step = planStep(a, b, arc, opts);
+    carry = fix?.shift ?? 0;
+    return fix ? { ...step, keyShift: fix.shift, note: `${step.note} ${fix.note}` } : step;
   });
 }
 

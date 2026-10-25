@@ -4,6 +4,8 @@ import { ARC_LABEL, computeOrder } from "@/lib/setWizard";
 import { getMemLevel } from "@/lib/memoryGovernor";
 import { DEFAULT_DJ, planMix, type DjOptions, type MixStep } from "@/lib/mixPlan";
 import { enqueuePrep } from "@/lib/stemPrep";
+import { djLinesForShow } from "@/lib/djLines";
+import { lineUrl } from "@/lib/djVoice";
 import type { SetArc } from "@/lib/setBuilder";
 
 // Radio-AVA: from favourite artists to ready-to-play sets.
@@ -62,31 +64,78 @@ const pick = <T,>(v: unknown, allowed: readonly T[], fallback: T): T => (allowed
 
 const LS_KEY = "djsynth.radio.v1";
 
+function normalizePrefs(p: Partial<RadioPrefs>): RadioPrefs {
+  const D = DEFAULT_PREFS;
+  const num = (v: unknown, d: number) => (typeof v === "number" && v >= 0 && v < 400 ? v : d);
+  return {
+    artists: Array.isArray(p.artists) ? p.artists.filter((a) => a && typeof a.name === "string" && a.name.trim()).slice(0, 24) : [],
+    perArtist: pick(p.perArtist, [3, 5, 8] as const, D.perArtist),
+    arc: pick(p.arc, ["flow", "rise", "fall", "peak", "wave"] as const, D.arc),
+    durationMin: typeof p.durationMin === "number" ? p.durationMin : D.durationMin,
+    soloSets: !!p.soloSets,
+    version: pick(p.version, ["original", "remix", "any"] as const, D.version),
+    maxTrackMin: pick(p.maxTrackMin, [5, 8, 12] as const, D.maxTrackMin),
+    tempoMin: num(p.tempoMin, 0),
+    tempoMax: num(p.tempoMax, 0),
+    tempoSpread: pick(p.tempoSpread, [4, 8, 15] as const, D.tempoSpread),
+    harmony: pick(p.harmony, ["strict", "balanced", "free"] as const, D.harmony),
+    mixArtists: pick(p.mixArtists, ["alternate", "free", "blocks"] as const, D.mixArtists),
+    avoidUsed: !!p.avoidUsed,
+    maxShows: pick(p.maxShows, [1, 2, 3] as const, D.maxShows),
+    dj: {
+      ...DEFAULT_DJ,
+      ...(p.dj ?? {}),
+      voice: pick(p.dj?.voice, ["off", "discret", "radio"] as const, "off"),
+      voiceEngine: pick(p.dj?.voiceEngine, ["dj", "system"] as const, "dj"),
+      voiceEvery: pick(p.dj?.voiceEvery, [0, 1, 2] as const, 1),
+      endOfSet: pick(p.dj?.endOfSet, ["loop", "stop"] as const, "loop"),
+    },
+    prepStems: !!p.prepStems,
+  };
+}
+
+// the user's radios: each one is a list of artists with its own settings
+export interface Station {
+  id: string;
+  name: string;
+  prefs: RadioPrefs;
+}
+export interface StationsData {
+  current: string;
+  stations: Station[];
+}
+const LS_STATIONS = "djsynth.radio.stations.v1";
+
+export function loadStations(): StationsData {
+  try {
+    const raw = localStorage.getItem(LS_STATIONS);
+    if (raw) {
+      const d = JSON.parse(raw) as Partial<StationsData>;
+      const stations = (Array.isArray(d.stations) ? d.stations : [])
+        .filter((s): s is Station => !!s && typeof s.id === "string" && typeof s.name === "string")
+        .map((s) => ({ id: s.id, name: s.name, prefs: normalizePrefs(s.prefs ?? {}) }));
+      if (stations.length) return { current: stations.some((s) => s.id === d.current) ? d.current! : stations[0].id, stations };
+    }
+    // first run with stations: the single radio of the previous version becomes "Ma radio"
+    const old = localStorage.getItem(LS_KEY);
+    return { current: "main", stations: [{ id: "main", name: "Ma radio", prefs: normalizePrefs(old ? (JSON.parse(old) as Partial<RadioPrefs>) : {}) }] };
+  } catch {
+    return { current: "main", stations: [{ id: "main", name: "Ma radio", prefs: DEFAULT_PREFS }] };
+  }
+}
+
+export function saveStations(d: StationsData): void {
+  try {
+    localStorage.setItem(LS_STATIONS, JSON.stringify(d));
+  } catch {
+    // storage blocked: the radios only last for this session
+  }
+}
+
 export function loadPrefs(): RadioPrefs {
   try {
     const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return DEFAULT_PREFS;
-    const p = JSON.parse(raw) as Partial<RadioPrefs>;
-    const D = DEFAULT_PREFS;
-    const num = (v: unknown, d: number) => (typeof v === "number" && v >= 0 && v < 400 ? v : d);
-    return {
-      artists: Array.isArray(p.artists) ? p.artists.filter((a) => a && typeof a.name === "string" && a.name.trim()).slice(0, 24) : [],
-      perArtist: pick(p.perArtist, [3, 5, 8] as const, D.perArtist),
-      arc: pick(p.arc, ["flow", "rise", "fall", "peak", "wave"] as const, D.arc),
-      durationMin: typeof p.durationMin === "number" ? p.durationMin : D.durationMin,
-      soloSets: !!p.soloSets,
-      version: pick(p.version, ["original", "remix", "any"] as const, D.version),
-      maxTrackMin: pick(p.maxTrackMin, [5, 8, 12] as const, D.maxTrackMin),
-      tempoMin: num(p.tempoMin, 0),
-      tempoMax: num(p.tempoMax, 0),
-      tempoSpread: pick(p.tempoSpread, [4, 8, 15] as const, D.tempoSpread),
-      harmony: pick(p.harmony, ["strict", "balanced", "free"] as const, D.harmony),
-      mixArtists: pick(p.mixArtists, ["alternate", "free", "blocks"] as const, D.mixArtists),
-      avoidUsed: !!p.avoidUsed,
-      maxShows: pick(p.maxShows, [1, 2, 3] as const, D.maxShows),
-      dj: { ...DEFAULT_DJ, ...(p.dj ?? {}), voice: pick(p.dj?.voice, ["off", "discret", "radio"] as const, "off") },
-      prepStems: !!p.prepStems,
-    };
+    return raw ? normalizePrefs(JSON.parse(raw) as Partial<RadioPrefs>) : DEFAULT_PREFS;
   } catch {
     return DEFAULT_PREFS;
   }
@@ -315,6 +364,9 @@ export interface ShowPrep {
   state: "running" | "done";
   warmed: number;
   total: number;
+  voiced: number; // DJ voice clips made (a minute or more each, on the MaRuche server)
+  voiceTotal: number;
+  voiceFailed: boolean; // the voice server did not answer: the show plays without announcements
 }
 
 const EMPTY: RadioState = { phase: "idle", artists: [], items: [], shows: [], prefs: null, seed: 0, savedShows: {}, etaSec: null, fresh: false, prep: {} };
@@ -590,6 +642,14 @@ export function updateShow(key: string, trackIds: string[]) {
   });
 }
 
+export function renameShow(key: string, name: string) {
+  const clean = name.replace(/\s+/g, " ").trim().slice(0, 60);
+  if (!clean) return;
+  const saved = { ...state.savedShows };
+  delete saved[key]; // saved under the old name: saving again renames the set
+  emit({ shows: state.shows.map((s) => (s.key === key ? { ...s, name: clean } : s)), savedShows: saved });
+}
+
 // the user picks another style / length for one transition: it sticks, whatever the plan says
 export function setStep(key: string, index: number, patch: Partial<MixStep>) {
   const saved = { ...state.savedShows };
@@ -608,8 +668,13 @@ export async function prepareShow(key: string): Promise<void> {
   const tracks = tracksOfShow(show.trackIds);
   const yt = tracks.filter((t) => t.source === "youtube" && !!t.url);
   const setPrep = (p: ShowPrep) => emit({ prep: { ...state.prep, [key]: p } });
-  setPrep({ state: "running", warmed: 0, total: yt.length });
+  const dj = state.prefs?.dj;
+  const lines = dj && dj.voice !== "off" && dj.voiceEngine === "dj" ? djLinesForShow(tracks, dj) : [];
+  let voiced = 0;
+  let voiceFailed = false;
+  const cur = (): ShowPrep => ({ state: "running", warmed, total: yt.length, voiced, voiceTotal: lines.length, voiceFailed });
   let warmed = 0;
+  setPrep(cur());
   const queue = [...yt];
   const worker = async () => {
     for (let t = queue.shift(); t; t = queue.shift()) {
@@ -621,12 +686,27 @@ export async function prepareShow(key: string): Promise<void> {
       }
       warmed++;
       if (!state.shows.some((s) => s.key === key)) return; // the show was cleared meanwhile
-      setPrep({ state: "running", warmed, total: yt.length });
+      setPrep(cur());
     }
   };
-  await Promise.all([worker(), worker()]); // two downloads at a time: they only use the disk and the network
+  // the DJ voice: one clip at a time (the server has one voice model), while the songs download
+  const voiceWorker = async () => {
+    for (const text of lines) {
+      if (voiceFailed || !state.shows.some((s) => s.key === key)) return;
+      try {
+        const res = await fetch(lineUrl(text, false));
+        if (!res.ok) throw new Error(String(res.status));
+        await res.arrayBuffer();
+        voiced++;
+      } catch {
+        voiceFailed = true; // server unreachable: stop asking, the show plays without that voice
+      }
+      setPrep(cur());
+    }
+  };
+  await Promise.all([worker(), worker(), voiceWorker()]); // two downloads at a time: they only use the disk and the network
   if (state.prefs?.prepStems) enqueuePrep(tracks.slice(0, 2));
-  setPrep({ state: "done", warmed, total: yt.length });
+  setPrep({ ...cur(), state: "done" });
 }
 
 // writes the show as a set (a playlist) of the library, with its mix plan; saving it again updates the same set

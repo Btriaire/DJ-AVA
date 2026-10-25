@@ -32,4 +32,38 @@ assert.equal(planMix(tracks, "flow").length, 2);
 assert.equal(cleanTitle("Justice - Genesis (Official Audio)", "Justice"), "Genesis");
 assert.equal(announcement(t(120, "8A", { name: "Justice - Genesis (Official Audio)", group: "Justice" }), "discret"), "Genesis, de Justice");
 assert.ok(announcement(t(120, "8A", { name: "Justice - Genesis", group: "Justice" }), "radio", true).startsWith("Bienvenue"));
+// key fix: a clash with the same tempo is repaired by transposing the incoming song, when asked
+import { shiftCamelot } from "../lib/camelot";
+import { djLineFor, djLinesForShow, INTRO_LINE, OUTRO_LINE } from "../lib/djLines";
+import { matchTrimDb } from "../lib/audio/levelMatch";
+assert.equal(shiftCamelot("8A", 1), "3A");
+assert.equal(shiftCamelot("8A", -1), "1A");
+assert.equal(shiftCamelot("8B", 0), "8B");
+const clash = [t(124, "8A"), t(124, "3A")]; // 3A is a semitone above 8A on the wheel... and 3A vs 8A clash
+const fixed = planMix(clash, "flow", { ...DEFAULT_DJ, keyFix: true });
+assert.equal(fixed[0].keyShift, -1, "3A transposed down a semitone becomes 8A");
+assert.equal(planMix(clash, "flow", DEFAULT_DJ)[0].keyShift, undefined, "off by default");
+// the running shift of a transposed song is its key for the next transition
+const chain = planMix([t(124, "8A"), t(124, "3A"), t(124, "10A")], "flow", { ...DEFAULT_DJ, keyFix: true });
+assert.equal(chain.length, 2);
+// hard cuts get a brake, unless switched off
+assert.equal(planStep(t(100, "8A"), t(120, "8A"), "flow").tail, "brake");
+assert.equal(planStep(t(100, "8A"), t(120, "8A"), "flow", { ...DEFAULT_DJ, tails: false }).tail, "none");
+// loudness trim: cut at most 6 dB, boost at most 3 dB
+assert.equal(matchTrimDb(-10, 0, -20), 3);
+assert.equal(matchTrimDb(-20, 0, -10), -6);
+assert.equal(matchTrimDb(-14, 0, -15), 1);
+// DJ lines: frequency, styles, intro/outro
+const songs = [t(120, "8A", { name: "Justice - Genesis (Official Audio)", group: "Justice" }), t(121, "8A", { name: "Justice - D.A.N.C.E", group: "Justice" }), t(122, "8A", { name: "Air - Sexy Boy", group: "Air" })];
+const radio = { ...DEFAULT_DJ, voice: "radio" as const };
+assert.equal(djLineFor(songs, 0, radio), "Let's start with Justice, with Genesis.");
+assert.equal(djLineFor(songs, 1, { ...radio, voiceEvery: 0 }), null, "same artist: not announced");
+assert.ok(djLineFor(songs, 2, { ...radio, voiceEvery: 0 })!.includes("Air, with Sexy Boy"));
+assert.equal(djLineFor(songs, 1, { ...radio, voiceEvery: 2 }), null);
+assert.equal(djLineFor(songs, 0, { ...DEFAULT_DJ, voice: "off" }), null);
+assert.equal(djLineFor(songs, 2, { ...DEFAULT_DJ, voice: "discret" }), "Air, with Sexy Boy.");
+const all = djLinesForShow(songs, radio);
+assert.equal(all[0], INTRO_LINE);
+assert.equal(all[all.length - 1], OUTRO_LINE);
+assert.equal(new Set(all).size, all.length, "no duplicate clip");
 console.log("mixplan ok");

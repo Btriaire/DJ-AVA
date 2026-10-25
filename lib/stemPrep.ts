@@ -1,4 +1,5 @@
 import { getMemLevel } from "@/lib/memoryGovernor";
+import { requestFreeMemory } from "@/lib/memory";
 import { idbGetBlob, idbPutBlob, loadLibrary, saveLibrary, uid, extractCover, type LibTrack, type TrackSource } from "@/lib/library";
 
 // htdemucs_ft overruns the Metal GPU watchdog on MLX; htdemucs stays reliable
@@ -47,6 +48,16 @@ const STORAGE_KEY = "djsynth.stemprep.v1";
 let state: PrepState = loadState();
 const subscribers = new Set<() => void>();
 let worker: Promise<void> | null = null;
+
+// Why the queue is not moving right now (shown next to the stems so a wait is never a mystery)
+export type PrepWait = "memory" | "playback" | null;
+let waitReason: PrepWait = null;
+export const getPrepWait = (): PrepWait => waitReason;
+function setWait(w: PrepWait) {
+  if (w === waitReason) return;
+  waitReason = w;
+  subscribers.forEach((cb) => cb());
+}
 
 // Set by the app: false while a deck is playing, so no separation runs during playback.
 let canRun: () => boolean = () => true;
@@ -97,7 +108,20 @@ async function processQueue(): Promise<void> {
   while (true) {
     const job = state.jobs.find(j => j.status === "queued" || (j.status === "running" && j.hash));
     if (!job) break;
-    while (!canRun() || getMemLevel() === "critical") await new Promise(r => setTimeout(r, 2000)); // wait for playback to stop, and for memory to come back
+    // A separation is an explicit request: wait for playback to stop, and give memory a chance to come back
+    // (free what can be freed, wait up to 30 s), then go: the user asked for it, a silent wait is worse.
+    let waited = 0;
+    while (!canRun()) {
+      setWait("playback");
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    while (getMemLevel() === "critical" && waited < 30_000) {
+      setWait("memory");
+      if (waited === 0) requestFreeMemory();
+      await new Promise(r => setTimeout(r, 2000));
+      waited += 2000;
+    }
+    setWait(null);
 
     if (job.hash) {
       // Resume existing job

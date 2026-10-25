@@ -17,4 +17,8 @@ const s = alignDelaySec(deck(120, 120, 0, 5.0), deck(100, 120, 0, 0));
 assert.ok(s >= 0.03 && s < 0.5 + 0.031);
 // unknown tempo: no wait
 assert.equal(alignDelaySec(deck(0, 0, 0, 0), deck(120, 120, 0, 0)), 0);
+// on a bar (4 beats) the wait can be up to four times longer, and still lands on a bar of the outgoing song
+const bar = alignDelaySec(deck(120, 120, 0.1, 10.2), deck(120, 120, 0.1, 0), 4);
+assert.ok(bar > 0.03 && bar <= 2 + 0.031, `bar wait ${bar}`);
+assert.ok(Math.abs(((10.2 - 0.1 + bar + 0.1) % 2) ) < 1e-6 || Math.abs(((10.2 - 0.1 + bar + 0.1) % 2) - 2) < 1e-6, "lands on a bar line");
 console.log("beat align ok");
