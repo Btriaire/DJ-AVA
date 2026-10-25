@@ -38,6 +38,7 @@ import { TRANSITIONS, TRANSITION_FX, crossfadeAt } from "@/lib/transitions";
 import { announcement, DEFAULT_DJ, planMix, type MixStep } from "@/lib/mixPlan";
 import { playLines, speak, stopSpeaking } from "@/lib/djVoice";
 import { INTRO_LINE, OUTRO_LINE, djLineFor } from "@/lib/djLines";
+import { getRelayHost, publishRelayHost, registerRelayHost, relayHostStart, relayHostStop, subscribeRelayHost } from "@/lib/relayHost";
 import { cachedLoudness, loudnessFor, matchTrimDb } from "@/lib/audio/levelMatch";
 import { pickTech, stemFrame, STEM_TECH_LABEL, type StemMode, type StemName, type StemTech } from "@/lib/stemMix";
 import { getMemLevel } from "@/lib/memoryGovernor";
@@ -261,6 +262,11 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   // which single is playing now ("en cours") vs. cued next during A→B→A
   const [relayCur, setRelayCur] = useState<{ A: number; B: number }>({ A: -1, B: -1 });
   const [relayFg, setRelayFg] = useState<"A" | "B">("A");
+  // The relay runs in the Playlist view only (always mounted). Other libraries show its state and send it orders.
+  const host = useSyncExternalStore(subscribeRelayHost, getRelayHost, getRelayHost);
+  const relayOn = splitLayout ? relay : host.running;
+  const relayFgShown = splitLayout ? relayFg : host.fg;
+  const relayCurShown = splitLayout ? relayCur : host.cur;
 
   // set of content hashes that already have cached stems on the server, so a
   // track can show a "STEMS" badge. Refreshed on mount and whenever the parent
@@ -1142,6 +1148,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   function toggleLive(side: "A" | "B", startIdx?: number) {
     const next = !(side === "A" ? liveA : liveB);
     (side === "A" ? setLiveA : setLiveB)(next);
+    if (next && relayOn && !splitLayout) relayHostStop();
     if (next && relay) {
       setRelay(false); // the relay drives both decks — can't also run a per-deck loop
       relayRef.current = false;
@@ -1190,6 +1197,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   // value used to silently no-op the restart: it started fine, then never
   // advanced again).
   function playPlaylistRelay(plId: string, startIdx?: number) {
+    if (!splitLayout && relayHostStart(plId, startIdx)) return; // the Playlist view runs it, so it goes on when this tab is left
     const next = { A: plId, B: plId };
     setQueueSrc(next);
     queueSrcRef.current = next;
@@ -1468,9 +1476,44 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   // playPlaylistRelay) so it never has to read stale `relay` state through a
   // closure captured before a pending setState landed.
   function toggleRelay() {
+    if (!splitLayout) {
+      // same relay, run by the Playlist view: stop it, or start it on the singles filed for the decks
+      if (host.running) relayHostStop();
+      else relayHostStart(null);
+      return;
+    }
     if (relay) stopRelay();
     else startRelay();
   }
+  // the order box of the relay (see lib/relayHost.ts): the Playlist view registers itself, the others publish through it
+  const hostApi = useRef<{ start: (id: string | null, idx?: number) => void; stop: () => void }>({ start: () => {}, stop: () => {} });
+  useEffect(() => {
+    hostApi.current = {
+      start: (id, idx) => {
+        // the order may come from a library that changed the sets a moment ago: read what is stored
+        const fresh = loadLibrary();
+        dataRef.current = fresh;
+        setData(fresh);
+        if (id) playPlaylistRelay(id, idx);
+        else {
+          const none = { A: null, B: null };
+          queueSrcRef.current = none;
+          setQueueSrc(none);
+          startRelay(idx);
+        }
+      },
+      stop: () => {
+        if (relayRef.current) stopRelay();
+      },
+    };
+  });
+  useEffect(() => {
+    if (!splitLayout) return;
+    return registerRelayHost({ start: (id, idx) => hostApi.current.start(id, idx), stop: () => hostApi.current.stop() });
+  }, [splitLayout]);
+  useEffect(() => {
+    if (splitLayout) publishRelayHost({ running: relay, fg: relayFg, cur: relayCur });
+  }, [splitLayout, relay, relayFg, relayCur]);
 
   // transition length driving the auto-mix, taken from whichever set is queued
   // on Deck A (the relay's canonical source) — falls back to a smooth default.
@@ -1700,11 +1743,11 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     const q = data.tracks.filter((t) => t.deck === side);
     if (q.length === 0) return { cur: null, next: null };
     // A→B→A relay: foreground deck = playing now, the other = cued next (blinks)
-    if (relay) {
-      const i = relayCur[side];
+    if (relayOn) {
+      const i = relayCurShown[side];
       if (i < 0 || i >= q.length) return { cur: null, next: null };
       const id = q[i].id;
-      return side === relayFg ? { cur: id, next: null } : { cur: null, next: id };
+      return side === relayFgShown ? { cur: id, next: null } : { cur: null, next: id };
     }
     const on = side === "A" ? liveA : liveB;
     if (!on) return { cur: null, next: null };
@@ -2198,8 +2241,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
             <button
               onClick={() => playPlaylistRelay(activePlaylist.id)}
               disabled={activePlaylist.trackIds.length === 0}
-              className={`hw-btn px-2 py-1 text-[11px] font-bold disabled:opacity-40 ${relay && queueSrc.A === activePlaylist.id ? "hw-btn-on" : ""}`}
-              style={{ ["--led" as string]: "#a78bfa", color: relay && queueSrc.A === activePlaylist.id ? undefined : "#a78bfa" }}
+              className={`hw-btn px-2 py-1 text-[11px] font-bold disabled:opacity-40 ${relayOn && queueSrc.A === activePlaylist.id ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: "#a78bfa", color: relayOn && queueSrc.A === activePlaylist.id ? undefined : "#a78bfa" }}
               title="Automix A→B→A : enchaîne le set en fondu entre les deux decks, avec la durée de transition réglée ci-dessus"
             >
               ⇄ Relais A→B→A
@@ -3027,7 +3070,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           </button>
           <button
             onClick={() => toggleRelay()}
-            className={`hw-btn px-2 py-1 text-xs ${relay ? "hw-btn-on" : ""}`}
+            className={`hw-btn px-2 py-1 text-xs ${relayOn ? "hw-btn-on" : ""}`}
             style={{ ["--led" as string]: "#22d3ee" }}
             title="AUTOMIX A→B→A : joue le Deck A, puis bascule en autofade sur le Deck B en fin de morceau, puis revient sur A… en boucle"
           >

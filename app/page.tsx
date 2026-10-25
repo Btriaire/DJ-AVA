@@ -143,12 +143,10 @@ export default function Home() {
   const [crossfade, setCrossfade] = useState(0.5);
   const [master, setMaster] = useState(0.9);
   const [view, setView] = useState<"console" | "radio" | "platine" | "playlist" | "preparation" | "atelier">("console"); // top-level workspace
-  const [playlistSeen, setPlaylistSeen] = useState(false); // the Playlist view keeps running (relay, transitions) when another tab is shown
   const [launchTick, setLaunchTick] = useState(0);
   const [atelierSeen, setAtelierSeen] = useState(false); // the Atelier stays mounted (hidden) once opened, so its session survives tab switches
   const [engineGen, setEngineGen] = useState(0); // bumps on each new engine: remounts the Atelier on fresh audio objects
   if (view === "atelier" && !atelierSeen) setAtelierSeen(true);
-  if (view === "playlist" && !playlistSeen) setPlaylistSeen(true);
   const [showLibrary, setShowLibrary] = useState(false);
   const [sidebarLibrary, setSidebarLibrary] = useState(() => {
     try {
@@ -1254,7 +1252,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
           </div>
         </div>
       ) : (
-        engine && (<>{atelierSeen && (<div hidden={view !== "atelier"}><AtelierView key={engineGen} engine={engine} active={view === "atelier"} /></div>)}{playlistSeen && (<div hidden={view !== "playlist"}><MediaLibrary key={engineGen} engine={engine} onLoaded={bumpTick} stemRefresh={stemRefresh} libRefresh={libRefresh} launchTick={launchTick} splitLayout /></div>)}{view === "platine" ? (
+        engine && (<>{atelierSeen && (<div hidden={view !== "atelier"}><AtelierView key={engineGen} engine={engine} active={view === "atelier"} /></div>)}<div hidden={view !== "playlist"}><MediaLibrary key={engineGen} engine={engine} onLoaded={bumpTick} stemRefresh={stemRefresh} libRefresh={libRefresh} launchTick={launchTick} splitLayout /></div>{view === "platine" ? (
           <PlatineView engine={engine} />
         ) : view === "radio" ? (
           <RadioView onLaunchSet={launchSet} />
