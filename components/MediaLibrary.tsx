@@ -29,6 +29,11 @@ import { buildSet, type SetArc } from "@/lib/setBuilder";
 import { PlaylistStudio } from "./playlist/PlaylistStudio";
 import type { DeckInfo, DeckLive, Side as PlSide, StemInfo, TrackMark } from "./playlist/types";
 import { fmtDur } from "./prep/parts";
+import { SetWizard, type SetDraft, type WizardInitial } from "./playlist/SetWizard";
+import { buildJourney } from "./prep/Journey";
+import { analyzeLibraryTrack } from "@/lib/analyzeTrack";
+
+const NO_IDS: ReadonlySet<string> = new Set();
 
 interface Props {
   engine: DJEngine;
@@ -189,6 +194,8 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [activePl, setActivePl] = useState<string | null>(pending?.side === "open" ? pending.id : null);
+  const [wizard, setWizard] = useState<{ nonce: number; initial?: WizardInitial } | null>(null);
+  const [analyzingIds, setAnalyzingIds] = useState<Set<string>>(new Set());
   const [collapsed, setCollapsed] = useState(!defaultExpanded && !pending); // a set sent from Préparation opens the panel
   const [liveA, setLiveA] = useState(false);
   const [liveB, setLiveB] = useState(false);
@@ -789,6 +796,38 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     persist((d) => ({ ...d, playlists: [...d.playlists, p] }));
     setActivePl(p.id);
     flash(`Set « ${name} » créé`);
+  }
+  // tempo and key of the titles that lack them, one after the other; what is already known is kept
+  async function analyzeIds(ids: string[]) {
+    const todo = dataRef.current.tracks.filter((t) => ids.includes(t.id));
+    setAnalyzingIds((prev) => new Set([...prev, ...todo.map((t) => t.id)]));
+    for (const t of todo) {
+      const r = await analyzeLibraryTrack(t);
+      setAnalyzingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(t.id);
+        return next;
+      });
+      if (!r) continue;
+      persist((d) => ({
+        ...d,
+        tracks: d.tracks.map((x) =>
+          x.id !== t.id ? x : { ...x, bpm: x.bpm || r.bpm, bpmEstimated: x.bpm ? x.bpmEstimated : true, bpmConfidence: x.bpm ? x.bpmConfidence : r.bpmConfidence, camelot: x.camelot || r.camelot }
+        ),
+      }));
+    }
+  }
+  // a set made in the assistant: new, or the one it was last saved as; names stay unique
+  function saveWizardSet(draft: SetDraft): string {
+    const existing = draft.id ? dataRef.current.playlists.find((p) => p.id === draft.id) : undefined;
+    const id = existing?.id ?? uid();
+    const taken = new Set(dataRef.current.playlists.filter((p) => p.id !== id).map((p) => p.name));
+    let name = draft.name;
+    for (let n = 2; taken.has(name); n++) name = `${draft.name} (${n})`;
+    const set: Playlist = { ...existing, id, name, trackIds: draft.trackIds, transitionType: draft.transitionType, transitionSec: draft.transitionSec, preloadSec: existing?.preloadSec ?? 15 };
+    persist((d) => ({ ...d, playlists: existing ? d.playlists.map((p) => (p.id === id ? set : p)) : [...d.playlists, set] }));
+    flash(`Set « ${name} » enregistré : ${draft.trackIds.length} titres`);
+    return id;
   }
   function renameNow(id: string, name: string) {
     persist((d) => ({ ...d, playlists: d.playlists.map((pl) => (pl.id === id ? { ...pl, name } : pl)) }));
@@ -2500,6 +2539,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           onCreate: createSetNamed,
           onDropTracks: (id, ids) => addTracksAt(id, ids),
           onPlay: (dest, id) => sendSet(dest, id),
+          stemReady: (id) => stemOf(id).state === "done",
+          onWizard: () => setWizard((w) => ({ nonce: (w?.nonce ?? 0) + 1 })),
         }}
         detail={{
           playlist: ap,
@@ -2525,6 +2566,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
             enqueuePrep(list);
             flash(list.length === 1 ? `« ${list[0].name} » ajouté à la préparation des stems` : `${list.length} titres ajoutés à la préparation des stems`);
           },
+          analyzing: analyzingIds,
+          onAnalyze: analyzeIds,
         }}
         library={{
           tabs: [
@@ -2579,6 +2622,56 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
             createListFromView(ids.map((id) => trackById(id)).filter((t): t is LibTrack => !!t)),
         }}
         extras={fileInput}
+        journey={buildJourney({
+          tracks: data.tracks,
+          playlists: data.playlists,
+          stemsReady: readyCount,
+          playing: relay || liveA || liveB,
+        }).map((st) => ({
+          ...st,
+          onClick:
+            st.key === "stems"
+              ? () => {
+                  const todo = data.tracks.filter((t) => stemOf(t.id).state === "none");
+                  if (todo.length === 0) return;
+                  enqueuePrep(todo);
+                  flash(`${todo.length} titres ajoutés à la préparation des stems`);
+                }
+              : st.key === "set"
+                ? () => setWizard((w) => ({ nonce: (w?.nonce ?? 0) + 1 }))
+                : st.key === "play" && ap && ap.trackIds.length >= 2
+                  ? () => sendSet("relay", ap.id)
+                  : undefined,
+        }))}
+        wizard={
+          wizard ? (
+            <SetWizard
+              key={wizard.nonce}
+              bac={data.tracks}
+              allTracks={data.tracks}
+              checkedIds={NO_IDS}
+              playlists={data.playlists}
+              initial={wizard.initial}
+              poolLabel="la bibliothèque"
+              isStemReady={(id) => stemOf(id).state === "done"}
+              analyzing={analyzingIds}
+              onAnalyze={analyzeIds}
+              onPrepareStems={(ids) => {
+                const list = ids.map((id) => trackById(id)).filter((t): t is LibTrack => !!t);
+                if (list.length > 0) enqueuePrep(list);
+              }}
+              onSave={saveWizardSet}
+              onSend={(dest, id) => {
+                if (dest === "open") {
+                  setActivePl(id);
+                  setWizard(null);
+                } else sendSet(dest, id);
+              }}
+              canSend
+              onClose={() => setWizard(null)}
+            />
+          ) : null
+        }
       />
     );
   }

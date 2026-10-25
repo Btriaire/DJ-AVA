@@ -2,6 +2,8 @@
 import { useState, type KeyboardEvent } from "react";
 import type { LibTrack, Playlist } from "@/lib/library";
 import { Icon, Mosaic, fmtDur } from "../prep/parts";
+import { STATUS_LABEL, setHealth } from "@/lib/setHealth";
+import { STATUS_COLOR } from "./NextStep";
 import { DECK_COLOR, DRAG_TYPE, type SendDest } from "./types";
 
 const LIST_ACCENTS = ["#22d3ee", "#34d399", "#ffcc00", "#a78bfa", "#f97316", "#f472b6"];
@@ -15,11 +17,14 @@ export interface SetRailProps {
   onCreate: (name: string) => void;
   onDropTracks: (playlistId: string, ids: string[]) => void;
   onPlay: (dest: SendDest, id: string) => void;
+  stemReady: (trackId: string) => boolean;
+  onWizard: () => void;
 }
 
 export function SetRail(props: SetRailProps) {
   const [newName, setNewName] = useState("");
   const [overId, setOverId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   const trackMap = new Map(props.tracks.map(t => [t.id, t]));
 
@@ -53,10 +58,15 @@ export function SetRail(props: SetRailProps) {
         </span>
       </div>
 
+      <button type="button" className="prep-btn-accent flex items-center justify-center gap-1.5 px-3 py-2 text-xs" onClick={props.onWizard} title="Assistant en 4 étapes : titres, forme, ordre, envoi">
+        <Icon name="plus" />
+        Créer un set pas à pas
+      </button>
+
       <div className="flex gap-2">
         <input
           className="prep-input min-w-0 flex-1 px-2.5 py-1.5 text-xs"
-          placeholder="Nouveau set…"
+          placeholder="Set vide…"
           aria-label="Nom du nouveau set"
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
@@ -72,15 +82,20 @@ export function SetRail(props: SetRailProps) {
         </button>
       </div>
 
+      {props.playlists.length > 4 && (
+        <input className="prep-input px-2.5 py-1.5 text-xs" placeholder="Chercher un set…" aria-label="Chercher un set" value={query} onChange={(e) => setQuery(e.target.value)} />
+      )}
+
       <div className="flex gap-2 overflow-x-auto pb-1 xl:flex-col xl:overflow-visible xl:pb-0">
         {props.playlists.length === 0 ? (
           <p className="text-[11px] text-neutral-500">
             Aucun set pour l&apos;instant : crée-en un, ou envoie-en un depuis Préparation.
           </p>
         ) : (
-          props.playlists.map((p, i) => {
+          props.playlists.filter(p => !query.trim() || p.name.toLowerCase().includes(query.trim().toLowerCase())).map((p, i) => {
             const active = props.activeId === p.id;
             const driving = props.driving(p.id);
+            const health = setHealth(p.trackIds, trackMap, props.stemReady);
             const tracks = p.trackIds.map(id => trackMap.get(id)).filter(Boolean) as LibTrack[];
             const totalSec = tracks.reduce((sum, t) => sum + (t.durationSec || 0), 0);
             const bpms = tracks.map(t => t.bpm).filter((b): b is number => typeof b === "number" && b > 0);
@@ -145,6 +160,13 @@ export function SetRail(props: SetRailProps) {
                   </div>
 
                   <div className="mt-1 flex flex-wrap gap-1">
+                    <span
+                      className="rounded-full px-1.5 py-px text-[9px] font-black"
+                      style={{ background: `color-mix(in srgb, ${STATUS_COLOR[health.status]} 18%, transparent)`, color: STATUS_COLOR[health.status] }}
+                      title={health.next.detail}
+                    >
+                      {STATUS_LABEL[health.status]}
+                    </span>
                     <span className="rounded-full bg-white/5 px-1.5 py-px text-[9px] text-neutral-400">
                       {transitionLabel(p)}
                     </span>

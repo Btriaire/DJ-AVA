@@ -3,6 +3,8 @@ import { Fragment, useState, type DragEvent, type KeyboardEvent } from "react";
 import type { LibTrack, Playlist, TransitionType } from "@/lib/library";
 import type { SetArc } from "@/lib/setBuilder";
 import { BpmChip, Cover, Icon, KeyChip, StemPill, fmtDur, keyCompat } from "../prep/parts";
+import { setHealth } from "@/lib/setHealth";
+import { NextStepBar } from "./NextStep";
 import { DECK_COLOR, DRAG_TYPE, type SendDest, type StemInfo, type TrackMark } from "./types";
 
 const ROW_DRAG = "application/x-djsynth-setrow";
@@ -26,6 +28,8 @@ export interface SetDetailProps {
   onPlay: (dest: SendDest, startIdx?: number) => void;
   onOptimize: (arc: SetArc) => void;
   onPrepareStems: (ids: string[]) => void;
+  analyzing: ReadonlySet<string>;
+  onAnalyze: (ids: string[]) => void;
 }
 
 export function SetDetail(props: SetDetailProps) {
@@ -68,6 +72,16 @@ export function SetDetail(props: SetDetailProps) {
   const smooth = transitions.filter(t => t === "same" || t === "good").length;
   const boost = transitions.filter(t => t === "boost").length;
   const clash = transitions.filter(t => t === "clash").length;
+
+  const health = setHealth(props.playlist.trackIds, byId, (id) => props.stemOf(id).state === "done");
+  const unanalyzed = list.filter(t => !t.bpm || !t.camelot).map(t => t.id);
+  const analyzingNow = unanalyzed.some(id => props.analyzing.has(id));
+  const doNext = (id: string) => {
+    if (id === "analyze") props.onAnalyze(unanalyzed);
+    else if (id === "order") props.onOptimize("flow");
+    else if (id === "stems") props.onPrepareStems(list.filter(t => props.stemOf(t.id).state !== "done").map(t => t.id));
+    else if (id === "play") props.onPlay("relay");
+  };
 
   const handleRename = (name: string) => {
     const trimmed = name.trim();
@@ -141,6 +155,7 @@ export function SetDetail(props: SetDetailProps) {
 
   return (
     <div className="flex flex-col gap-3">
+      <NextStepBar health={health} busy={analyzingNow} onAction={doNext} />
       <div className="prep-card flex flex-col gap-3 p-3">
         <div className="flex items-center gap-2">
           {editing === null ? (

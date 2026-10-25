@@ -4,8 +4,10 @@ import { useState, useRef, useMemo, useSyncExternalStore, useEffect } from "reac
 import { loadLibrary, saveLibrary, uid, idbGetBlob } from "@/lib/library";
 import { enqueuePrep, getPrepState, subscribePrep, forgetPrep, cancelPrep } from "@/lib/stemPrep";
 import { queueAnalysis } from "@/lib/analyze";
+import { analyzeLibraryTrack } from "@/lib/analyzeTrack";
+import { Journey, buildJourney } from "./prep/Journey";
 import { qualityFromKbps, kbpsFromSize, QUALITY_LABEL, QUALITY_HINT, QUALITY_RANK } from "@/lib/quality";
-import { SetStudio, type SendDest, type SetDraft, type SetStudioInitial } from "./prep/SetStudio";
+import { SetWizard, type WizardDest as SendDest, type SetDraft, type WizardInitial as SetStudioInitial } from "./playlist/SetWizard";
 import { pickNext } from "@/lib/setPicker";
 import { getCachedQuality, probeQualities } from "@/lib/ytQuality";
 import { VIDEO_LABEL, VIDEO_RANK, videoLevelFromHeight, effectiveVideoLevel } from "@/lib/videoQuality";
@@ -326,6 +328,21 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
     }
   };
 
+  // tempo ET tonalité manquants, un titre après l'autre ; ce qui est déjà connu est conservé
+  const analyzeIds = async (ids: string[]) => {
+    const todo = lib.tracks.filter(t => ids.includes(t.id) && !analyzingIds.has(t.id));
+    setAnalyzingIds(prev => new Set([...prev, ...todo.map(t => t.id)]));
+    for (const t of todo) {
+      const r = await analyzeLibraryTrack(t);
+      setAnalyzingIds(prev => { const next = new Set(prev); next.delete(t.id); return next; });
+      if (!r) { setFailedIds(prev => new Set(prev).add(t.id)); continue; }
+      persist(data => ({
+        ...data,
+        tracks: data.tracks.map(x => x.id !== t.id ? x : { ...x, bpm: x.bpm || r.bpm, bpmEstimated: x.bpm ? x.bpmEstimated : true, bpmConfidence: x.bpm ? x.bpmConfidence : r.bpmConfidence, camelot: x.camelot || r.camelot }),
+      }));
+    }
+  };
+
   const checkQuality = async (track: LibTrack) => {
     if (!track.id || track.source === "local") return;
 
@@ -397,7 +414,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
     }));
   };
 
-  const openStudio = (initial: SetStudioInitial) => {
+  const openStudio = (initial?: SetStudioInitial) => {
     setStudio(st => ({ nonce: st.nonce + 1, initial }));
     setSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
@@ -635,11 +652,11 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   };
   const createPlaylistFrom = (ids: string[], rawName: string) => {
     if (ids.length === 0) return;
-    const name = rawName.trim() || `Liste ${lib.playlists.length + 1}`;
+    const name = rawName.trim() || `Set ${lib.playlists.length + 1}`;
     persist((data) => ({ ...data, playlists: [...data.playlists, { id: uid(), name, trackIds: ids }] }));
     setNewListName(null);
     setSelectedLaterIds(new Set());
-    flash(`Liste « ${name} » créée (${ids.length} titre(s))`);
+    flash(`Set « ${name} » créé (${ids.length} titre(s))`);
   };
 
   const rowDrag = (track: LibTrack) => ({
@@ -766,12 +783,12 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
             <p className="text-[10px] text-neutral-500">{stats.count} titre(s) · {formatDuration(stats.seconds)} · {stats.bpmRange} BPM</p>
             <p className="text-[10px]" style={{ color: tracks.length > 0 && ready === tracks.length ? "#34d399" : "#7b8494" }}>stems prêts {ready}/{tracks.length}</p>
           </button>
-          <button onClick={() => setOpenPlaylistId(isOpen ? null : playlist.id)} className={`text-neutral-500 transition-transform ${isOpen ? "rotate-180" : ""}`} aria-label={isOpen ? "Fermer la liste" : "Voir le contenu"}>
+          <button onClick={() => setOpenPlaylistId(isOpen ? null : playlist.id)} className={`text-neutral-500 transition-transform ${isOpen ? "rotate-180" : ""}`} aria-label={isOpen ? "Fermer le set" : "Voir le contenu"}>
             <Icon name="chevron" size={16} />
           </button>
         </div>
         <div className="flex flex-wrap items-center gap-1.5 border-t border-[var(--prep-line)] px-3 py-1.5">
-          <button onClick={() => addCheckedToPlaylist(playlist.id)} disabled={selectedLaterIds.size === 0} className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[10px]" title="Ajouter les titres cochés à cette liste">
+          <button onClick={() => addCheckedToPlaylist(playlist.id)} disabled={selectedLaterIds.size === 0} className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[10px]" title="Ajouter les titres cochés à ce set">
             <Icon name="plus" size={11} />
             {selectedLaterIds.size > 0 ? `${selectedLaterIds.size} coché(s)` : "cochés"}
           </button>
@@ -779,7 +796,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
             onClick={() => openStudio({ source: "list", listId: playlist.id, autoBuild: true })}
             disabled={tracks.length < 2}
             className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[10px]"
-            title="Réordonner cette liste en set (forme, durée, transitions)"
+            title="Réordonner ce set (forme, durée, transitions)"
           >
             <Icon name="bolt" size={10} />
             En set
@@ -788,12 +805,12 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
             onClick={() => onLaunchSet?.("relay", playlist.id)}
             disabled={tracks.length < 2 || !onLaunchSet}
             className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[10px]"
-            title="Lance cette liste telle quelle en automix A→B→A"
+            title="Lance ce set tel quel en automix A→B→A"
           >
             <Icon name="play" size={10} />
             Jouer
           </button>
-          <button onClick={() => queueStems(tracks)} disabled={tracks.length === 0 || ready === tracks.length} className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[10px]" title="Préparer les stems de toute la liste">
+          <button onClick={() => queueStems(tracks)} disabled={tracks.length === 0 || ready === tracks.length} className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[10px]" title="Préparer les stems de tout le set">
             <Icon name="stems" size={11} />
             Stems
           </button>
@@ -807,7 +824,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
         </div>
         {isOpen && (
           <ol className="flex max-h-72 flex-col overflow-y-auto border-t border-[var(--prep-line)] py-1">
-            {tracks.length === 0 && <li className="px-3 py-3 text-[11px] text-neutral-500">Liste vide : glisse des titres ici.</li>}
+            {tracks.length === 0 && <li className="px-3 py-3 text-[11px] text-neutral-500">Set vide : glisse des titres ici.</li>}
             {tracks.map((t, i) => (
               <li key={t.id} className="group flex items-center gap-2 px-3 py-1 hover:bg-white/[.03]">
                 <span className="w-4 text-right font-mono text-[10px] text-neutral-600">{i + 1}</span>
@@ -815,7 +832,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
                 <span className="min-w-0 flex-1 truncate text-[11px] text-neutral-200" title={t.name}>{t.name}</span>
                 <BpmChip bpm={t.bpm} estimated={t.bpmEstimated} />
                 <KeyChip camelot={t.camelot} />
-                <button onClick={() => removeFromPlaylist(playlist.id, t.id)} className="text-neutral-600 opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100 focus:opacity-100" title="Retirer de la liste (le titre reste dans le bac)" aria-label={`Retirer ${t.name} de la liste`}>
+                <button onClick={() => removeFromPlaylist(playlist.id, t.id)} className="text-neutral-600 opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100 focus:opacity-100" title="Retirer du set (le titre reste dans le bac)" aria-label={`Retirer ${t.name} du set`}>
                   <Icon name="x" size={12} />
                 </button>
               </li>
@@ -936,7 +953,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
             <span className="prep-accent"><Icon name="crate" size={18} /></span>
             Préparation
           </h1>
-          <p className="mt-0.5 text-[11px] text-neutral-500">Cherche, mets de côté, prépare les stems, range en listes, enchaîne en set.</p>
+          <p className="mt-0.5 text-[11px] text-neutral-500">Cherche, mets de côté, prépare les stems, puis crée un set pas à pas.</p>
         </div>
         <div className="flex flex-wrap gap-2 xl:max-w-[780px] xl:flex-1">
           <StatTile label="Mis de côté" value={String(laterTracks.length)} sub={totalLaterSec ? `${formatDuration(totalLaterSec)} de musique` : "aucun titre"} color="var(--prep-accent)" />
@@ -948,9 +965,32 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
             meter={laterTracks.length ? stemsReady / laterTracks.length : 0}
           />
           <StatTile label="Tempo du bac" value={laterBpms.length ? `${Math.round(Math.min(...laterBpms))}–${Math.round(Math.max(...laterBpms))}` : "—"} sub="BPM" color="#ffcc00" />
-          <StatTile label="Listes" value={String(lib.playlists.length)} sub={`${classified} titre(s) rangé(s)`} color="#a78bfa" />
+          <StatTile label="Sets" value={String(lib.playlists.length)} sub={`${classified} titre(s) rangé(s)`} color="#a78bfa" />
         </div>
       </header>
+
+      {/* le parcours en un coup d'oeil : chercher, préparer, créer un set, jouer */}
+      <Journey
+        steps={buildJourney({
+          tracks: laterTracks,
+          playlists: lib.playlists,
+          stemsReady: stemStates.filter((st) => st === "done").length,
+          playing: false,
+        }).map((st) => ({
+          ...st,
+          onClick:
+            st.key === "stems"
+              ? () => queueStems(laterTracks.filter((t) => stemOf(t.id).state === "none"))
+              : st.key === "set"
+                ? () => openStudio()
+                : st.key === "play" && onLaunchSet
+                  ? () => {
+                      const set = lib.playlists.find((p) => p.trackIds.length >= 2);
+                      if (set) onLaunchSet("relay", set.id);
+                    }
+                  : undefined,
+        }))}
+      />
 
       {/* recherche YouTube */}
       <section className="prep-card p-3">
@@ -1095,7 +1135,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
             <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
               <span className="prep-accent opacity-70"><Icon name="crate" size={44} /></span>
               <p className="text-sm font-semibold text-neutral-200">Le bac est vide</p>
-              <p className="max-w-sm text-[11px] text-neutral-500">Cherche un titre ci-dessus et clique « De côté ». Tu pourras ensuite préparer ses stems, l&apos;analyser et le ranger dans une liste.</p>
+              <p className="max-w-sm text-[11px] text-neutral-500">Cherche un titre ci-dessus et clique « De côté ». Tu pourras ensuite préparer ses stems, l&apos;analyser et le ranger dans un set.</p>
             </div>
           ) : (
             <>
@@ -1104,7 +1144,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
                 <button onClick={() => queueStems(laterTracks)} className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[11px]"><Icon name="stems" size={12} />Préparer les stems</button>
                 <button onClick={analyzeAllBPM} className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[11px]"><Icon name="disc" size={12} />Analyser BPM et tonalité</button>
                 <button onClick={checkAllQuality} className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[11px]"><Icon name="bolt" size={12} />Vérifier la qualité</button>
-                <span className="ml-auto hidden items-center gap-1 text-neutral-600 md:flex"><Icon name="grip" size={12} />glisse un titre (ou les cochés) sur une liste</span>
+                <span className="ml-auto hidden items-center gap-1 text-neutral-600 md:flex"><Icon name="grip" size={12} />glisse un titre (ou les cochés) sur un set</span>
               </div>
               {viewMode === "list" ? (
                 <div className="flex flex-col p-2">
@@ -1136,7 +1176,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
         <aside className="flex flex-col gap-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
           <section className="prep-card flex flex-col gap-3 p-3">
             <div className="flex items-center gap-2">
-              <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-200">Listes</h2>
+              <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-200">Sets</h2>
               <span className="rounded-full bg-white/5 px-2 py-px font-mono text-[10px] text-neutral-400">{lib.playlists.length}</span>
             </div>
             <div
@@ -1160,7 +1200,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
                   value={newListName ?? ""}
                   onChange={(e) => setNewListName(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") createPlaylistFrom([...selectedLaterIds], newListName ?? ""); }}
-                  placeholder="Nom de la nouvelle liste"
+                  placeholder="Nom du nouveau set"
                   className="prep-input min-w-0 flex-1 px-2.5 py-1.5 text-xs"
                 />
                 <button onClick={() => createPlaylistFrom([...selectedLaterIds], newListName ?? "")} disabled={selectedLaterIds.size === 0} className="prep-btn-accent flex items-center gap-1 px-3 py-1.5 text-xs">
@@ -1169,11 +1209,11 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
                 </button>
               </div>
               <p className="text-[10px] text-neutral-500">
-                {selectedLaterIds.size > 0 ? `${selectedLaterIds.size} titre(s) coché(s) iront dans la liste.` : "Coche des titres, ou glisse-les ici pour créer une liste."}
+                {selectedLaterIds.size > 0 ? `${selectedLaterIds.size} titre(s) coché(s) iront dans le set.` : "Coche des titres, ou glisse-les ici pour créer un set."}
               </p>
             </div>
             {lib.playlists.map((playlist, index) => renderListCard(playlist, index))}
-            {lib.playlists.length === 0 && <p className="px-1 text-[11px] text-neutral-500">Aucune liste pour l&apos;instant.</p>}
+            {lib.playlists.length === 0 && <p className="px-1 text-[11px] text-neutral-500">Aucun set pour l&apos;instant.</p>}
           </section>
         </aside>
       </div>
@@ -1190,8 +1230,8 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
           </span>
           <span className="font-mono text-[11px] text-neutral-500">{formatDuration(selectedSec)}</span>
           <span className="mx-1 h-5 w-px bg-white/10" />
-          <select value="" onChange={(e) => { if (e.target.value) addCheckedToPlaylist(e.target.value); }} className="prep-input px-2 py-1 text-xs" aria-label="Ajouter les titres cochés à une liste">
-            <option value="">Ajouter à une liste…</option>
+          <select value="" onChange={(e) => { if (e.target.value) addCheckedToPlaylist(e.target.value); }} className="prep-input px-2 py-1 text-xs" aria-label="Ajouter les titres cochés à un set">
+            <option value="">Ajouter à un set…</option>
             {lib.playlists.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
           <button onClick={() => openStudio({ source: "checked", autoBuild: selectedLaterIds.size >= 2 })} disabled={selectedLaterIds.size < 2} className="prep-btn-accent flex items-center gap-1.5 px-3 py-1 text-xs" title="Ordonner les titres cochés en set (forme, durée, transitions), puis l'envoyer sur les platines">
@@ -1205,7 +1245,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
             }}
             className="prep-btn-ghost px-3 py-1 text-xs"
           >
-            Nouvelle liste…
+            Nouveau set vide…
           </button>
           <button onClick={() => queueStems(selectedTracks)} className="prep-btn-ghost flex items-center gap-1 px-3 py-1 text-xs"><Icon name="stems" size={12} />Préparer les stems</button>
           <button onClick={() => setSelectedLaterIds(new Set())} className="ml-auto text-[11px] text-neutral-400 hover:text-white">Tout décocher</button>
@@ -1216,16 +1256,20 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
       <section ref={setSectionRef} className="prep-card flex scroll-mt-4 flex-col gap-3 p-3">
         <div className="flex flex-wrap items-baseline gap-2">
           <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-200">Créer un set</h2>
-          <span className="text-[10px] text-neutral-500">tempos et tonalités qui s&apos;enchaînent, avec la forme d&apos;énergie de ton choix</span>
+          <span className="text-[10px] text-neutral-500">quatre étapes : titres, forme, ordre, envoi sur les platines</span>
         </div>
-        <SetStudio
+        <SetWizard
           key={studio.nonce}
           bac={laterTracks}
           allTracks={lib.tracks}
           checkedIds={selectedLaterIds}
           playlists={lib.playlists}
           initial={studio.initial}
+          poolLabel="le bac"
           isStemReady={(id) => stemOf(id).state === "done"}
+          analyzing={analyzingIds}
+          onAnalyze={analyzeIds}
+          onPrepareStems={(ids) => queueStems(lib.tracks.filter(t => ids.includes(t.id)))}
           onSave={saveSet}
           onSend={(dest, id) => onLaunchSet?.(dest, id)}
           canSend={!!onLaunchSet}

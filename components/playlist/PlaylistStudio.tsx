@@ -5,6 +5,7 @@
 
 import type { ReactNode } from "react";
 import { StatTile } from "../prep/parts";
+import { Journey, type JourneyStep } from "../prep/Journey";
 import { DeckStrip, type DeckStripProps } from "./DeckStrip";
 import { LibraryPane, type LibraryPaneProps } from "./LibraryPane";
 import { SetDetail, type SetDetailProps } from "./SetDetail";
@@ -25,9 +26,11 @@ export interface PlaylistStudioProps {
   detail: SetDetailProps;
   library: LibraryPaneProps;
   extras: ReactNode; // hidden file input
+  journey: JourneyStep[];
+  wizard: ReactNode | null; // the set assistant: replaces the open set and the library while it is open
 }
 
-export function PlaylistStudio({ tiles, decks, rail, detail, library, extras }: PlaylistStudioProps) {
+export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, journey, wizard }: PlaylistStudioProps) {
   return (
     <div className="prep hw-screwed hw-panel flex flex-1 flex-col gap-4 p-4 sm:p-5">
       <header className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
@@ -42,18 +45,26 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras }: 
         </div>
       </header>
 
+      <Journey steps={journey} />
+
       <DeckStrip {...decks} />
 
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[260px_minmax(0,1fr)_400px]">
         <aside className="lg:col-span-2 xl:col-span-1">
           <SetRail {...rail} />
         </aside>
-        <section className="min-w-0">
-          <SetDetail {...detail} />
-        </section>
-        <section className="min-w-0">
-          <LibraryPane {...library} />
-        </section>
+        {wizard ? (
+          <section className="min-w-0 lg:col-span-1 xl:col-span-2">{wizard}</section>
+        ) : (
+          <>
+            <section className="min-w-0">
+              <SetDetail {...detail} />
+            </section>
+            <section className="min-w-0">
+              <LibraryPane {...library} />
+            </section>
+          </>
+        )}
       </div>
       {extras}
     </div>
