@@ -37,6 +37,7 @@ import { AdvancedPanel } from "./AdvancedPanel";
 import { ClassicalPanel } from "./ClassicalPanel";
 import { PrepDock, type PrepRow } from "./PrepDock";
 import { findComposer } from "@/lib/classical";
+import { pickTech } from "@/lib/stemMix";
 import { ArtistsPanel } from "./ArtistsPanel";
 import { StationBar } from "./StationBar";
 import { ProgramPanel } from "./ProgramPanel";
@@ -970,6 +971,13 @@ export default function RadioView({
                   );
                 }}
                 stemOf={stemOf}
+                stemTech={(i) => {
+                  const a = byId.get(show.trackIds[i]);
+                  const b = byId.get(show.trackIds[i + 1]);
+                  const step = show.plan[i];
+                  // the first song plays before it can be switched to stems: it only leaves with its stems from the second song on
+                  return a && b && step ? pickTech({ outStems: i > 0 && stemReady(a.id), inStems: stemReady(b.id), index: i, mode: prefs.dj.stems ?? "punchy", type: step.type, sec: step.sec }) : null;
+                }}
                 stemWait={getPrepWait()}
                 onRename={(name) => renameShow(show.key, name)}
                 onRegenerate={

@@ -3,6 +3,7 @@ import { Fragment } from "react";
 import { BpmChip, Cover, Icon, KeyChip, StemPill, fmtDur, keyCompat, type StemInfo } from "../prep/parts";
 import type { LibTrack, TransitionType } from "@/lib/library";
 import { STEP_LABEL, type MixStep } from "@/lib/mixPlan";
+import { STEM_TECH_LABEL, STEM_TECH_NOTE, type StemTech } from "@/lib/stemMix";
 
 export interface OrderPreviewProps {
   tracks: LibTrack[];
@@ -13,9 +14,10 @@ export interface OrderPreviewProps {
   onStepType?: (index: number, type: TransitionType) => void;
   stemOf?: (trackId: string) => StemInfo; // stem state of each song (pill on every row)
   onPrepareStem?: (trackId: string) => void;
+  stemTech?: (index: number) => StemTech | null; // the stem technique this transition will use, when the stems are ready
 }
 
-export function OrderPreview({ tracks, onMove, onRemove, maxHeight = "46vh", plan, onStepType, stemOf, onPrepareStem }: OrderPreviewProps) {
+export function OrderPreview({ tracks, onMove, onRemove, maxHeight = "46vh", plan, onStepType, stemOf, onPrepareStem, stemTech }: OrderPreviewProps) {
   const hasControls = onMove !== undefined && onRemove !== undefined;
 
   if (tracks.length === 0) {
@@ -149,6 +151,11 @@ export function OrderPreview({ tracks, onMove, onRemove, maxHeight = "46vh", pla
                     </select>
                     <span className="font-mono">{plan[i].type === "cut" ? "net" : `${plan[i].sec} s`}</span>
                     {plan[i].sync && <span className="rounded bg-white/5 px-1">calé</span>}
+                    {stemTech?.(i) && (
+                      <span className="rounded px-1 font-bold" style={{ background: "color-mix(in srgb, var(--prep-accent) 22%, transparent)", color: "var(--prep-accent)" }} title={STEM_TECH_NOTE[stemTech(i)!]}>
+                        {`stems : ${STEM_TECH_LABEL[stemTech(i)!]}`}
+                      </span>
+                    )}
                     {plan[i].bassSwap && <span className="rounded bg-white/5 px-1">basses</span>}
                   </div>
                 )}

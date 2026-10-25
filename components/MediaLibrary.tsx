@@ -38,6 +38,8 @@ import { announcement, DEFAULT_DJ, planMix, type MixStep } from "@/lib/mixPlan";
 import { playLines, speak, stopSpeaking } from "@/lib/djVoice";
 import { INTRO_LINE, OUTRO_LINE, djLineFor } from "@/lib/djLines";
 import { loudnessFor, matchTrimDb } from "@/lib/audio/levelMatch";
+import { pickTech, stemFrame, STEM_TECH_LABEL, type StemMode, type StemName, type StemTech } from "@/lib/stemMix";
+import { getMemLevel } from "@/lib/memoryGovernor";
 
 const NO_IDS: ReadonlySet<string> = new Set();
 
@@ -1263,8 +1265,21 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     const deck = side === "A" ? engine.deckA : engine.deckB;
     await loadToDeck(q[relayIdx.current[side]], side);
     if (andPlay) deck.play();
+    else void armStems(side); // a cued song loads its prepared stems in the background, to mix with them
     setRelayCur({ A: relayIdx.current.A, B: relayIdx.current.B }); // refresh list markers
     return true;
+  }
+  // A cued song whose stems are ready loads them and switches its deck to stem playback (while it is silent, so
+  // there is no glitch). The DJ plan then mixes with them. Skipped when memory is tight or the set says no.
+  async function armStems(side: "A" | "B") {
+    const mode = relayPlaylist()?.dj?.stems ?? "punchy";
+    const deck = side === "A" ? engine.deckA : engine.deckB;
+    if (!relayPlaylist()?.dj || mode === "off" || deck.streamOnly) return;
+    const id = deck.origin?.id;
+    for (let i = 0; i < 24 && !deck.stemCached; i++) await new Promise((r) => setTimeout(r, 500)); // the load settles first
+    if (!deck.stemCached || deck.origin?.id !== id || getMemLevel() === "critical") return;
+    await deck.ensureStems();
+    if (deck.origin?.id === id && deck.stemReady && !deck.playing && relayRef.current) deck.setStemsActive(true);
   }
   // crossfade animation toward deck A (0) or B (1) — the curve/style depends on
   // `type`, inspired by the transition modes found on real DJ mixers/controllers:
@@ -1276,7 +1291,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   //             filter (like closing the filter knob before pulling out a
   //             track) — the classic "filter transition" DJs use to tuck a
   //             song away instead of just fading its volume
-  function relayFade(to: "A" | "B", secs: number, type: TransitionType = "fade", bassSwap = false) {
+  function relayFade(to: "A" | "B", secs: number, type: TransitionType = "fade", bassSwap = false, stem?: { tech: StemTech; mode: StemMode }) {
     relayFading.current = true;
     const from = engine.getCrossfade();
     const target = to === "B" ? 1 : 0;
@@ -1293,6 +1308,27 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       inDeck.setEQ("low", 0);
       outDeck.setEQ("low", 0);
     };
+    // stem technique: the level of every stem of both songs follows the progress of the blend
+    const applyStems = (k: number) => {
+      if (!stem) return;
+      const f = stemFrame(stem.tech, k, stem.mode);
+      const put = (d: typeof outDeck, lv: Partial<Record<StemName, number>>) => {
+        for (const [name, v] of Object.entries(lv) as [StemName, number][]) {
+          const i = d.stemNames.indexOf(name);
+          if (i >= 0) d.setStemVol(i, v);
+        }
+      };
+      put(outDeck, f.out);
+      put(inDeck, f.inn);
+      const vi = outDeck.stemNames.indexOf("vocals");
+      if (vi >= 0) outDeck.setStemDelaySend(vi, f.outEcho);
+    };
+    const stemsEnd = () => {
+      if (!stem) return;
+      applyStems(1);
+      inDeck.stemNames.forEach((_, i) => inDeck.setStemVol(i, 1)); // the incoming song ends with all its stems
+    };
+    applyStems(0); // the incoming song starts with the stems it comes in with, before it is heard
     if (type === "cut") {
       engine.setCrossfade(target);
       relayFading.current = false;
@@ -1305,10 +1341,12 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
         relayFading.current = false;
         if (type === "filter") outDeck.setFilter(0);
         if (bassSwap) swapDone();
+        stemsEnd();
         return;
       }
       const k = Math.min(1, (performance.now() - t0) / (secs * 1000));
-      const eased = type === "smooth" ? (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2) : k;
+      const eased = stem ? stemFrame(stem.tech, k, stem.mode).cross : type === "smooth" ? (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2) : k;
+      applyStems(k);
       engine.setCrossfade(from + (target - from) * eased);
       if (type === "filter") outDeck.setFilter(-eased); // sweep toward closed low-pass as it fades out
       if (bassSwap) swap(k);
@@ -1317,6 +1355,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
         relayFading.current = false;
         if (type === "filter") outDeck.setFilter(0); // reset — this deck gets reused for the next song
         if (bassSwap) swapDone();
+        stemsEnd();
       }
     };
     requestAnimationFrame(step);
@@ -1504,6 +1543,13 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       }
       const secs = TYPE === "cut" ? 0 : Math.min(FADE, Math.max(2, remain - wait - 0.2));
       const braking = TYPE === "cut" && step?.tail === "brake";
+      // both songs in stem mode (or one of them): a stem technique replaces the plain blend
+      const stemMode: StemMode = dj?.stems ?? "punchy";
+      const tech =
+        step && dj
+          ? pickTech({ outStems: deck.stemsActive && deck.stemReady, inStems: otherDeck.stemsActive && otherDeck.stemReady, index: relayIdx.current[side], mode: stemMode, type: TYPE, sec: secs })
+          : null;
+      if (tech) flash(`DJ : ${STEM_TECH_LABEL[tech]}`);
       const go = () => {
         if (!relayRef.current) return;
         // same volume as the song that is leaving
@@ -1517,13 +1563,21 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           }
         }
         if (step?.keyShift) otherDeck.setKeyShift(step.keyShift); // transposed so the two keys agree
-        if (step?.bassSwap) otherDeck.setEQ("low", -24);
+        if (step?.bassSwap && !tech) otherDeck.setEQ("low", -24);
+        if (tech) {
+          // the incoming stems start at their first level before the song is heard (fade starts them below)
+          const f0 = stemFrame(tech, 0, stemMode).inn;
+          for (const [n, v] of Object.entries(f0) as [StemName, number][]) {
+            const i = otherDeck.stemNames.indexOf(n);
+            if (i >= 0) otherDeck.setStemVol(i, v);
+          }
+        }
         otherDeck.play(); // bring in the cued deck
         if (braking) {
           relayFade(other, 0.9, "fade", false); // the old song slows down while it fades away
           brakeOut(deck);
         } else {
-          relayFade(other, Math.max(secs, 0.05), TYPE, !!step?.bassSwap);
+          relayFade(other, Math.max(secs, 0.05), TYPE, !!step?.bassSwap && !tech, tech ? { tech, mode: stemMode } : undefined);
         }
         if (step?.sync && TYPE !== "cut") window.setTimeout(() => pitchHome(otherDeck), (secs + 1) * 1000);
         window.setTimeout(() => announceOver(other), TYPE === "cut" ? 300 : Math.min(secs * 0.35, 4) * 1000);

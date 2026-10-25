@@ -5,6 +5,7 @@ import type { PrepWait } from "@/lib/stemPrep";
 import type { LibTrack } from "@/lib/library";
 import type { RadioShow, ShowPrep } from "@/lib/radio";
 import type { TransitionType } from "@/lib/library";
+import type { StemTech } from "@/lib/stemMix";
 import { setHealth, STATUS_LABEL } from "@/lib/setHealth";
 import { STATUS_COLOR } from "../playlist/NextStep";
 import { OrderPreview } from "../playlist/OrderPreview";
@@ -29,6 +30,7 @@ export interface ShowCardProps {
   stemWait: PrepWait; // why the stems are not moving, if they are not
   onRename: (name: string) => void;
   onRegenerate?: () => void; // a set about one artist: new songs for that artist
+  stemTech?: (index: number) => StemTech | null; // stem technique of each transition, when the stems are ready
 }
 
 export function ShowCard({
@@ -51,6 +53,7 @@ export function ShowCard({
   stemWait,
   onRename,
   onRegenerate,
+  stemTech,
 }: ShowCardProps) {
   const [open, setOpen] = useState(defaultOpen);
   const [editing, setEditing] = useState(false);
@@ -95,8 +98,9 @@ export function ShowCard({
       .filter(([n]) => (n as number) > 0)
       .map(([n, label]) => `${n} ${label}`);
     const synced = show.plan.filter((st) => st.sync).length;
-    return `${parts.join(", ")}${synced ? ` · ${synced} calé(s) sur les temps` : ""}`;
-  }, [show.plan]);
+    const withStems = stemTech ? show.plan.filter((_, i) => stemTech(i)).length : 0;
+    return `${parts.join(", ")}${synced ? ` · ${synced} calé(s) sur les temps` : ""}${withStems ? ` · ${withStems} avec stems` : ""}`;
+  }, [show.plan, stemTech]);
 
   return (
     <article className="prep-card flex flex-col gap-3 p-3" style={{ boxShadow: `inset 3px 0 0 ${accent}` }}>
@@ -229,6 +233,7 @@ export function ShowCard({
           plan={show.plan}
           onStepType={onStepType}
           stemOf={stemOf}
+          stemTech={stemTech}
           onPrepareStem={(id) => onPrepareStems([id])}
         />
       )}

@@ -29,6 +29,7 @@ export interface DjOptions {
   tails: boolean; // brake the outgoing song on hard cuts
   endOfSet: "loop" | "stop"; // at the end of the set: start again, or finish with an outro
   style?: "club" | "classical"; // classical: long soft blends, never beat-matched
+  stems?: "off" | "smooth" | "punchy"; // use the stems of the songs that have them ready (see lib/stemMix.ts)
 }
 
 export const DEFAULT_DJ: DjOptions = {
@@ -43,6 +44,7 @@ export const DEFAULT_DJ: DjOptions = {
   keyFix: false,
   tails: true,
   endOfSet: "loop",
+  stems: "punchy",
 };
 
 export const STEP_LABEL: Record<TransitionType, string> = { smooth: "Fondu doux", fade: "Fondu", filter: "Filtre", cut: "Coupe" };

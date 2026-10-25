@@ -298,6 +298,23 @@ export function AdvancedPanel({ prefs, busy, onChange }: AdvancedPanelProps) {
               disabled={busy}
               onToggle={() => onChange({ dj: { ...prefs.dj, tails: !prefs.dj.tails } })}
             />
+            <div className="flex flex-col gap-1 rounded-lg border border-[var(--prep-line)] p-3">
+              <div className="text-[12px] font-semibold text-neutral-100">Utiliser les stems prêts</div>
+              <Seg
+                value={prefs.dj.stems ?? "punchy"}
+                options={[
+                  { value: "off", label: "Non" },
+                  { value: "smooth", label: "Doux" },
+                  { value: "punchy", label: "Percutant" },
+                ]}
+                onPick={(stems) => onChange({ dj: { ...prefs.dj, stems } })}
+                disabled={busy}
+                label="Utilisation des stems"
+              />
+              <div className="text-[11px] text-neutral-500">
+                Quand les stems d&apos;un titre sont prêts, le DJ s&apos;en sert pour mixer : batterie, basse, voix et harmonies entrent et sortent une à une (échange de batterie, voix sur le nouveau rythme, claque de basse, écho de voix). Percutant ajoute les changements nets. Sans stems prêts, le fondu classique est gardé. Chaque titre à stems pèse environ 170 Mo de mémoire pendant qu&apos;il joue.
+              </div>
+            </div>
             <div>
               <div className="text-[12px] font-semibold text-neutral-100">Fin du set</div>
               <Seg

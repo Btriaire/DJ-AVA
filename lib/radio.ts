@@ -103,6 +103,7 @@ function normalizePrefs(p: Partial<RadioPrefs>): RadioPrefs {
       voiceEngine: pick(p.dj?.voiceEngine, ["dj", "system"] as const, "dj"),
       voiceEvery: pick(p.dj?.voiceEvery, [0, 1, 2] as const, 1),
       endOfSet: pick(p.dj?.endOfSet, ["loop", "stop"] as const, "loop"),
+      stems: pick(p.dj?.stems, ["off", "smooth", "punchy"] as const, "punchy"),
     },
     prepStems: !!p.prepStems,
   };
