@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
+import { analyzeAudio, convertToWav } from '@/lib/serverAnalyze';
 import { tmpdir } from 'node:os';
 import { mkdir, mkdtemp, writeFile, readFile, unlink, rm } from 'node:fs/promises';
-import { spawn } from 'node:child_process';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -40,37 +40,4 @@ export async function POST(req: NextRequest) {
   } finally {
     if (tempDir) await rm(tempDir, { recursive: true, force: true }).catch(() => {});
   }
-}
-
-async function convertToWav(inputPath: string, outputPath: string): Promise<void> {
-  const ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg';
-  const args = ['-hide_banner', '-loglevel', 'error', '-y', '-i', inputPath, '-ac', '1', '-ar', '22050', outputPath];
-
-  await new Promise((resolve, reject) => {
-    const ffmpeg = spawn(ffmpegPath, args);
-    ffmpeg.on('close', (code) => code === 0 ? resolve(undefined) : reject(new Error(`FFmpeg failed with code ${code}`)));
-  });
-}
-
-async function analyzeAudio(wavPath: string): Promise<Record<string, unknown>> {
-  const pythonPath = process.env.PYTHON3_PATH || join(process.cwd(), '.venv-stems', 'bin', 'python');
-  const scriptPath = join(process.cwd(), 'scripts', 'analyze_audio.py');
-
-  return new Promise((resolve, reject) => {
-    const python = spawn(pythonPath, [scriptPath, wavPath], { timeout: 240_000 });
-    let output = '';
-
-    python.stdout.on('data', (data) => { output += data.toString(); });
-    python.on('close', (code) => {
-      if (code !== 0) return reject(new Error(`Python script failed with code ${code}`));
-
-      const lines = output.trim().split('\n');
-      const lastLine = lines[lines.length - 1];
-      try {
-        resolve(lastLine.startsWith('{') ? JSON.parse(lastLine) : { error: 'Invalid output format' });
-      } catch {
-        reject(new Error('Failed to parse JSON output'));
-      }
-    });
-  });
 }

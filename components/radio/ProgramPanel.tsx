@@ -70,10 +70,11 @@ export function ProgramPanel({
               />
             </svg>
             <span className="text-[11px] font-medium">{ARC_LABEL[a]}</span>
-            <span className="text-[10px] text-neutral-300">{ARC_HINT[a]}</span>
           </button>
         ))}
       </div>
+
+      <p className="text-[12px] text-neutral-300">{ARC_HINT[arc]}</p>
 
       <div className="flex flex-wrap gap-4">
         <div className="flex-1 min-w-[120px]">

@@ -76,6 +76,16 @@ export function ArtistsPanel({ artists, suggestions, locked, onAdd, onRemove, on
           <span className="mx-auto mb-2 block w-fit opacity-70" style={{ color: "var(--prep-accent)" }}><Icon name="disc" size={36} /></span>
           <p className="font-bold">Commence par 3 ou 4 artistes que tu adores</p>
           <p className="text-neutral-400">Tape leur nom ci-dessus : la radio cherche leurs titres sur YouTube.</p>
+          {!locked && (
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-[0.15em] text-neutral-500">Pour essayer</span>
+              {["Daft Punk", "Justice", "Stromae", "Indochine", "Depeche Mode"].map((n) => (
+                <button key={n} type="button" onClick={() => onAdd([n])} className="rounded-full border border-dashed border-[var(--prep-line)] px-2.5 py-1 text-[11px] text-neutral-300 hover:border-[var(--prep-accent)] hover:text-white">
+                  {`+ ${n}`}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

@@ -200,6 +200,7 @@ export interface RadioItem {
   art?: string;
   trackId: string; // library id
   status: "found" | "analyzing" | "ready" | "failed";
+  spare?: boolean; // a reserve song: only analysed when another song of the artist failed
   bpm?: number;
   camelot?: string;
 }
@@ -220,9 +221,11 @@ export interface RadioState {
   prefs: RadioPrefs | null;
   seed: number;
   savedShows: Record<string, string>; // show key -> saved playlist id
+  etaSec: number | null; // estimated time left for the analysis
+  fresh: boolean; // the last run looked for new songs only
 }
 
-const EMPTY: RadioState = { phase: "idle", artists: [], items: [], shows: [], prefs: null, seed: 0, savedShows: {} };
+const EMPTY: RadioState = { phase: "idle", artists: [], items: [], shows: [], prefs: null, seed: 0, savedShows: {}, etaSec: null, fresh: false };
 let state: RadioState = EMPTY;
 let runId = 0;
 const listeners = new Set<() => void>();
@@ -240,18 +243,20 @@ export const subscribeRadio = (l: () => void) => {
 };
 export const radioBusy = () => state.phase === "search" || state.phase === "analyze";
 
-async function searchArtist(name: string, wanted: number, skip: ReadonlySet<string>): Promise<YtResult[]> {
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+async function searchArtist(name: string, count: number, skip: ReadonlySet<string>): Promise<YtResult[]> {
   const queries = [`${name} official audio`, `${name} topic`];
-  let picked: YtResult[] = [];
   const all: YtResult[] = [];
+  let picked: YtResult[] = [];
   for (const q of queries) {
     try {
       const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(q)}&n=40&min=130&max=480`);
       if (!res.ok) continue;
       const data = (await res.json()) as { tracks?: YtResult[] };
       all.push(...(data.tracks ?? []));
-      picked = pickCandidates(all, name, wanted + 2, skip);
-      if (picked.length >= wanted + 2) break;
+      picked = pickCandidates(all, name, count, skip);
+      if (picked.length >= count) break;
     } catch {
       // one failed query: the next one (or the next artist) goes on
     }
@@ -283,6 +288,27 @@ function patchTrack(id: string, patch: Partial<LibTrack>) {
   saveLibrary({ ...lib, tracks: lib.tracks.map((t) => (t.id === id ? { ...t, ...patch } : t)) });
 }
 
+interface Tempo {
+  bpm: number;
+  bpmConfidence: number;
+  camelot: string;
+}
+
+// tempo and key from a short excerpt (server route, cached by video); the whole-file path is the fallback
+async function analyzeItem(track: LibTrack, ytId: string, durationSec: number): Promise<Tempo | null> {
+  try {
+    const res = await fetch(`/api/radio/analyze?id=${encodeURIComponent(ytId)}&dur=${Math.round(durationSec)}`);
+    if (res.ok) {
+      const j = (await res.json()) as Partial<Tempo>;
+      if (j.bpm) return { bpm: j.bpm, bpmConfidence: j.bpmConfidence ?? 0, camelot: j.camelot ?? "" };
+    }
+  } catch {
+    // route unavailable (not the local app): analyse the whole file in the browser instead
+  }
+  const r = await analyzeLibraryTrack(track);
+  return r ? { bpm: r.bpm, bpmConfidence: r.bpmConfidence, camelot: r.camelot } : null;
+}
+
 export function composeNow(seed: number) {
   const lib = loadLibrary();
   const byId = new Map(lib.tracks.map((t) => [t.id, t]));
@@ -298,7 +324,7 @@ export function recomposeRadio() {
 export function cancelRadio() {
   if (!radioBusy()) return;
   runId++;
-  emit({ phase: "cancelled" });
+  emit({ phase: "cancelled", etaSec: null, items: state.items.filter((i) => !(i.spare && i.status === "found")) });
   composeNow(state.seed);
 }
 
@@ -307,8 +333,15 @@ export function resetRadio() {
   emit(EMPTY);
 }
 
-export async function startRadio(prefs: RadioPrefs): Promise<void> {
+const SEARCH_PARALLEL = 2;
+const ANALYZE_PARALLEL = 3;
+const SPARES = 2;
+
+// Songs of the artist already in the library (and analysed) are reused: a second radio is instant.
+// `fresh` looks for songs not heard yet instead (the cached ones only fill the gaps).
+export async function startRadio(prefs: RadioPrefs, opts: { fresh?: boolean } = {}): Promise<void> {
   if (radioBusy() || prefs.artists.length === 0) return;
+  const fresh = !!opts.fresh;
   const run = ++runId;
   const alive = () => run === runId;
   emit({
@@ -318,58 +351,118 @@ export async function startRadio(prefs: RadioPrefs): Promise<void> {
     shows: [],
     items: [],
     savedShows: {},
+    etaSec: null,
+    fresh,
     artists: prefs.artists.map((a) => ({ id: a.id, name: a.name, status: "wait", wanted: wantedCount(a, prefs.perArtist), found: 0 })),
   });
 
-  // 1. search, artist by artist; a song already picked for another artist is not picked twice
+  const lib0 = loadLibrary();
+  const cachedOf = (name: string) =>
+    lib0.tracks
+      .filter((t) => t.source === "youtube" && !!t.url && !!t.group && normArtist(t.group) === normArtist(name) && (t.bpm ?? 0) > 0)
+      .sort((x, y) => y.addedAt - x.addedAt);
+  const wantedOf = new Map(prefs.artists.map((a) => [a.name, wantedCount(a, prefs.perArtist)]));
   const taken = new Set<string>();
-  for (const a of prefs.artists) {
-    if (!alive()) return;
-    const upd = (patch: Partial<RadioArtistState>) => emit({ artists: state.artists.map((s) => (s.id === a.id ? { ...s, ...patch } : s)) });
+  let searching = true;
+  let analysisStart = 0;
+  let finished = 0;
+
+  const toItem = (t: LibTrack, ready: boolean, spare = false): RadioItem => ({
+    key: t.url ?? t.id,
+    artist: t.group ?? "",
+    title: t.name,
+    durationSec: t.durationSec ?? 0,
+    art: t.art,
+    trackId: t.id,
+    status: ready ? "ready" : "found",
+    spare,
+    bpm: t.bpm,
+    camelot: t.camelot,
+  });
+
+  // 1. search (two artists at a time); songs are queued for analysis as soon as an artist is done
+  const searchTask = async (a: RadioArtist) => {
+    const upd = (patch: Partial<RadioArtistState>) => emit({ artists: state.artists.map((x) => (x.id === a.id ? { ...x, ...patch } : x)) });
     upd({ status: "search" });
-    const results = await searchArtist(a.name, wantedCount(a, prefs.perArtist), taken);
-    if (!alive()) return;
-    if (results.length === 0) {
-      upd({ status: "empty" });
-      continue;
+    const wanted = wantedOf.get(a.name) ?? 0;
+    const have = cachedOf(a.name);
+    let keep: LibTrack[] = [];
+    let results: YtResult[] = [];
+    if (!fresh && have.length >= wanted) {
+      keep = have.slice(0, wanted);
+    } else {
+      const need = fresh ? wanted : wanted - have.length;
+      results = await searchArtist(a.name, need + SPARES, new Set([...have.map((t) => t.url!), ...taken]));
+      if (!alive()) return;
+      keep = fresh ? have.slice(0, Math.max(0, wanted - results.length)) : have;
     }
     results.forEach((r) => taken.add(r.id));
     const tracks = ensureTracks(results.map((r) => ({ artist: a.name, r })));
-    const items: RadioItem[] = results.map((r) => {
-      const t = tracks.get(r.id)!;
-      const known = !!(t.bpm && t.camelot);
-      return { key: r.id, artist: a.name, title: r.title, durationSec: r.duration, art: r.artwork ?? undefined, trackId: t.id, status: known ? "ready" : "found", bpm: t.bpm, camelot: t.camelot };
-    });
+    const need = Math.max(0, wanted - keep.length);
+    const items = [
+      ...keep.map((t) => toItem(t, true)),
+      ...results.map((r, i) => toItem(tracks.get(r.id)!, false, i >= need)),
+    ];
+    if (items.length === 0) {
+      upd({ status: "empty" });
+      return;
+    }
     emit({ items: [...state.items, ...items] });
-    upd({ status: "done", found: results.length });
-  }
-
-  // 2. analyse tempo and key, two songs at a time (download of one overlaps the analysis of the other)
-  emit({ phase: "analyze" });
-  const queue = state.items.filter((i) => i.status === "found").map((i) => i.key);
-  const setItem = (key: string, patch: Partial<RadioItem>) => emit({ items: state.items.map((i) => (i.key === key ? { ...i, ...patch } : i)) });
-  const worker = async () => {
-    for (let key = queue.shift(); key !== undefined; key = queue.shift()) {
+    upd({ status: "done", found: items.filter((i) => !i.spare).length });
+  };
+  const searchQueue = [...prefs.artists];
+  const searcher = async () => {
+    for (let a = searchQueue.shift(); a; a = searchQueue.shift()) {
       if (!alive()) return;
-      const item = state.items.find((i) => i.key === key);
-      const track = item && loadLibrary().tracks.find((t) => t.id === item.trackId);
-      if (!item || !track) continue;
-      setItem(key, { status: "analyzing" });
-      const r = await analyzeLibraryTrack(track);
-      if (!alive()) return;
-      if (!r) {
-        setItem(key, { status: "failed" });
-        continue;
-      }
-      patchTrack(track.id, { bpm: r.bpm, bpmEstimated: true, bpmConfidence: r.bpmConfidence, camelot: r.camelot });
-      setItem(key, { status: "ready", bpm: r.bpm, camelot: r.camelot });
+      await searchTask(a);
     }
   };
-  await Promise.all([worker(), worker()]);
+
+  // 2. analysis (three songs at a time): reserve songs only replace a song that failed
+  const setItem = (key: string, patch: Partial<RadioItem>) => emit({ items: state.items.map((i) => (i.key === key ? { ...i, ...patch } : i)) });
+  const missing = (artist: string) => (wantedOf.get(artist) ?? 0) - state.items.filter((i) => i.artist === artist && (i.status === "ready" || i.status === "analyzing")).length;
+  const pick = () => {
+    const next = state.items.find((i) => i.status === "found" && !i.spare) ?? state.items.find((i) => i.status === "found" && i.spare && missing(i.artist) > 0);
+    if (next) setItem(next.key, { status: "analyzing" });
+    return next;
+  };
+  const updateEta = () => {
+    const left = state.items.filter((i) => (i.status === "found" && !i.spare) || i.status === "analyzing").length;
+    emit({ etaSec: finished > 0 ? Math.round((((Date.now() - analysisStart) / finished) * left) / 1000) : null });
+  };
+  const analyst = async () => {
+    for (;;) {
+      if (!alive()) return;
+      const item = pick();
+      if (!item) {
+        if (!searching && !state.items.some((i) => i.status === "analyzing")) return;
+        await sleep(150);
+        continue;
+      }
+      const track = loadLibrary().tracks.find((t) => t.id === item.trackId);
+      const r = track ? await analyzeItem(track, item.key, item.durationSec) : null;
+      if (!alive()) return;
+      finished++;
+      if (!track || !r) {
+        setItem(item.key, { status: "failed" });
+      } else {
+        patchTrack(track.id, { bpm: r.bpm, bpmEstimated: true, bpmConfidence: r.bpmConfidence, camelot: r.camelot });
+        setItem(item.key, { status: "ready", bpm: r.bpm, camelot: r.camelot });
+      }
+      updateEta();
+    }
+  };
+
+  analysisStart = Date.now();
+  const searchDone = Promise.all(Array.from({ length: SEARCH_PARALLEL }, searcher)).then(() => {
+    searching = false;
+  });
+  emit({ phase: "analyze" });
+  await Promise.all([searchDone, ...Array.from({ length: ANALYZE_PARALLEL }, analyst)]);
   if (!alive()) return;
 
-  // 3. compose
-  emit({ phase: "done" });
+  // 3. compose from what is ready (unused reserve songs are dropped from the list)
+  emit({ phase: "done", etaSec: null, items: state.items.filter((i) => !(i.spare && i.status === "found")) });
   composeNow(0);
 }
 

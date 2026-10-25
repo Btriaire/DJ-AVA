@@ -3,7 +3,7 @@
 // and (b) offer an MP3 download, we extract the audio server-side with yt-dlp
 // and transcode to MP3 with ffmpeg, streaming the bytes same-origin.
 import { spawn } from "node:child_process";
-import { existsSync, copyFileSync } from "node:fs";
+import { existsSync, copyFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -284,4 +284,24 @@ export function createMp3Stream(idOrUrl: string): ReadableStream<Uint8Array> {
       kill();
     },
   });
+}
+
+// A short excerpt of the audio of a video (for tempo / key analysis: no need to pull the whole song).
+// Falls back to the whole track when yt-dlp cannot cut it. Resolves to the file written in outDir, or null.
+export async function downloadAudioClip(idOrUrl: string, outDir: string, startSec: number, lengthSec: number): Promise<string | null> {
+  const run = (sections: string[]) =>
+    new Promise<boolean>((resolve) => {
+      const dl = spawn(
+        YTDLP,
+        ["-f", "bestaudio", "-o", join(outDir, "clip.%(ext)s"), "--no-warnings", "--no-playlist", "--remote-components", "ejs:github", ...sections, ...cookieArgs(), videoUrl(idOrUrl)],
+        { stdio: ["ignore", "ignore", "ignore"], timeout: 120_000 }
+      );
+      dl.on("error", () => resolve(false));
+      dl.on("close", (code) => resolve(code === 0));
+    });
+  const found = () => readdirSync(outDir).find((f) => f.startsWith("clip.") && !f.endsWith(".part") && !f.endsWith(".ytdl"));
+  const cut = startSec > 0 ? [`*${Math.round(startSec)}-${Math.round(startSec + lengthSec)}`] : [];
+  if (cut.length && (await run(["--download-sections", cut[0]])) && found()) return join(outDir, found()!);
+  if ((await run([])) && found()) return join(outDir, found()!);
+  return null;
 }
