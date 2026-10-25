@@ -38,6 +38,8 @@ import { TRANSITIONS, TRANSITION_FX, crossfadeAt } from "@/lib/transitions";
 import { announcement, DEFAULT_DJ, planMix, type MixStep } from "@/lib/mixPlan";
 import { playLines, speak, stopSpeaking } from "@/lib/djVoice";
 import { INTRO_LINE, OUTRO_LINE, djLineFor } from "@/lib/djLines";
+import { prepareSet, useSetPrep } from "@/lib/setPrep";
+import { useStemsShared } from "@/lib/stemsShared";
 import { getRelayHost, publishRelayHost, registerRelayHost, relayHostStart, relayHostStop, subscribeRelayHost } from "@/lib/relayHost";
 import { cachedLoudness, loudnessFor, matchTrimDb } from "@/lib/audio/levelMatch";
 import { pickTech, stemFrame, STEM_TECH_LABEL, type StemMode, type StemName, type StemTech } from "@/lib/stemMix";
@@ -272,6 +274,8 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   // track can show a "STEMS" badge. Refreshed on mount and whenever the parent
   // bumps `stemRefresh` (i.e. a deck just probed or finished a separation).
   const [stemSet, setStemSet] = useState<Set<string>>(new Set());
+  const setPreps = useSetPrep();
+  const sharedStems = useStemsShared();
   // manual "prepare stems" button: `preparing` = the POST to launch the job is
   // in flight (fast); `queued` = the server is separating it in the background
   // and we're polling the cache list until it lands (see the effect below).
@@ -544,6 +548,19 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   }
 
   // --- load a stored track onto a deck (and re-apply its saved FX) ---
+  // What a deck finds out about a song (tempo, key) is written back to the library, so the Radio, the Préparation
+  // and the Playlist views use it too instead of analysing the song again.
+  async function shareDeckAnalysis(t: LibTrack, deck: typeof engine.deckA) {
+    if (t.bpm && t.camelot) return;
+    for (let i = 0; i < 20 && !(deck.bpm > 0 && deck.key); i++) await new Promise((r) => setTimeout(r, 1000));
+    if (deck.origin?.id !== t.id || !(deck.bpm > 0)) return;
+    const bpm = Math.round(deck.bpm * 100) / 100;
+    const camelot = deck.key?.camelot;
+    persist((d) => ({
+      ...d,
+      tracks: d.tracks.map((x) => (x.id !== t.id ? x : { ...x, bpm: x.bpm || bpm, bpmEstimated: x.bpm ? x.bpmEstimated : true, camelot: x.camelot || camelot })),
+    }));
+  }
   async function loadToDeck(t: LibTrack, side: "A" | "B") {
     setBusy(t.id + side);
     const deck = side === "A" ? engine.deckA : engine.deckB;
@@ -559,11 +576,17 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
         prefetchedIds.current.delete(t.id);
         if (!blob) throw new Error("Fichier introuvable (effacé du navigateur)");
         // streaming: audio starts within ~200 ms; waveform/BPM decode in background
-        void deck.loadStreaming(blob, t.name).then(() => onLoaded?.());
+        void deck.loadStreaming(blob, t.name).then(() => {
+          onLoaded?.();
+          void shareDeckAnalysis(t, deck);
+        });
         deck.sourceLink = "";
       } else {
         const streamUrl = `/api/${t.source}/stream?id=${encodeURIComponent(t.url ?? "")}`;
-        void deck.loadStreamingUrl(streamUrl, t.name, t.durationSec).then(() => onLoaded?.());
+        void deck.loadStreamingUrl(streamUrl, t.name, t.durationSec).then(() => {
+          onLoaded?.();
+          void shareDeckAnalysis(t, deck);
+        });
         deck.sourceLink =
           t.source === "youtube"
             ? `https://www.youtube.com/watch?v=${t.url}`
@@ -2806,7 +2829,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     const stemOf = (id: string): StemInfo => {
       const t = trackById(id);
       const job = prep.jobs.find((j) => j.trackId === id);
-      if ((t?.stemHash && stemSet.has(t.stemHash)) || prep.ready.some((r) => r.trackId === id)) return { state: "done", pct: 100 };
+      if ((t?.stemHash && stemSet.has(t.stemHash)) || sharedStems.has(t)) return { state: "done", pct: 100 };
       if (job?.status === "running") return job.phase === "download" ? { state: "download", pct: null } : { state: "run", pct: job.progress };
       if (job?.status === "queued") return { state: "queued", pct: null };
       if (job?.status === "error") return { state: "error", pct: null, error: job.error };
@@ -2892,6 +2915,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           analyzing: analyzingIds,
           onAnalyze: analyzeIds,
           onMixPlan: (on) => ap && setMixPlan(ap.id, on),
+          prep: ap ? setPreps[ap.id] : undefined,
+          onPrepare: () => ap && void prepareSet(ap.id),
         }}
         library={{
           tabs: [

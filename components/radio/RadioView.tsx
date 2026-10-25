@@ -38,6 +38,7 @@ import { ClassicalPanel } from "./ClassicalPanel";
 import { PrepDock, type PrepRow } from "./PrepDock";
 import { findComposer } from "@/lib/classical";
 import { pickTech } from "@/lib/stemMix";
+import { useStemsShared } from "@/lib/stemsShared";
 import { ArtistsPanel } from "./ArtistsPanel";
 import { StationBar } from "./StationBar";
 import { ProgramPanel } from "./ProgramPanel";
@@ -342,7 +343,9 @@ export default function RadioView({
     [lib.tracks, prefs.artists],
   );
 
-  const stemReady = (id: string) => prep.ready.some((r) => r.trackId === id);
+  // stems made anywhere (the preparation, a deck of the Console, the Playlist) count here too
+  const shared = useStemsShared();
+  const stemReady = (id: string) => shared.has(byId.get(id));
   // state of the stems of a song, from the preparation queue
   const stemOf = (id: string) => {
     const job = prep.jobs.find((j) => j.trackId === id);

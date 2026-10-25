@@ -4,6 +4,7 @@ import type { LibTrack, Playlist, TransitionType } from "@/lib/library";
 import type { SetArc } from "@/lib/setBuilder";
 import { BpmChip, Cover, Icon, KeyChip, StemPill, fmtDur, keyCompat } from "../prep/parts";
 import { setHealth } from "@/lib/setHealth";
+import type { PrepProgress } from "@/lib/setPrep";
 import { NextStepBar } from "./NextStep";
 import { TRANSITIONS } from "@/lib/transitions";
 import { DECK_COLOR, DRAG_TYPE, type SendDest, type StemInfo, type TrackMark } from "./types";
@@ -29,6 +30,8 @@ export interface SetDetailProps {
   onPlay: (dest: SendDest, startIdx?: number) => void;
   onOptimize: (arc: SetArc) => void;
   onPrepareStems: (ids: string[]) => void;
+  prep?: PrepProgress; // audio / voice preparation of this set (done from any view)
+  onPrepare: () => void;
   analyzing: ReadonlySet<string>;
   onAnalyze: (ids: string[]) => void;
   onMixPlan: (on: boolean) => void; // (re)computes the DJ plan of the set / switches it off
@@ -231,6 +234,20 @@ export function SetDetail(props: SetDetailProps) {
           >
             <Icon name="stems" size={14} />
             Stems
+          </button>
+
+          <button
+            className="prep-btn-ghost flex items-center gap-1.5 px-3 py-1 text-xs disabled:opacity-40"
+            onClick={props.onPrepare}
+            disabled={list.length < 2 || props.prep?.state === "running"}
+            title="Télécharge les titres dans le cache de l'appli (démarrage sans attente) et fabrique les annonces de la voix du DJ si le set en a"
+          >
+            <Icon name="bolt" size={14} />
+            {props.prep?.state === "running"
+              ? `Audio ${props.prep.warmed}/${props.prep.total}${props.prep.voiceTotal ? ` · Voix ${props.prep.voiced}/${props.prep.voiceTotal}` : ""}`
+              : props.prep?.state === "done"
+                ? "Préparé"
+                : "Préparer"}
           </button>
 
           <button

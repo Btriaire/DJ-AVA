@@ -4,9 +4,8 @@ import { ARC_LABEL, computeOrder } from "@/lib/setWizard";
 import { getMemLevel } from "@/lib/memoryGovernor";
 import { DEFAULT_DJ, planMix, type DjOptions, type MixStep } from "@/lib/mixPlan";
 import { enqueuePrep } from "@/lib/stemPrep";
-import { djLinesForShow } from "@/lib/djLines";
+import { prepareTracks, type PrepProgress } from "@/lib/setPrep";
 import { findComposer, pickWorks, type ClassicalFilters, type Era, type Instrument, type Mood } from "@/lib/classical";
-import { lineUrl } from "@/lib/djVoice";
 import type { SetArc } from "@/lib/setBuilder";
 
 // Radio-AVA: from favourite artists to ready-to-play sets.
@@ -402,14 +401,7 @@ export interface RadioState {
 }
 
 // "Préparer l'émission": songs copied to the disk cache of the app (instant start, no gap), stems of the first songs
-export interface ShowPrep {
-  state: "running" | "done";
-  warmed: number;
-  total: number;
-  voiced: number; // DJ voice clips made (a minute or more each, on the MaRuche server)
-  voiceTotal: number;
-  voiceFailed: boolean; // the voice server did not answer: the show plays without announcements
-}
+export type ShowPrep = PrepProgress;
 
 const EMPTY: RadioState = { phase: "idle", artists: [], items: [], shows: [], prefs: null, seed: 0, savedShows: {}, etaSec: null, fresh: false, prep: {} };
 let state: RadioState = EMPTY;
@@ -801,47 +793,11 @@ export async function prepareShow(key: string): Promise<void> {
   const show = state.shows.find((s) => s.key === key);
   if (!show || state.prep[key]?.state === "running") return;
   const tracks = tracksOfShow(show.trackIds);
-  const yt = tracks.filter((t) => t.source === "youtube" && !!t.url);
   const setPrep = (p: ShowPrep) => emit({ prep: { ...state.prep, [key]: p } });
-  const dj = state.prefs?.dj;
-  const lines = dj && dj.voice !== "off" && dj.voiceEngine === "dj" ? djLinesForShow(tracks, dj) : [];
-  let voiced = 0;
-  let voiceFailed = false;
-  const cur = (): ShowPrep => ({ state: "running", warmed, total: yt.length, voiced, voiceTotal: lines.length, voiceFailed });
-  let warmed = 0;
-  setPrep(cur());
-  const queue = [...yt];
-  const worker = async () => {
-    for (let t = queue.shift(); t; t = queue.shift()) {
-      while (getMemLevel() === "critical") await sleep(1500);
-      try {
-        await fetch(`/api/radio/warm?id=${encodeURIComponent(t.url!)}`);
-      } catch {
-        // this song will simply start the usual way
-      }
-      warmed++;
-      if (!state.shows.some((s) => s.key === key)) return; // the show was cleared meanwhile
-      setPrep(cur());
-    }
-  };
-  // the DJ voice: one clip at a time (the server has one voice model), while the songs download
-  const voiceWorker = async () => {
-    for (const text of lines) {
-      if (voiceFailed || !state.shows.some((s) => s.key === key)) return;
-      try {
-        const res = await fetch(lineUrl(text, false));
-        if (!res.ok) throw new Error(String(res.status));
-        await res.arrayBuffer();
-        voiced++;
-      } catch {
-        voiceFailed = true; // server unreachable: stop asking, the show plays without that voice
-      }
-      setPrep(cur());
-    }
-  };
-  await Promise.all([worker(), worker(), voiceWorker()]); // two downloads at a time: they only use the disk and the network
+  const last = await prepareTracks(tracks, state.prefs?.dj, setPrep, () => state.shows.some((s) => s.key === key));
+  if (!state.shows.some((s) => s.key === key)) return; // the show was cleared meanwhile
   if (state.prefs?.prepStems) enqueuePrep(tracks.slice(0, 2));
-  setPrep({ ...cur(), state: "done" });
+  setPrep(last);
 }
 
 // writes the show as a set (a playlist) of the library, with its mix plan; saving it again updates the same set

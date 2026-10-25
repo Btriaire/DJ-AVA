@@ -9,6 +9,8 @@ import { Journey, buildJourney } from "./prep/Journey";
 import { qualityFromKbps, kbpsFromSize, QUALITY_LABEL, QUALITY_HINT, QUALITY_RANK } from "@/lib/quality";
 import { SetWizard, type WizardDest as SendDest, type SetDraft, type WizardInitial as SetStudioInitial } from "./playlist/SetWizard";
 import { pickNext } from "@/lib/setPicker";
+import { useStemsShared } from "@/lib/stemsShared";
+import { prepareSet, useSetPrep } from "@/lib/setPrep";
 import { getCachedQuality, probeQualities } from "@/lib/ytQuality";
 import { VIDEO_LABEL, VIDEO_RANK, videoLevelFromHeight, effectiveVideoLevel } from "@/lib/videoQuality";
 import type { LibTrack, LibraryData, Playlist } from "@/lib/library";
@@ -117,6 +119,8 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   };
   const libRef = useRef(lib);
   const prepState = useSyncExternalStore(subscribePrep, getPrepState, getPrepState);
+  const sharedStems = useStemsShared();
+  const setPreps = useSetPrep();
 
   const [analyzingIds, setAnalyzingIds] = useState<Set<string>>(new Set());
   const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
@@ -268,6 +272,15 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
     setFailedIds(prev => new Set([...prev].filter(id => id !== track.id)));
 
     try {
+      // a YouTube song: the same quick excerpt analysis (and server memory) as the Radio and the Playlist views
+      if (track.source === "youtube" && track.url) {
+        const fast = await analyzeLibraryTrack(track);
+        if (fast) {
+          setAnalyzingIds(prev => { const next = new Set(prev); next.delete(track.id); return next; });
+          persist(data => ({ ...data, tracks: data.tracks.map(t => t.id === track.id ? { ...t, bpm: fast.bpm, bpmEstimated: true, bpmConfidence: fast.bpmConfidence, camelot: fast.camelot } : t) }));
+          return;
+        }
+      }
       const blob = track.source === "local"
         ? await idbGetBlob(track.id)
         : await fetch(`/api/${track.source}/stream?id=${encodeURIComponent(track.url ?? "")}`).then(r => r.blob());
@@ -445,7 +458,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
 
   const getStemStatus = (trackId: string) => {
     const job = prepState.jobs.find(j => j.trackId === trackId);
-    if (!job) return prepState.ready.some(r => r.trackId === trackId) ? "done" : "none";
+    if (!job) return sharedStems.has(lib.tracks.find(t => t.id === trackId)) ? "done" : "none";
 
     if (job.status === "error") return "error";
     if (job.status === "running") {
@@ -809,6 +822,15 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
           >
             <Icon name="play" size={10} />
             Jouer
+          </button>
+          <button
+            onClick={() => void prepareSet(playlist.id)}
+            disabled={tracks.length === 0 || setPreps[playlist.id]?.state === "running"}
+            className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[10px]"
+            title="Télécharge les titres dans le cache de l'appli et fabrique les annonces de la voix du DJ : le set démarre sans attente, dans tous les onglets"
+          >
+            <Icon name="bolt" size={10} />
+            {setPreps[playlist.id]?.state === "running" ? `Audio ${setPreps[playlist.id].warmed}/${setPreps[playlist.id].total}${setPreps[playlist.id].voiceTotal ? ` · Voix ${setPreps[playlist.id].voiced}/${setPreps[playlist.id].voiceTotal}` : ""}` : setPreps[playlist.id]?.state === "done" ? "Préparé" : "Préparer"}
           </button>
           <button onClick={() => queueStems(tracks)} disabled={tracks.length === 0 || ready === tracks.length} className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[10px]" title="Préparer les stems de tout le set">
             <Icon name="stems" size={11} />
