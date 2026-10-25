@@ -1,13 +1,14 @@
 "use client";
 import { COLLECTIONS, STYLES } from "@/lib/styles";
 import { Icon } from "../prep/parts";
+import type { Genre } from "@/lib/djForce";
 
 export interface CatalogPanelProps {
   kind: "style" | "collection";
   chosen: string[]; // names of the artists / collections already in the radio
   locked: boolean;
-  onToggleStyle: (artists: string[], on: boolean) => void;
-  onToggleCollection: (label: string) => void;
+  onToggleStyle: (artists: string[], on: boolean, genre: Genre) => void;
+  onToggleCollection: (label: string, genre: Genre) => void;
 }
 
 const chip = (on: boolean) => ({
@@ -33,7 +34,7 @@ export function CatalogPanel({ kind, chosen, locked, onToggleStyle, onToggleColl
           ? STYLES.map((st) => {
               const on = st.artists.every((a) => have.has(a.toLowerCase()));
               return (
-                <button key={st.key} type="button" aria-pressed={on} disabled={locked} onClick={() => onToggleStyle(st.artists, !on)} className="flex items-center gap-1 rounded-full border px-3 py-1 text-[11px] font-semibold" style={chip(on)} title={st.artists.join(", ")}>
+                <button key={st.key} type="button" aria-pressed={on} disabled={locked} onClick={() => onToggleStyle(st.artists, !on, st.genre)} className="flex items-center gap-1 rounded-full border px-3 py-1 text-[11px] font-semibold" style={chip(on)} title={st.artists.join(", ")}>
                   {on && <Icon name="check" size={12} />}
                   {st.label}
                 </button>
@@ -42,7 +43,7 @@ export function CatalogPanel({ kind, chosen, locked, onToggleStyle, onToggleColl
           : COLLECTIONS.map((c) => {
               const on = have.has(c.label.toLowerCase());
               return (
-                <button key={c.key} type="button" aria-pressed={on} disabled={locked} onClick={() => onToggleCollection(c.label)} className="flex items-center gap-1 rounded-full border px-3 py-1 text-[11px] font-semibold" style={chip(on)} title={`${c.songs.length} titres : ${c.songs.slice(0, 3).map((x) => x.title).join(", ")}...`}>
+                <button key={c.key} type="button" aria-pressed={on} disabled={locked} onClick={() => onToggleCollection(c.label, c.genre)} className="flex items-center gap-1 rounded-full border px-3 py-1 text-[11px] font-semibold" style={chip(on)} title={`${c.songs.length} titres : ${c.songs.slice(0, 3).map((x) => x.title).join(", ")}...`}>
                   {on && <Icon name="check" size={12} />}
                   {c.label}
                   <span className="font-mono text-[10px]">{c.songs.length}</span>

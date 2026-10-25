@@ -6,6 +6,7 @@ import { DEFAULT_DJ, planMix, type DjOptions, type MixStep } from "@/lib/mixPlan
 import { enqueuePrep } from "@/lib/stemPrep";
 import { prepareTracks, type PrepProgress } from "@/lib/setPrep";
 import { findCollection, pickSongs } from "@/lib/styles";
+import { GENRES } from "@/lib/djForce";
 import { findComposer, pickWorks, type ClassicalFilters, type Era, type Instrument, type Mood } from "@/lib/classical";
 import type { SetArc } from "@/lib/setBuilder";
 
@@ -107,6 +108,7 @@ function normalizePrefs(p: Partial<RadioPrefs>): RadioPrefs {
       voiceEvery: pick(p.dj?.voiceEvery, [0, 1, 2] as const, 1),
       endOfSet: pick(p.dj?.endOfSet, ["loop", "stop"] as const, "loop"),
       stems: pick(p.dj?.stems, ["off", "smooth", "punchy"] as const, "punchy"),
+      genre: pick(p.dj?.genre, GENRES, "auto"),
     },
     prepStems: !!p.prepStems,
   };

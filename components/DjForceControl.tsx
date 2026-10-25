@@ -1,6 +1,6 @@
 "use client";
 import { BLEND_LABEL, type DjOptions } from "@/lib/mixPlan";
-import { FORCES, FORCE_HINT, FORCE_LABEL, PROFILE, applyForce, forceOf, type DjForce } from "@/lib/djForce";
+import { FORCES, FORCE_HINT, FORCE_LABEL, GENRES, GENRE_HINT, GENRE_LABEL, PROFILE, applyForce, forceOf, type DjForce, type Genre } from "@/lib/djForce";
 
 // The force of the intelligent DJ (5 levels) and the length of its blends, the same control in every module.
 // Choosing a force sets the DJ options it stands for; the options can be changed one by one afterwards.
@@ -41,6 +41,21 @@ export function DjForceControl({ dj, disabled, onChange }: { dj: DjOptions; disa
       </div>
       <p className="text-[11px] text-neutral-400">{FORCE_HINT[force]}</p>
       <p className="text-[10px] text-neutral-500">{`Interventions pendant les morceaux : une toutes les ${PROFILE[force].everyBars} mesures environ.`}</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[10px] uppercase tracking-[0.15em] text-neutral-500">Style joué</span>
+        <select
+          className="prep-input px-2 py-1 text-[12px]"
+          value={dj.genre ?? "auto"}
+          disabled={disabled}
+          aria-label="Style joué par le DJ"
+          onChange={(e) => onChange({ ...dj, genre: e.target.value as Genre })}
+        >
+          {GENRES.map((g) => (
+            <option key={g} value={g}>{GENRE_LABEL[g]}</option>
+          ))}
+        </select>
+        <p className="w-full text-[11px] text-neutral-400">{GENRE_HINT[dj.genre ?? "auto"]}</p>
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[10px] uppercase tracking-[0.15em] text-neutral-500">Durée des fondus</span>
         <div className="prep-seg" role="group" aria-label="Durée des fondus">

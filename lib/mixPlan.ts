@@ -2,7 +2,7 @@ import type { LibTrack, TransitionType } from "@/lib/library";
 import type { SetArc } from "@/lib/setBuilder";
 import { keyCompat, shiftCamelot } from "@/lib/camelot";
 import { EFFECT_TRANSITIONS } from "@/lib/transitions";
-import { PROFILE, fitsEffect, forceOf } from "@/lib/djForce";
+import { PROFILE, fitsEffect, forceOf, transitionPalette, type Genre } from "@/lib/djForce";
 
 // The "DJ brain": for every pair of songs of a set, decide HOW to go from one to the other, in advance.
 // Pure and deterministic, so the plan can be shown, edited, saved with the set and replayed by the relay.
@@ -34,6 +34,7 @@ export interface DjOptions {
   stems?: "off" | "smooth" | "punchy"; // use the stems of the songs that have them ready (see lib/stemMix.ts)
   force?: 1 | 2 | 3 | 4 | 5; // how much the DJ does (lib/djForce.ts); 3 when missing
   blend?: "short" | "normal" | "long" | "xlong"; // length of the blends: x0.6, x1, x1.8, x3
+  genre?: Genre; // the style the DJ plays: it decides which effects are used (lib/djForce.ts); "auto" when missing
 }
 
 export const BLEND_FACTOR = { short: 0.6, normal: 1, long: 1.8, xlong: 3 } as const;
@@ -106,7 +107,12 @@ export function planStep(a: LibTrack, b: LibTrack, arc: SetArc, opts: DjOptions 
 
   if (known && !folded && gap <= 10 && wantsEffect) {
     // only effects that suit the tempo of the two songs: no roll or gate on a slow pair
-    const fitting = EFFECT_TRANSITIONS.filter((e) => fitsEffect(e, Math.min(a.bpm ?? 0, b.bpm ?? 0), Math.max(a.bpm ?? 0, b.bpm ?? 0)));
+    const lo = Math.min(a.bpm ?? 0, b.bpm ?? 0);
+    const hi = Math.max(a.bpm ?? 0, b.bpm ?? 0);
+    const tempoOk = EFFECT_TRANSITIONS.filter((e) => fitsEffect(e, lo, hi));
+    // and only the ones the style uses (when the style leaves nothing, the tempo rules alone decide)
+    const styled = tempoOk.filter((e) => transitionPalette(opts.genre ?? "auto", (lo + hi) / 2).includes(e));
+    const fitting = styled.length ? styled : tempoOk;
     const fx = fitting[(index * 3 + force) % fitting.length] ?? "wash";
     const base = FX_SEC[fx] ?? 8;
     step = { type: fx, sec: base, sync: gap <= 6 && !["brake", "reverse", "wash", "drop"].includes(fx), note: `Force du DJ ${force} : ${FX_NOTE[fx] ?? "un effet accompagne l'enchaînement"}.` };

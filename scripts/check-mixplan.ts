@@ -103,8 +103,9 @@ assert.equal(accentDue(5, 10, 0, 60, 20, 10), false, "not just before the transi
 assert.equal(accentDue(5, 10, 0, 60, 120, 10), true);
 assert.equal(accentDue(1, 10, 0, 60, 120, 10), false, "force 1: rare");
 const NEED_STEMS = ["drumsout", "vocalecho", "bassdrop", "drumsolo", "vocalsolo", "voiceout", "otherout"];
+const FOUR = ["drums", "bass", "other", "vocals"];
 for (let n = 0; n < 20; n++) assert.ok(!NEED_STEMS.includes(pickAccent(5, n, false)!), "no stem move without stems");
-assert.equal(new Set(Array.from({ length: PROFILE[5].pool.length }, (_, n) => pickAccent(5, n, true))).size, PROFILE[5].pool.length);
+assert.ok(new Set(Array.from({ length: 40 }, (_, n) => pickAccent(5, n, true))).size >= 14, "force 5: varied moves");
 assert.equal(pickAccent(1, 3, true), "filterbreath");
 // the DJ reads the song: no fast effect on a calm song, no roll or gate at a slow tempo, classical gets the softest moves
 const moves = (force: 1 | 2 | 3 | 4 | 5, feel: Feel) => new Set(Array.from({ length: 30 }, (_, n) => pickAccent(force, n, feel)));
@@ -114,7 +115,7 @@ for (const k of SPEEDY) assert.ok(!slow.has(k as never), `${k} refused at 72 BPM
 assert.ok(slow.has("reverbwash") && slow.has("vocalecho"), "gentle moves stay");
 assert.ok(moves(5, { bpm: 128, stems: ["drums", "bass", "other", "vocals"] }).has("roll"), "roll fits a 128 BPM song");
 const calmPiece = moves(5, { bpm: 60, classical: true, stems: ["drums", "bass", "other", "vocals"] });
-assert.ok([...calmPiece].every((k) => ["filterbreath", "reverbwash", "echothrow", "vocalecho"].includes(k!)), "classical: soft moves only");
+assert.ok([...calmPiece].every((k) => ["filterbreath", "reverbwash", "echothrow", "vocalecho", "echoexit", "freezehold"].includes(k!)), "classical: soft moves only");
 assert.ok(!moves(5, { bpm: 128, stems: ["other"] }).has("drumsolo" as never), "a stem move needs its stem");
 assert.ok(isCalm({ bpm: 80 }) && !isCalm({ bpm: 120 }) && amountFor(1, { bpm: 80 }) < 1 && accentDue(5, 6, 0, 60, 120, 10, true) === true && accentDue(5, 5, 0, 60, 120, 10, true) === false, "calm songs: gentler and rarer");
 // transitions: effects must suit the tempos of the two songs
@@ -129,4 +130,27 @@ assert.ok(!techs({ bpm: 126, sync: false }).has("drumbridge") && !techs({ bpm: 1
 assert.ok(![...techs({ bpm: 75, sync: true })].some((x) => ["drumbridge", "drumswap", "bassslam"].includes(x!)), "calm pair: soft techniques only");
 const mid = stemFrame("drumbridge", 0.5, "punchy");
 assert.ok((mid.out.drums ?? 0) > 0.9 && (mid.inn.drums ?? 0) > 0.9 && (mid.out.bass ?? 1) < 0.1 && (mid.inn.bass ?? 1) < 0.1, "midway only the two drums play");
+// styles: each one has its own effects, and a stem-ready song gets its stems used on every other move
+import { GENRES, genreOf, pickTransitionMove, transitionPalette, type Genre } from "../lib/djForce";
+const g = (genre: Genre, bpm = 124) => moves(5, { bpm, genre, stems: FOUR });
+assert.ok(g("club").has("riserbuild" as never) && g("club").has("roll" as never), "club: risers and rolls");
+assert.ok(!g("pop").has("roll" as never) && !g("pop").has("gatechop" as never), "pop: no roll or gate");
+assert.ok(g("hiphop").has("tapestop" as never) && !g("hiphop").has("noiseburst" as never), "hip-hop: tape stop, no riser noise");
+assert.ok(g("dub", 80).has("dubthrow" as never) && g("dub", 80).has("echoexit" as never), "dub: echoes");
+assert.ok(g("disco").has("phaserswirl" as never) && !g("disco").has("roll" as never), "disco: phaser, no roll");
+assert.ok([...g("chill", 120)].every((k) => ["reverbwash", "echothrow", "echoexit", "filterbreath", "phaserswirl", "panswing", "freezehold", "tapestop", "vocalecho", "otherout"].includes(k!)), "chill: soft palette only");
+assert.equal(genreOf({ bpm: 125 }), "club");
+assert.equal(genreOf({ bpm: 105 }), "pop");
+assert.equal(genreOf({ bpm: 80 }), "chill");
+assert.equal(genreOf({ bpm: 80, genre: "hiphop" }), "hiphop");
+assert.ok(GENRES.every((x) => x === "auto" || moves(5, { bpm: 124, genre: x, stems: FOUR }).size >= 4), "every style has enough moves");
+const withStems = Array.from({ length: 10 }, (_, n) => pickAccent(5, n, { bpm: 124, genre: "club", stems: FOUR }));
+assert.ok(withStems.filter((k, n) => n % 2 === 1 && NEED_STEMS.includes(k!)).length === 5, "stems on every other move");
+// transitions: the style's own touch, none below force 3, every other change at force 4, every change at force 5
+assert.equal(pickTransitionMove(2, 0, { bpm: 124 }), null);
+assert.ok(pickTransitionMove(3, 0, { bpm: 124, genre: "club" }) !== null && pickTransitionMove(3, 1, { bpm: 124, genre: "club" }) === null);
+assert.ok([0, 1, 2, 3].every((i) => pickTransitionMove(5, i, { bpm: 124, genre: "pop" }) !== null));
+assert.ok(transitionPalette("pop", 110).includes("echo") && !transitionPalette("pop", 110).includes("roll"), "pop transitions: no roll");
+assert.ok(!["roll", "gate", "noise", "drop"].includes(planStep(t(124, "8A"), t(125, "9A"), "flow", { ...applyForce(DEFAULT_DJ, 5), genre: "pop" }, 0).type), "pop: no club effect on the change");
+assert.ok(["echo", "brake", "reverse", "drop", "dub", "roll"].includes(planStep(t(124, "8A"), t(125, "9A"), "flow", { ...applyForce(DEFAULT_DJ, 5), genre: "hiphop" }, 0).type), "hip-hop transitions come from its palette");
 console.log("mixplan ok");

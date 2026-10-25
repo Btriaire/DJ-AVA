@@ -43,8 +43,9 @@ import { prepareSet, useSetPrep } from "@/lib/setPrep";
 import { useStemsShared } from "@/lib/stemsShared";
 import { getRelayHost, publishRelayHost, registerRelayHost, relayHostStart, relayHostStop, subscribeRelayHost } from "@/lib/relayHost";
 import { cachedLoudness, loudnessFor, matchTrimDb } from "@/lib/audio/levelMatch";
-import { getDjLive, showDjAction, useDjLive } from "@/lib/djLive";
-import { ACCENT_LABEL, PROFILE as FORCE_PROFILE, accentDue, amountFor, forceOf, isCalm, pickAccent, type AccentKind, type Feel } from "@/lib/djForce";
+import { getDjLive, setDjStems, showDjAction, useDjLive } from "@/lib/djLive";
+import { ACCENT_LABEL, MASTER_MOVES, PROFILE as FORCE_PROFILE, accentDue, amountFor, forceOf, isCalm, isMasterMove, pickAccent, pickTransitionMove, type AccentKind, type Feel } from "@/lib/djForce";
+import type { FxName } from "@/lib/audio/FXRack";
 import { pickTech, stemFrame, STEM_TECH_LABEL, type StemMode, type StemName, type StemTech } from "@/lib/stemMix";
 import { getMemLevel } from "@/lib/memoryGovernor";
 
@@ -1321,8 +1322,10 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     relayIdx.current[side] = relayPos.current;
     const deck = side === "A" ? engine.deckA : engine.deckB;
     await loadToDeck(q[relayIdx.current[side]], side);
-    if (andPlay) deck.play();
-    else void armStems(side); // a cued song loads its prepared stems in the background, to mix with them
+    if (andPlay) {
+      await armStems(side, 1500); // the first song too: its prepared stems are switched on before it is heard
+      deck.play();
+    } else void armStems(side); // a cued song loads its prepared stems in the background, to mix with them
     void measureLevel(side);
     setRelayCur({ A: relayIdx.current.A, B: relayIdx.current.B }); // refresh list markers
     return true;
@@ -1340,12 +1343,14 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   }
   // A cued song whose stems are ready loads them and switches its deck to stem playback (while it is silent, so
   // there is no glitch). The DJ plan then mixes with them. Skipped when memory is tight or the set says no.
-  async function armStems(side: "A" | "B") {
+  async function armStems(side: "A" | "B", maxWaitMs = 12000) {
     const mode = relayPlaylist()?.dj?.stems ?? "punchy";
     const deck = side === "A" ? engine.deckA : engine.deckB;
-    if (!relayPlaylist()?.dj || mode === "off" || deck.streamOnly) return;
+    // the top-bar DJ also wants stems when the set itself has no DJ options
+    if ((!relayPlaylist()?.dj && !getDjLive().on) || mode === "off" || deck.streamOnly) return;
     const id = deck.origin?.id;
-    for (let i = 0; i < 24 && !deck.stemCached; i++) await new Promise((r) => setTimeout(r, 500)); // the load settles first
+    if (maxWaitMs < 12000 && !getPreparedStems(id ?? "")) return; // about to play: never wait for stems nobody prepared
+    for (let i = 0; i < maxWaitMs / 500 && !deck.stemCached; i++) await new Promise((r) => setTimeout(r, 500)); // the load settles first
     if (!deck.stemCached || deck.origin?.id !== id || getMemLevel() === "critical") return;
     await deck.ensureStems();
     if (deck.origin?.id === id && deck.stemReady && !deck.playing && relayRef.current) deck.setStemsActive(true);
@@ -1614,9 +1619,17 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   }
   // One move of the DJ on the song that plays (the "force" of the DJ sets how often and how strongly). Every move
   // is short and puts everything back by itself.
-  function runAccent(deck: typeof engine.deckA, kind: AccentKind, amount: number) {
+  function runAccent(deck: typeof engine.deckA, kind: AccentKind, amount: number, maxSec = 12) {
     const spb = 60 / deck.bpm;
     const bar = spb * 4;
+    if (isMasterMove(kind)) {
+      // an effect of the master rack (the whole mix), short, then put back
+      const mv = MASTER_MOVES[kind];
+      const fxName = mv.fx as FxName;
+      engine.setMasterFx(fxName, Math.min(1, mv.wet * (0.6 + 0.4 * amount)));
+      window.setTimeout(() => engine.setMasterFx(fxName, 0), Math.min(mv.bars * bar, maxSec) * 1000);
+      return;
+    }
     // moves put themselves back even when no relay runs (songs played by hand get them too)
     const later = (ms: number, fn: () => void) => window.setTimeout(fn, ms);
     const burst =(fx: "echo" | "reverb" | "gate" | "roll" | "dub" | "flanger" | "noise", wet: number, sec: number) => {
@@ -1720,7 +1733,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     // the first move comes after about half an interval, the next ones at the full interval
     if (st.lastBar === Number.NEGATIVE_INFINITY) st.lastBar = barIdx - Math.round(FORCE_PROFILE[force].everyBars / 2);
     // what the DJ knows of the song: its tempo, whether it is classical, the stems it really has
-    const feel: Feel = { bpm: deck.bpm, classical: dj?.style === "classical", stems: deck.stemsActive && deck.stemReady ? deck.stemNames : [] };
+    const feel: Feel = { bpm: deck.bpm, classical: dj?.style === "classical", stems: deck.stemsActive && deck.stemReady ? deck.stemNames : [], genre: live.on ? live.genre : dj?.genre };
     if (!accentDue(force, barIdx, st.lastBar, deck.position(), remain, fadeSec, isCalm(feel))) return;
     const kind = pickAccent(force, st.count, feel);
     if (!kind) return;
@@ -1733,6 +1746,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   useEffect(() => {
     if (!splitLayout) return;
     const id = window.setInterval(() => {
+      // how many playing songs have their stems ready (the top bar says whether the DJ can use them)
+      setDjStems([engine.deckA, engine.deckB].filter((d) => d.playing && d.stemsActive && d.stemReady).length);
       if (!getDjLive().on) return;
       for (const side of ["A", "B"] as const) {
         if (relayRef.current && relaySide.current === side) continue; // the relay tick looks after its own deck
@@ -1852,6 +1867,17 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           brakeOut(deck);
         } else {
           relayFade(other, Math.max(secs, 0.05), TYPE, !!step?.bassSwap && !tech, tech ? { tech, mode: stemMode } : undefined);
+        }
+        // the style's own touch on the change: an echo out, a riser, a phaser... on top of the blend (from force 3)
+        const live = getDjLive();
+        if (TYPE !== "cut" && !braking && (live.on || (!!dj && dj.auto !== false))) {
+          const force = live.on ? live.force : forceOf(dj);
+          const feelT: Feel = { bpm: Math.min(deck.bpm || 120, otherDeck.bpm || 120), classical: dj?.style === "classical", genre: live.on ? live.genre : dj?.genre };
+          const move = deck.bpm > 0 ? pickTransitionMove(force, relayIdx.current[side], feelT) : null;
+          if (move) {
+            runAccent(deck, move, amountFor(FORCE_PROFILE[force].amount, feelT), Math.max(2, secs));
+            showDjAction(`${ACCENT_LABEL[move]} (enchaînement)`);
+          }
         }
         if (step?.sync && TYPE !== "cut") window.setTimeout(() => pitchHome(otherDeck), (secs + 1) * 1000);
         window.setTimeout(() => announceOver(other), TYPE === "cut" ? 300 : Math.min(secs * 0.35, 4) * 1000);

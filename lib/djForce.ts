@@ -32,7 +32,47 @@ export type AccentKind =
   | "drumsolo"
   | "vocalsolo"
   | "voiceout"
-  | "otherout";
+  | "otherout"
+  // moves made with the effects of the master rack (the whole mix): see MASTER_MOVES
+  | "phaserswirl"
+  | "panswing"
+  | "pumpduck"
+  | "crushgrit"
+  | "tapestop"
+  | "vowelwah"
+  | "scatterslice"
+  | "freezehold"
+  | "halftimedrop"
+  | "doublecut"
+  | "riserbuild"
+  | "buildup"
+  | "echoexit"
+  | "mashfx"
+  | "ringmod";
+
+// What the DJ plays: each style has its own effects (see PALETTE). "auto" reads it from the tempo.
+export type Genre = "auto" | "club" | "hiphop" | "pop" | "disco" | "dub" | "latino" | "chill";
+export const GENRES: Genre[] = ["auto", "club", "hiphop", "pop", "disco", "dub", "latino", "chill"];
+export const GENRE_LABEL: Record<Genre, string> = {
+  auto: "Auto (selon le tempo)",
+  club: "House / techno / électro",
+  hiphop: "Hip-hop / rap",
+  pop: "Pop / rock / variété",
+  disco: "Disco / funk",
+  dub: "Reggae / dub",
+  latino: "Latino / afro",
+  chill: "Chill / jazz / calme",
+};
+export const GENRE_HINT: Record<Genre, string> = {
+  auto: "Le DJ devine : tempo rapide = club, moyen = pop, lent = chill.",
+  club: "Filtres, montées (riser, build) relâchées sur le temps fort, rolls, gate, pompe, phaser sur les mélodies. Le corps du morceau reste propre.",
+  hiphop: "Sorties en échos, arrêt net ou demi-tempo, voix seule, scatter et crush brefs. Peu de réverb.",
+  pop: "Réverb courte, écho en sortie, filtre, phaser léger, balancier stéréo. Jamais de roll ni de gate.",
+  disco: "Phaser, flanger et filtre sur le groove, balancier stéréo, pompe douce. Batterie seule pour relancer.",
+  dub: "Écho dub avec retour sur le temps, réverb, voix coupée, basse coupée puis claquée.",
+  latino: "Rolls et gate courts sur les percussions, scatter, montées, échos. Batterie seule.",
+  chill: "Réverb, écho, phaser très doux, gel du son. Rien de rapide.",
+};
 
 export const ACCENT_LABEL: Record<AccentKind, string> = {
   filterbreath: "souffle de filtre",
@@ -50,7 +90,44 @@ export const ACCENT_LABEL: Record<AccentKind, string> = {
   vocalsolo: "voix seule",
   voiceout: "voix coupée",
   otherout: "harmonies coupées",
+  phaserswirl: "phaser",
+  panswing: "balancier stéréo",
+  pumpduck: "pompe",
+  crushgrit: "crush",
+  tapestop: "bande usée",
+  vowelwah: "voyelles",
+  scatterslice: "scatter",
+  freezehold: "gel du son",
+  halftimedrop: "demi-tempo",
+  doublecut: "double tempo",
+  riserbuild: "montée",
+  buildup: "build",
+  echoexit: "sortie en échos",
+  mashfx: "mash",
+  ringmod: "modulation en anneau",
 };
+
+// The moves made with the master effect rack (the effects of the Console): which effect, how strong, for how many bars.
+// Short and conservative: a move puts itself back.
+export type MasterKind = "phaserswirl" | "panswing" | "pumpduck" | "crushgrit" | "tapestop" | "vowelwah" | "scatterslice" | "freezehold" | "halftimedrop" | "doublecut" | "riserbuild" | "buildup" | "echoexit" | "mashfx" | "ringmod";
+export const MASTER_MOVES: Record<MasterKind, { fx: string; wet: number; bars: number }> = {
+  phaserswirl: { fx: "phaser", wet: 0.55, bars: 4 },
+  panswing: { fx: "pan", wet: 0.6, bars: 2 },
+  pumpduck: { fx: "pump", wet: 0.55, bars: 4 },
+  crushgrit: { fx: "crush", wet: 0.45, bars: 1 },
+  tapestop: { fx: "tape", wet: 0.7, bars: 2 },
+  vowelwah: { fx: "vowel", wet: 0.55, bars: 2 },
+  scatterslice: { fx: "scatter", wet: 0.65, bars: 1 },
+  freezehold: { fx: "freeze", wet: 0.8, bars: 0.5 },
+  halftimedrop: { fx: "halftime", wet: 0.8, bars: 2 },
+  doublecut: { fx: "double", wet: 0.8, bars: 1 },
+  riserbuild: { fx: "rise", wet: 0.8, bars: 4 },
+  buildup: { fx: "build", wet: 0.8, bars: 4 },
+  echoexit: { fx: "echoout", wet: 0.8, bars: 2 },
+  mashfx: { fx: "mash", wet: 0.55, bars: 1 },
+  ringmod: { fx: "ring", wet: 0.35, bars: 1 },
+};
+export const isMasterMove = (k: AccentKind): k is MasterKind => k in MASTER_MOVES;
 
 // What the DJ knows about the song that plays: its tempo, whether it is a classical piece, and the stems it has
 // ready (empty = the song plays as one block). Every move is judged against it (see RULE).
@@ -58,6 +135,13 @@ export interface Feel {
   bpm: number;
   classical?: boolean;
   stems?: readonly string[];
+  genre?: Genre; // the style the DJ plays (missing or "auto": read from the tempo)
+}
+
+// "auto" reads the style from the tempo: lively = club, middle = pop, slow = chill
+export function genreOf(f: Feel): Exclude<Genre, "auto"> {
+  if (f.genre && f.genre !== "auto") return f.genre;
+  return f.bpm >= 118 ? "club" : f.bpm >= 96 ? "pop" : "chill";
 }
 
 const CALM_BPM = 92; // under this a song is calm: gentle moves only, and fewer of them
@@ -82,13 +166,55 @@ const RULE: Record<AccentKind, (f: Feel) => boolean> = {
   vocalsolo: (f) => !f.classical && has(f, "vocals") && inRange(f, 85),
   voiceout: (f) => !f.classical && has(f, "vocals"),
   otherout: (f) => !f.classical && has(f, "other") && inRange(f, 90),
+  phaserswirl: (f) => !f.classical && inRange(f, 80),
+  panswing: (f) => !f.classical,
+  pumpduck: (f) => !f.classical && inRange(f, 110),
+  crushgrit: (f) => !f.classical && inRange(f, 95),
+  tapestop: (f) => !f.classical,
+  vowelwah: (f) => !f.classical && inRange(f, 80),
+  scatterslice: (f) => !f.classical && inRange(f, 100),
+  freezehold: () => true,
+  halftimedrop: (f) => !f.classical && inRange(f, 100),
+  doublecut: (f) => !f.classical && inRange(f, 80, 112), // double time only makes sense on a slower song
+  riserbuild: (f) => !f.classical && inRange(f, 100),
+  buildup: (f) => !f.classical && inRange(f, 105),
+  echoexit: () => true,
+  mashfx: (f) => !f.classical && inRange(f, 110),
+  ringmod: (f) => !f.classical && inRange(f, 110),
 };
+
+// The effects of each style (rules gathered from DJ teaching sources and common practice: restraint, echo / reverb
+// tails to leave a song, risers released on the downbeat, phaser and flanger on melodic parts and never on bright
+// hi-hats, no roll or gate outside dance music, stems to swap drums or bass or to bridge with a vocal).
+// A move that is not in the palette of the style is never played; tempo and stems rules still apply on top.
+const PALETTE: Record<Exclude<Genre, "auto">, readonly AccentKind[]> = {
+  club: ["filterbreath", "echothrow", "reverbwash", "flangersweep", "phaserswirl", "gatechop", "roll", "noiseburst", "riserbuild", "buildup", "pumpduck", "scatterslice", "crushgrit", "doublecut", "mashfx", "ringmod", "echoexit", "drumsout", "drumsolo", "bassdrop", "otherout", "vocalecho", "vocalsolo", "voiceout", "dubthrow", "halftimedrop"],
+  hiphop: ["echothrow", "echoexit", "reverbwash", "filterbreath", "tapestop", "scatterslice", "vowelwah", "crushgrit", "halftimedrop", "dubthrow", "drumsolo", "bassdrop", "vocalsolo", "voiceout", "vocalecho"],
+  pop: ["filterbreath", "echothrow", "echoexit", "reverbwash", "phaserswirl", "panswing", "riserbuild", "vocalecho", "vocalsolo", "voiceout", "otherout", "tapestop"],
+  disco: ["filterbreath", "phaserswirl", "flangersweep", "panswing", "pumpduck", "echothrow", "reverbwash", "vocalecho", "drumsolo", "drumsout", "otherout"],
+  dub: ["echothrow", "dubthrow", "echoexit", "reverbwash", "filterbreath", "vowelwah", "tapestop", "drumsout", "bassdrop", "voiceout", "vocalecho"],
+  latino: ["echothrow", "echoexit", "reverbwash", "filterbreath", "roll", "gatechop", "scatterslice", "riserbuild", "panswing", "drumsout", "drumsolo", "vocalecho", "vocalsolo"],
+  chill: ["reverbwash", "echothrow", "echoexit", "filterbreath", "phaserswirl", "panswing", "freezehold", "tapestop", "vocalecho", "otherout"],
+};
+const STEM_MOVES: readonly AccentKind[] = ["drumsout", "drumsolo", "bassdrop", "otherout", "vocalecho", "vocalsolo", "voiceout"];
 
 export const isCalm = (f: Feel) => !!f.classical || (f.bpm > 0 && f.bpm < CALM_BPM);
 // a calm song is touched more gently
 export const amountFor = (amount: number, f: Feel) => (isCalm(f) ? amount * 0.6 : amount);
 
 // the same judgement for the effect that carries a transition: `slow` and `fast` are the tempos of the two songs
+const TRANSITION_PALETTE: Record<Exclude<Genre, "auto">, readonly TransitionType[]> = {
+  club: ["echo", "wash", "flanger", "gate", "noise", "roll", "loop", "highpass", "eq", "drop", "dub", "brake", "reverse"],
+  hiphop: ["echo", "brake", "reverse", "drop", "dub", "roll"],
+  pop: ["echo", "wash", "highpass", "eq", "reverse", "flanger", "loop"],
+  disco: ["flanger", "highpass", "eq", "echo", "loop", "wash"],
+  dub: ["echo", "dub", "wash", "reverse", "eq"],
+  latino: ["echo", "roll", "gate", "brake", "noise", "wash", "loop"],
+  chill: ["wash", "echo", "eq", "highpass", "reverse"],
+};
+// the effects a style uses to carry a transition (the tempo rules of fitsEffect apply on top)
+export const transitionPalette = (g: Genre, bpm: number): readonly TransitionType[] => TRANSITION_PALETTE[genreOf({ bpm, genre: g })];
+
 export function fitsEffect(fx: TransitionType, slow: number, fast: number): boolean {
   if (!(slow > 0)) return true; // tempo unknown: no reason to refuse
   switch (fx) {
@@ -122,9 +248,9 @@ export interface ForceProfile {
 export const PROFILE: Record<DjForce, ForceProfile> = {
   1: { effects: 0, everyBars: 32, pool: ["filterbreath"], amount: 0.35, options: { sync: false, bassSwap: false, tails: false, keyFix: false, stems: "off", phrase: false, loudness: true } },
   2: { effects: 0, everyBars: 24, pool: ["filterbreath", "echothrow"], amount: 0.45, options: { sync: true, bassSwap: true, tails: false, keyFix: false, stems: "off", phrase: true, loudness: true } },
-  3: { effects: 0.2, everyBars: 16, pool: ["filterbreath", "echothrow", "reverbwash", "flangersweep", "vocalecho", "otherout"], amount: 0.55, options: { sync: true, bassSwap: true, tails: true, keyFix: false, stems: "smooth", phrase: true, loudness: true } },
-  4: { effects: 0.5, everyBars: 8, pool: ["filterbreath", "echothrow", "reverbwash", "flangersweep", "gatechop", "dubthrow", "drumsout", "vocalecho", "drumsolo", "voiceout", "otherout", "vocalsolo"], amount: 0.7, options: { sync: true, bassSwap: true, tails: true, keyFix: true, stems: "punchy", phrase: true, loudness: true } },
-  5: { effects: 1, everyBars: 4, pool: ["echothrow", "reverbwash", "flangersweep", "gatechop", "dubthrow", "roll", "noiseburst", "drumsout", "vocalecho", "bassdrop", "filterbreath", "drumsolo", "vocalsolo", "voiceout", "otherout"], amount: 0.9, options: { sync: true, bassSwap: true, tails: true, keyFix: true, stems: "punchy", phrase: true, loudness: true } },
+  3: { effects: 0.2, everyBars: 16, pool: ["filterbreath", "echothrow", "reverbwash", "flangersweep", "phaserswirl", "echoexit", "vocalecho", "otherout"], amount: 0.55, options: { sync: true, bassSwap: true, tails: true, keyFix: false, stems: "smooth", phrase: true, loudness: true } },
+  4: { effects: 0.5, everyBars: 8, pool: ["filterbreath", "echothrow", "reverbwash", "flangersweep", "phaserswirl", "echoexit", "gatechop", "dubthrow", "drumsout", "vocalecho", "drumsolo", "voiceout", "otherout", "vocalsolo", "panswing", "riserbuild", "vowelwah", "halftimedrop", "freezehold", "tapestop"], amount: 0.7, options: { sync: true, bassSwap: true, tails: true, keyFix: true, stems: "punchy", phrase: true, loudness: true } },
+  5: { effects: 1, everyBars: 4, pool: ["echothrow", "reverbwash", "flangersweep", "gatechop", "dubthrow", "roll", "noiseburst", "drumsout", "vocalecho", "bassdrop", "filterbreath", "drumsolo", "vocalsolo", "voiceout", "otherout", "phaserswirl", "panswing", "pumpduck", "crushgrit", "scatterslice", "riserbuild", "buildup", "doublecut", "mashfx", "ringmod", "echoexit", "halftimedrop", "vowelwah", "freezehold", "tapestop"], amount: 0.9, options: { sync: true, bassSwap: true, tails: true, keyFix: true, stems: "punchy", phrase: true, loudness: true } },
 };
 
 export const forceOf = (dj: Pick<DjOptions, "force"> | undefined): DjForce => (dj?.force && dj.force >= 1 && dj.force <= 5 ? dj.force : 3);
@@ -139,9 +265,32 @@ const ALL_STEMS = ["drums", "bass", "other", "vocals"] as const;
 // the move the DJ makes at the n-th intervention of a song: rotates through the moves of the force that suit the
 // song (see RULE). `feel` = the song; `true` stands for a 120 BPM song with all its stems, `false` for one without.
 export function pickAccent(force: DjForce, n: number, feel: Feel | boolean): AccentKind | null {
-  const f: Feel = typeof feel === "boolean" ? { bpm: 120, stems: feel ? ALL_STEMS : [] } : feel;
-  const pool = PROFILE[force].pool.filter((k) => RULE[k](f));
-  return pool.length ? pool[n % pool.length] : null;
+  const f: Feel = typeof feel === "boolean" ? { bpm: 120, stems: feel ? ALL_STEMS : [], genre: "club" } : feel;
+  const palette = PALETTE[genreOf(f)];
+  const pool = PROFILE[force].pool.filter((k) => RULE[k](f) && palette.includes(k));
+  if (!pool.length) return null;
+  // a song that has its stems gets them used on every other move (from force 3): that is what they are prepared for
+  const stemPool = pool.filter((k) => STEM_MOVES.includes(k));
+  if (force >= 3 && stemPool.length && n % 2 === 1) return stemPool[(n >> 1) % stemPool.length];
+  const rest = force >= 3 && stemPool.length ? pool.filter((k) => !STEM_MOVES.includes(k)) : pool;
+  return rest.length ? rest[(force >= 3 && stemPool.length ? n >> 1 : n) % rest.length] : pool[n % pool.length];
+}
+
+// the move that goes with a transition (an effect of the master rack on top of the blend), or null: from force 3, on
+// every other change, of the kind the style uses to leave a song or to build into the next one
+const TRANSITION_MOVES: Record<Exclude<Genre, "auto">, readonly MasterKind[]> = {
+  club: ["riserbuild", "echoexit", "buildup", "phaserswirl"],
+  hiphop: ["echoexit", "tapestop", "halftimedrop"],
+  pop: ["echoexit", "phaserswirl", "riserbuild"],
+  disco: ["phaserswirl", "echoexit", "panswing"],
+  dub: ["echoexit", "tapestop"],
+  latino: ["echoexit", "riserbuild", "scatterslice"],
+  chill: ["echoexit", "freezehold", "phaserswirl"],
+};
+export function pickTransitionMove(force: DjForce, index: number, feel: Feel): MasterKind | null {
+  if (force < 3 || isCalm(feel) && force < 5 || index % (force >= 5 ? 1 : 2) !== 0) return null;
+  const list = TRANSITION_MOVES[genreOf(feel)].filter((k) => RULE[k](feel));
+  return list.length ? list[(index >> (force >= 5 ? 0 : 1)) % list.length] : null;
 }
 
 // is it time for an intervention? `bar` = index of the bar the song is in, `lastBar` = bar of the previous one.

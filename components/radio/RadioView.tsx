@@ -316,7 +316,7 @@ export default function RadioView({
   };
 
   // several names typed in one go are added one after the other: each call must see the previous ones
-  const addMany = (names: string[]) => {
+  const addMany = (names: string[], extra: Partial<RadioPrefs> = {}) => {
     const have = new Set(prefs.artists.map((a) => a.name.toLowerCase()));
     const fresh = names
       .map((n) => n.replace(/\s+/g, " ").trim().slice(0, 60))
@@ -324,8 +324,9 @@ export default function RadioView({
         (n) => n && !have.has(n.toLowerCase()) && have.add(n.toLowerCase()),
       )
       .slice(0, 24 - prefs.artists.length);
-    if (fresh.length)
+    if (fresh.length || Object.keys(extra).length)
       change({
+        ...extra,
         artists: [
           ...prefs.artists,
           ...fresh.map((name) => ({ id: uid(), name, love: 2 as const })),
@@ -776,13 +777,14 @@ export default function RadioView({
                   kind={prefs.mode}
                   chosen={prefs.artists.map((a) => a.name)}
                   locked={busy}
-                  onToggleStyle={(names, on) =>
-                    on ? addMany(names) : change({ artists: prefs.artists.filter((a) => !names.some((n) => n.toLowerCase() === a.name.toLowerCase())) })
-                  }
-                  onToggleCollection={(label) => {
+                  onToggleStyle={(names, on, genre) => {
+                    if (on) addMany(names, { dj: { ...prefs.dj, genre } }); // the DJ plays the effects of that style
+                    else change({ artists: prefs.artists.filter((a) => !names.some((n) => n.toLowerCase() === a.name.toLowerCase())) });
+                  }}
+                  onToggleCollection={(label, genre) => {
                     const have = prefs.artists.find((a) => a.name.toLowerCase() === label.toLowerCase());
                     if (have) change({ artists: prefs.artists.filter((a) => a.id !== have.id) });
-                    else addMany([label]);
+                    else addMany([label], { dj: { ...prefs.dj, genre } });
                   }}
                 />
               )}

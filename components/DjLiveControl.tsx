@@ -1,12 +1,12 @@
 "use client";
-import { FORCES, FORCE_HINT, FORCE_LABEL } from "@/lib/djForce";
+import { FORCES, FORCE_HINT, FORCE_LABEL, GENRES, GENRE_HINT, GENRE_LABEL, type Genre } from "@/lib/djForce";
 import { setDjLive, useDjLive } from "@/lib/djLive";
 
-// DJ intelligent, always at hand: on / off and its force, in the top bar of every view.
+// DJ intelligent, always at hand: on / off, its force and the style it plays, in the top bar of every view.
 export function DjLiveControl() {
   const live = useDjLive();
   return (
-    <span className="inline-flex items-center gap-1" role="group" aria-label="DJ intelligent">
+    <span className="inline-flex flex-wrap items-center gap-1" role="group" aria-label="DJ intelligent">
       <button
         type="button"
         onClick={() => setDjLive({ on: !live.on })}
@@ -28,6 +28,26 @@ export function DjLiveControl() {
           <option key={f} value={f}>{`${f} · ${FORCE_LABEL[f]}`}</option>
         ))}
       </select>
+      <select
+        className="hw-btn max-w-[150px] px-1.5 py-1.5 text-[11px] font-bold"
+        value={live.genre}
+        onChange={(e) => setDjLive({ genre: e.target.value as Genre })}
+        aria-label="Style joué par le DJ intelligent"
+        title={`Style : ${GENRE_HINT[live.genre]}`}
+      >
+        {GENRES.map((g) => (
+          <option key={g} value={g}>{GENRE_LABEL[g]}</option>
+        ))}
+      </select>
+      {live.on && (
+        <span
+          className="text-[11px] font-bold"
+          style={{ color: live.stems > 0 ? "#e879f9" : "#9ca3af" }}
+          title={live.stems > 0 ? "Les stems du morceau qui joue sont prêts : le DJ les utilise (batterie, voix, basse...)" : "Aucun stem prêt sur les platines : le DJ n'utilise que les effets. Prépare les stems du set (bouton Préparer) avant de le jouer."}
+        >
+          {live.stems > 0 ? "stems prêts" : "sans stems"}
+        </span>
+      )}
       {live.on && live.action && (
         <span className="max-w-[160px] truncate text-[11px] font-bold" style={{ color: "#e879f9" }} title="Dernière intervention du DJ">{`DJ : ${live.action}`}</span>
       )}
