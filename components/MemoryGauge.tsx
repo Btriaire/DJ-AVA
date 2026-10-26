@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { RamOptimizer } from "@/components/RamOptimizer";
 import { MEM_PROFILE_LABEL, freeMemoryNow, getMemSnap, setMemProfile, startMemoryGovernor, subscribeMem, type MemProfile } from "@/lib/memoryGovernor";
 
 const COLOR = { ok: "#34d399", warn: "#ffcc00", critical: "#ef4444" } as const;
@@ -53,6 +54,7 @@ export function MemoryGauge() {
           </option>
         ))}
       </select>
+      <RamOptimizer />
     </span>
   );
 }
