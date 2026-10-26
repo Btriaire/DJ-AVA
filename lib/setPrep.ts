@@ -5,10 +5,11 @@ import { djLinesForShow } from "@/lib/djLines";
 import { lineUrl } from "@/lib/djVoice";
 import { enqueuePrep } from "@/lib/stemPrep";
 import type { DjOptions } from "@/lib/mixPlan";
+import { forceOf } from "@/lib/djForce";
 
 // Everything that can be done before a set is played, for ANY set (Radio-AVA, Playlist, Préparation, Console):
 // the songs copied to the disk cache of the app (instant start, no gap), the DJ voice clips made on the MaRuche
-// server, and optionally the stems of the first songs. What one view prepares is ready for all the others.
+// server, and the stems of the songs (all of them when the DJ plays with stems). What one view prepares is ready for all the others.
 
 export interface PrepProgress {
   state: "running" | "done";
@@ -79,6 +80,9 @@ export const subscribeSetPrep = (cb: () => void) => {
 };
 export const useSetPrep = () => useSyncExternalStore(subscribeSetPrep, getSetPrep, getSetPrep);
 
+// does this DJ play with stems? (force 3 and above, unless the set says no)
+export const wantsStems = (dj: DjOptions | undefined): boolean => !!dj && dj.stems !== "off" && forceOf(dj) >= 3;
+
 export async function prepareSet(playlistId: string, opts: { stems?: boolean } = {}): Promise<void> {
   if (progress[playlistId]?.state === "running") return;
   const lib = loadLibrary();
@@ -88,6 +92,8 @@ export async function prepareSet(playlistId: string, opts: { stems?: boolean } =
   const tracks = pl.trackIds.map((id) => byId.get(id)).filter((t): t is LibTrack => !!t);
   const set = (p: PrepProgress) => emit({ ...progress, [playlistId]: p });
   const last = await prepareTracks(tracks, pl.dj, set);
-  if (opts.stems) enqueuePrep(tracks.slice(0, 2));
+  // the stems of the WHOLE set, in playing order (the first songs are ready first): a DJ with stems on every song
+  // can use them all along; with only two songs prepared it had stems for a minute and none after
+  if (opts.stems ?? wantsStems(pl.dj)) enqueuePrep(tracks);
   set(last);
 }

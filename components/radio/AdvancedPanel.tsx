@@ -397,8 +397,8 @@ export function AdvancedPanel({ prefs, busy, onChange }: AdvancedPanelProps) {
             </div>
             <Switch
               on={prefs.prepStems}
-              label="Préparer les stems des deux premiers titres"
-              hint="Lourd : à activer si tu veux jouer avec les stems dès le début de l'émission."
+              label="Toujours préparer les stems de tous les titres"
+              hint="Lourd (quelques minutes par titre, un seul à la fois). Déjà fait automatiquement quand la force du DJ est de 3 ou plus ; ce réglage le force aussi pour une force plus basse."
               disabled={busy}
               onToggle={() => onChange({ prepStems: !prefs.prepStems })}
             />

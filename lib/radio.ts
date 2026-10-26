@@ -4,7 +4,7 @@ import { ARC_LABEL, computeOrder } from "@/lib/setWizard";
 import { getMemLevel } from "@/lib/memoryGovernor";
 import { DEFAULT_DJ, planMix, type DjOptions, type MixStep } from "@/lib/mixPlan";
 import { enqueuePrep } from "@/lib/stemPrep";
-import { prepareTracks, type PrepProgress } from "@/lib/setPrep";
+import { prepareTracks, wantsStems, type PrepProgress } from "@/lib/setPrep";
 import { findCollection, pickSongs } from "@/lib/styles";
 import { GENRES } from "@/lib/djForce";
 import { findComposer, pickWorks, type ClassicalFilters, type Era, type Instrument, type Mood } from "@/lib/classical";
@@ -930,7 +930,8 @@ export async function prepareShow(key: string): Promise<void> {
   const setPrep = (p: ShowPrep) => emit({ prep: { ...state.prep, [key]: p } });
   const last = await prepareTracks(tracks, state.prefs?.dj, setPrep, () => state.shows.some((s) => s.key === key));
   if (!state.shows.some((s) => s.key === key)) return; // the show was cleared meanwhile
-  if (state.prefs?.prepStems) enqueuePrep(tracks.slice(0, 2));
+  // the stems of every song of the show, in playing order, when asked or when the DJ plays with stems
+  if (state.prefs?.prepStems || wantsStems(state.prefs?.dj)) enqueuePrep(tracks);
   setPrep(last);
 }
 

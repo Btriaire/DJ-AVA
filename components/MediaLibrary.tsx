@@ -39,7 +39,7 @@ import { TRANSITIONS, TRANSITION_FX, crossfadeAt } from "@/lib/transitions";
 import { announcement, DEFAULT_DJ, planMix, type DjOptions, type MixStep } from "@/lib/mixPlan";
 import { playLines, speak, stopSpeaking } from "@/lib/djVoice";
 import { INTRO_LINE, OUTRO_LINE, djLineFor } from "@/lib/djLines";
-import { prepareSet, useSetPrep } from "@/lib/setPrep";
+import { prepareSet, useSetPrep, wantsStems } from "@/lib/setPrep";
 import { useStemsShared } from "@/lib/stemsShared";
 import { getRelayHost, publishRelayHost, registerRelayHost, relayHostStart, relayHostStop, subscribeRelayHost } from "@/lib/relayHost";
 import { cachedLoudness, loudnessFor, matchTrimDb } from "@/lib/audio/levelMatch";
@@ -1328,6 +1328,13 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       deck.play();
     } else void armStems(side); // a cued song loads its prepared stems in the background, to mix with them
     void measureLevel(side);
+    // the songs to come get their stems prepared while this one plays (in the background, one at a time): the longer the
+    // set runs, the more songs have them. Not when memory is tight; nothing new is computed for songs already done.
+    const live = getDjLive();
+    const pl = relayPlaylist();
+    if ((live.on || wantsStems(pl?.dj)) && pl?.dj?.stems !== "off" && getMemLevel() === "ok" && q.length > 1) {
+      enqueuePrep([1, 2, 3].map((k) => q[(relayIdx.current[side] + k) % q.length]).filter((t) => !!t && t.source !== "local"));
+    }
     setRelayCur({ A: relayIdx.current.A, B: relayIdx.current.B }); // refresh list markers
     return true;
   }
