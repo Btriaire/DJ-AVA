@@ -259,6 +259,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   // instead of each side keeping its own counter and both starting on track0.
   const relayPos = useRef(-1);
   const relayFading = useRef(false);
+  const vocalHeld = useRef<Record<"A" | "B", boolean>>({ A: false, B: false }); // the voice of that deck is off for a change: no move may bring it back
   const stemLoadTried = useRef<Record<"A" | "B", string>>({ A: "", B: "" }); // the song whose stems were already asked for, per deck
   const accentRef = useRef({ A: { id: "", lastBar: Number.NEGATIVE_INFINITY, count: 0, busy: 0 }, B: { id: "", lastBar: Number.NEGATIVE_INFINITY, count: 0, busy: 0 } }); // the DJ's interventions in the song that plays on each deck
   const djLive = useDjLive(); // the always-at-hand DJ switch (top bar)
@@ -1639,7 +1640,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   }
   // One move of the DJ on the song that plays (the "force" of the DJ sets how often, how strongly and for how long).
   // Every move puts everything back by itself. Resolves to the length of the move in seconds.
-  function runAccent(deck: typeof engine.deckA, kind: AccentKind, amount: number, maxSec = 12, len = 1): number {
+  function runAccent(deck: typeof engine.deckA, kind: AccentKind, amount: number, maxSec = 12, len = 1, voiceOff = false): number {
     const spb = 60 / deck.bpm;
     const bar = spb * 4;
     const L = (sec: number) => Math.min(sec * len, maxSec); // the length of this move, stretched by the force
@@ -1661,8 +1662,12 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     };
     const stem = (name: string) => deck.stemNames.indexOf(name);
     // a stem move: those stems go down, then come back after `sec`
-    const stemsDown = (idx: number[], sec: number) => {
-      if (!idx.length || idx.some((i) => i < 0)) return 0;
+    const stemsDown = (all: number[], sec: number) => {
+      if (!all.length || all.some((i) => i < 0)) return 0;
+      // the voice is off for a change: a move neither touches it nor brings it back
+      const vi = voiceOff ? deck.stemNames.indexOf("vocals") : -1;
+      const idx = all.filter((i) => i !== vi);
+      if (!idx.length) return 0;
       idx.forEach((i) => deck.setStemVol(i, 0));
       later(sec * 1000, () => idx.forEach((i) => deck.setStemVol(i, 1)));
       return sec;
@@ -1722,7 +1727,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     const live = getDjLive();
     // the top-bar switch rules (and works on songs played by hand); otherwise the set's own DJ options
     const active = live.on || (!!dj && dj.auto !== false);
-    if (!active || !deck.playing || !(deck.bpm > 0)) return;
+    if (!active || !deck.playing || !(deck.bpm > 0) || relayFading.current) return; // no move in the middle of a change
     // a zen or calm set keeps its own gentle force and style, whatever the top-bar DJ says
     const gentle = isGentleGenre(dj?.genre);
     const force = live.on && !gentle ? live.force : forceOf(dj);
@@ -1742,13 +1747,13 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     // the first move comes after about half an interval, the next ones at the full interval
     if (st.lastBar === Number.NEGATIVE_INFINITY) st.lastBar = barIdx - Math.round(FORCE_PROFILE[force].everyBars / 2);
     // what the DJ knows of the song: its tempo, whether it is classical, the stems it really has
-    const feel: Feel = { bpm: deck.bpm, classical: dj?.style === "classical", stems: deck.stemsActive && deck.stemReady ? deck.stemNames : [], genre: live.on && !gentle ? live.genre : dj?.genre };
+    const feel: Feel = { bpm: deck.bpm, classical: dj?.style === "classical", stems: deck.stemsActive && deck.stemReady ? deck.stemNames.filter((n) => !(vocalHeld.current[side] && n === "vocals")) : [], genre: live.on && !gentle ? live.genre : dj?.genre };
     if (!accentDue(force, barIdx, st.lastBar, deck.position(), remain, fadeSec, isCalm(feel))) return;
     const kind = pickAccent(force, st.count, feel);
     if (!kind) return;
     st.lastBar = barIdx;
     st.count++;
-    const sec = runAccent(deck, kind, amountFor(FORCE_PROFILE[force].amount, feel), 14, FORCE_PROFILE[force].len);
+    const sec = runAccent(deck, kind, amountFor(FORCE_PROFILE[force].amount, feel), 14, FORCE_PROFILE[force].len, vocalHeld.current[side]);
     // eslint-disable-next-line react-hooks/purity -- gestionnaire d'événement, hors rendu
     st.busy = performance.now() + sec * 1000 + 400; // the next move waits for this one to finish
     showDjAction(`${ACCENT_LABEL[kind]}${deck.name ? ` (${side})` : ""}`);
@@ -1790,16 +1795,18 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   }, [splitLayout]);
   // The voice of a song that came in with its voice off comes back, over two seconds, once the blend is over and the
   // song is back at its own tempo (a voice pitched to another tempo is the first thing one hears).
-  function releaseVocalsWhenHome(deck: typeof engine.deckA, id: string | undefined) {
+  function releaseVocalsWhenHome(deck: typeof engine.deckA, id: string | undefined, side: "A" | "B") {
     let waited = 0;
     const poll = window.setInterval(() => {
       waited += 400;
       if (deck.origin?.id !== id || !deck.playing) {
         window.clearInterval(poll);
+        vocalHeld.current[side] = false;
         return;
       }
       if (relayFading.current || (Math.abs(deck.pitchPct) > 0.7 && waited < 45000)) return;
       window.clearInterval(poll);
+      vocalHeld.current[side] = false; // the voice is back: moves may use it again
       const i = deck.stemNames.indexOf("vocals");
       if (i < 0 || !deck.stemsActive) return;
       let v = 0;
@@ -1931,7 +1938,10 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           brakeOut(deck);
         } else {
           relayFade(other, Math.max(secs, 0.05), TYPE, !!step?.bassSwap && !tech, tech ? { tech, mode: stemMode } : undefined, { holdVocals: vocalHold });
-          if (vocalHold) releaseVocalsWhenHome(otherDeck, otherDeck.origin?.id);
+          if (vocalHold) {
+            vocalHeld.current[other] = true;
+            releaseVocalsWhenHome(otherDeck, otherDeck.origin?.id, other);
+          }
           vocalNote = vocalHold ? `voix coupées (${Math.round(bpmDiff(bpmOut, bpmIn))} BPM d'écart)` : bigGap ? `${Math.round(bpmDiff(bpmOut, bpmIn))} BPM d'écart, stems indisponibles : voix gardées` : "";
         }
         // the style's own touch on the change: an echo out, a riser, a phaser... on top of the blend (from force 3)
