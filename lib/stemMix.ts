@@ -107,7 +107,7 @@ export function stemFrame(tech: StemTech, k: number, mode: StemMode = "smooth"):
 // set does not repeat the same trick; what the two songs have (stems loaded or not) limits the choice.
 // `bpm` (the slower of the two songs) and `sync` let the choice fit the songs: drums played together need the
 // same beat, a slammed bass needs a tempo that can take it, a calm pair only gets the soft techniques.
-export function pickTech(o: { outStems: boolean; inStems: boolean; index: number; mode: StemMode; type: TransitionType; sec: number; bpm?: number; sync?: boolean }): StemTech | null {
+export function pickTech(o: { outStems: boolean; inStems: boolean; index: number; mode: StemMode; type: TransitionType; sec: number; bpm?: number; sync?: boolean; noVocals?: boolean }): StemTech | null {
   if (o.mode === "off" || o.type === "cut" || o.sec < 6) return null;
   const bpm = o.bpm ?? 120;
   const beat = o.sync !== false && bpm >= 90; // drum-on-drum blends only work on a shared beat
@@ -115,6 +115,9 @@ export function pickTech(o: { outStems: boolean; inStems: boolean; index: number
     (t) => (t !== "drumswap" && t !== "drumbridge") || beat
   ) as StemTech[];
   const both: StemTech[] = o.mode === "punchy" ? punchy.filter((t) => t !== "bassslam" || bpm >= 100) : ["build", "vocalhandoff"];
-  const list: StemTech[] = o.outStems && o.inStems ? both : o.inStems ? ["build"] : o.outStems ? ["stripout"] : [];
+  // voices switched off (the tempos are too far apart): no technique built around a voice
+  const VOICE_TECHS: StemTech[] = ["vocalhandoff", "stripout"];
+  const pool: StemTech[] = o.outStems && o.inStems ? both : o.inStems ? ["build"] : o.outStems ? ["stripout"] : [];
+  const list = pool.filter((t) => !o.noVocals || !VOICE_TECHS.includes(t));
   return list.length ? list[o.index % list.length] : null;
 }

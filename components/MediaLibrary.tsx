@@ -36,7 +36,7 @@ import { buildJourney } from "./prep/Journey";
 import { analyzeLibraryTrack } from "@/lib/analyzeTrack";
 import { alignDelaySec } from "@/lib/audio/beatAlign";
 import { TRANSITIONS, TRANSITION_FX, crossfadeAt } from "@/lib/transitions";
-import { announcement, DEFAULT_DJ, planMix, type DjOptions, type MixStep } from "@/lib/mixPlan";
+import { VOCAL_GAP_BPM, announcement, bpmDiff, DEFAULT_DJ, planMix, type DjOptions, type MixStep } from "@/lib/mixPlan";
 import { playLines, speak, stopSpeaking } from "@/lib/djVoice";
 import { INTRO_LINE, OUTRO_LINE, djLineFor } from "@/lib/djLines";
 import { prepareSet, useSetPrep, wantsStems } from "@/lib/setPrep";
@@ -1373,12 +1373,21 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   //             filter (like closing the filter knob before pulling out a
   //             track) — the classic "filter transition" DJs use to tuck a
   //             song away instead of just fading its volume
-  function relayFade(to: "A" | "B", secs: number, type: TransitionType = "fade", bassSwap = false, stem?: { tech: StemTech; mode: StemMode }) {
+  function relayFade(to: "A" | "B", secs: number, type: TransitionType = "fade", bassSwap = false, stem?: { tech: StemTech; mode: StemMode }, opts: { holdVocals?: boolean } = {}) {
     relayFading.current = true;
     const from = engine.getCrossfade();
     const target = to === "B" ? 1 : 0;
     const outDeck = to === "B" ? engine.deckA : engine.deckB;
     const inDeck = to === "B" ? engine.deckB : engine.deckA;
+    // Tempos too far apart (see VOCAL_GAP_BPM): the voices are switched off for the change. The outgoing voice fades out
+    // over the first fifth of the blend; the incoming one stays off until the song is back at its own tempo.
+    const hold = !!opts.holdVocals;
+    const vOut = hold ? outDeck.stemNames.indexOf("vocals") : -1;
+    const vIn = hold ? inDeck.stemNames.indexOf("vocals") : -1;
+    const holdVocals = (k: number) => {
+      if (vOut >= 0 && outDeck.stemsActive) outDeck.setStemVol(vOut, 1 - Math.min(1, k / 0.2));
+      if (vIn >= 0 && inDeck.stemsActive) inDeck.setStemVol(vIn, 0);
+    };
     const BASS_CUT = -24; // dB
     // bass swap: the incoming song's low end is held back, then the two lows trade places around the middle of the blend
     const swap = (k: number) => {
@@ -1396,6 +1405,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       const f = stemFrame(stem.tech, k, stem.mode);
       const put = (d: typeof outDeck, lv: Partial<Record<StemName, number>>) => {
         for (const [name, v] of Object.entries(lv) as [StemName, number][]) {
+          if (hold && name === "vocals") continue; // the voices are handled apart
           const i = d.stemNames.indexOf(name);
           if (i >= 0) d.setStemVol(i, v);
         }
@@ -1403,13 +1413,14 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       put(outDeck, f.out);
       put(inDeck, f.inn);
       const vi = outDeck.stemNames.indexOf("vocals");
-      if (vi >= 0) outDeck.setStemDelaySend(vi, f.outEcho);
+      if (vi >= 0 && !hold) outDeck.setStemDelaySend(vi, f.outEcho);
     };
     const stemsEnd = () => {
       if (!stem) return;
       applyStems(1);
-      inDeck.stemNames.forEach((_, i) => inDeck.setStemVol(i, 1)); // the incoming song ends with all its stems
+      inDeck.stemNames.forEach((_, i) => inDeck.setStemVol(i, i === vIn ? 0 : 1)); // the incoming song ends with all its stems (its voice comes back later)
     };
+    holdVocals(0);
     applyStems(0); // the incoming song starts with the stems it comes in with, before it is heard
     // effect transitions: the deck effect of the outgoing song goes on at its moment, its dry sound may stop
     // (its echoes / reverb keep ringing), a loop holds its last bar
@@ -1469,6 +1480,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       const k = Math.min(1, (performance.now() - t0) / (secs * 1000));
       const eased = stem ? stemFrame(stem.tech, k, stem.mode).cross : crossfadeAt(type, k);
       applyStems(k);
+      holdVocals(k);
       applyFx(k);
       engine.setCrossfade(from + (target - from) * eased);
       if (type === "filter") outDeck.setFilter(-eased); // sweep toward closed low-pass as it fades out
@@ -1776,6 +1788,28 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [splitLayout]);
+  // The voice of a song that came in with its voice off comes back, over two seconds, once the blend is over and the
+  // song is back at its own tempo (a voice pitched to another tempo is the first thing one hears).
+  function releaseVocalsWhenHome(deck: typeof engine.deckA, id: string | undefined) {
+    let waited = 0;
+    const poll = window.setInterval(() => {
+      waited += 400;
+      if (deck.origin?.id !== id || !deck.playing) {
+        window.clearInterval(poll);
+        return;
+      }
+      if (relayFading.current || (Math.abs(deck.pitchPct) > 0.7 && waited < 45000)) return;
+      window.clearInterval(poll);
+      const i = deck.stemNames.indexOf("vocals");
+      if (i < 0 || !deck.stemsActive) return;
+      let v = 0;
+      const ramp = window.setInterval(() => {
+        v = Math.min(1, v + 0.1);
+        deck.setStemVol(i, v);
+        if (v >= 1 || deck.origin?.id !== id) window.clearInterval(ramp);
+      }, 200);
+    }, 400);
+  }
   // vinyl brake: the song slows down to a stop in under a second
   function brakeOut(deck: typeof engine.deckA) {
     let a = 0.25;
@@ -1841,6 +1875,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       const preFadeWindow = TYPE === "cut" ? Math.max(2, preload) : FADE + lead;
       if (remain > preFadeWindow + 0.3) return;
       relayArmed.current = false;
+      // tempos too far apart: the voices of the two songs are switched off for the change
+      const vocalHold = bpmDiff(deck.bpm, otherDeck.bpm) >= VOCAL_GAP_BPM && (deck.stemsActive || otherDeck.stemsActive) && TYPE !== "cut";
       // beat-matched: the incoming tempo follows the outgoing one and it starts exactly on a beat (or on a bar)
       let wait = 0;
       if (step?.sync && TYPE !== "cut") {
@@ -1854,7 +1890,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       const stemMode: StemMode = dj?.stems ?? "punchy";
       const tech =
         step && dj
-          ? pickTech({ outStems: deck.stemsActive && deck.stemReady, inStems: otherDeck.stemsActive && otherDeck.stemReady, index: relayIdx.current[side], mode: stemMode, type: TYPE, sec: secs, bpm: Math.min(deck.bpm || 120, otherDeck.bpm || 120), sync: !!step?.sync })
+          ? pickTech({ outStems: deck.stemsActive && deck.stemReady, inStems: otherDeck.stemsActive && otherDeck.stemReady, index: relayIdx.current[side], mode: stemMode, type: TYPE, sec: secs, bpm: Math.min(deck.bpm || 120, otherDeck.bpm || 120), sync: !!step?.sync, noVocals: vocalHold })
           : null;
       if (tech) flash(`DJ : ${STEM_TECH_LABEL[tech]}`);
       const go = () => {
@@ -1884,7 +1920,11 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           relayFade(other, 0.9, "fade", false); // the old song slows down while it fades away
           brakeOut(deck);
         } else {
-          relayFade(other, Math.max(secs, 0.05), TYPE, !!step?.bassSwap && !tech, tech ? { tech, mode: stemMode } : undefined);
+          relayFade(other, Math.max(secs, 0.05), TYPE, !!step?.bassSwap && !tech, tech ? { tech, mode: stemMode } : undefined, { holdVocals: vocalHold });
+          if (vocalHold) {
+            releaseVocalsWhenHome(otherDeck, otherDeck.origin?.id);
+            showDjAction(`voix coupées (${Math.round(bpmDiff(deck.bpm, otherDeck.bpm))} BPM d'écart)`);
+          }
         }
         // the style's own touch on the change: an echo out, a riser, a phaser... on top of the blend (from force 3)
         const live = getDjLive();

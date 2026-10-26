@@ -166,4 +166,16 @@ for (const genre of ["zen", "calm"] as const) {
   assert.ok(transitionPalette(genre, 124).every((x) => ["wash", "echo"].includes(x)));
 }
 assert.ok(!moves(5, { bpm: 124, genre: "calm", stems: FOUR }).has("echothrow" as never), "calm: no plain echo");
+// tempos too far apart (10 BPM or more): the voices go off, and no technique built around a voice
+import { VOCAL_GAP_BPM, bpmDiff } from "../lib/mixPlan";
+assert.equal(VOCAL_GAP_BPM, 10);
+assert.equal(bpmDiff(120, 130), 10);
+assert.equal(bpmDiff(130, 65), 0, "double tempo is the same beat");
+assert.ok(bpmDiff(128, 124) < VOCAL_GAP_BPM && bpmDiff(100, 118) >= VOCAL_GAP_BPM);
+assert.equal(bpmDiff(0, 120), 0, "unknown tempo: nothing to decide");
+const withVoice = new Set(Array.from({ length: 12 }, (_, index) => pickTech({ ...both, index, bpm: 126, sync: true })));
+assert.ok(withVoice.has("vocalhandoff"), "voices on: the voice technique is available");
+const noVoice = new Set(Array.from({ length: 12 }, (_, index) => pickTech({ ...both, index, bpm: 126, sync: true, noVocals: true })));
+assert.ok(!noVoice.has("vocalhandoff") && !noVoice.has("stripout"), "voices off: no technique built around a voice");
+assert.ok(pickTech({ outStems: true, inStems: false, index: 0, mode: "punchy", type: "smooth", sec: 12, noVocals: true }) === null, "stripout alone leaves only the voice: dropped");
 console.log("mixplan ok");

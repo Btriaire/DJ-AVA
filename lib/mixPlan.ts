@@ -68,6 +68,15 @@ export function tempoGap(a: number, b: number): { pct: number; folded: boolean }
   return { pct: (r - 1) * 100, folded: false };
 }
 
+// BPM between two songs, a double or half tempo counting as the same beat (130 and 65: 0). Over VOCAL_GAP_BPM the voices
+// of the two songs cannot be heard together (one of them is pitched or off the beat): the DJ switches them off.
+export const VOCAL_GAP_BPM = 10;
+export function bpmDiff(a: number, b: number): number {
+  if (!(a > 0) || !(b > 0)) return 0;
+  const [lo, hi] = a < b ? [a, b] : [b, a];
+  return tempoGap(a, b).folded ? Math.abs(hi / 2 - lo) : hi - lo;
+}
+
 // `index` (position of the transition in the set) varies the effect transitions so a set does not repeat itself
 // seconds of each effect blend, and why it was chosen
 const FX_SEC: Partial<Record<TransitionType, number>> = { echo: 6, dub: 8, wash: 8, flanger: 10, gate: 8, noise: 8, roll: 6, brake: 4, reverse: 4, loop: 12, highpass: 10, eq: 14, drop: 8 };
