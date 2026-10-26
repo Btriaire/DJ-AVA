@@ -34,6 +34,7 @@ export interface DjOptions {
   stems?: "off" | "smooth" | "punchy"; // use the stems of the songs that have them ready (see lib/stemMix.ts)
   force?: 1 | 2 | 3 | 4 | 5; // how much the DJ does (lib/djForce.ts); 3 when missing
   blend?: "short" | "normal" | "long" | "xlong"; // length of the blends: x0.6, x1, x1.8, x3
+  vocalGap?: number; // switch the voices (stems) off for a change when the songs are this many BPM apart or more (default VOCAL_GAP_BPM, 0 = never)
   genre?: Genre; // the style the DJ plays: it decides which effects are used (lib/djForce.ts); "auto" when missing
 }
 

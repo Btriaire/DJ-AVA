@@ -1,5 +1,5 @@
 "use client";
-import { BLEND_LABEL, type DjOptions } from "@/lib/mixPlan";
+import { BLEND_LABEL, VOCAL_GAP_BPM, type DjOptions } from "@/lib/mixPlan";
 import { FORCES, FORCE_HINT, FORCE_LABEL, GENRES, GENRE_HINT, GENRE_LABEL, PROFILE, applyForce, forceOf, type DjForce, type Genre } from "@/lib/djForce";
 
 // The force of the intelligent DJ (5 levels) and the length of its blends, the same control in every module.
@@ -55,6 +55,21 @@ export function DjForceControl({ dj, disabled, onChange }: { dj: DjOptions; disa
           ))}
         </select>
         <p className="w-full text-[11px] text-neutral-400">{GENRE_HINT[dj.genre ?? "auto"]}</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[10px] uppercase tracking-[0.15em] text-neutral-500">Couper les voix (stems)</span>
+        <select
+          className="prep-input px-2 py-1 text-[12px]"
+          value={dj.vocalGap ?? VOCAL_GAP_BPM}
+          disabled={disabled}
+          aria-label="Écart de tempo à partir duquel les voix sont coupées pendant un enchaînement"
+          onChange={(e) => onChange({ ...dj, vocalGap: Number(e.target.value) })}
+        >
+          {[0, 3, 6, 8, 10, 12, 15, 20].map((n) => (
+            <option key={n} value={n}>{n === 0 ? "Jamais" : `à partir de ${n} BPM d'écart`}</option>
+          ))}
+        </select>
+        <p className="w-full text-[11px] text-neutral-400">Quand deux morceaux sont trop éloignés en tempo, leurs voix se superposent mal : elles sont coupées pendant l'enchaînement (si les stems sont prêts).</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[10px] uppercase tracking-[0.15em] text-neutral-500">Durée des fondus</span>

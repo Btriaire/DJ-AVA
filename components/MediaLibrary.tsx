@@ -1876,7 +1876,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       if (remain > preFadeWindow + 0.3) return;
       relayArmed.current = false;
       // tempos too far apart: the voices of the two songs are switched off for the change
-      const vocalHold = bpmDiff(deck.bpm, otherDeck.bpm) >= VOCAL_GAP_BPM && (deck.stemsActive || otherDeck.stemsActive) && TYPE !== "cut";
+      const gapLimit = dj?.vocalGap ?? VOCAL_GAP_BPM;
+      const vocalHold = gapLimit > 0 && bpmDiff(deck.bpm, otherDeck.bpm) >= gapLimit && (deck.stemsActive || otherDeck.stemsActive) && TYPE !== "cut";
       // beat-matched: the incoming tempo follows the outgoing one and it starts exactly on a beat (or on a bar)
       let wait = 0;
       if (step?.sync && TYPE !== "cut") {
