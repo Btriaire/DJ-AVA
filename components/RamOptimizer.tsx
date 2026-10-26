@@ -71,7 +71,6 @@ export function RamOptimizer() {
       setResult({ closed: data.closed, left: data.left, freedMB: data.freedMB });
       setGroups(data.groups ?? []);
       setPicked(new Set((data.groups ?? []).filter((g) => !g.locked && data.left.includes(g.name)).map((g) => g.id)));
-      setSure(false);
       setForceAsk(false);
     } catch (e) {
       setError((e as Error).message);
@@ -107,13 +106,13 @@ export function RamOptimizer() {
       </button>
       {open && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-3" role="dialog" aria-modal="true" aria-label="Optimisation de RAM avancée" onClick={() => !busy && setOpen(false)}>
-          <div className="flex max-h-[96vh] w-full max-w-xl flex-col gap-3 overflow-y-auto rounded-xl border border-[var(--prep-line)] bg-[var(--prep-surface,#0d0d10)] p-5 shadow-[0_20px_60px_rgba(0,0,0,.8)]" style={{ background: "#0d0d10" }} onClick={(e) => e.stopPropagation()}>
+          <div className="flex max-h-[96vh] w-full max-w-xl flex-col gap-3 overflow-y-auto rounded-xl border border-[#3f3f46] bg-[#0d0d10] p-5 shadow-[0_20px_60px_rgba(0,0,0,.8)]" style={{ background: "#0d0d10" }} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-sm font-black uppercase tracking-[0.18em] text-neutral-100">Optimisation de RAM avancée</h2>
                 <p className="text-[12px] text-neutral-400">Ferme les programmes dont DJSynth n&apos;a pas besoin, pour lui laisser toute la mémoire du Mac.</p>
               </div>
-              <button type="button" className="prep-btn-ghost px-2 py-1 text-[11px]" onClick={() => setOpen(false)} disabled={busy} aria-label="Fermer">
+              <button type="button" className="rounded-lg border border-zinc-600 px-2 py-1 text-[11px] text-zinc-200 hover:bg-zinc-800 disabled:opacity-40" onClick={() => setOpen(false)} disabled={busy} aria-label="Fermer">
                 ✕
               </button>
             </div>
@@ -125,16 +124,16 @@ export function RamOptimizer() {
               </p>
             </div>
 
-            <div className="max-h-[30vh] shrink-0 overflow-y-auto rounded-lg border border-[var(--prep-line)]">
+            <div className="max-h-[30vh] shrink-0 overflow-y-auto rounded-lg border border-[#3f3f46]">
               {groups === null ? (
                 <p className="p-4 text-[12px] text-neutral-400">Lecture des programmes ouverts…</p>
               ) : groups.length === 0 ? (
                 <p className="p-4 text-[12px] text-neutral-400">{error ? "Impossible de lire la liste." : "Rien d'autre n'est ouvert."}</p>
               ) : (
-                <ul className="divide-y divide-[var(--prep-line)]">
+                <ul className="divide-y divide-[#3f3f46]">
                   {groups.map((g) => (
                     <li key={g.id} className={`flex items-center gap-2.5 px-3 py-2 text-[12px] ${g.locked ? "opacity-50" : ""}`}>
-                      <input type="checkbox" className="h-4 w-4 accent-[var(--prep-accent)]" disabled={!!g.locked || busy} checked={!g.locked && picked.has(g.id)} onChange={() => toggle(g.id)} aria-label={`Fermer ${g.name}`} />
+                      <input type="checkbox" className="h-4 w-4 accent-amber-500" disabled={!!g.locked || busy} checked={!g.locked && picked.has(g.id)} onChange={() => toggle(g.id)} aria-label={`Fermer ${g.name}`} />
                       <span className="min-w-0 flex-1 truncate font-medium text-neutral-100" title={g.name}>
                         {g.name}
                         <span className="ml-1.5 text-[10px] uppercase tracking-wider text-neutral-500">{g.kind === "app" ? "appli" : "outil"}</span>
@@ -163,7 +162,7 @@ export function RamOptimizer() {
 
             {error && <p className="text-[12px] text-red-400">{error}</p>}
             {result && (
-              <div className="rounded-lg border border-[var(--prep-line)] p-3 text-[12px] text-neutral-200">
+              <div className="rounded-lg border border-[#3f3f46] p-3 text-[12px] text-neutral-200">
                 <p>{result.closed.length ? `Fermés : ${result.closed.join(", ")}.` : "Rien n'a été fermé."}</p>
                 <p className="text-neutral-400">{`Environ ${fmtMB(result.freedMB)} libérés.`}</p>
                 {result.left.length > 0 && (
@@ -173,9 +172,9 @@ export function RamOptimizer() {
             )}
 
             {/* always visible, even on a small window: the confirmation and the buttons stay at the bottom */}
-            <div className="sticky bottom-0 -mx-5 -mb-5 flex flex-col gap-3 border-t border-[var(--prep-line)] px-5 py-4" style={{ background: "#0d0d10" }}>
+            <div className="sticky bottom-0 -mx-5 -mb-5 flex flex-col gap-3 border-t border-[#3f3f46] px-5 py-4" style={{ background: "#0d0d10" }}>
             <label className="flex items-start gap-2 text-[12px] text-neutral-300">
-                <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--prep-accent)]" checked={sure} onChange={(e) => setSure(e.target.checked)} disabled={busy} />
+                <input type="checkbox" className="mt-0.5 h-4 w-4 accent-amber-500" checked={sure} onChange={(e) => setSure(e.target.checked)} disabled={busy} />
                 <span>Je comprends que ces programmes vont se fermer et que je peux perdre ce qui n&apos;est pas enregistré.</span>
               </label>
 
@@ -191,10 +190,10 @@ export function RamOptimizer() {
                     {forceAsk ? "Confirmer : tout arrêter maintenant" : "Forcer la fermeture"}
                   </button>
                 )}
-                <button type="button" className="prep-btn-ghost px-3 py-2 text-[12px]" onClick={() => void load()} disabled={busy}>
+                <button type="button" className="rounded-lg border border-zinc-600 px-3 py-2 text-[12px] text-zinc-200 hover:bg-zinc-800 disabled:opacity-40" onClick={() => void load()} disabled={busy}>
                   Actualiser
                 </button>
-                <button type="button" className="prep-btn-accent px-4 py-2 text-[12px] font-black disabled:opacity-40" disabled={busy || !sure || !chosen.length} onClick={() => void close("quit")}>
+                <button type="button" className="rounded-lg bg-amber-500 px-4 py-2 text-[12px] font-black text-black hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400" disabled={busy || !sure || !chosen.length} onClick={() => void close("quit")}>
                   {busy ? "Fermeture…" : `Fermer proprement (${chosen.length})`}
                 </button>
               </div>
