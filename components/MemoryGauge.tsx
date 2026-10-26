@@ -12,7 +12,7 @@ export function MemoryGauge() {
 
   useEffect(() => startMemoryGovernor(), []);
 
-  if (!snap) return null; // web build: no native memory info
+  if (!snap) return <RamOptimizer />; // web build: no native memory info (the RAM tool still works on a local server)
 
   const totalGB = snap.usedMB / 1024;
   const value = totalGB < 1 ? `${snap.usedMB} Mo` : `${totalGB.toFixed(1).replace(".", ",")} Go`;

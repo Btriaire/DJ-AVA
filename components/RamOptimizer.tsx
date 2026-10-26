@@ -14,6 +14,12 @@ interface Result {
 // "Optimisation de RAM avancée": closes the programs of the Mac that DJSynth does not need, after a warning and a
 // confirmation. The list, the locks (DJSynth, system, Claude) and the closing are decided by the server (/api/system/ram).
 export function RamOptimizer() {
+  // only on the Mac that runs DJSynth (the server refuses anything else anyway)
+  const [local, setLocal] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reads the address once the page is shown
+    setLocal(/^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname));
+  }, []);
   const [open, setOpen] = useState(false);
   const [groups, setGroups] = useState<RamGroup[] | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -79,6 +85,8 @@ export function RamOptimizer() {
       else n.add(id);
       return n;
     });
+
+  if (!local) return null;
 
   return (
     <>
