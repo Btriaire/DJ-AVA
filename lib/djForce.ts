@@ -314,3 +314,44 @@ export function accentDue(force: DjForce, bar: number, lastBar: number, secPlaye
   if (secPlayed < 12 || secLeft < transitionSec + 14) return false; // not at the very start, not into the transition
   return bar - lastBar >= PROFILE[force].everyBars * (calm ? 1.5 : 1);
 }
+
+// ---- TRANS (the rhythmic gate of the deck effects) tuned to the song --------------------------------------------------
+// The gate chops the sound on the beat: too fast on a fast song it turns into a buzz, too slow on a slow one it drags.
+// The length of one chop is chosen from the tempo so that it is close to what the style uses, the part of the beat left
+// open (Durée) and the softness of the cut (Doux) follow the style. Zen, calm and classical never use it (null).
+
+const BEAT_FRACTIONS = [1 / 16, 1 / 8, 1 / 4, 1 / 2, 3 / 4, 1, 2, 4]; // = BEAT_DIVS of lib/audio/fxTypes.ts (first ones)
+const GATE_STYLE: Partial<Record<Exclude<Genre, "auto">, { period: number; open: number; soft: number }>> = {
+  club: { period: 0.18, open: 0.5, soft: 0.2 },
+  hiphop: { period: 0.25, open: 0.55, soft: 0.3 },
+  pop: { period: 0.25, open: 0.6, soft: 0.4 },
+  disco: { period: 0.22, open: 0.55, soft: 0.35 },
+  dub: { period: 0.5, open: 0.6, soft: 0.5 },
+  latino: { period: 0.2, open: 0.45, soft: 0.15 },
+};
+export interface GateSetting {
+  beat: number; // index of the beat division of the effect (BEAT_DIVS)
+  p1: number; // Durée, 0..1
+  p2: number; // Doux, 0..1
+}
+export function gateSetting(bpm: number, genre: Genre = "auto", classical = false): GateSetting | null {
+  if (!(bpm > 0) || classical) return null;
+  const g = genreOf({ bpm, genre });
+  const style = GATE_STYLE[g];
+  if (!style) return null;
+  const beatSec = 60 / bpm;
+  let best = 3;
+  let bestGap = Infinity;
+  BEAT_FRACTIONS.forEach((f, i) => {
+    const period = beatSec * f;
+    if (period < 0.08) return; // faster than that is a buzz, not a rhythm
+    const gap = Math.abs(period - style.period);
+    if (gap < bestGap) {
+      bestGap = gap;
+      best = i;
+    }
+  });
+  // a slow song leaves a little more room, a fast one cuts shorter (the duty is the part of each chop that sounds)
+  const open = Math.max(0.3, Math.min(0.75, style.open + (bpm < 100 ? 0.05 : bpm > 140 ? -0.05 : 0)));
+  return { beat: best, p1: Math.max(0, Math.min(1, (open * 100 - 10) / 80)), p2: style.soft };
+}

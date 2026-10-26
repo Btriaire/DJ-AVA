@@ -178,4 +178,24 @@ assert.ok(withVoice.has("vocalhandoff"), "voices on: the voice technique is avai
 const noVoice = new Set(Array.from({ length: 12 }, (_, index) => pickTech({ ...both, index, bpm: 126, sync: true, noVocals: true })));
 assert.ok(!noVoice.has("vocalhandoff") && !noVoice.has("stripout"), "voices off: no technique built around a voice");
 assert.ok(pickTech({ outStems: true, inStems: false, index: 0, mode: "punchy", type: "smooth", sec: 12, noVocals: true }) === null, "stripout alone leaves only the voice: dropped");
+// TRANS (gate) tuned to the tempo and the style
+import { gateSetting } from "../lib/djForce";
+for (const genre of ["club", "hiphop", "pop", "disco", "dub", "latino"] as const) {
+  for (let bpm = 60; bpm <= 200; bpm += 10) {
+    const g = gateSetting(bpm, genre)!;
+    assert.ok(g, `${genre} ${bpm}: a setting`);
+    assert.ok(g.beat >= 0 && g.beat <= 7 && g.p1 >= 0 && g.p1 <= 1 && g.p2 >= 0 && g.p2 <= 1);
+    assert.ok((60 / bpm) * [1 / 16, 1 / 8, 1 / 4, 1 / 2, 3 / 4, 1, 2, 4][g.beat] >= 0.08 - 1e-9, `${genre} ${bpm}: never a buzz`);
+  }
+}
+assert.equal(gateSetting(128, "club")!.beat, 3, "club at 128: eighth notes");
+assert.equal(gateSetting(120, "club")!.beat, 2, "club at 120: sixteenth notes");
+assert.ok(gateSetting(150, "club")!.p1 < gateSetting(90, "club")!.p1, "a fast song is cut shorter than a slow one");
+assert.ok(gateSetting(124, "pop")!.p2 > gateSetting(124, "club")!.p2, "pop: a softer cut than club");
+assert.ok(gateSetting(124, "dub")!.beat > gateSetting(124, "latino")!.beat, "dub chops slower than latino");
+assert.equal(gateSetting(80, "zen"), null);
+assert.equal(gateSetting(80, "calm"), null);
+assert.equal(gateSetting(80, "club", true), null, "classical: never");
+assert.equal(gateSetting(0, "club"), null, "unknown tempo: nothing to tune");
+assert.ok(gateSetting(124, "auto") !== null && gateSetting(80, "auto") === null, "auto: club at 124, chill (no gate) at 80");
 console.log("mixplan ok");

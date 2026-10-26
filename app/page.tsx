@@ -34,6 +34,8 @@ import { DeckTimers } from "@/components/DeckTimers";
 import { MemoryGauge } from "@/components/MemoryGauge";
 import { RecoveryNotice } from "@/components/RecoveryNotice";
 import { DjLiveControl } from "@/components/DjLiveControl";
+import { NextUpBar } from "@/components/NextUpBar";
+import { DjSynthLogo } from "@/components/DjSynthLogo";
 import { MixScope } from "@/components/MixScope";
 import { CpuMeter } from "@/components/CpuMeter";
 import RadioView from "@/components/radio/RadioView";
@@ -1235,6 +1237,8 @@ const [showModulePicker, setShowModulePicker] = useState(false);
         </div>
       </header>
 
+      {ready && engine && (view === "console" || view === "platine") && <NextUpBar />}
+
       {ready && engine && showLibrary && view !== "platine" && (
         <LibraryPanel
           engine={engine}
@@ -1421,6 +1425,9 @@ const [showModulePicker, setShowModulePicker] = useState(false);
                   className="w-32"
                 />
               </div>
+
+              {/* The DJ-SYNTH sign: lit when the intelligent DJ is on */}
+              <DjSynthLogo />
 
               {/* Normalize: match the gain of both decks */}
               <button

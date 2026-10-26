@@ -1851,6 +1851,10 @@ export class Deck {
   setFxParam(name: FxName, key: "p1" | "p2", v: number) {
     this.fx.setParam(name, key, v);
   }
+  // beat division of a tempo-synced effect (index in BEAT_DIVS)
+  setFxBeat(name: FxName, idx: number) {
+    this.fx.setBeat(name, idx);
+  }
   getFxWet(name: FxName): number {
     return this.fx.getWet(name);
   }

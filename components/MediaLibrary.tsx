@@ -41,10 +41,10 @@ import { playLines, speak, stopSpeaking } from "@/lib/djVoice";
 import { INTRO_LINE, OUTRO_LINE, djLineFor } from "@/lib/djLines";
 import { prepareSet, useSetPrep, wantsStems } from "@/lib/setPrep";
 import { useStemsShared } from "@/lib/stemsShared";
-import { getRelayHost, publishRelayHost, registerRelayHost, relayHostStart, relayHostStop, subscribeRelayHost } from "@/lib/relayHost";
+import { type QueueTrack, getRelayHost, publishRelayHost, registerRelayHost, relayHostStart, relayHostStop, subscribeRelayHost } from "@/lib/relayHost";
 import { cachedLoudness, loudnessFor, matchTrimDb } from "@/lib/audio/levelMatch";
 import { getDjLive, setDjStems, showDjAction, useDjLive } from "@/lib/djLive";
-import { ACCENT_LABEL, MASTER_MOVES, isGentleGenre, PROFILE as FORCE_PROFILE, accentDue, amountFor, forceOf, isCalm, isMasterMove, pickAccent, pickTransitionMove, type AccentKind, type Feel } from "@/lib/djForce";
+import { ACCENT_LABEL, MASTER_MOVES, gateSetting, isGentleGenre, PROFILE as FORCE_PROFILE, accentDue, amountFor, forceOf, isCalm, isMasterMove, pickAccent, pickTransitionMove, type AccentKind, type Feel, type Genre } from "@/lib/djForce";
 import type { FxName } from "@/lib/audio/FXRack";
 import { pickTech, stemFrame, STEM_TECH_LABEL, type StemMode, type StemName, type StemTech } from "@/lib/stemMix";
 import { getMemLevel } from "@/lib/memoryGovernor";
@@ -1553,8 +1553,70 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     if (relay) stopRelay();
     else startRelay();
   }
+  // ---- the songs to come (shown in the line at the top of the Console, see components/NextUpBar.tsx) ----
+  // The queue as a list that starts with the song playing: r[0] = now, r[1] = waiting on the other deck, and so on.
+  const skipNow = useRef(false); // "next song now": the tick of the relay starts the change at once
+  function rotatedQueue(): { q: LibTrack[]; r: LibTrack[]; cur: number; fg: "A" | "B" } | null {
+    const q = liveQueue("A");
+    const fg = relaySide.current;
+    const cur = relayIdx.current[fg];
+    if (!q.length || cur < 0 || cur >= q.length) return null;
+    return { q, cur, fg, r: [...q.slice(cur), ...q.slice(0, cur)] };
+  }
+  const queueEditable = () => {
+    const plId = queueSrcRef.current.A;
+    const pl = plId ? dataRef.current.playlists.find((p) => p.id === plId) : undefined;
+    return !!pl && pl.trackIds.length === liveQueue("A").length; // a set (not the singles filed on the decks), all of whose songs are known
+  };
+  // writes the new order (the song playing keeps its place), re-plans the changes and reloads the song waiting on the other deck
+  function applyQueueOrder(r: LibTrack[], cur: number, fg: "A" | "B", firstChanged: boolean) {
+    const plId = queueSrcRef.current.A;
+    if (!plId || !queueEditable()) return;
+    const len = r.length;
+    const ids: string[] = new Array(len);
+    r.forEach((t, i) => {
+      ids[(cur + i) % len] = t.id;
+    });
+    persist((d) => ({
+      ...d,
+      playlists: d.playlists.map((p) => {
+        if (p.id !== plId) return p;
+        const byId = new Map(d.tracks.map((t) => [t.id, t]));
+        const ordered = ids.map((id) => byId.get(id)).filter((t): t is LibTrack => !!t);
+        // the plan was made for the old order: made again (steps fixed by hand were for other pairs of songs)
+        return { ...p, trackIds: ids, mixPlan: p.mixPlan ? planMix(ordered, "flow", p.dj ?? DEFAULT_DJ) : p.mixPlan };
+      }),
+    }));
+    const other = fg === "A" ? "B" : "A";
+    const od = other === "A" ? engine.deckA : engine.deckB;
+    if (firstChanged && relayArmed.current && !relayFading.current && !od.playing) {
+      relayArmed.current = false; // no change starts while the waiting song is being replaced
+      relayPos.current = cur;
+      relayLoadNext(other, false)
+        .catch(() => false)
+        .finally(() => {
+          relayArmed.current = true;
+        });
+    }
+  }
+  function queueZap(k: number) {
+    const rq = rotatedQueue();
+    if (!rq || k < 1 || k >= rq.r.length || !queueEditable()) return;
+    const [item] = rq.r.splice(k, 1);
+    rq.r.push(item); // to the end of the set: it comes back after all the others
+    applyQueueOrder(rq.r, rq.cur, rq.fg, k === 1);
+    flash(`« ${item.name} » passé en fin de set`);
+  }
+  function queueSwap(a: number, b: number) {
+    const rq = rotatedQueue();
+    if (!rq || a < 1 || b < 1 || a >= rq.r.length || b >= rq.r.length || a === b || !queueEditable()) return;
+    [rq.r[a], rq.r[b]] = [rq.r[b], rq.r[a]];
+    applyQueueOrder(rq.r, rq.cur, rq.fg, a === 1 || b === 1);
+  }
+  const toQueueTrack = (t: LibTrack): QueueTrack => ({ id: t.id, name: t.name, bpm: t.bpm, camelot: t.camelot, art: t.art });
+
   // the order box of the relay (see lib/relayHost.ts): the Playlist view registers itself, the others publish through it
-  const hostApi = useRef<{ start: (id: string | null, idx?: number) => void; stop: () => void }>({ start: () => {}, stop: () => {} });
+  const hostApi = useRef<{ start: (id: string | null, idx?: number) => void; stop: () => void; zap: (k: number) => void; swap: (a: number, b: number) => void; skipNow: () => void }>({ start: () => {}, stop: () => {}, zap: () => {}, swap: () => {}, skipNow: () => {} });
   useEffect(() => {
     hostApi.current = {
       start: (id, idx) => {
@@ -1573,15 +1635,33 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       stop: () => {
         if (relayRef.current) stopRelay();
       },
+      zap: (k) => queueZap(k),
+      swap: (a, b) => queueSwap(a, b),
+      skipNow: () => {
+        if (!relayRef.current) return;
+        skipNow.current = true;
+        flash("Titre suivant : l'enchaînement démarre");
+      },
     };
   });
   useEffect(() => {
     if (!splitLayout) return;
-    return registerRelayHost({ start: (id, idx) => hostApi.current.start(id, idx), stop: () => hostApi.current.stop() });
+    return registerRelayHost({ start: (id, idx) => hostApi.current.start(id, idx), stop: () => hostApi.current.stop(), zap: (k) => hostApi.current.zap(k), swap: (a, b) => hostApi.current.swap(a, b), skipNow: () => hostApi.current.skipNow() });
   }, [splitLayout]);
   useEffect(() => {
-    if (splitLayout) publishRelayHost({ running: relay, fg: relayFg, cur: relayCur });
-  }, [splitLayout, relay, relayFg, relayCur]);
+    if (!splitLayout) return;
+    const rq = relay ? rotatedQueue() : null;
+    publishRelayHost({
+      running: relay,
+      fg: relayFg,
+      cur: relayCur,
+      now: rq ? toQueueTrack(rq.r[0]) : null,
+      upcoming: rq ? rq.r.slice(1, 9).map(toQueueTrack) : [],
+      editable: !!rq && queueEditable(),
+      firstLocked: !!rq && relayFading.current,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reads the refs of the relay at each change of its state or of the library
+  }, [splitLayout, relay, relayFg, relayCur, data]);
 
   // transition length driving the auto-mix, taken from whichever set is queued
   // on Deck A (the relay's canonical source) — falls back to a smooth default.
@@ -1638,9 +1718,17 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     const base = decks.map((d) => d.volumeValue);
     playLines([OUTRO_LINE], { onStart: () => decks.forEach((d, i) => d.setVolume(base[i] * 0.45)), onEnd: () => decks.forEach((d, i) => d.setVolume(base[i])) });
   }
+  // TRANS (the rhythmic gate of the deck) set for the tempo and the style of the song that plays on this deck
+  function tuneGate(deck: typeof engine.deckA, genre: Genre, classical = false) {
+    const g = gateSetting(deck.bpm, genre, classical);
+    if (!g) return;
+    deck.setFxBeat("gate", g.beat);
+    deck.setFxParam("gate", "p1", g.p1);
+    deck.setFxParam("gate", "p2", g.p2);
+  }
   // One move of the DJ on the song that plays (the "force" of the DJ sets how often, how strongly and for how long).
   // Every move puts everything back by itself. Resolves to the length of the move in seconds.
-  function runAccent(deck: typeof engine.deckA, kind: AccentKind, amount: number, maxSec = 12, len = 1, voiceOff = false): number {
+  function runAccent(deck: typeof engine.deckA, kind: AccentKind, amount: number, maxSec = 12, len = 1, voiceOff = false, genreForGate: Genre = "auto"): number {
     const spb = 60 / deck.bpm;
     const bar = spb * 4;
     const L = (sec: number) => Math.min(sec * len, maxSec); // the length of this move, stretched by the force
@@ -1688,6 +1776,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       case "flangersweep":
         return burst("flanger", 0.6 + 0.4 * amount, L(bar * 2));
       case "gatechop":
+        tuneGate(deck, genreForGate); // TRANS tuned to the tempo and the style of the song
         return burst("gate", 0.8 + 0.2 * amount, L(bar * 1.5));
       case "dubthrow":
         return burst("dub", 0.6 + 0.4 * amount, L(bar * 1.5));
@@ -1737,6 +1826,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       st.id = id;
       st.lastBar = Number.NEGATIVE_INFINITY;
       st.count = 0;
+      // a new song: TRANS is set for its tempo and style, so that it also sounds right when pressed by hand
+      tuneGate(deck, live.on && !gentle ? live.genre : dj?.genre ?? "auto", dj?.style === "classical");
     }
     const bar = (60 / deck.bpm) * 4;
     const rel = deck.position() - deck.beatGridOffset;
@@ -1753,7 +1844,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     if (!kind) return;
     st.lastBar = barIdx;
     st.count++;
-    const sec = runAccent(deck, kind, amountFor(FORCE_PROFILE[force].amount, feel), 14, FORCE_PROFILE[force].len, vocalHeld.current[side]);
+    const sec = runAccent(deck, kind, amountFor(FORCE_PROFILE[force].amount, feel), 14, FORCE_PROFILE[force].len, vocalHeld.current[side], feel.genre ?? "auto");
     // eslint-disable-next-line react-hooks/purity -- gestionnaire d'événement, hors rendu
     st.busy = performance.now() + sec * 1000 + 400; // the next move waits for this one to finish
     showDjAction(`${ACCENT_LABEL[kind]}${deck.name ? ` (${side})` : ""}`);
@@ -1862,7 +1953,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       const deck = side === "A" ? engine.deckA : engine.deckB;
       const otherDeck = other === "A" ? engine.deckA : engine.deckB;
       if (!deck.playing || deck.duration <= 0) return;
-      const remain = deck.duration - deck.position();
+      let remain = deck.duration - deck.position();
+      if (skipNow.current) remain = Math.min(remain, FADE + 2.6); // "next song now": as if the end were near
 
       maybeAccent(side, deck, remain, FADE);
 
@@ -1882,6 +1974,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       const preFadeWindow = TYPE === "cut" ? Math.max(2, preload) : FADE + lead;
       if (remain > preFadeWindow + 0.3) return;
       relayArmed.current = false;
+      skipNow.current = false;
       // tempos too far apart: the voices of the two songs are switched off for the change
       // the tempo of each song: what the deck measured, or the library's when the deck has not finished measuring (the song
       // waiting on the other deck may still be loading)
@@ -1932,6 +2025,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
             if (i >= 0) otherDeck.setStemVol(i, v);
           }
         }
+        // a "gate" change: TRANS of the song that leaves is set for its tempo and style first
+        if (TYPE === "gate") tuneGate(deck, getDjLive().on && !isGentleGenre(dj?.genre) ? getDjLive().genre : dj?.genre ?? "auto", dj?.style === "classical");
         otherDeck.play(); // bring in the cued deck
         if (braking) {
           relayFade(other, 0.9, "fade", false); // the old song slows down while it fades away
