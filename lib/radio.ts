@@ -19,6 +19,7 @@ import type { SetArc } from "@/lib/setBuilder";
 export interface RadioArtist {
   id: string;
   name: string;
+  topic?: boolean; // not an artist but a style or a mood ("zen", "bossa nova"): the radio looks for its best-known songs
   love: 1 | 2 | 3; // 1 = a few songs, 3 = many
 }
 
@@ -225,6 +226,7 @@ export interface YtResult {
   artist: string; // uploader
   duration: number; // seconds
   artwork: string | null;
+  views?: number; // popularity, when known
 }
 
 // the title of a song with the noise removed, to spot the same song uploaded twice
@@ -252,7 +254,7 @@ export function pickCandidates(
   artist: string,
   count: number,
   skipKeys: ReadonlySet<string> = new Set(),
-  opts: { maxSec?: number; version?: RadioPrefs["version"]; content?: Content; classical?: boolean } = {}
+  opts: { maxSec?: number; version?: RadioPrefs["version"]; content?: Content; classical?: boolean; topic?: boolean } = {}
 ): YtResult[] {
   const content = opts.content ?? "studio";
   // a concert recording runs longer than the studio song
@@ -272,18 +274,32 @@ export function pickCandidates(
       if (opts.version === "original" && /remix|bootleg|mashup|rework/i.test(r.title)) return;
       if (opts.version === "remix" && !REMIXISH.test(r.title)) return;
     }
-    if (!isRelevant(r, artist)) return;
+    if (!opts.topic && !isRelevant(r, artist)) return; // a style has no name to find in the title
     const key = normTitle(r.title, artist);
     if (!key || seen.has(key)) return;
     seen.add(key);
     const a = normArtist(artist);
+    // a style: the best-known songs come first (how often they were watched), whoever sings them
+    if (opts.topic) {
+      scored.push({ r, score: r.views ? Math.log10(r.views + 1) * 10 : 0, rank });
+      return;
+    }
     const score = (normArtist(r.title).includes(a) ? 2 : 0) + (normArtist(r.artist).includes(a) || /topic|vevo|official/i.test(r.artist) ? 1 : 0) + (/official audio|audio officiel/i.test(r.title) ? 1 : 0);
     scored.push({ r, score, rank });
   });
-  return scored
-    .sort((x, y) => y.score - x.score || x.rank - y.rank)
-    .slice(0, count)
-    .map((s) => s.r);
+  const sorted = scored.sort((x, y) => y.score - x.score || x.rank - y.rank);
+  if (!opts.topic) return sorted.slice(0, count).map((s) => s.r);
+  // a style is not one artist's radio: at most two songs of the same channel, so the list has variety
+  const perChannel = new Map<string, number>();
+  const out: YtResult[] = [];
+  for (const { r } of sorted) {
+    const n = perChannel.get(r.artist) ?? 0;
+    if (n >= 2) continue;
+    perChannel.set(r.artist, n + 1);
+    out.push(r);
+    if (out.length >= count) break;
+  }
+  return out;
 }
 
 export const wantedCount = (a: RadioArtist, perArtist: number) => a.love * perArtist;
@@ -486,9 +502,28 @@ async function runQueries(queries: string[], name: string, count: number, skip: 
   return picked;
 }
 
+// A style or a mood typed instead of an artist ("zen", "bossa nova", "rock années 80"): the songs most watched for it.
+// Several searches are put together first, so the choice is made among many songs, not the first query's.
+async function searchTopic(name: string, count: number, skip: ReadonlySet<string>, prefs: RadioPrefs, maxSec: number): Promise<YtResult[]> {
+  const gentle = isGentle(prefs);
+  const all: YtResult[] = [];
+  for (const q of [`${name} official audio`, `${name} music`, `${name} best songs`]) {
+    try {
+      const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(q)}&n=40&min=${gentle ? 90 : 130}&max=${maxSec}`);
+      if (!res.ok) continue;
+      const data = (await res.json()) as { tracks?: YtResult[] };
+      for (const t of data.tracks ?? []) if (!all.some((x) => x.id === t.id)) all.push(t);
+    } catch {
+      // one failed query: the others go on
+    }
+  }
+  return pickCandidates(all, name, count, skip, { maxSec, version: prefs.version, content: prefs.content, classical: gentle, topic: true });
+}
+
 // `offset` moves a classical radio along the works of the composer: each regeneration gets other pieces
-async function searchArtist(name: string, count: number, skip: ReadonlySet<string>, prefs: RadioPrefs, offset = 0): Promise<YtResult[]> {
+async function searchArtist(name: string, count: number, skip: ReadonlySet<string>, prefs: RadioPrefs, offset = 0, topic = false): Promise<YtResult[]> {
   const maxSec = prefs.maxTrackMin * 60;
+  if (topic) return searchTopic(name, count, skip, prefs, maxSec);
   if (prefs.mode === "classical") {
     const composer = findComposer(name);
     const filters: ClassicalFilters = { instrument: prefs.classical.instrument, mood: prefs.classical.mood };
@@ -694,7 +729,7 @@ export async function extendArtist(artistId: string, replace: boolean): Promise<
     ]);
     const offset = (regenerations.get(artistId) ?? 0) + 1;
     regenerations.set(artistId, offset);
-    const results = await searchArtist(artist.name, wanted + (noAnalysis ? 0 : SPARES), known, prefs, offset);
+    const results = await searchArtist(artist.name, wanted + (noAnalysis ? 0 : SPARES), known, prefs, offset, artist.topic);
     if (results.length === 0) {
       upd({ status: "done" });
       return 0;
@@ -808,7 +843,7 @@ export async function startRadio(prefs: RadioPrefs, opts: { fresh?: boolean } = 
       keep = have.slice(0, wanted);
     } else {
       const need = fresh ? wanted : wanted - have.length;
-      results = await searchArtist(a.name, need + (noAnalysis ? 0 : SPARES), new Set([...have.map((t) => t.url!), ...taken]), prefs);
+      results = await searchArtist(a.name, need + (noAnalysis ? 0 : SPARES), new Set([...have.map((t) => t.url!), ...taken]), prefs, 0, a.topic);
       if (!alive()) return;
       keep = fresh ? have.slice(0, Math.max(0, wanted - results.length)) : have;
     }

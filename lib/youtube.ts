@@ -13,6 +13,13 @@ export interface YTTrack {
   artist: string;
   duration: number;
   artwork: string | null;
+  views?: number; // how many times it was watched (a measure of how well known it is), when YouTube says
+}
+
+// "12 345 678 vues" / "1,234 views" -> 12345678
+export function parseViews(text: string | undefined): number | undefined {
+  const n = parseInt((text ?? "").replace(/[^\d]/g, ""), 10);
+  return Number.isFinite(n) ? n : undefined;
 }
 
 // resolve a binary, preferring Homebrew/usr-local locations (PATH may be slim
@@ -156,6 +163,7 @@ export async function searchYouTubeInner(q: string, opts: YTSearchOpts = {}): Pr
             artist: v.ownerText?.runs?.[0]?.text || "YouTube",
             duration: dur,
             artwork: `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`, // 320x180: small to decode (a hq720 cover costs 4x the memory)
+            views: parseViews(v.viewCountText?.simpleText),
           });
           if (tracks.length >= limit) break;
         }

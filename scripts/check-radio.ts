@@ -110,4 +110,11 @@ assert.ok(!isGentle({ mode: "style" }) && !isGentle({ mode: "artists" }));
 import { CALM_COLLECTIONS, ZEN_COLLECTIONS } from "../lib/styles";
 assert.ok(ZEN_COLLECTIONS.every((c) => c.genre === "zen" && c.songs.length >= 8) && CALM_COLLECTIONS.every((c) => c.genre === "calm" && c.songs.length >= 8));
 assert.equal(findCollection("piano calme")?.genre, "calm", "zen and calm lists are found by name");
+// a style typed instead of an artist: most-watched first, no name needed in the title, two songs per channel at most
+const pop = (id: string, title: string, artist: string, views?: number): YtResult => ({ id, title, artist, duration: 240, artwork: null, views });
+const topicRes = [pop("t1", "Quiet Waves", "Chan A", 1_000), pop("t2", "Calm Forest", "Chan B", 9_000_000), pop("t3", "Deep Rest", "Chan C", 500_000), pop("t4", "Sleepy Rain", "Chan B", 8_000_000), pop("t5", "Soft Dawn", "Chan B", 7_000_000), pop("t6", "Long Mix 1 hour", "Chan D", 99_000_000)];
+const topicPick = pickCandidates(topicRes, "", 4, new Set(), { topic: true }).map((r) => r.id);
+assert.deepEqual(topicPick, ["t2", "t4", "t3", "t1"], "most watched first, a mix of one hour left out, two songs per channel at most");
+assert.deepEqual(pickCandidates(topicRes, "", 2, new Set(["t2"]), { topic: true }).map((r) => r.id), ["t4", "t5"], "songs already taken are not proposed again");
+assert.equal(pickCandidates(topicRes, "Daft Punk", 5).length, 0, "an artist radio still needs the name in the title");
 console.log("radio ok");

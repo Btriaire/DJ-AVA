@@ -39,6 +39,7 @@ import { Journey, type JourneyStep } from "../prep/Journey";
 import { AdvancedPanel } from "./AdvancedPanel";
 import { ClassicalPanel } from "./ClassicalPanel";
 import { CatalogPanel } from "./CatalogPanel";
+import { TopicBox } from "./TopicBox";
 import { PrepDock, type PrepRow } from "./PrepDock";
 import { findComposer } from "@/lib/classical";
 import { pickTech } from "@/lib/stemMix";
@@ -335,6 +336,13 @@ export default function RadioView({
           ...fresh.map((name) => ({ id: uid(), name, love: 2 as const })),
         ],
       });
+  };
+
+  // a style or a mood typed instead of an artist: its best-known songs (not a name to find in the titles)
+  const addTopic = (name: string) => {
+    if (prefs.artists.some((a) => a.name.toLowerCase() === name.toLowerCase()) || prefs.artists.length >= 24) return;
+    change({ artists: [...prefs.artists, { id: uid(), name: name.slice(0, 60), love: 2 as const, topic: true }] });
+    flash(`« ${name} » ajouté : la radio prendra les titres les plus écoutés pour ce style`);
   };
 
   // the radio looks for 2 spare songs per artist: the sets keep the best chains among them
@@ -772,6 +780,9 @@ export default function RadioView({
           </div>
           <div className="grid items-start gap-4 lg:grid-cols-2">
             <div className="flex flex-col gap-4">
+              {!classical && (
+                <TopicBox mode={prefs.mode as "artists" | "style" | "collection" | "zen" | "calm"} chosen={prefs.artists.map((a) => a.name)} locked={busy} onAdd={addTopic} />
+              )}
               <ArtistsPanel
                 variant={classical ? "composer" : prefs.mode === "collection" || gentleCatalog ? "collection" : "artist"}
                 onRegenerate={

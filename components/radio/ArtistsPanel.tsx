@@ -109,6 +109,7 @@ export function ArtistsPanel({ artists, suggestions, locked, onAdd, onRemove, on
                 </div>
                 <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-neutral-100" title={a.name}>
                   {a.name}
+                  {a.topic && <span className="ml-1.5 rounded-full border border-[var(--prep-line)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-neutral-400" title="Un style : la radio prend les titres les plus écoutés">style</span>}
                 </span>
                 {onMore && (
                   <button
