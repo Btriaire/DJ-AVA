@@ -103,7 +103,7 @@ export function planStep(a: LibTrack, b: LibTrack, arc: SetArc, opts: DjOptions 
   const force = forceOf(opts);
   // a strong DJ puts an effect on every (5) or every other (4) change, whatever the songs are
   const effectEvery = PROFILE[force].effects;
-  const wantsEffect = effectEvery >= 1 || (effectEvery >= 0.5 && index % 2 === 0) || (effectEvery > 0 && effectEvery < 0.5 && index % 5 === 2);
+  const wantsEffect = effectEvery >= 1 || (effectEvery >= 0.5 && index % 2 === 0) || (effectEvery > 0 && effectEvery < 0.5 && index % 3 === 1);
 
   if (known && !folded && gap <= 10 && wantsEffect) {
     // only effects that suit the tempo of the two songs: no roll or gate on a slow pair

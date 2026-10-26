@@ -260,7 +260,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   const relayPos = useRef(-1);
   const relayFading = useRef(false);
   const stemLoadTried = useRef<Record<"A" | "B", string>>({ A: "", B: "" }); // the song whose stems were already asked for, per deck
-  const accentRef = useRef({ A: { id: "", lastBar: Number.NEGATIVE_INFINITY, count: 0 }, B: { id: "", lastBar: Number.NEGATIVE_INFINITY, count: 0 } }); // the DJ's interventions in the song that plays on each deck
+  const accentRef = useRef({ A: { id: "", lastBar: Number.NEGATIVE_INFINITY, count: 0, busy: 0 }, B: { id: "", lastBar: Number.NEGATIVE_INFINITY, count: 0, busy: 0 } }); // the DJ's interventions in the song that plays on each deck
   const djLive = useDjLive(); // the always-at-hand DJ switch (top bar)
   const djAction = djLive.action; // what the DJ just did, shown in the Lecture tile
   const baseTrim = useRef<{ A?: number; B?: number }>({}); // trim of a deck before the volume matching touched it
@@ -1625,98 +1625,83 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     const base = decks.map((d) => d.volumeValue);
     playLines([OUTRO_LINE], { onStart: () => decks.forEach((d, i) => d.setVolume(base[i] * 0.45)), onEnd: () => decks.forEach((d, i) => d.setVolume(base[i])) });
   }
-  // One move of the DJ on the song that plays (the "force" of the DJ sets how often and how strongly). Every move
-  // is short and puts everything back by itself.
-  function runAccent(deck: typeof engine.deckA, kind: AccentKind, amount: number, maxSec = 12) {
+  // One move of the DJ on the song that plays (the "force" of the DJ sets how often, how strongly and for how long).
+  // Every move puts everything back by itself. Resolves to the length of the move in seconds.
+  function runAccent(deck: typeof engine.deckA, kind: AccentKind, amount: number, maxSec = 12, len = 1): number {
     const spb = 60 / deck.bpm;
     const bar = spb * 4;
+    const L = (sec: number) => Math.min(sec * len, maxSec); // the length of this move, stretched by the force
     if (isMasterMove(kind)) {
-      // an effect of the master rack (the whole mix), short, then put back
+      // an effect of the master rack (the whole mix), then put back
       const mv = MASTER_MOVES[kind];
       const fxName = mv.fx as FxName;
-      engine.setMasterFx(fxName, Math.min(1, mv.wet * (0.6 + 0.4 * amount)));
-      window.setTimeout(() => engine.setMasterFx(fxName, 0), Math.min(mv.bars * bar, maxSec) * 1000);
-      return;
+      const sec = L(mv.bars * bar);
+      engine.setMasterFx(fxName, Math.min(1, mv.wet * (0.75 + 0.5 * amount)));
+      window.setTimeout(() => engine.setMasterFx(fxName, 0), sec * 1000);
+      return sec;
     }
     // moves put themselves back even when no relay runs (songs played by hand get them too)
     const later = (ms: number, fn: () => void) => window.setTimeout(fn, ms);
-    const burst =(fx: "echo" | "reverb" | "gate" | "roll" | "dub" | "flanger" | "noise", wet: number, sec: number) => {
-      deck.setFxWet(fx, wet);
+    const burst = (fx: "echo" | "reverb" | "gate" | "roll" | "dub" | "flanger" | "noise", wet: number, sec: number) => {
+      deck.setFxWet(fx, Math.min(1, wet));
       later(sec * 1000, () => deck.setFxWet(fx, 0));
+      return sec;
     };
     const stem = (name: string) => deck.stemNames.indexOf(name);
+    // a stem move: those stems go down, then come back after `sec`
+    const stemsDown = (idx: number[], sec: number) => {
+      if (!idx.length || idx.some((i) => i < 0)) return 0;
+      idx.forEach((i) => deck.setStemVol(i, 0));
+      later(sec * 1000, () => idx.forEach((i) => deck.setStemVol(i, 1)));
+      return sec;
+    };
     switch (kind) {
-      case "filterbreath": // the bass thins out over two bars and comes back over one
-        deck.rampFilter(0.2 + 0.4 * amount, bar * 2);
-        later(bar * 2000, () => deck.rampFilter(0, bar));
-        later(bar * 3100, () => deck.setFilter(0));
-        break;
-      case "echothrow":
-        burst("echo", 0.3 + 0.5 * amount, bar);
-        break;
-      case "reverbwash":
-        burst("reverb", 0.4 + 0.5 * amount, spb * 3);
-        break;
-      case "flangersweep":
-        burst("flanger", 0.4 + 0.5 * amount, bar * 2);
-        break;
-      case "gatechop":
-        burst("gate", 0.6 + 0.4 * amount, bar);
-        break;
-      case "dubthrow":
-        burst("dub", 0.4 + 0.5 * amount, bar);
-        break;
-      case "roll":
-        burst("roll", 1, spb * 2);
-        break;
-      case "noiseburst":
-        burst("noise", 0.3 + 0.5 * amount, bar);
-        break;
-      case "drumsout": {
-        const i = stem("drums");
-        if (i < 0) return;
-        deck.setStemVol(i, 0);
-        later(bar * 1000, () => deck.setStemVol(i, 1));
-        break;
+      case "filterbreath": {
+        // the bass thins out (high-pass) over two bars, then the filter opens again over one
+        const down = L(bar * 2);
+        deck.rampFilter(0.3 + 0.6 * amount, down);
+        later(down * 1000, () => deck.rampFilter(0, bar));
+        later((down + bar) * 1000 + 150, () => deck.setFilter(0));
+        return down + bar;
       }
+      case "echothrow":
+        return burst("echo", 0.5 + 0.5 * amount, L(bar * 1.5));
+      case "reverbwash":
+        return burst("reverb", 0.7 + 0.3 * amount, L(bar));
+      case "flangersweep":
+        return burst("flanger", 0.6 + 0.4 * amount, L(bar * 2));
+      case "gatechop":
+        return burst("gate", 0.8 + 0.2 * amount, L(bar * 1.5));
+      case "dubthrow":
+        return burst("dub", 0.6 + 0.4 * amount, L(bar * 1.5));
+      case "roll":
+        return burst("roll", 1, L(spb * 4));
+      case "noiseburst":
+        return burst("noise", 0.5 + 0.5 * amount, L(bar * 2));
+      case "drumsout":
+        return stemsDown([stem("drums")], L(bar * 1.5));
       case "vocalecho": {
         const i = stem("vocals");
-        if (i < 0) return;
-        deck.setStemDelaySend(i, 0.5 + 0.4 * amount);
-        later(bar * 2000, () => deck.setStemDelaySend(i, 0));
-        break;
+        if (i < 0) return 0;
+        const sec = L(bar * 2);
+        deck.setStemDelaySend(i, 0.6 + 0.4 * amount);
+        later(sec * 1000, () => deck.setStemDelaySend(i, 0));
+        return sec;
       }
-      case "bassdrop": {
-        const i = stem("bass");
-        if (i < 0) return;
-        deck.setStemVol(i, 0);
-        later(spb * 6000, () => deck.setStemVol(i, 1)); // out for a bar and a half, then it slams back
-        break;
-      }
-      case "drumsolo": // everything but the drums drops out for a bar, then comes back together
+      case "bassdrop": // out for a bar and a half, then it slams back
+        return stemsDown([stem("bass")], L(spb * 6));
+      case "drumsolo": // everything but the drums drops out, then comes back together
       case "vocalsolo": {
         const keep = stem(kind === "drumsolo" ? "drums" : "vocals");
-        if (keep < 0) return;
-        const others = deck.stemNames.map((_, i) => i).filter((i) => i !== keep);
-        others.forEach((i) => deck.setStemVol(i, 0));
-        later(bar * 1000, () => others.forEach((i) => deck.setStemVol(i, 1)));
-        break;
+        if (keep < 0) return 0;
+        return stemsDown(deck.stemNames.map((_, i) => i).filter((i) => i !== keep), L(bar * 1.5));
       }
-      case "voiceout": {
-        const i = stem("vocals");
-        if (i < 0) return;
-        deck.setStemVol(i, 0);
-        later(bar * 2000, () => deck.setStemVol(i, 1)); // an instrumental moment of two bars
-        break;
-      }
-      case "otherout": {
-        const i = stem("other");
-        if (i < 0) return;
-        deck.setStemVol(i, 0);
-        later(bar * 1000, () => deck.setStemVol(i, 1));
-        break;
-      }
+      case "voiceout": // an instrumental moment
+        return stemsDown([stem("vocals")], L(bar * 2.5));
+      case "otherout":
+        return stemsDown([stem("other")], L(bar * 1.5));
     }
+    return 0;
   }
   // At the start of a bar, when the force of the DJ says it is time and the song is neither starting nor about to
   // change, the DJ makes one move.
@@ -1740,6 +1725,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     const rel = deck.position() - deck.beatGridOffset;
     const barIdx = Math.floor(rel / bar);
     if (rel - barIdx * bar > 0.45 || barIdx < 0) return; // only on the first beat of a bar
+    // eslint-disable-next-line react-hooks/purity -- gestionnaire d'événement, hors rendu
+    if (performance.now() < st.busy) return; // the previous move is still going
     // the first move comes after about half an interval, the next ones at the full interval
     if (st.lastBar === Number.NEGATIVE_INFINITY) st.lastBar = barIdx - Math.round(FORCE_PROFILE[force].everyBars / 2);
     // what the DJ knows of the song: its tempo, whether it is classical, the stems it really has
@@ -1749,7 +1736,9 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     if (!kind) return;
     st.lastBar = barIdx;
     st.count++;
-    runAccent(deck, kind, amountFor(FORCE_PROFILE[force].amount, feel));
+    const sec = runAccent(deck, kind, amountFor(FORCE_PROFILE[force].amount, feel), 14, FORCE_PROFILE[force].len);
+    // eslint-disable-next-line react-hooks/purity -- gestionnaire d'événement, hors rendu
+    st.busy = performance.now() + sec * 1000 + 400; // the next move waits for this one to finish
     showDjAction(`${ACCENT_LABEL[kind]}${deck.name ? ` (${side})` : ""}`);
   }
   // songs played by hand (no relay on that deck) get the DJ's moves too when the top-bar switch is ON
@@ -1905,7 +1894,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           const feelT: Feel = { bpm: Math.min(deck.bpm || 120, otherDeck.bpm || 120), classical: dj?.style === "classical", genre: live.on && !gentle ? live.genre : dj?.genre };
           const move = deck.bpm > 0 ? pickTransitionMove(force, relayIdx.current[side], feelT) : null;
           if (move) {
-            runAccent(deck, move, amountFor(FORCE_PROFILE[force].amount, feelT), Math.max(2, secs));
+            runAccent(deck, move, amountFor(FORCE_PROFILE[force].amount, feelT), Math.max(2, secs), FORCE_PROFILE[force].len);
             showDjAction(`${ACCENT_LABEL[move]} (enchaînement)`);
           }
         }

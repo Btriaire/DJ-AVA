@@ -54,8 +54,17 @@ export function DjLiveControl() {
           {live.stems > 0 ? "stems actifs" : live.stemsAvail > 0 ? "stems en chargement" : "sans stems"}
         </span>
       )}
-      {live.on && live.action && (
-        <span className="max-w-[160px] truncate text-[11px] font-bold" style={{ color: "#e879f9" }} title="Dernière intervention du DJ">{`DJ : ${live.action}`}</span>
+      {live.on && (
+        <span
+          className="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-bold"
+          style={{ color: "#e879f9", borderColor: live.action ? "#e879f9" : "var(--prep-line, #3f3f46)", background: live.action ? "color-mix(in srgb, #e879f9 18%, transparent)" : "transparent", transition: "all .25s" }}
+          title="Dernière intervention du DJ et nombre de gestes depuis qu'il est actif"
+          aria-live="polite"
+        >
+          <span aria-hidden className="inline-block h-2 w-2 rounded-full" style={{ background: live.action ? "#e879f9" : "#52525b", boxShadow: live.action ? "0 0 8px #e879f9" : "none" }} />
+          {live.action ? `DJ : ${live.action}` : "DJ à l'écoute"}
+          <span className="font-mono text-[10px] opacity-80">{`${live.moves} geste${live.moves > 1 ? "s" : ""}`}</span>
+        </span>
       )}
     </span>
   );

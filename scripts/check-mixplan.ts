@@ -19,8 +19,10 @@ s = planStep(t(100, "8A"), t(115, "8A"), "peak", { ...DEFAULT_DJ, tails: false }
 assert.equal(s.type, "cut");
 assert.ok(!s.sync && s.sec === 0);
 // clashing keys at the same tempo alternate low-pass and high-pass filters; friendly ones sometimes loop out
-assert.equal(planStep(t(124, "8A"), t(124, "3B"), "peak", DEFAULT_DJ, 1).type, "highpass");
-assert.equal(planStep(t(124, "8A"), t(125, "8A"), "flow", DEFAULT_DJ, 4).type, "loop");
+const NO_FX = { ...DEFAULT_DJ, force: 2 as const }; // force 2: no effect on the changes
+assert.equal(planStep(t(124, "8A"), t(124, "3B"), "peak", NO_FX, 1).type, "highpass");
+assert.equal(planStep(t(124, "8A"), t(125, "8A"), "flow", NO_FX, 4).type, "loop");
+assert.ok([0, 1, 2, 3, 4, 5].filter((i) => !["smooth", "fade", "filter", "highpass", "loop"].includes(planStep(t(124, "8A"), t(125, "9A"), "flow", DEFAULT_DJ, i).type)).length === 2, "force 3: an effect on one change in three");
 // double time folds onto the same beat and is not synced
 assert.ok(tempoGap(65, 130).folded && Math.abs(tempoGap(65, 130).pct) < 1);
 assert.equal(planStep(t(65, "8A"), t(130, "8A"), "flow").sync, false);
@@ -97,7 +99,9 @@ assert.equal(applyForce(DEFAULT_DJ, 5).keyFix, true);
 assert.equal(applyForce(DEFAULT_DJ, 4).stems, "punchy");
 // interventions during a song: more often as the force grows, never at the start or near the transition, stems moves need stems
 const every = FORCES.map((f) => PROFILE[f].everyBars);
-assert.deepEqual(every, [32, 24, 16, 8, 4]);
+assert.deepEqual(every, [32, 20, 12, 6, 4]);
+assert.ok(FORCES.every((f, i) => i === 0 || (PROFILE[f].amount > PROFILE[FORCES[i - 1]].amount && PROFILE[f].len >= PROFILE[FORCES[i - 1]].len)), "stronger and longer with the force");
+assert.ok(PROFILE[5].amount >= 1 && PROFILE[5].len >= 2, "force 5 is clearly audible");
 assert.equal(accentDue(5, 10, 0, 5, 200, 10), false, "not in the first seconds");
 assert.equal(accentDue(5, 10, 0, 60, 20, 10), false, "not just before the transition");
 assert.equal(accentDue(5, 10, 0, 60, 120, 10), true);

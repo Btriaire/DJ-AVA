@@ -11,9 +11,9 @@ export const FORCES: DjForce[] = [1, 2, 3, 4, 5];
 export const FORCE_LABEL: Record<DjForce, string> = { 1: "Discret", 2: "Léger", 3: "Actif", 4: "Fort", 5: "Maximum" };
 export const FORCE_HINT: Record<DjForce, string> = {
   1: "Fondus simples et volumes égalisés. Un souffle de filtre très lent de temps en temps pendant les morceaux.",
-  2: "Fondus calés sur les temps, filtres et échange des basses. Un léger écho ou filtre toutes les 24 mesures.",
-  3: "Effets sur les gros écarts de tempo, boucles, voix du DJ possible. Une intervention toutes les 16 mesures : filtre, écho, réverb, flanger.",
-  4: "Un effet pour un enchaînement sur deux. Une intervention toutes les 8 mesures, avec les stems prêts : batterie seule, voix seule, voix ou harmonies coupées, écho de voix.",
+  2: "Fondus calés sur les temps, filtres et échange des basses. Un écho ou un filtre toutes les 20 mesures.",
+  3: "Effets sur les gros écarts de tempo, boucles, voix du DJ possible. Une intervention toutes les 12 mesures, bien audible : filtre, écho, réverb, flanger, phaser, voix ou harmonies coupées.",
+  4: "Un effet pour un enchaînement sur deux. Une intervention toutes les 6 mesures, longue et franche, avec les stems prêts : batterie seule, voix seule, voix ou harmonies coupées, écho de voix.",
   5: "Un effet à chaque enchaînement, transposition, stems percutants. Une intervention toutes les 4 mesures : roulements, gate, bruit, basse coupée puis claquée, batterie seule. Les effets rapides sont écartés sur les titres calmes ou lents.",
 };
 
@@ -252,15 +252,16 @@ export interface ForceProfile {
   everyBars: number; // an intervention in the song every n bars (4 beats each)
   pool: AccentKind[];
   amount: number; // strength of the interventions, 0..1
+  len: number; // how long a move lasts, as a multiple of its basic length (1 = a bar or two)
   options: Partial<DjOptions>; // what this force switches on or off in the DJ options
 }
 
 export const PROFILE: Record<DjForce, ForceProfile> = {
-  1: { effects: 0, everyBars: 32, pool: ["filterbreath"], amount: 0.35, options: { sync: false, bassSwap: false, tails: false, keyFix: false, stems: "off", phrase: false, loudness: true } },
-  2: { effects: 0, everyBars: 24, pool: ["filterbreath", "echothrow"], amount: 0.45, options: { sync: true, bassSwap: true, tails: false, keyFix: false, stems: "off", phrase: true, loudness: true } },
-  3: { effects: 0.2, everyBars: 16, pool: ["filterbreath", "echothrow", "reverbwash", "flangersweep", "phaserswirl", "echoexit", "vocalecho", "otherout"], amount: 0.55, options: { sync: true, bassSwap: true, tails: true, keyFix: false, stems: "smooth", phrase: true, loudness: true } },
-  4: { effects: 0.5, everyBars: 8, pool: ["filterbreath", "echothrow", "reverbwash", "flangersweep", "phaserswirl", "echoexit", "gatechop", "dubthrow", "drumsout", "vocalecho", "drumsolo", "voiceout", "otherout", "vocalsolo", "panswing", "riserbuild", "vowelwah", "halftimedrop", "freezehold", "tapestop"], amount: 0.7, options: { sync: true, bassSwap: true, tails: true, keyFix: true, stems: "punchy", phrase: true, loudness: true } },
-  5: { effects: 1, everyBars: 4, pool: ["echothrow", "reverbwash", "flangersweep", "gatechop", "dubthrow", "roll", "noiseburst", "drumsout", "vocalecho", "bassdrop", "filterbreath", "drumsolo", "vocalsolo", "voiceout", "otherout", "phaserswirl", "panswing", "pumpduck", "crushgrit", "scatterslice", "riserbuild", "buildup", "doublecut", "mashfx", "ringmod", "echoexit", "halftimedrop", "vowelwah", "freezehold", "tapestop"], amount: 0.9, options: { sync: true, bassSwap: true, tails: true, keyFix: true, stems: "punchy", phrase: true, loudness: true } },
+  1: { effects: 0, everyBars: 32, pool: ["filterbreath"], amount: 0.4, len: 1, options: { sync: false, bassSwap: false, tails: false, keyFix: false, stems: "off", phrase: false, loudness: true } },
+  2: { effects: 0, everyBars: 20, pool: ["filterbreath", "echothrow"], amount: 0.55, len: 1.25, options: { sync: true, bassSwap: true, tails: false, keyFix: false, stems: "off", phrase: true, loudness: true } },
+  3: { effects: 0.34, everyBars: 12, pool: ["filterbreath", "echothrow", "reverbwash", "flangersweep", "phaserswirl", "echoexit", "vocalecho", "otherout"], amount: 0.75, len: 1.5, options: { sync: true, bassSwap: true, tails: true, keyFix: false, stems: "smooth", phrase: true, loudness: true } },
+  4: { effects: 0.5, everyBars: 6, pool: ["filterbreath", "echothrow", "reverbwash", "flangersweep", "phaserswirl", "echoexit", "gatechop", "dubthrow", "drumsout", "vocalecho", "drumsolo", "voiceout", "otherout", "vocalsolo", "panswing", "riserbuild", "vowelwah", "halftimedrop", "freezehold", "tapestop"], amount: 0.9, len: 2, options: { sync: true, bassSwap: true, tails: true, keyFix: true, stems: "punchy", phrase: true, loudness: true } },
+  5: { effects: 1, everyBars: 4, pool: ["echothrow", "reverbwash", "flangersweep", "gatechop", "dubthrow", "roll", "noiseburst", "drumsout", "vocalecho", "bassdrop", "filterbreath", "drumsolo", "vocalsolo", "voiceout", "otherout", "phaserswirl", "panswing", "pumpduck", "crushgrit", "scatterslice", "riserbuild", "buildup", "doublecut", "mashfx", "ringmod", "echoexit", "halftimedrop", "vowelwah", "freezehold", "tapestop"], amount: 1, len: 2, options: { sync: true, bassSwap: true, tails: true, keyFix: true, stems: "punchy", phrase: true, loudness: true } },
 };
 
 export const forceOf = (dj: Pick<DjOptions, "force"> | undefined): DjForce => (dj?.force && dj.force >= 1 && dj.force <= 5 ? dj.force : 3);
