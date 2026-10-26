@@ -1,0 +1,67 @@
+/* Préparation view: details that only exist inside .prep (see also app/prep.css) */
+
+/* visible keyboard focus on every control of the view */
+.prep :is(button, input, select, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--prep-accent);
+  outline-offset: 2px;
+}
+.prep .prep-input:focus-visible {
+  outline: none; /* the field already lights its border */
+}
+
+/* press feedback */
+.prep .prep-btn-accent:active:not(:disabled),
+.prep .prep-btn-ghost:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* segmented controls never push the page wider: they scroll inside themselves */
+.prep .prep-seg {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.prep .prep-seg > button {
+  white-space: nowrap;
+}
+
+/* check box with a comfortable hit area */
+.prep-check {
+  display: flex;
+  height: 36px;
+  width: 28px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+.prep-check > input {
+  height: 16px;
+  width: 16px;
+}
+
+/* sticky selection bar */
+.prep-selbar {
+  background: color-mix(in srgb, var(--prep-surface) 94%, transparent);
+  border: 1px solid color-mix(in srgb, var(--prep-accent) 45%, transparent);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  padding-bottom: max(0.625rem, env(safe-area-inset-bottom));
+}
+
+/* touch screens: 36 px targets, no hover hint */
+@media (pointer: coarse) {
+  .prep .prep-tap,
+  .prep .prep-seg > button {
+    min-height: 36px;
+    min-width: 36px;
+  }
+  .prep .prep-drag-hint {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prep .prep-btn-accent:active:not(:disabled),
+  .prep .prep-btn-ghost:active:not(:disabled) {
+    transform: none;
+  }
+}

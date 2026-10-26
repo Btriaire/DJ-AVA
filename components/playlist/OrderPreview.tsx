@@ -4,6 +4,7 @@ import { BpmChip, Cover, Icon, KeyChip, StemPill, fmtDur, keyCompat, type StemIn
 import type { LibTrack, TransitionType } from "@/lib/library";
 import { STEP_LABEL, type MixStep } from "@/lib/mixPlan";
 import { STEM_TECH_LABEL, STEM_TECH_NOTE, type StemTech } from "@/lib/stemMix";
+import "./playlist.css";
 
 export interface OrderPreviewProps {
   tracks: LibTrack[];
@@ -61,12 +62,12 @@ export function OrderPreview({ tracks, onMove, onRemove, maxHeight = "46vh", pla
       <ol className="flex flex-col overflow-y-auto" style={{ maxHeight }}>
         {tracks.map((t, i) => (
           <Fragment key={t.id}>
-            <li className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-white/[.03]">
+            <li className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg px-2 py-1 hover:bg-white/[.03]">
               <span className="w-5 shrink-0 text-right font-mono text-[10px] text-neutral-600">
                 {i + 1}
               </span>
               <Cover art={t.art} name={t.name} camelot={t.camelot} size={30} rounded={5} />
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1 basis-[120px]">
                 <div className="truncate text-[12px] text-neutral-100" title={t.name}>
                   {t.name}
                 </div>
@@ -86,29 +87,30 @@ export function OrderPreview({ tracks, onMove, onRemove, maxHeight = "46vh", pla
                 <>
                   <button
                     type="button"
-                    className="p-1 text-neutral-500 hover:text-white disabled:opacity-30"
+                    className="pl-icon-btn"
                     disabled={i === 0}
                     onClick={() => onMove!(i, -1)}
-                    aria-label="Monter"
+                    aria-label={`Monter « ${t.name} »`}
                     title="Monter"
                   >
                     <Icon name="up" />
                   </button>
                   <button
                     type="button"
-                    className="p-1 text-neutral-500 hover:text-white disabled:opacity-30"
+                    className="pl-icon-btn"
                     disabled={i === tracks.length - 1}
                     onClick={() => onMove!(i, 1)}
-                    aria-label="Descendre"
+                    aria-label={`Descendre « ${t.name} »`}
                     title="Descendre"
                   >
                     <Icon name="chevron" />
                   </button>
                   <button
                     type="button"
-                    className="p-1 text-neutral-500 hover:text-white disabled:opacity-30"
+                    className="pl-icon-btn"
+                    data-danger
                     onClick={() => onRemove!(i)}
-                    aria-label="Retirer"
+                    aria-label={`Retirer « ${t.name} »`}
                     title="Retirer"
                   >
                     <Icon name="x" />
@@ -117,10 +119,11 @@ export function OrderPreview({ tracks, onMove, onRemove, maxHeight = "46vh", pla
               )}
             </li>
             {i < tracks.length - 1 && (
-              <li aria-hidden={!plan?.[i]} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 pl-9 pr-2">
+              <li aria-hidden={!plan?.[i]} className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-9 pr-2">
                 <div
                   className="h-3 w-2.5 shrink-0"
                   style={{ backgroundColor: keyCompat(t.camelot, tracks[i + 1].camelot).color }}
+                  aria-hidden
                 />
                 {(() => {
                   const nb = tracks[i + 1].bpm;
@@ -138,7 +141,7 @@ export function OrderPreview({ tracks, onMove, onRemove, maxHeight = "46vh", pla
                 {plan?.[i] && (
                   <div className="ml-auto flex items-center gap-1.5 text-[10px] text-neutral-400" title={plan[i].note}>
                     <select
-                      className="prep-input px-1.5 py-0.5 text-[10px]"
+                      className="prep-input min-h-9 px-1.5 text-[11px]"
                       aria-label={`Style de la transition ${i + 1}`}
                       value={plan[i].type}
                       disabled={!onStepType}
@@ -153,7 +156,7 @@ export function OrderPreview({ tracks, onMove, onRemove, maxHeight = "46vh", pla
                     {plan[i].type === "cut" || !onStepSec ? (
                       <span className="font-mono">{plan[i].type === "cut" ? "net" : `${plan[i].sec} s`}</span>
                     ) : (
-                      <select className="prep-input px-1 py-0.5 font-mono text-[10px]" aria-label={`Durée de la transition ${i + 1}`} value={plan[i].sec} onChange={(e) => onStepSec(i, Number(e.target.value))}>
+                      <select className="prep-input min-h-9 px-1 font-mono text-[11px]" aria-label={`Durée de la transition ${i + 1}`} value={plan[i].sec} onChange={(e) => onStepSec(i, Number(e.target.value))}>
                         {[...new Set([2, 3, 4, 6, 8, 10, 12, 16, 20, 24, 30, 40, 50, 60, plan[i].sec])].sort((x, y) => x - y).map((v) => (
                           <option key={v} value={v}>{`${v} s`}</option>
                         ))}

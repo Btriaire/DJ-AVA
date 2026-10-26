@@ -20,7 +20,9 @@ import type { QualityLevel } from "@/lib/quality";
 import type { VideoLevel } from "@/lib/videoQuality";
 import type { Cue } from "@/lib/setPicker";
 import type { VideoMeta } from "@/lib/videoMeta";
-import { BpmChip, Cover, Icon, KeyChip, Mosaic, StatTile, StemPill, fmtDur, stemInfoFrom } from "./prep/parts";
+import { BpmChip, Cover, Icon, KeyChip, Mosaic, StemPill, fmtDur, stemInfoFrom } from "./prep/parts";
+import { Section, SegFilter, Stat, StemsBar, StepBadge, useStored, useStoredOpen } from "./prep/Blocks";
+import "./prep/prep-view.css";
 
 type SortOption = "recent" | "title" | "bpm" | "camelot" | "theme" | "group";
 type DurationFilterKey = "all" | "1" | "3" | "5" | "8" | "15" | "15+";
@@ -66,9 +68,12 @@ const VIDEO_COLORS: Record<VideoLevel | "unknown", string> = {
 
 // tray table columns: check, sleeve, title, BPM, key, length, stems, actions
 // (phone: check, sleeve, title, stems — BPM, key and length go under the title)
-const ROW_COLS = "[grid-template-columns:16px_36px_minmax(0,1fr)_auto] sm:[grid-template-columns:16px_36px_minmax(0,1fr)_56px_44px_44px_112px_64px]";
+const ROW_COLS = "[grid-template-columns:28px_36px_minmax(0,1fr)_auto] sm:[grid-template-columns:28px_36px_minmax(0,1fr)_56px_44px_44px_112px_64px]";
 const LIST_ACCENTS = ["#22d3ee", "#34d399", "#ffcc00", "#a78bfa", "#f97316", "#f472b6"];
-const SORTS: [SortOption, string][] = [["recent", "Récents"], ["title", "Titre"], ["bpm", "BPM"], ["camelot", "Tonalité"]];
+const DUR_OPTIONS = DUR_FILTERS.map((f) => [f.key, f.label] as const);
+const RESULT_AUDIO_OPTIONS = [["all", "Toutes"], ["HQ", "HQ et plus"], ["HR", "HiRes"]] as const;
+const TRAY_AUDIO_OPTIONS = [["all", "Toutes"], ["HR", "HiRes"], ["HQ", "HQ"], ["STD", "Standard"], ["LQ", "Basse"], ["unknown", "?"]] as const;
+const VIDEO_OPTIONS = [["all", "Toutes"], ["HD", "HD+"], ["FHD", "Full HD+"], ["4K", "4K"]] as const;
 const DRAG_TYPE = "application/x-djsynth-tracks"; // tray rows dragged onto lists
 const NEW_LIST = "__new"; // drop zone that creates a list
 
@@ -125,8 +130,10 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   const [analyzingIds, setAnalyzingIds] = useState<Set<string>>(new Set());
   const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
   const [checkingQualityIds, setCheckingQualityIds] = useState<Set<string>>(new Set());
-  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
-  const [gridSize, setGridSize] = useState<"S" | "M" | "L">("L");
+  const [viewMode, setViewMode] = useStored<"list" | "grid">("view", "list", ["list", "grid"]);
+  const [gridSize, setGridSize] = useStored<"S" | "M" | "L">("grid", "L", ["S", "M", "L"]);
+  const [setsOpen, setSetsOpen] = useStoredOpen("sets");
+  const [wizardOpen, setWizardOpen] = useStoredOpen("wizard");
   const [durationFilter, setDurationFilter] = useState<DurationFilterKey>("all");
   const [qualityFilter, setQualityFilter] = useState<QualityFilter>("all");
   const [videoFilter, setVideoFilter] = useState<VideoFilter>("all");
@@ -166,6 +173,8 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   const [pendingLong, setPendingLong] = useState<string | null>(null); // long tracks waiting for a 2nd click before their stems start
   const newListInputRef = useRef<HTMLInputElement>(null);
   const setSectionRef = useRef<HTMLElement>(null);
+  const trayRef = useRef<HTMLElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     return () => {
@@ -204,12 +213,14 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   const [searchMore, setSearchMore] = useState(false); // "encore plus" / "étendre": a longer search is running
   const [searchLevel, setSearchLevel] = useState(0); // how many times the list was made longer (each adds 40 results)
   const [searchExtended, setSearchExtended] = useState(false); // the query was widened with its variants
+  const [searched, setSearched] = useState(false); // a search has been run (to tell "no result" from "nothing yet")
 
   // `level` 0 = a first search; 1.. = the same search with more results; `extend` adds the variants of the query
   const runSearch = async (level: number, extend: boolean) => {
     const q = searchQuery.trim();
     if (!q) return;
     const more = level > 0 || extend;
+    setSearched(true);
     if (more) setSearchMore(true);
     else {
       setIsSearching(true);
@@ -453,6 +464,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
 
   const openStudio = (initial?: SetStudioInitial) => {
     setStudio(st => ({ nonce: st.nonce + 1, initial }));
+    setWizardOpen(true);
     setSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
@@ -708,6 +720,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   const renderTrayRow = (track: LibTrack) => {
     const checked = selectedLaterIds.has(track.id);
     const analyzing = analyzingIds.has(track.id);
+    const needsAnalysis = !track.bpm || !track.camelot;
     const sub = [track.theme, track.group, track.quality ? QUALITY_LABEL[track.quality] : null].filter(Boolean).join(" · ");
     return (
       <div
@@ -716,18 +729,27 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
         {...rowDrag(track)}
         className={`prep-row grid cursor-grab items-center gap-3 px-2 py-1.5 active:cursor-grabbing ${ROW_COLS}`}
       >
-        <input type="checkbox" checked={checked} onChange={() => toggleLaterSelected(track.id)} className="h-3.5 w-3.5 accent-[var(--prep-accent)]" aria-label={`Sélectionner ${track.name}`} />
+        <label className="prep-check">
+          <input type="checkbox" checked={checked} onChange={() => toggleLaterSelected(track.id)} className="accent-[var(--prep-accent)]" aria-label={`Sélectionner ${track.name}`} />
+        </label>
         <Cover art={track.art} name={track.name} camelot={track.camelot} size={36} />
         <div className="min-w-0">
-          <p className="truncate text-[12px] font-semibold text-neutral-100" title={track.name}>{track.name}</p>
-          <p className="truncate text-[10px] text-neutral-500">{sub || SRC_BADGE[track.source]?.label || track.source}</p>
+          <p className="truncate text-[13px] font-semibold text-neutral-100" title={track.name}>{track.name}</p>
+          <p className="truncate text-[11px] text-neutral-500">{sub || SRC_BADGE[track.source]?.label || track.source}</p>
           <div className="mt-1 flex items-center gap-2 sm:hidden">
             <BpmChip bpm={track.bpm} estimated={track.bpmEstimated} />
             <KeyChip camelot={track.camelot} />
-            <span className="font-mono text-[10px] text-neutral-500">{fmtDur(track.durationSec)}</span>
-            <button onClick={() => removeLaterTrack(track.id)} className="ml-auto p-1 text-neutral-500" aria-label={`Retirer ${track.name}`}>
-              <Icon name="x" size={12} />
-            </button>
+            <span className="font-mono text-[11px] text-neutral-500">{fmtDur(track.durationSec)}</span>
+            <span className="ml-auto flex items-center gap-1">
+              {needsAnalysis && (
+                <button onClick={() => analyzeTrack(track)} disabled={analyzing} className="prep-btn-ghost prep-tap px-2 py-0.5 text-[11px]" aria-label={`Analyser le BPM et la tonalité de ${track.name}`}>
+                  {analyzing ? "…" : "Analyser"}
+                </button>
+              )}
+              <button onClick={() => removeLaterTrack(track.id)} className="prep-tap flex items-center justify-center p-1 text-neutral-500" aria-label={`Retirer ${track.name}`}>
+                <Icon name="x" size={14} />
+              </button>
+            </span>
           </div>
         </div>
         <span className="text-right max-sm:hidden"><BpmChip bpm={track.bpm} estimated={track.bpmEstimated} /></span>
@@ -735,8 +757,8 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
         <span className="text-right font-mono text-[11px] tabular-nums text-neutral-400 max-sm:hidden">{fmtDur(track.durationSec)}</span>
         <span className="flex justify-center"><StemPill info={stemOf(track.id)} onPrepare={() => queueStems([track])} /></span>
         <span className="prep-row-actions flex items-center justify-end gap-1 max-sm:hidden">
-          {(!track.bpm || !track.camelot) && (
-            <button onClick={() => analyzeTrack(track)} disabled={analyzing} className="prep-btn-ghost px-1.5 py-0.5 text-[10px]" title="Analyser le BPM et la tonalité">
+          {needsAnalysis && (
+            <button onClick={() => analyzeTrack(track)} disabled={analyzing} className="prep-btn-ghost px-1.5 py-0.5 text-[10px]" title="Analyser le BPM et la tonalité" aria-label={`Analyser le BPM et la tonalité de ${track.name}`}>
               {analyzing ? "…" : "BPM"}
             </button>
           )}
@@ -757,27 +779,29 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
       <div key={track.id} data-checked={checked} {...rowDrag(track)} className="prep-row flex cursor-grab flex-col gap-2 p-2 active:cursor-grabbing">
         <div className="relative">
           <Cover art={track.art} name={track.name} camelot={track.camelot} fill rounded={8} />
-          <input type="checkbox" checked={checked} onChange={() => toggleLaterSelected(track.id)} className="absolute left-1.5 top-1.5 h-4 w-4 accent-[var(--prep-accent)]" aria-label={`Sélectionner ${track.name}`} />
+          <label className="prep-check absolute left-0 top-0">
+            <input type="checkbox" checked={checked} onChange={() => toggleLaterSelected(track.id)} className="accent-[var(--prep-accent)]" aria-label={`Sélectionner ${track.name}`} />
+          </label>
           <span className="absolute bottom-1.5 left-1.5"><KeyChip camelot={track.camelot} /></span>
           <span className="absolute bottom-1.5 right-1.5 rounded bg-black/65 px-1"><BpmChip bpm={track.bpm} estimated={track.bpmEstimated} /></span>
         </div>
-        <p className="line-clamp-2 text-[11px] font-semibold leading-snug text-neutral-100" title={track.name}>{track.name}</p>
+        <p className="line-clamp-2 text-[12px] font-semibold leading-snug text-neutral-100" title={track.name}>{track.name}</p>
         <div className="flex items-center justify-between gap-1">
           <StemPill info={stemOf(track.id)} onPrepare={() => queueStems([track])} />
-          <span className="font-mono text-[10px] text-neutral-500">{fmtDur(track.durationSec)}</span>
+          <span className="font-mono text-[11px] text-neutral-500">{fmtDur(track.durationSec)}</span>
         </div>
         {gridSize !== "S" && (
           <div className="flex flex-wrap gap-1">
-            <button onClick={() => analyzeTrack(track)} disabled={analyzing} className="prep-btn-ghost px-1.5 py-0.5 text-[10px]">{analyzing ? "Analyse…" : "Analyser"}</button>
+            <button onClick={() => analyzeTrack(track)} disabled={analyzing} className="prep-btn-ghost prep-tap px-1.5 py-0.5 text-[11px]" title="Analyser le BPM et la tonalité">{analyzing ? "Analyse…" : "Analyser"}</button>
             {track.source !== "local" && (
-              <button onClick={() => checkQuality(track)} disabled={checkingQualityIds.has(track.id)} className="prep-btn-ghost px-1.5 py-0.5 text-[10px]">
+              <button onClick={() => checkQuality(track)} disabled={checkingQualityIds.has(track.id)} className="prep-btn-ghost prep-tap px-1.5 py-0.5 text-[11px]" title="Vérifier la qualité audio et vidéo">
                 {checkingQualityIds.has(track.id) ? "Vérif…" : "Qualité"}
               </button>
             )}
             {hasMeta && (
-              <button onClick={() => toggleDetails(track.id)} aria-pressed={openDetailsIds.has(track.id)} className="prep-btn-ghost px-1.5 py-0.5 text-[10px]">Détails</button>
+              <button onClick={() => toggleDetails(track.id)} aria-pressed={openDetailsIds.has(track.id)} className="prep-btn-ghost prep-tap px-1.5 py-0.5 text-[11px]">Détails</button>
             )}
-            <button onClick={() => removeLaterTrack(track.id)} className="prep-btn-ghost ml-auto p-1 text-neutral-500 hover:text-red-400" title="Retirer du bac" aria-label={`Retirer ${track.name}`}>
+            <button onClick={() => removeLaterTrack(track.id)} className="prep-btn-ghost prep-tap ml-auto p-1 text-neutral-500 hover:text-red-400" title="Retirer du bac" aria-label={`Retirer ${track.name}`}>
               <Icon name="x" size={11} />
             </button>
           </div>
@@ -787,13 +811,16 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
     );
   };
 
-  // list card: mosaic, name, stats; accepts dropped titles; opens to show its content
+  // set card: mosaic, name, stats; accepts dropped titles; opens to show its content
   const renderListCard = (playlist: Playlist, index: number) => {
     const stats = playlistStats(playlist.trackIds);
     const tracks = playlist.trackIds.map((id) => lib.tracks.find((t) => t.id === id)).filter((t): t is LibTrack => !!t);
     const isOpen = openPlaylistId === playlist.id;
     const accent = LIST_ACCENTS[index % LIST_ACCENTS.length];
     const ready = tracks.filter((t) => stemOf(t.id).state === "done").length;
+    const prep = setPreps[playlist.id];
+    const confirming = pendingDeleteId === playlist.id;
+    const toggle = () => setOpenPlaylistId(isOpen ? null : playlist.id);
     return (
       <div
         key={playlist.id}
@@ -815,70 +842,74 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
       >
         <div className="flex items-center gap-3 p-2.5 pl-3.5">
           <Mosaic tracks={tracks} accent={accent} />
-          <button onClick={() => setOpenPlaylistId(isOpen ? null : playlist.id)} aria-expanded={isOpen} className="min-w-0 flex-1 text-left">
+          <button onClick={toggle} aria-expanded={isOpen} className="prep-tap min-w-0 flex-1 text-left">
             <p className="truncate text-[13px] font-bold text-neutral-100">{playlist.name}</p>
-            <p className="text-[10px] text-neutral-500">{stats.count} titre(s) · {formatDuration(stats.seconds)} · {stats.bpmRange} BPM</p>
-            <p className="text-[10px]" style={{ color: tracks.length > 0 && ready === tracks.length ? "#34d399" : "#7b8494" }}>stems prêts {ready}/{tracks.length}</p>
+            <p className="text-[11px] text-neutral-500">{stats.count} titre(s) · {formatDuration(stats.seconds)} · {stats.bpmRange} BPM</p>
+            <p className="text-[11px]" style={{ color: tracks.length > 0 && ready === tracks.length ? "#34d399" : "#7b8494" }}>stems prêts {ready}/{tracks.length}</p>
           </button>
-          <button onClick={() => setOpenPlaylistId(isOpen ? null : playlist.id)} className={`text-neutral-500 transition-transform ${isOpen ? "rotate-180" : ""}`} aria-label={isOpen ? "Fermer le set" : "Voir le contenu"}>
+          <button onClick={toggle} className={`prep-tap flex items-center justify-center text-neutral-500 transition-transform ${isOpen ? "rotate-180" : ""}`} aria-label={isOpen ? "Fermer le set" : "Voir le contenu"}>
             <Icon name="chevron" size={16} />
           </button>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-[var(--prep-line)] px-3 py-1.5">
-          <button onClick={() => addCheckedToPlaylist(playlist.id)} disabled={selectedLaterIds.size === 0} className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[10px]" title="Ajouter les titres cochés à ce set">
-            <Icon name="plus" size={11} />
-            {selectedLaterIds.size > 0 ? `${selectedLaterIds.size} coché(s)` : "cochés"}
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-[var(--prep-line)] px-3 py-2">
+          <button
+            onClick={() => onLaunchSet?.("relay", playlist.id)}
+            disabled={tracks.length < 2 || !onLaunchSet}
+            className="prep-btn-accent prep-tap flex items-center gap-1 px-2.5 py-1 text-[11px]"
+            title="Lance ce set tel quel en automix A→B→A"
+          >
+            <Icon name="play" size={11} />
+            Jouer
           </button>
           <button
             onClick={() => openStudio({ source: "list", listId: playlist.id, autoBuild: true })}
             disabled={tracks.length < 2}
-            className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[10px]"
+            className="prep-btn-ghost prep-tap flex items-center gap-1 px-2 py-1 text-[11px]"
             title="Réordonner ce set (forme, durée, transitions)"
           >
-            <Icon name="bolt" size={10} />
-            En set
+            <Icon name="bolt" size={11} />
+            Ordonner
           </button>
-          <button
-            onClick={() => onLaunchSet?.("relay", playlist.id)}
-            disabled={tracks.length < 2 || !onLaunchSet}
-            className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[10px]"
-            title="Lance ce set tel quel en automix A→B→A"
-          >
-            <Icon name="play" size={10} />
-            Jouer
-          </button>
-          <button
-            onClick={() => void prepareSet(playlist.id)}
-            disabled={tracks.length === 0 || setPreps[playlist.id]?.state === "running"}
-            className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[10px]"
-            title="Télécharge les titres dans le cache de l'appli et fabrique les annonces de la voix du DJ : le set démarre sans attente, dans tous les onglets"
-          >
-            <Icon name="bolt" size={10} />
-            {setPreps[playlist.id]?.state === "running" ? `Audio ${setPreps[playlist.id].warmed}/${setPreps[playlist.id].total}${setPreps[playlist.id].voiceTotal ? ` · Voix ${setPreps[playlist.id].voiced}/${setPreps[playlist.id].voiceTotal}` : ""}` : setPreps[playlist.id]?.state === "done" ? "Préparé" : "Préparer"}
-          </button>
-          <button onClick={() => queueStems(tracks)} disabled={tracks.length === 0 || ready === tracks.length} className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[10px]" title="Préparer les stems de tout le set">
+          <button onClick={() => queueStems(tracks)} disabled={tracks.length === 0 || ready === tracks.length} className="prep-btn-ghost prep-tap flex items-center gap-1 px-2 py-1 text-[11px]" title="Préparer les stems de tout le set">
             <Icon name="stems" size={11} />
             Stems
           </button>
           <button
-            onClick={() => deletePlaylist(playlist.id)}
-            className="ml-auto rounded-md px-2 py-0.5 text-[10px] font-bold"
-            style={pendingDeleteId === playlist.id ? { background: "#dc2626", color: "#fff" } : { color: "#f87171" }}
+            onClick={() => void prepareSet(playlist.id)}
+            disabled={tracks.length === 0 || prep?.state === "running"}
+            className="prep-btn-ghost prep-tap flex items-center gap-1 px-2 py-1 text-[11px]"
+            title="Télécharge les titres dans le cache de l'appli et fabrique les annonces de la voix du DJ : le set démarre sans attente, dans tous les onglets"
           >
-            {pendingDeleteId === playlist.id ? "Confirmer" : "Supprimer"}
+            <Icon name="disc" size={11} />
+            {prep?.state === "running" ? `Audio ${prep.warmed}/${prep.total}${prep.voiceTotal ? ` · Voix ${prep.voiced}/${prep.voiceTotal}` : ""}` : prep?.state === "done" ? "Préchargé" : "Précharger"}
+          </button>
+          {selectedLaterIds.size > 0 && (
+            <button onClick={() => addCheckedToPlaylist(playlist.id)} className="prep-btn-ghost prep-tap flex items-center gap-1 px-2 py-1 text-[11px]" style={{ borderColor: "var(--prep-accent)", color: "var(--prep-accent)" }} title="Ajouter les titres cochés à ce set">
+              <Icon name="plus" size={11} />
+              {selectedLaterIds.size} coché(s)
+            </button>
+          )}
+          <button
+            onClick={() => deletePlaylist(playlist.id)}
+            className="prep-tap ml-auto flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-bold"
+            style={confirming ? { background: "#dc2626", color: "#fff" } : { color: "#f87171" }}
+            title="Supprimer ce set (les titres restent dans le bac)"
+            aria-label={confirming ? `Confirmer la suppression du set ${playlist.name}` : `Supprimer le set ${playlist.name}`}
+          >
+            {confirming ? "Confirmer" : <Icon name="trash" size={13} />}
           </button>
         </div>
         {isOpen && (
           <ol className="flex max-h-72 flex-col overflow-y-auto border-t border-[var(--prep-line)] py-1">
-            {tracks.length === 0 && <li className="px-3 py-3 text-[11px] text-neutral-500">Set vide : glisse des titres ici.</li>}
+            {tracks.length === 0 && <li className="px-3 py-3 text-[11px] text-neutral-500">Set vide : glisse des titres ici, ou coche-les puis « + coché(s) ».</li>}
             {tracks.map((t, i) => (
               <li key={t.id} className="group flex items-center gap-2 px-3 py-1 hover:bg-white/[.03]">
                 <span className="w-4 text-right font-mono text-[10px] text-neutral-600">{i + 1}</span>
                 <Cover art={t.art} name={t.name} camelot={t.camelot} size={24} rounded={4} />
-                <span className="min-w-0 flex-1 truncate text-[11px] text-neutral-200" title={t.name}>{t.name}</span>
+                <span className="min-w-0 flex-1 truncate text-[12px] text-neutral-200" title={t.name}>{t.name}</span>
                 <BpmChip bpm={t.bpm} estimated={t.bpmEstimated} />
                 <KeyChip camelot={t.camelot} />
-                <button onClick={() => removeFromPlaylist(playlist.id, t.id)} className="text-neutral-600 opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100 focus:opacity-100" title="Retirer du set (le titre reste dans le bac)" aria-label={`Retirer ${t.name} du set`}>
+                <button onClick={() => removeFromPlaylist(playlist.id, t.id)} className="prep-tap flex items-center justify-center text-neutral-600 opacity-0 transition-opacity hover:text-red-400 focus:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100" title="Retirer du set (le titre reste dans le bac)" aria-label={`Retirer ${t.name} du set`}>
                   <Icon name="x" size={12} />
                 </button>
               </li>
@@ -945,8 +976,8 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
         <div className="flex items-center gap-3">
           <Cover art={track.artwork ?? undefined} name={track.title} size={52} />
           <div className="min-w-0 flex-1">
-            <p className="line-clamp-2 text-[12px] font-semibold leading-snug text-neutral-100" title={track.title}>{track.title}</p>
-            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-neutral-500">
+            <p className="line-clamp-2 text-[13px] font-semibold leading-snug text-neutral-100" title={track.title}>{track.title}</p>
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-neutral-500">
               {track.duration ? <span className="font-mono">{fmtDur(track.duration)}</span> : null}
               {track.bpm ? <BpmChip bpm={Number(track.bpm)} /> : null}
               {renderResultQualityBadge(track)}
@@ -955,15 +986,16 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
           <button
             onClick={() => addLaterTrack(track)}
             disabled={kept}
-            className={`flex shrink-0 items-center gap-1 px-2.5 py-1.5 text-[11px] ${kept ? "prep-btn-ghost" : "prep-btn-accent"}`}
+            className={`prep-tap flex shrink-0 items-center gap-1 px-2.5 py-1.5 text-[11px] ${kept ? "prep-btn-ghost" : "prep-btn-accent"}`}
             title={kept ? "Déjà dans le bac" : "Mettre de côté dans le bac"}
+            aria-label={kept ? `${track.title} : déjà dans le bac` : `Mettre ${track.title} de côté`}
           >
             <Icon name={kept ? "check" : "plus"} size={12} />
-            De côté
+            {kept ? "Dans le bac" : "De côté"}
           </button>
         </div>
         {hasMeta && (
-          <button onClick={() => toggleDetails(track.id)} className="self-start text-[10px] text-neutral-500 hover:text-neutral-200">
+          <button onClick={() => toggleDetails(track.id)} aria-expanded={open} className="self-start text-[11px] text-neutral-500 hover:text-neutral-200">
             {open ? "Masquer les détails" : "Détails : label, sortie, tracklist…"}
           </button>
         )}
@@ -972,15 +1004,16 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
     );
   };
 
-  const visibleResultsCount = useMemo(() => {
-    const visible = filteredSearchResults.length;
-    return { visible, total: searchResults.length };
-  }, [filteredSearchResults, searchResults]);
+  const visibleResultsCount = filteredSearchResults.length;
 
   const stemStates = laterTracks.map((t) => stemOf(t.id).state);
   const stemsReady = stemStates.filter((s) => s === "done").length;
   const stemsBusy = stemStates.filter((s) => s === "run" || s === "download").length;
   const stemsWaiting = stemStates.filter((s) => s === "queued").length;
+  const stemsFailed = stemStates.filter((s) => s === "error").length;
+  const stemsMissing = laterTracks.filter((_, i) => stemStates[i] === "none" || stemStates[i] === "error");
+  const analysisMissing = laterTracks.filter((t) => t.bpm === undefined && !analyzingIds.has(t.id) && !failedIds.has(t.id)).length;
+  const qualityMissing = laterTracks.filter((t) => t.source !== "local" && !t.quality && !checkingQualityIds.has(t.id)).length;
   const totalLaterSec = laterTracks.reduce((sum, t) => sum + (t.durationSec ?? 0), 0);
   const laterBpms = laterTracks.map((t) => t.bpm).filter((b): b is number => !!b);
   const classified = new Set(lib.playlists.flatMap((p) => p.trackIds)).size;
@@ -990,117 +1023,148 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   const searchFiltersOn = durationFilter !== "all" || resultQualityMin !== "all" || videoFilter !== "all";
   const dot = <span className="h-1.5 w-1.5 rounded-full bg-[var(--prep-accent)]" />;
 
+  const resetTrayFilters = () => {
+    setDurationFilter("all");
+    setQualityFilter("all");
+    setVideoFilter("all");
+    setFilterTheme("");
+    setFilterGroup("");
+    setTrayQuery("");
+  };
+  const resetSearchFilters = () => {
+    setDurationFilter("all");
+    setResultQualityMin("all");
+    setVideoFilter("all");
+  };
+
+  // the steps of the strip drive the screen
+  const focusSearch = () => {
+    searchInputRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    searchInputRef.current?.focus({ preventScroll: true });
+  };
+  const goToTray = () => trayRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const playFirstSet = () => {
+    const set = lib.playlists.find((p) => p.trackIds.length >= 2);
+    if (set) onLaunchSet?.("relay", set.id);
+    else flash("Crée d'abord un set d'au moins deux titres.");
+  };
+  const newEmptySet = () => {
+    setSetsOpen(true);
+    setTimeout(() => {
+      newListInputRef.current?.focus();
+      newListInputRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 0);
+  };
+
   return (
-    <div className="prep hw-screwed hw-panel flex flex-1 flex-col gap-4 p-4 sm:p-5">
-      {/* en-tête : titre et compteurs */}
-      <header className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-        <div className="min-w-[220px]">
+    <div className="prep hw-screwed hw-panel flex min-w-0 max-w-full flex-1 flex-col gap-4 p-3 sm:p-5">
+      {/* en-tête : titre et chiffres clés */}
+      <header className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
           <h1 className="flex items-center gap-2 text-base font-black uppercase tracking-[0.25em] text-neutral-100">
             <span className="prep-accent"><Icon name="crate" size={18} /></span>
             Préparation
           </h1>
-          <p className="mt-0.5 text-[11px] text-neutral-500">Cherche, mets de côté, prépare les stems, puis crée un set pas à pas.</p>
+          <p className="mt-0.5 text-[12px] text-neutral-500">De la recherche au set, en trois étapes.</p>
         </div>
-        <div className="flex flex-wrap gap-2 xl:max-w-[780px] xl:flex-1">
-          <StatTile label="Mis de côté" value={String(laterTracks.length)} sub={totalLaterSec ? `${formatDuration(totalLaterSec)} de musique` : "aucun titre"} color="var(--prep-accent)" />
-          <StatTile
-            label="Stems prêts"
-            value={`${stemsReady}/${laterTracks.length}`}
-            sub={stemsBusy || stemsWaiting ? `${stemsBusy} en cours · ${stemsWaiting} en attente` : "prêts à jouer hors ligne"}
-            color="#34d399"
-            meter={laterTracks.length ? stemsReady / laterTracks.length : 0}
-          />
-          <StatTile label="Tempo du bac" value={laterBpms.length ? `${Math.round(Math.min(...laterBpms))}–${Math.round(Math.max(...laterBpms))}` : "—"} sub="BPM" color="#ffcc00" />
-          <StatTile label="Sets" value={String(lib.playlists.length)} sub={`${classified} titre(s) rangé(s)`} color="#a78bfa" />
+        <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1" aria-label="Chiffres clés">
+          <Stat value={String(laterTracks.length)} label={`mis de côté${totalLaterSec ? ` · ${formatDuration(totalLaterSec)}` : ""}`} color="var(--prep-accent)" />
+          <Stat value={`${stemsReady}/${laterTracks.length}`} label="stems prêts" color="#34d399" />
+          {laterBpms.length > 0 && <Stat value={`${Math.round(Math.min(...laterBpms))}–${Math.round(Math.max(...laterBpms))}`} label="BPM du bac" color="#ffcc00" />}
+          <Stat value={String(lib.playlists.length)} label={`set(s) · ${classified} titre(s) rangé(s)`} color="#a78bfa" />
         </div>
       </header>
 
-      {/* le parcours en un coup d'oeil : chercher, préparer, créer un set, jouer */}
+      {/* le parcours : chaque étape amène à sa zone */}
       <Journey
         steps={buildJourney({
           tracks: laterTracks,
           playlists: lib.playlists,
-          stemsReady: stemStates.filter((st) => st === "done").length,
+          stemsReady,
           playing: false,
         }).map((st) => ({
           ...st,
           onClick:
-            st.key === "stems"
-              ? () => queueStems(laterTracks.filter((t) => stemOf(t.id).state === "none"))
-              : st.key === "set"
-                ? () => openStudio()
-                : st.key === "play" && onLaunchSet
-                  ? () => {
-                      const set = lib.playlists.find((p) => p.trackIds.length >= 2);
-                      if (set) onLaunchSet("relay", set.id);
-                    }
-                  : undefined,
+            st.key === "find"
+              ? () => focusSearch()
+              : st.key === "stems"
+                ? () => goToTray()
+                : st.key === "set"
+                  ? () => openStudio()
+                  : st.key === "play" && onLaunchSet
+                    ? () => playFirstSet()
+                    : undefined,
         }))}
       />
 
-      {/* recherche YouTube */}
-      <section className="prep-card p-3">
+      {/* étape 1 : recherche YouTube */}
+      <section className="prep-card p-3" aria-label="Chercher un titre">
+        <div className="mb-2.5 flex items-center gap-2">
+          <StepBadge n={1} />
+          <h2 className="text-[12px] font-black uppercase tracking-[0.2em] text-neutral-100">Chercher</h2>
+          <span className="min-w-0 truncate text-[11px] text-neutral-500">sur YouTube, puis « De côté » pour garder un titre</span>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-[240px] flex-1">
+          <div className="relative min-w-[200px] flex-1">
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500"><Icon name="search" /></span>
             <input
+              ref={searchInputRef}
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleSearch(); }}
-              placeholder="Chercher un titre, un artiste, un label sur YouTube…"
-              className="prep-input w-full py-2 pl-9 pr-3 text-sm"
+              placeholder="Un titre, un artiste, un label…"
+              aria-label="Chercher sur YouTube"
+              className="prep-input prep-tap w-full py-2 pl-9 pr-3 text-sm"
             />
           </div>
-          <button onClick={handleSearch} disabled={isSearching || !searchQuery.trim()} className="prep-btn-accent px-4 py-2 text-xs">
+          <button onClick={handleSearch} disabled={isSearching || !searchQuery.trim()} className="prep-btn-accent prep-tap px-4 py-2 text-xs">
             {isSearching ? "Recherche…" : "Rechercher"}
           </button>
-          <button onClick={() => setShowSearchFilters((v) => !v)} aria-pressed={showSearchFilters} className="prep-btn-ghost flex items-center gap-1.5 px-3 py-2 text-xs">
+          <button onClick={() => setShowSearchFilters((v) => !v)} aria-pressed={showSearchFilters} className="prep-btn-ghost prep-tap flex items-center gap-1.5 px-3 py-2 text-xs" title="Filtrer les résultats par durée, qualité audio, qualité vidéo">
             <Icon name="filter" size={13} />
             Filtres
             {searchFiltersOn && dot}
           </button>
           {!searchOpen && searchResults.length > 0 && (
-            <button onClick={() => setSearchOpen(true)} className="prep-btn-ghost px-3 py-2 text-xs">Résultats ({searchResults.length})</button>
+            <button onClick={() => setSearchOpen(true)} className="prep-btn-ghost prep-tap px-3 py-2 text-xs">Résultats ({searchResults.length})</button>
           )}
         </div>
-        {searchError && <p className="mt-2 text-[11px] text-red-400">{searchError}</p>}
+        {searchError && <p role="alert" className="mt-2 text-[12px] text-red-400">{searchError}</p>}
         {showSearchFilters && (
-          <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-[10px] uppercase tracking-[0.15em] text-neutral-500">
-            <span className="flex items-center gap-2">Durée
-              <span className="prep-seg normal-case tracking-normal">
-                {DUR_FILTERS.map((f) => <button key={f.key} aria-pressed={durationFilter === f.key} onClick={() => setDurationFilter(f.key)}>{f.label}</button>)}
-              </span>
-            </span>
-            <span className="flex items-center gap-2">Audio
-              <span className="prep-seg normal-case tracking-normal">
-                {([["all", "Toutes"], ["HQ", "HQ et plus"], ["HR", "HiRes"]] as const).map(([k, l]) => <button key={k} aria-pressed={resultQualityMin === k} onClick={() => setResultQualityMin(k)}>{l}</button>)}
-              </span>
-            </span>
-            <span className="flex items-center gap-2">Vidéo
-              <span className="prep-seg normal-case tracking-normal">
-                {([["all", "Toutes"], ["HD", "HD+"], ["FHD", "Full HD+"], ["4K", "4K"]] as const).map(([k, l]) => <button key={k} aria-pressed={videoFilter === k} onClick={() => setVideoFilter(k)}>{l}</button>)}
-              </span>
-            </span>
+          <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2.5">
+            <SegFilter label="Durée" hint="Vaut aussi pour le bac" value={durationFilter} options={DUR_OPTIONS} onChange={setDurationFilter} />
+            <SegFilter label="Audio" value={resultQualityMin} options={RESULT_AUDIO_OPTIONS} onChange={setResultQualityMin} />
+            <SegFilter label="Vidéo" hint="Vaut aussi pour le bac" value={videoFilter} options={VIDEO_OPTIONS} onChange={setVideoFilter} />
+            {searchFiltersOn && <button onClick={resetSearchFilters} className="prep-btn-ghost prep-tap px-2.5 py-1 text-[11px]">Réinitialiser</button>}
           </div>
+        )}
+        {searchOpen && searched && !isSearching && searchResults.length === 0 && !searchError && (
+          <p className="mt-3 border-t border-[var(--prep-line)] pt-3 text-[12px] text-neutral-500">Aucun résultat pour cette recherche. Essaie d&apos;autres mots, ou le nom de l&apos;artiste seul.</p>
         )}
         {searchOpen && (isSearching || searchResults.length > 0) && (
           <div className="mt-3 border-t border-[var(--prep-line)] pt-3">
             <div className="mb-2 flex items-center gap-3">
-              <span className="text-[11px] text-neutral-400">
-                {isSearching ? "Recherche en cours…" : `${visibleResultsCount.visible} résultat(s) sur ${visibleResultsCount.total}`}
+              <span className="text-[12px] text-neutral-400" aria-live="polite">
+                {isSearching ? "Recherche en cours…" : `${visibleResultsCount} résultat(s) sur ${searchResults.length}`}
                 {checking ? " · vérification de la qualité…" : ""}
               </span>
-              <button onClick={() => setSearchOpen(false)} className="prep-btn-ghost ml-auto px-3 py-1 text-[11px]" title="Replier les résultats (le bouton « Résultats » les rouvre)">Terminé</button>
+              <button onClick={() => setSearchOpen(false)} className="prep-btn-ghost prep-tap ml-auto px-3 py-1 text-[11px]" title="Replier les résultats (le bouton « Résultats » les rouvre)">Terminé</button>
             </div>
-            <div className="grid max-h-[46vh] gap-2 overflow-y-auto pr-1 [grid-template-columns:repeat(auto-fill,minmax(320px,1fr))]">
+            <div className="grid max-h-[46vh] gap-2 overflow-y-auto pr-1 [grid-template-columns:repeat(auto-fill,minmax(min(320px,100%),1fr))]">
               {filteredSearchResults.map((track) => renderSearchResultCard(track))}
+              {!isSearching && searchResults.length > 0 && filteredSearchResults.length === 0 && (
+                <div className="col-span-full flex flex-col items-center gap-2 py-4 text-center">
+                  <p className="text-[12px] text-neutral-500">Aucun résultat ne passe les filtres.</p>
+                  <button onClick={resetSearchFilters} className="prep-btn-ghost prep-tap px-3 py-1 text-[11px]">Réinitialiser les filtres</button>
+                </div>
+              )}
               {!isSearching && (
                 <div className="col-span-full flex flex-wrap items-center justify-center gap-2 py-2">
-                  <button type="button" disabled={searchMore || searchLevel >= 3} onClick={() => runSearch(searchLevel + 1, false)} className="prep-btn-accent px-4 py-1.5 text-[11px]" title="Relance la recherche avec 40 résultats de plus">
+                  <button type="button" disabled={searchMore || searchLevel >= 3} onClick={() => runSearch(searchLevel + 1, false)} className="prep-btn-ghost prep-tap px-4 py-1.5 text-[11px]" title="Relance la recherche avec 40 résultats de plus">
                     {searchMore ? "Recherche…" : searchLevel >= 3 ? "Maximum atteint" : "+ Encore plus de résultats"}
                   </button>
-                  <button type="button" disabled={searchMore || searchExtended} onClick={() => runSearch(searchLevel, true)} className="prep-btn-ghost px-4 py-1.5 text-[11px]" title="Ajoute les versions remix, live, extended et audio de ta recherche">
+                  <button type="button" disabled={searchMore || searchExtended} onClick={() => runSearch(searchLevel, true)} className="prep-btn-ghost prep-tap px-4 py-1.5 text-[11px]" title="Ajoute les versions remix, live, extended et audio de ta recherche">
                     {searchExtended ? "Recherche étendue" : "Étendre la recherche"}
                   </button>
                 </div>
@@ -1111,34 +1175,42 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
       </section>
 
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-        {/* le bac : titres mis de côté */}
-        <section className="prep-card flex min-w-0 flex-col">
+        {/* étape 2 : le bac, titres mis de côté */}
+        <section ref={trayRef} className="prep-card flex min-w-0 scroll-mt-4 flex-col" aria-label="Titres mis de côté">
           <div className="flex flex-wrap items-center gap-2 border-b border-[var(--prep-line)] p-3">
-            <input
-              type="checkbox"
-              checked={allShownChecked}
-              onChange={(e) => setSelectedLaterIds(e.target.checked ? new Set(filteredTracks.map((t) => t.id)) : new Set())}
-              className="h-4 w-4 accent-[var(--prep-accent)]"
-              aria-label="Tout cocher"
-              disabled={filteredTracks.length === 0}
-            />
-            <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-200">Mis de côté</h2>
+            <label className="prep-check" title="Tout cocher">
+              <input
+                type="checkbox"
+                checked={allShownChecked}
+                onChange={(e) => setSelectedLaterIds(e.target.checked ? new Set(filteredTracks.map((t) => t.id)) : new Set())}
+                className="accent-[var(--prep-accent)]"
+                aria-label="Tout cocher"
+                disabled={filteredTracks.length === 0}
+              />
+            </label>
+            <StepBadge n={2} />
+            <h2 className="text-[12px] font-black uppercase tracking-[0.2em] text-neutral-100">Mis de côté</h2>
             <span className="rounded-full bg-white/5 px-2 py-px font-mono text-[10px] text-neutral-400">
               {filteredTracks.length !== laterTracks.length ? `${filteredTracks.length}/${laterTracks.length}` : laterTracks.length}
             </span>
-            <div className="relative ml-auto min-w-[150px] max-w-[240px] flex-1">
+            <div className="relative ml-auto min-w-[140px] max-w-[240px] flex-1">
               <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-500"><Icon name="search" size={12} /></span>
-              <input value={trayQuery} onChange={(e) => setTrayQuery(e.target.value)} placeholder="Filtrer le bac…" className="prep-input w-full py-1 pl-7 pr-2 text-xs" aria-label="Filtrer les titres mis de côté" />
+              <input value={trayQuery} onChange={(e) => setTrayQuery(e.target.value)} placeholder="Filtrer le bac…" className="prep-input prep-tap w-full py-1 pl-7 pr-2 text-xs" aria-label="Filtrer les titres mis de côté" />
             </div>
-            <div className="prep-seg" role="group" aria-label="Trier">
-              {SORTS.map(([k, l]) => <button key={k} aria-pressed={sortBy === k} onClick={() => setSortBy(k)}>{l}</button>)}
-            </div>
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortOption)} className="prep-input prep-tap px-2 py-1 text-xs" aria-label="Trier le bac" title="Trier le bac">
+              <option value="recent">Tri : récents</option>
+              <option value="title">Tri : titre A-Z</option>
+              <option value="bpm">Tri : BPM croissant</option>
+              <option value="camelot">Tri : tonalité Camelot</option>
+              <option value="theme">Tri : thème</option>
+              <option value="group">Tri : groupe</option>
+            </select>
             <div className="prep-seg" role="group" aria-label="Affichage">
               <button aria-pressed={viewMode === "list"} onClick={() => setViewMode("list")} title="Liste" aria-label="Affichage en liste"><Icon name="list" size={13} /></button>
               <button aria-pressed={viewMode === "grid"} onClick={() => setViewMode("grid")} title="Pochettes" aria-label="Affichage en pochettes"><Icon name="grid" size={13} /></button>
-              {viewMode === "grid" && (["S", "M", "L"] as const).map((s) => <button key={s} aria-pressed={gridSize === s} onClick={() => setGridSize(s)} title={`Pochettes ${s === "S" ? "petites" : s === "M" ? "moyennes" : "grandes"}`}>{s}</button>)}
+              {viewMode === "grid" && (["S", "M", "L"] as const).map((s) => <button key={s} aria-pressed={gridSize === s} onClick={() => setGridSize(s)} title={`Pochettes ${s === "S" ? "petites" : s === "M" ? "moyennes" : "grandes"}`} aria-label={`Pochettes ${s === "S" ? "petites" : s === "M" ? "moyennes" : "grandes"}`}>{s}</button>)}
             </div>
-            <button onClick={() => setShowTrayFilters((v) => !v)} aria-pressed={showTrayFilters} className="prep-btn-ghost flex items-center gap-1.5 px-2.5 py-1 text-[11px]">
+            <button onClick={() => setShowTrayFilters((v) => !v)} aria-pressed={showTrayFilters} className="prep-btn-ghost prep-tap flex items-center gap-1.5 px-2.5 py-1 text-[11px]" title="Filtrer par durée, qualité, thème, groupe">
               <Icon name="filter" size={12} />
               Filtres
               {trayFiltersOn && dot}
@@ -1146,44 +1218,23 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
           </div>
 
           {showTrayFilters && (
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-[var(--prep-line)] px-3 py-2.5 text-[10px] uppercase tracking-[0.15em] text-neutral-500">
-              <span className="flex items-center gap-2">Durée
-                <span className="prep-seg normal-case tracking-normal">
-                  {DUR_FILTERS.map((f) => <button key={f.key} aria-pressed={durationFilter === f.key} onClick={() => setDurationFilter(f.key)}>{f.label}</button>)}
-                </span>
-              </span>
-              <span className="flex items-center gap-2">Audio
-                <span className="prep-seg normal-case tracking-normal">
-                  {([["all", "Toutes"], ["HR", "HiRes"], ["HQ", "HQ"], ["STD", "Standard"], ["LQ", "Basse"], ["unknown", "?"]] as const).map(([k, l]) => <button key={k} aria-pressed={qualityFilter === k} onClick={() => setQualityFilter(k)}>{l}</button>)}
-                </span>
-              </span>
-              <span className="flex items-center gap-2">Vidéo
-                <span className="prep-seg normal-case tracking-normal">
-                  {([["all", "Toutes"], ["HD", "HD+"], ["FHD", "Full HD+"], ["4K", "4K"]] as const).map(([k, l]) => <button key={k} aria-pressed={videoFilter === k} onClick={() => setVideoFilter(k)}>{l}</button>)}
-                </span>
-              </span>
-              <label className="flex items-center gap-2">Tri
-                <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortOption)} className="prep-input px-2 py-1 text-[11px] normal-case tracking-normal">
-                  <option value="recent">Récents</option>
-                  <option value="title">Titre A-Z</option>
-                  <option value="bpm">BPM croissant</option>
-                  <option value="camelot">Tonalité Camelot</option>
-                  <option value="theme">Thème</option>
-                  <option value="group">Groupe</option>
-                </select>
-              </label>
-              <label className="flex items-center gap-2">Thème
-                <select value={filterTheme} onChange={(e) => setFilterTheme(e.target.value)} className="prep-input px-2 py-1 text-[11px] normal-case tracking-normal">
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2.5 border-b border-[var(--prep-line)] px-3 py-2.5">
+              <SegFilter label="Durée" hint="Vaut aussi pour les résultats de recherche" value={durationFilter} options={DUR_OPTIONS} onChange={setDurationFilter} />
+              <SegFilter label="Audio" value={qualityFilter} options={TRAY_AUDIO_OPTIONS} onChange={setQualityFilter} />
+              <SegFilter label="Vidéo" hint="Vaut aussi pour les résultats de recherche" value={videoFilter} options={VIDEO_OPTIONS} onChange={setVideoFilter} />
+              <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.15em] text-neutral-500">Thème
+                <select value={filterTheme} onChange={(e) => setFilterTheme(e.target.value)} className="prep-input prep-tap px-2 py-1 text-[11px] font-normal normal-case tracking-normal">
                   <option value="">Tous</option>
                   {themes.map((theme) => <option key={theme} value={theme}>{theme}</option>)}
                 </select>
               </label>
-              <label className="flex items-center gap-2">Groupe
-                <select value={filterGroup} onChange={(e) => setFilterGroup(e.target.value)} className="prep-input px-2 py-1 text-[11px] normal-case tracking-normal">
+              <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.15em] text-neutral-500">Groupe
+                <select value={filterGroup} onChange={(e) => setFilterGroup(e.target.value)} className="prep-input prep-tap px-2 py-1 text-[11px] font-normal normal-case tracking-normal">
                   <option value="">Tous</option>
                   {groups.map((group) => <option key={group} value={group}>{group}</option>)}
                 </select>
               </label>
+              {trayFiltersOn && <button onClick={resetTrayFilters} className="prep-btn-ghost prep-tap px-2.5 py-1 text-[11px]">Réinitialiser</button>}
             </div>
           )}
 
@@ -1191,20 +1242,40 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
             <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
               <span className="prep-accent opacity-70"><Icon name="crate" size={44} /></span>
               <p className="text-sm font-semibold text-neutral-200">Le bac est vide</p>
-              <p className="max-w-sm text-[11px] text-neutral-500">Cherche un titre ci-dessus et clique « De côté ». Tu pourras ensuite préparer ses stems, l&apos;analyser et le ranger dans un set.</p>
+              <p className="max-w-sm text-[12px] text-neutral-500">Cherche un titre ci-dessus et clique « De côté ». Tu pourras ensuite préparer ses stems, l&apos;analyser et le ranger dans un set.</p>
+              <button onClick={focusSearch} className="prep-btn-accent prep-tap mt-1 flex items-center gap-1.5 px-4 py-2 text-xs">
+                <Icon name="search" size={13} />
+                Chercher un titre
+              </button>
             </div>
           ) : (
             <>
-              <div className="flex flex-wrap items-center gap-2 px-3 pt-2.5 text-[10px] text-neutral-500">
-                <span className="uppercase tracking-[0.18em]">Tout le bac</span>
-                <button onClick={() => queueStems(laterTracks)} className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[11px]"><Icon name="stems" size={12} />Préparer les stems</button>
-                <button onClick={analyzeAllBPM} className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[11px]"><Icon name="disc" size={12} />Analyser BPM et tonalité</button>
-                <button onClick={checkAllQuality} className="prep-btn-ghost flex items-center gap-1 px-2 py-0.5 text-[11px]"><Icon name="bolt" size={12} />Vérifier la qualité</button>
-                <span className="ml-auto hidden items-center gap-1 text-neutral-600 md:flex"><Icon name="grip" size={12} />glisse un titre (ou les cochés) sur un set</span>
+              {/* actions sur tout le bac : une principale, le reste en second plan */}
+              <div className="flex flex-wrap items-center gap-2 border-b border-[var(--prep-line)] px-3 py-2.5">
+                <button
+                  onClick={() => queueStems(stemsMissing)}
+                  disabled={stemsMissing.length === 0}
+                  className="prep-btn-accent prep-tap flex items-center gap-1.5 px-3 py-1.5 text-xs"
+                  title={stemsMissing.length === 0 ? "Tous les stems sont prêts, en cours ou en attente" : "Sépare la voix, la batterie, la basse et le reste de chaque titre sans stems, pour les mixer séparément"}
+                >
+                  <Icon name="stems" size={13} />
+                  Préparer les stems{stemsMissing.length > 0 ? ` (${stemsMissing.length})` : ""}
+                </button>
+                <button onClick={analyzeAllBPM} disabled={analysisMissing === 0} className="prep-btn-ghost prep-tap flex items-center gap-1.5 px-2.5 py-1.5 text-[11px]" title="Analyse le BPM et la tonalité des titres du bac qui n'en ont pas encore">
+                  <Icon name="disc" size={12} />
+                  Analyser BPM et tonalité{analysisMissing > 0 ? ` (${analysisMissing})` : ""}
+                </button>
+                <button onClick={checkAllQuality} disabled={qualityMissing === 0} className="prep-btn-ghost prep-tap flex items-center gap-1.5 px-2.5 py-1.5 text-[11px]" title="Vérifie la qualité audio et vidéo des titres YouTube du bac">
+                  <Icon name="bolt" size={12} />
+                  Vérifier la qualité{qualityMissing > 0 ? ` (${qualityMissing})` : ""}
+                </button>
+                <div className="ml-auto w-full min-w-[180px] max-w-xs sm:w-auto sm:flex-1">
+                  <StemsBar total={laterTracks.length} ready={stemsReady} busy={stemsBusy} waiting={stemsWaiting} failed={stemsFailed} />
+                </div>
               </div>
               {viewMode === "list" ? (
                 <div className="flex flex-col p-2">
-                  <div className={`grid items-center gap-3 px-2 pb-1 text-[9px] font-bold uppercase tracking-[0.18em] text-neutral-600 max-sm:hidden ${ROW_COLS}`}>
+                  <div className={`grid items-center gap-3 px-2 pb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-neutral-600 max-sm:hidden ${ROW_COLS}`}>
                     <span />
                     <span />
                     <span>Titre</span>
@@ -1216,124 +1287,132 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
                   </div>
                   <div className="flex max-h-[62vh] flex-col gap-0.5 overflow-y-auto pr-1">
                     {filteredTracks.map(renderTrayRow)}
-                    {filteredTracks.length === 0 && <p className="px-3 py-6 text-center text-[11px] text-neutral-500">Aucun titre ne correspond au filtre.</p>}
+                    {filteredTracks.length === 0 && (
+                      <div className="flex flex-col items-center gap-2 px-3 py-8 text-center">
+                        <p className="text-[12px] text-neutral-500">Aucun titre ne correspond au filtre.</p>
+                        <button onClick={resetTrayFilters} className="prep-btn-ghost prep-tap px-3 py-1 text-[11px]">Réinitialiser les filtres</button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (
                 <div className={`${GRID_CLASS[gridSize]} max-h-[62vh] p-3`}>
                   {filteredTracks.map(renderTrayCard)}
+                  {filteredTracks.length === 0 && (
+                    <div className="col-span-full flex flex-col items-center gap-2 px-3 py-8 text-center">
+                      <p className="text-[12px] text-neutral-500">Aucun titre ne correspond au filtre.</p>
+                      <button onClick={resetTrayFilters} className="prep-btn-ghost prep-tap px-3 py-1 text-[11px]">Réinitialiser les filtres</button>
+                    </div>
+                  )}
                 </div>
               )}
+              <p className="prep-drag-hint flex items-center gap-1.5 border-t border-[var(--prep-line)] px-3 py-2 text-[11px] text-neutral-600">
+                <Icon name="grip" size={12} />
+                Glisse un titre (ou les cochés) sur un set pour l&apos;y ranger.
+              </p>
             </>
           )}
         </section>
 
-        {/* listes */}
-        <aside className="flex flex-col gap-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
-          <section className="prep-card flex flex-col gap-3 p-3">
-            <div className="flex items-center gap-2">
-              <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-200">Sets</h2>
-              <span className="rounded-full bg-white/5 px-2 py-px font-mono text-[10px] text-neutral-400">{lib.playlists.length}</span>
-            </div>
-            <div
-              data-over={dragOverList === NEW_LIST}
-              onDragOver={(e) => {
-                if (!acceptsDrag(e)) return;
-                e.preventDefault();
-                setDragOverList(NEW_LIST);
-              }}
-              onDragLeave={() => setDragOverList(null)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragOverList(null);
-                createPlaylistFrom(readDrag(e), newListName ?? "");
-              }}
-              className="prep-drop flex flex-col gap-2 rounded-xl border border-dashed border-[var(--prep-line)] p-2.5"
-            >
-              <div className="flex gap-2">
-                <input
-                  ref={newListInputRef}
-                  value={newListName ?? ""}
-                  onChange={(e) => setNewListName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") createPlaylistFrom([...selectedLaterIds], newListName ?? ""); }}
-                  placeholder="Nom du nouveau set"
-                  className="prep-input min-w-0 flex-1 px-2.5 py-1.5 text-xs"
-                />
-                <button onClick={() => createPlaylistFrom([...selectedLaterIds], newListName ?? "")} disabled={selectedLaterIds.size === 0} className="prep-btn-accent flex items-center gap-1 px-3 py-1.5 text-xs">
-                  <Icon name="plus" size={12} />
-                  Créer
-                </button>
+        {/* les sets */}
+        <aside className="min-w-0 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+          <Section title="Sets" count={lib.playlists.length} summary={`${lib.playlists.length} set(s)`} open={setsOpen} onToggle={() => setSetsOpen(!setsOpen)}>
+            <div className="flex flex-col gap-3 p-3 pt-0">
+              <div
+                data-over={dragOverList === NEW_LIST}
+                onDragOver={(e) => {
+                  if (!acceptsDrag(e)) return;
+                  e.preventDefault();
+                  setDragOverList(NEW_LIST);
+                }}
+                onDragLeave={() => setDragOverList(null)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOverList(null);
+                  createPlaylistFrom(readDrag(e), newListName ?? "");
+                }}
+                className="prep-drop flex flex-col gap-2 rounded-xl border border-dashed border-[var(--prep-line)] p-2.5"
+              >
+                <div className="flex gap-2">
+                  <input
+                    ref={newListInputRef}
+                    value={newListName ?? ""}
+                    onChange={(e) => setNewListName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") createPlaylistFrom([...selectedLaterIds], newListName ?? ""); }}
+                    placeholder="Nom du nouveau set"
+                    aria-label="Nom du nouveau set"
+                    className="prep-input prep-tap min-w-0 flex-1 px-2.5 py-1.5 text-xs"
+                  />
+                  <button onClick={() => createPlaylistFrom([...selectedLaterIds], newListName ?? "")} disabled={selectedLaterIds.size === 0} className="prep-btn-accent prep-tap flex items-center gap-1 px-3 py-1.5 text-xs">
+                    <Icon name="plus" size={12} />
+                    Créer
+                  </button>
+                </div>
+                <p className="text-[11px] text-neutral-500">
+                  {selectedLaterIds.size > 0 ? `${selectedLaterIds.size} titre(s) coché(s) iront dans le set.` : "Coche des titres, ou glisse-les ici pour créer un set."}
+                </p>
               </div>
-              <p className="text-[10px] text-neutral-500">
-                {selectedLaterIds.size > 0 ? `${selectedLaterIds.size} titre(s) coché(s) iront dans le set.` : "Coche des titres, ou glisse-les ici pour créer un set."}
-              </p>
+              {lib.playlists.map((playlist, index) => renderListCard(playlist, index))}
+              {lib.playlists.length === 0 && <p className="px-1 text-[12px] text-neutral-500">Aucun set pour l&apos;instant. Coche des titres du bac, puis « Créer un set » dans la barre qui apparaît.</p>}
             </div>
-            {lib.playlists.map((playlist, index) => renderListCard(playlist, index))}
-            {lib.playlists.length === 0 && <p className="px-1 text-[11px] text-neutral-500">Aucun set pour l&apos;instant.</p>}
-          </section>
+          </Section>
         </aside>
       </div>
 
-      {/* barre de sélection : actions sur les titres cochés */}
+      {/* étape 3 : créateur de set (source, forme d'énergie, durée, transitions, envoi sur les platines) */}
+      <Section
+        title="Créer un set"
+        step={3}
+        hint="titres, forme, ordre, envoi sur les platines"
+        open={wizardOpen}
+        onToggle={() => setWizardOpen(!wizardOpen)}
+        sectionRef={setSectionRef}
+      >
+        <div className="p-3 pt-0">
+          <SetWizard
+            key={studio.nonce}
+            bac={laterTracks}
+            allTracks={lib.tracks}
+            checkedIds={selectedLaterIds}
+            playlists={lib.playlists}
+            initial={studio.initial}
+            poolLabel="le bac"
+            isStemReady={(id) => stemOf(id).state === "done"}
+            analyzing={analyzingIds}
+            onAnalyze={analyzeIds}
+            onPrepareStems={(ids) => queueStems(lib.tracks.filter(t => ids.includes(t.id)))}
+            onSave={saveSet}
+            onSend={(dest, id) => onLaunchSet?.(dest, id)}
+            canSend={!!onLaunchSet}
+          />
+        </div>
+      </Section>
+
+      {/* barre de sélection collante : n'existe que si des titres sont cochés */}
       {selectedLaterIds.size > 0 && (
-        <div
-          className="sticky bottom-3 z-30 mx-auto flex w-full max-w-4xl flex-wrap items-center gap-2 rounded-2xl px-4 py-2.5 backdrop-blur"
-          style={{ background: "color-mix(in srgb, var(--prep-surface) 92%, transparent)", border: "1px solid color-mix(in srgb, var(--prep-accent) 45%, transparent)", boxShadow: "0 12px 40px rgba(0,0,0,.55)" }}
-        >
+        <div role="toolbar" aria-label="Actions sur les titres cochés" className="prep-selbar sticky bottom-3 z-30 mx-auto flex w-full max-w-4xl flex-wrap items-center gap-2 rounded-2xl px-4 py-2.5 backdrop-blur">
           <span className="flex items-center gap-2 text-xs font-bold text-neutral-100">
             <span className="prep-accent"><Icon name="check" /></span>
             {selectedLaterIds.size} coché(s)
           </span>
           <span className="font-mono text-[11px] text-neutral-500">{formatDuration(selectedSec)}</span>
-          <span className="mx-1 h-5 w-px bg-white/10" />
-          <select value="" onChange={(e) => { if (e.target.value) addCheckedToPlaylist(e.target.value); }} className="prep-input px-2 py-1 text-xs" aria-label="Ajouter les titres cochés à un set">
-            <option value="">Ajouter à un set…</option>
-            {lib.playlists.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-          <button onClick={() => openStudio({ source: "checked", autoBuild: selectedLaterIds.size >= 2 })} disabled={selectedLaterIds.size < 2} className="prep-btn-accent flex items-center gap-1.5 px-3 py-1 text-xs" title="Ordonner les titres cochés en set (forme, durée, transitions), puis l'envoyer sur les platines">
+          <span className="mx-1 hidden h-5 w-px bg-white/10 sm:block" />
+          <button onClick={() => openStudio({ source: "checked", autoBuild: selectedLaterIds.size >= 2 })} disabled={selectedLaterIds.size < 2} className="prep-btn-accent prep-tap flex items-center gap-1.5 px-3 py-1 text-xs" title="Ordonner les titres cochés en set (forme, durée, transitions), puis l'envoyer sur les platines">
             <Icon name="bolt" size={12} />
             Créer un set
           </button>
-          <button
-            onClick={() => {
-              newListInputRef.current?.focus();
-              newListInputRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
-            }}
-            className="prep-btn-ghost px-3 py-1 text-xs"
-          >
-            Nouveau set vide…
-          </button>
-          <button onClick={() => queueStems(selectedTracks)} className="prep-btn-ghost flex items-center gap-1 px-3 py-1 text-xs"><Icon name="stems" size={12} />Préparer les stems</button>
-          <button onClick={() => setSelectedLaterIds(new Set())} className="ml-auto text-[11px] text-neutral-400 hover:text-white">Tout décocher</button>
+          <button onClick={() => queueStems(selectedTracks)} className="prep-btn-ghost prep-tap flex items-center gap-1 px-3 py-1 text-xs"><Icon name="stems" size={12} />Préparer les stems</button>
+          <select value="" onChange={(e) => { if (e.target.value) addCheckedToPlaylist(e.target.value); }} className="prep-input prep-tap px-2 py-1 text-xs" aria-label="Ajouter les titres cochés à un set">
+            <option value="">Ajouter à un set…</option>
+            {lib.playlists.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <button onClick={newEmptySet} className="prep-btn-ghost prep-tap px-3 py-1 text-xs">Nouveau set vide…</button>
+          <button onClick={() => setSelectedLaterIds(new Set())} className="prep-tap ml-auto px-2 text-[12px] text-neutral-400 hover:text-white">Tout décocher</button>
         </div>
       )}
 
-      {/* créateur de set : source, forme d'énergie, durée, transitions, puis envoi sur les platines */}
-      <section ref={setSectionRef} className="prep-card flex scroll-mt-4 flex-col gap-3 p-3">
-        <div className="flex flex-wrap items-baseline gap-2">
-          <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-200">Créer un set</h2>
-          <span className="text-[10px] text-neutral-500">quatre étapes : titres, forme, ordre, envoi sur les platines</span>
-        </div>
-        <SetWizard
-          key={studio.nonce}
-          bac={laterTracks}
-          allTracks={lib.tracks}
-          checkedIds={selectedLaterIds}
-          playlists={lib.playlists}
-          initial={studio.initial}
-          poolLabel="le bac"
-          isStemReady={(id) => stemOf(id).state === "done"}
-          analyzing={analyzingIds}
-          onAnalyze={analyzeIds}
-          onPrepareStems={(ids) => queueStems(lib.tracks.filter(t => ids.includes(t.id)))}
-          onSave={saveSet}
-          onSend={(dest, id) => onLaunchSet?.(dest, id)}
-          canSend={!!onLaunchSet}
-        />
-      </section>
-
       {notice && (
-        <div role="status" className="fixed bottom-6 right-6 z-50 max-w-sm rounded-xl px-4 py-2.5 text-xs font-semibold text-neutral-100" style={{ background: "var(--prep-surface-2)", border: "1px solid var(--prep-accent)", boxShadow: "0 10px 30px rgba(0,0,0,.6)" }}>
+        <div role="status" className={`fixed right-4 z-50 max-w-sm rounded-xl px-4 py-2.5 text-xs font-semibold text-neutral-100 sm:right-6 ${selectedLaterIds.size > 0 ? "bottom-28" : "bottom-6"}`} style={{ background: "var(--prep-surface-2)", border: "1px solid var(--prep-accent)", boxShadow: "0 10px 30px rgba(0,0,0,.6)" }}>
           {notice}
         </div>
       )}

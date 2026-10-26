@@ -39,6 +39,6 @@ assert.equal(pickTech({ ...base, outStems: true, inStems: true, type: "cut" }), 
 assert.equal(pickTech({ ...base, outStems: true, inStems: true, sec: 4 }), null);
 assert.equal(pickTech({ ...base, outStems: true, inStems: true, mode: "off" }), null);
 const seq = [0, 1, 2, 3, 4].map((index) => pickTech({ ...base, index, outStems: true, inStems: true }));
-assert.deepEqual(seq, ["drumswap", "vocalhandoff", "bassslam", "build", "drumswap"]);
+assert.deepEqual(seq, ["drumswap", "vocalhandoff", "bassslam", "build", "drumbridge"]);
 assert.ok(!["drumswap", "bassslam"].includes(pickTech({ ...base, mode: "smooth", index: 0, outStems: true, inStems: true })!), "smooth mode: no hard slams");
 console.log("stem mix ok");

@@ -1,0 +1,151 @@
+/* Playlist view: tabs, chip groups and row actions (the surfaces come from app/prep.css) */
+
+/* chip group: a wrapping set of choices, one pressed (transition styles, shapes, sources) */
+.pl-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pl-chips > button {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #9aa3b2;
+  background: transparent;
+  border: 1px solid var(--prep-line);
+  border-radius: 8px;
+  transition: color 0.12s ease, border-color 0.12s ease, background-color 0.12s ease;
+}
+.pl-chips > button:hover:not(:disabled) {
+  color: #fff;
+  border-color: color-mix(in srgb, var(--prep-accent) 50%, transparent);
+}
+.pl-chips > button[aria-pressed="true"] {
+  color: var(--prep-accent);
+  border-color: var(--prep-accent);
+  background: color-mix(in srgb, var(--prep-accent) 12%, transparent);
+}
+.pl-chips > button:disabled {
+  opacity: 0.4;
+}
+
+/* tabs of the open set and switch between set / library on small screens */
+.pl-tabs {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  box-shadow: inset 0 -1px 0 var(--prep-line);
+}
+.pl-tabs::-webkit-scrollbar {
+  display: none;
+}
+.pl-tab {
+  display: inline-flex;
+  flex: 1 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 42px;
+  padding: 0 12px;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 800;
+  color: #8b93a1;
+  border-bottom: 2px solid transparent;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+.pl-tab:hover {
+  color: #e5e7eb;
+}
+.pl-tab[aria-selected="true"],
+.pl-tab[aria-pressed="true"] {
+  color: #fff;
+  border-bottom-color: var(--prep-accent);
+}
+.pl-tab-count {
+  padding: 0 6px;
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+  line-height: 16px;
+  color: #9aa3b2;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+}
+
+/* a row's actions stay visible but quiet, and light up with the row */
+.pl-row .pl-row-actions {
+  opacity: 0.55;
+  transition: opacity 0.12s ease;
+}
+.pl-row:hover .pl-row-actions,
+.pl-row:focus-within .pl-row-actions {
+  opacity: 1;
+}
+@media (hover: none) {
+  .pl-row .pl-row-actions {
+    opacity: 1;
+  }
+}
+
+/* icon button with a 36 px target */
+.pl-icon-btn {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  color: #8b93a1;
+  border-radius: 8px;
+  transition: color 0.12s ease, background-color 0.12s ease;
+}
+.pl-icon-btn:hover:not(:disabled) {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.07);
+}
+.pl-icon-btn[data-danger]:hover:not(:disabled) {
+  color: #f87171;
+}
+.pl-icon-btn[data-lg] {
+  width: 40px;
+  height: 40px;
+}
+.pl-icon-btn:disabled {
+  opacity: 0.3;
+}
+
+/* drop position while dragging a track */
+.pl-drop-line {
+  height: 3px;
+  flex-shrink: 0;
+  background: var(--prep-accent);
+  border-radius: 2px;
+  box-shadow: 0 0 8px var(--prep-accent);
+}
+
+/* small label above a control */
+.pl-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #7b8494;
+}
+
+/* set cards of the rail: the whole card takes drops, the title button selects */
+.pl-set[data-active="true"] {
+  background: color-mix(in srgb, var(--prep-accent) 8%, var(--prep-surface));
+  border-color: color-mix(in srgb, var(--prep-accent) 55%, var(--prep-line));
+  box-shadow: inset 3px 0 0 var(--prep-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pl-chips > button,
+  .pl-tab,
+  .pl-row .pl-row-actions,
+  .pl-icon-btn {
+    transition: none;
+  }
+}
