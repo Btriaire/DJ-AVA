@@ -259,6 +259,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   // instead of each side keeping its own counter and both starting on track0.
   const relayPos = useRef(-1);
   const relayFading = useRef(false);
+  const stemLoadTried = useRef<Record<"A" | "B", string>>({ A: "", B: "" }); // the song whose stems were already asked for, per deck
   const accentRef = useRef({ A: { id: "", lastBar: Number.NEGATIVE_INFINITY, count: 0 }, B: { id: "", lastBar: Number.NEGATIVE_INFINITY, count: 0 } }); // the DJ's interventions in the song that plays on each deck
   const djLive = useDjLive(); // the always-at-hand DJ switch (top bar)
   const djAction = djLive.action; // what the DJ just did, shown in the Lecture tile
@@ -1748,8 +1749,27 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   useEffect(() => {
     if (!splitLayout) return;
     const id = window.setInterval(() => {
-      // how many playing songs have their stems ready (the top bar says whether the DJ can use them)
-      setDjStems([engine.deckA, engine.deckB].filter((d) => d.playing && d.stemsActive && d.stemReady).length);
+      // the top bar says whether the DJ can use the stems of what plays: in use / available (on disk or loaded) / none
+      const playing = [engine.deckA, engine.deckB].filter((d) => d.playing);
+      setDjStems(playing.filter((d) => d.stemsActive && d.stemReady).length, playing.filter((d) => d.stemReady || d.stemCached).length);
+      // The DJ uses the stems of a song that has them but plays as one block (played by hand, first song of a relay...):
+      // loaded first (from the disk cache, nothing is computed), then switched on at the start of a bar
+      const wantsStems = getDjLive().on || (relayRef.current && !!relayPlaylist()?.dj && relayPlaylist()?.dj?.stems !== "off");
+      if (wantsStems) {
+        for (const side of ["A", "B"] as const) {
+          const d = side === "A" ? engine.deckA : engine.deckB;
+          if (!d.playing || d.stemsActive || d.streamOnly || relayFading.current || d.duration - d.position() < 25 || getMemLevel() === "critical") continue;
+          if (d.stemReady) {
+            const bar = d.bpm > 0 ? (60 / d.bpm) * 4 : 0;
+            if (bar > 0 && (d.position() - d.beatGridOffset) % bar > 0.5) continue; // wait for the first beat of a bar
+            d.setStemsActive(true);
+            showDjAction(`stems activés (${side})`);
+          } else if (d.stemCached && stemLoadTried.current[side] !== (d.origin?.id ?? d.name)) {
+            stemLoadTried.current[side] = d.origin?.id ?? d.name;
+            void d.ensureStems();
+          }
+        }
+      }
       if (!getDjLive().on) return;
       for (const side of ["A", "B"] as const) {
         if (relayRef.current && relaySide.current === side) continue; // the relay tick looks after its own deck

@@ -9,7 +9,8 @@ export interface DjLive {
   on: boolean;
   force: DjForce;
   genre: Genre; // the style played: it decides which effects the DJ uses
-  stems: number; // how many of the two decks play a song whose stems are ready (0..2)
+  stems: number; // how many of the playing songs are played from their stems (0..2)
+  stemsAvail: number; // how many of the playing songs have stems (loaded or on disk), used or not yet (0..2)
   action: string | null; // the move the DJ just made, shown in the top bar for a few seconds
 }
 
@@ -18,13 +19,13 @@ const KEY = "djsynth.djlive.v1";
 function load(): DjLive {
   try {
     const v = JSON.parse(localStorage.getItem(KEY) ?? "{}") as Partial<DjLive>;
-    return { on: !!v.on, force: forceOf({ force: v.force }), genre: GENRES.includes(v.genre as Genre) ? (v.genre as Genre) : "auto", stems: 0, action: null };
+    return { on: !!v.on, force: forceOf({ force: v.force }), genre: GENRES.includes(v.genre as Genre) ? (v.genre as Genre) : "auto", stems: 0, stemsAvail: 0, action: null };
   } catch {
-    return { on: false, force: 3, genre: "auto", stems: 0, action: null };
+    return { on: false, force: 3, genre: "auto", stems: 0, stemsAvail: 0, action: null };
   }
 }
 
-let state: DjLive = typeof window === "undefined" ? { on: false, force: 3, genre: "auto", stems: 0, action: null } : load();
+let state: DjLive = typeof window === "undefined" ? { on: false, force: 3, genre: "auto", stems: 0, stemsAvail: 0, action: null } : load();
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 
@@ -37,9 +38,9 @@ export const subscribeDjLive = (cb: () => void) => {
 };
 export const useDjLive = () => useSyncExternalStore(subscribeDjLive, getDjLive, getDjLive);
 
-export function setDjStems(n: number): void {
-  if (n === state.stems) return;
-  state = { ...state, stems: n };
+export function setDjStems(active: number, avail: number): void {
+  if (active === state.stems && avail === state.stemsAvail) return;
+  state = { ...state, stems: active, stemsAvail: avail };
   emit();
 }
 

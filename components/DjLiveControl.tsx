@@ -42,10 +42,16 @@ export function DjLiveControl() {
       {live.on && (
         <span
           className="text-[11px] font-bold"
-          style={{ color: live.stems > 0 ? "#e879f9" : "#9ca3af" }}
-          title={live.stems > 0 ? "Les stems du morceau qui joue sont prêts : le DJ les utilise (batterie, voix, basse...)" : "Aucun stem prêt sur les platines : le DJ n'utilise que les effets. Prépare les stems du set (bouton Préparer) avant de le jouer."}
+          style={{ color: live.stems > 0 ? "#e879f9" : live.stemsAvail > 0 ? "#f59e0b" : "#9ca3af" }}
+          title={
+            live.stems > 0
+              ? "Le morceau qui joue est joué par ses stems : le DJ les utilise (batterie, voix, basse...)"
+              : live.stemsAvail > 0
+                ? "Les stems de ce morceau existent : le DJ les charge et les active au début de la prochaine mesure."
+                : "Ce morceau n'a pas de stems : le DJ n'utilise que les effets. Prépare les stems du set (bouton Préparer) avant de le jouer."
+          }
         >
-          {live.stems > 0 ? "stems prêts" : "sans stems"}
+          {live.stems > 0 ? "stems actifs" : live.stemsAvail > 0 ? "stems en chargement" : "sans stems"}
         </span>
       )}
       {live.on && live.action && (
