@@ -542,9 +542,10 @@ async function searchArtist(name: string, count: number, skip: ReadonlySet<strin
     }
     return out;
   }
-  if (prefs.mode === "collection" || prefs.mode === "zen" || prefs.mode === "calm") {
-    const col = findCollection(name);
-    const gentle = isGentle(prefs); // zen and calm songs are long and often called "instrumental" or "live": no studio filter
+  {
+    const col = findCollection(name); // a named list works in every radio type
+    // zen and calm songs are long and often called "instrumental" or "live": no studio filter
+    const gentle = isGentle(prefs) || col?.genre === "zen" || col?.genre === "calm";
     if (col) {
       // one search per named song of the collection
       const taken = new Set(skip);

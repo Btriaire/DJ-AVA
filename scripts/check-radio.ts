@@ -117,4 +117,19 @@ const topicPick = pickCandidates(topicRes, "", 4, new Set(), { topic: true }).ma
 assert.deepEqual(topicPick, ["t2", "t4", "t3", "t1"], "most watched first, a mix of one hour left out, two songs per channel at most");
 assert.deepEqual(pickCandidates(topicRes, "", 2, new Set(["t2"]), { topic: true }).map((r) => r.id), ["t4", "t5"], "songs already taken are not proposed again");
 assert.equal(pickCandidates(topicRes, "Daft Punk", 5).length, 0, "an artist radio still needs the name in the title");
+// a typed style is answered with the lists made for it, before any search
+import { curatedFor } from "../lib/styles";
+const cf = (t: string) => curatedFor(t);
+assert.equal(cf("zen").collections.length, 4);
+assert.ok(cf("zen").collections.every((c) => c.genre === "zen"));
+assert.ok(cf("Méditation").collections.every((c) => c.genre === "zen") && cf("musique relaxante ambient").collections.length === 4);
+assert.ok(cf("piano relaxant").collections.length === 4 && cf("piano relaxant").collections.every((c) => c.genre === "calm"), "a piano request is a calm one");
+assert.deepEqual(cf("piano de film").collections.map((c) => c.key), ["calm-cinema"]);
+assert.ok(cf("musique pour dormir").collections.some((c) => c.key === "zen-sleep"));
+assert.ok(cf("rock années 80").collections.map((c) => c.key).includes("80s"));
+assert.equal(cf("jazz").collections.length, 0);
+assert.equal(cf("jazz").style?.key, "jazz");
+assert.equal(cf("rap français").style?.key, "rap-fr");
+assert.equal(cf("bossa nova").style, undefined, "unknown: searched by popularity");
+assert.equal(cf("popular songs").style, undefined, "pop is a word, not the start of popular");
 console.log("radio ok");

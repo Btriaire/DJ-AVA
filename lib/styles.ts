@@ -146,3 +146,61 @@ export function pickSongs(c: Collection, count: number, offset = 0): { artist: s
   const start = (offset * count) % c.songs.length;
   return Array.from({ length: Math.min(count, c.songs.length) }, (_, k) => c.songs[(start + k) % c.songs.length]);
 }
+
+// ---- what a typed style or mood stands for -------------------------------------------------------------
+// "zen", "piano relaxant", "jazz", "rock années 80": when it is one the app knows, the answer is its best-known songs or
+// artists (curated lists), not the first YouTube videos. Anything else is searched by popularity (lib/radio.ts).
+
+const flat = (t: string) =>
+  t
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+const hasWord = (text: string, kw: string) => new RegExp(`(^|[^a-z0-9])${flat(kw).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`).test(flat(text));
+const anyWord = (text: string, kws: string[]) => kws.some((k) => hasWord(text, k));
+
+const COLLECTION_WORDS: Record<string, string[]> = {
+  dancefloor: ["dancefloor", "danse", "dance", "fete", "soiree"],
+  "80s": ["80", "80s", "annees 80"],
+  "90s": ["90", "90s", "annees 90"],
+  "2000s": ["2000", "2000s", "annees 2000"],
+  disco: ["disco"],
+  fr: ["tubes francais", "chanson francaise", "chansons francaises"],
+  chill: ["chill", "lofi", "lo-fi", "chill-out"],
+  rock: ["classiques rock", "rock"],
+  latino: ["latino", "salsa", "reggaeton", "bachata"],
+};
+const STYLE_WORDS: Record<string, string[]> = {
+  house: ["house", "electro", "edm"],
+  techno: ["techno", "rave"],
+  deep: ["deep", "lofi", "lo-fi"],
+  "pop-fr": ["pop francaise", "variete francaise"],
+  "rap-fr": ["rap francais", "rap fr"],
+  hiphop: ["hip-hop", "hip hop", "hiphop", "rap"],
+  rock: ["rock"],
+  "disco-funk": ["funk"],
+  pop: ["pop"],
+  reggae: ["reggae", "dub", "ska"],
+  latino: ["latino", "salsa", "reggaeton", "bachata"],
+  jazz: ["jazz"],
+  "80s": ["annees 80", "80s"],
+  afro: ["afro", "afrobeat", "afrobeats"],
+};
+
+// Piano requests are answered with the calm piano lists, zen and meditation with the zen lists, then the lists of
+// songs the words name, then the artists of a style. `collections` empty and no style = unknown: searched by popularity.
+export function curatedFor(text: string): { collections: Collection[]; style?: Style } {
+  const by = (...keys: string[]) => [...ZEN_COLLECTIONS, ...CALM_COLLECTIONS, ...COLLECTIONS].filter((c) => keys.includes(c.key));
+  if (hasWord(text, "piano")) {
+    if (anyWord(text, ["film", "cinema"])) return { collections: by("calm-cinema") };
+    if (hasWord(text, "jazz")) return { collections: by("calm-jazz") };
+    if (hasWord(text, "cordes")) return { collections: by("calm-strings") };
+    return { collections: CALM_COLLECTIONS };
+  }
+  if (anyWord(text, ["dormir", "sommeil", "sleep"])) return { collections: by("zen-sleep", "zen-ambient") };
+  if (hasWord(text, "planant")) return { collections: by("zen-electro") };
+  if (anyWord(text, ["zen", "meditation", "mediter", "ambient", "relaxation", "relaxant", "spa", "apaisant", "detente", "mantra"])) return { collections: ZEN_COLLECTIONS };
+  const lists = COLLECTIONS.filter((c) => anyWord(text, COLLECTION_WORDS[c.key] ?? []));
+  if (lists.length) return { collections: lists.slice(0, 3) };
+  return { collections: [], style: STYLES.find((st) => anyWord(text, STYLE_WORDS[st.key] ?? [])) };
+}

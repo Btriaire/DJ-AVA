@@ -40,6 +40,7 @@ import { AdvancedPanel } from "./AdvancedPanel";
 import { ClassicalPanel } from "./ClassicalPanel";
 import { CatalogPanel } from "./CatalogPanel";
 import { TopicBox } from "./TopicBox";
+import { curatedFor } from "@/lib/styles";
 import { PrepDock, type PrepRow } from "./PrepDock";
 import { findComposer } from "@/lib/classical";
 import { pickTech } from "@/lib/stemMix";
@@ -338,8 +339,32 @@ export default function RadioView({
       });
   };
 
-  // a style or a mood typed instead of an artist: its best-known songs (not a name to find in the titles)
+  // the settings of a zen or calm radio: soft blends, one decision for the whole set, almost no DJ effect, no analysis
+  const gentlePatch = (m: "zen" | "calm"): Partial<RadioPrefs> => ({
+    mode: m,
+    content: "studio",
+    arc: "flow",
+    maxTrackMin: 12,
+    mixArtists: "alternate",
+    analysis: "none",
+    dj: { ...prefs.dj, genre: m, force: 1, blend: m === "zen" ? "xlong" : "long", stems: "off", voice: "off" },
+  });
+  // A style or a mood typed instead of an artist. A style the app knows brings its best-known songs or artists (lists
+  // made for that); any other word is searched by popularity.
   const addTopic = (name: string) => {
+    const hit = curatedFor(name);
+    if (hit.collections.length) {
+      const kind = hit.collections[0].genre;
+      const labels = hit.collections.map((c) => c.label);
+      addMany(labels, kind === "zen" || kind === "calm" ? gentlePatch(kind) : { dj: { ...prefs.dj, genre: kind } });
+      flash(`« ${name} » : ${labels.length} liste(s) des titres les plus connus ajoutée(s)`);
+      return;
+    }
+    if (hit.style) {
+      addMany(hit.style.artists.slice(0, 5), { dj: { ...prefs.dj, genre: hit.style.genre } });
+      flash(`« ${hit.style.label} » : ses artistes les plus connus sont ajoutés`);
+      return;
+    }
     if (prefs.artists.some((a) => a.name.toLowerCase() === name.toLowerCase()) || prefs.artists.length >= 24) return;
     change({ artists: [...prefs.artists, { id: uid(), name: name.slice(0, 60), love: 2 as const, topic: true }] });
     flash(`« ${name} » ajouté : la radio prendra les titres les plus écoutés pour ce style`);
@@ -659,7 +684,7 @@ export default function RadioView({
                   aria-pressed={prefs.mode === "zen"}
                   disabled={busy}
                   onClick={() => {
-                    change({ mode: "zen", content: "studio", arc: "flow", maxTrackMin: 12, mixArtists: "alternate", analysis: "none", dj: { ...prefs.dj, genre: "zen", force: 1, blend: "xlong", stems: "off", voice: "off" } });
+                    change(gentlePatch("zen"));
                     flash("Radio Zen : choisis des ambiances. Fondus très longs, presque aucun effet.");
                   }}
                   title="Ambient et méditation : des titres très calmes, enchaînés par de longs fondus, presque sans effet DJ"
@@ -671,7 +696,7 @@ export default function RadioView({
                   aria-pressed={prefs.mode === "calm"}
                   disabled={busy}
                   onClick={() => {
-                    change({ mode: "calm", content: "studio", arc: "flow", maxTrackMin: 12, mixArtists: "alternate", analysis: "none", dj: { ...prefs.dj, genre: "calm", force: 1, blend: "long", stems: "off", voice: "off" } });
+                    change(gentlePatch("calm"));
                     flash("Radio Calm : choisis un style de piano. Fondus doux, réverb légère seulement.");
                   }}
                   title="Piano calme : fondus doux, juste une réverb ou un écho léger"
