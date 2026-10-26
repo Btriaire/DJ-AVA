@@ -25,6 +25,7 @@ export function RamOptimizer() {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [sure, setSure] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [forceAsk, setForceAsk] = useState(false); // second click needed to force: no browser dialog (they can be blocked in the app)
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,6 +72,7 @@ export function RamOptimizer() {
       setGroups(data.groups ?? []);
       setPicked(new Set((data.groups ?? []).filter((g) => !g.locked && data.left.includes(g.name)).map((g) => g.id)));
       setSure(false);
+      setForceAsk(false);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -104,8 +106,8 @@ export function RamOptimizer() {
         RAM+
       </button>
       {open && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-label="Optimisation de RAM avancée" onClick={() => !busy && setOpen(false)}>
-          <div className="prep-card flex max-h-[90vh] w-full max-w-xl flex-col gap-3 overflow-hidden p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-3" role="dialog" aria-modal="true" aria-label="Optimisation de RAM avancée" onClick={() => !busy && setOpen(false)}>
+          <div className="flex max-h-[96vh] w-full max-w-xl flex-col gap-3 overflow-y-auto rounded-xl border border-[var(--prep-line)] bg-[var(--prep-surface,#0d0d10)] p-5 shadow-[0_20px_60px_rgba(0,0,0,.8)]" style={{ background: "#0d0d10" }} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-sm font-black uppercase tracking-[0.18em] text-neutral-100">Optimisation de RAM avancée</h2>
@@ -123,7 +125,7 @@ export function RamOptimizer() {
               </p>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-[var(--prep-line)]">
+            <div className="max-h-[30vh] shrink-0 overflow-y-auto rounded-lg border border-[var(--prep-line)]">
               {groups === null ? (
                 <p className="p-4 text-[12px] text-neutral-400">Lecture des programmes ouverts…</p>
               ) : groups.length === 0 ? (
@@ -170,29 +172,32 @@ export function RamOptimizer() {
               </div>
             )}
 
+            {/* always visible, even on a small window: the confirmation and the buttons stay at the bottom */}
+            <div className="sticky bottom-0 -mx-5 -mb-5 flex flex-col gap-3 border-t border-[var(--prep-line)] px-5 py-4" style={{ background: "#0d0d10" }}>
             <label className="flex items-start gap-2 text-[12px] text-neutral-300">
-              <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--prep-accent)]" checked={sure} onChange={(e) => setSure(e.target.checked)} disabled={busy} />
-              <span>Je comprends que ces programmes vont se fermer et que je peux perdre ce qui n&apos;est pas enregistré.</span>
-            </label>
+                <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--prep-accent)]" checked={sure} onChange={(e) => setSure(e.target.checked)} disabled={busy} />
+                <span>Je comprends que ces programmes vont se fermer et que je peux perdre ce qui n&apos;est pas enregistré.</span>
+              </label>
 
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              {result && result.left.length > 0 && (
-                <button
-                  type="button"
-                  className="rounded-lg border border-red-500/70 px-3 py-2 text-[12px] font-bold text-red-300 hover:bg-red-500/10 disabled:opacity-40"
-                  disabled={busy || !sure || !chosen.length}
-                  onClick={() => window.confirm("Forcer la fermeture : les programmes restants s'arrêtent tout de suite, sans proposer d'enregistrer. Continuer ?") && void close("force")}
-                  title="Dernier recours : arrêt immédiat, sans proposition d'enregistrer"
-                >
-                  Forcer la fermeture
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {result && result.left.length > 0 && (
+                  <button
+                    type="button"
+                    className="rounded-lg border border-red-500/70 px-3 py-2 text-[12px] font-bold text-red-300 hover:bg-red-500/10 disabled:opacity-40"
+                    disabled={busy || !sure || !chosen.length}
+                    onClick={() => (forceAsk ? void close("force") : setForceAsk(true))}
+                    title="Dernier recours : arrêt immédiat, sans proposition d'enregistrer"
+                  >
+                    {forceAsk ? "Confirmer : tout arrêter maintenant" : "Forcer la fermeture"}
+                  </button>
+                )}
+                <button type="button" className="prep-btn-ghost px-3 py-2 text-[12px]" onClick={() => void load()} disabled={busy}>
+                  Actualiser
                 </button>
-              )}
-              <button type="button" className="prep-btn-ghost px-3 py-2 text-[12px]" onClick={() => void load()} disabled={busy}>
-                Actualiser
-              </button>
-              <button type="button" className="prep-btn-accent px-4 py-2 text-[12px] font-black disabled:opacity-40" disabled={busy || !sure || !chosen.length} onClick={() => void close("quit")}>
-                {busy ? "Fermeture…" : `Fermer proprement (${chosen.length})`}
-              </button>
+                <button type="button" className="prep-btn-accent px-4 py-2 text-[12px] font-black disabled:opacity-40" disabled={busy || !sure || !chosen.length} onClick={() => void close("quit")}>
+                  {busy ? "Fermeture…" : `Fermer proprement (${chosen.length})`}
+                </button>
+              </div>
             </div>
           </div>
         </div>
