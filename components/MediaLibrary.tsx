@@ -1876,8 +1876,14 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       if (remain > preFadeWindow + 0.3) return;
       relayArmed.current = false;
       // tempos too far apart: the voices of the two songs are switched off for the change
+      // the tempo of each song: what the deck measured, or the library's when the deck has not finished measuring (the song
+      // waiting on the other deck may still be loading)
+      const libBpm = (d: typeof deck, side: "A" | "B") => (d.bpm > 0 ? d.bpm : liveQueue(side)[relayIdx.current[side]]?.bpm ?? 0);
+      const bpmOut = libBpm(deck, side);
+      const bpmIn = libBpm(otherDeck, other);
       const gapLimit = dj?.vocalGap ?? VOCAL_GAP_BPM;
-      const vocalHold = gapLimit > 0 && bpmDiff(deck.bpm, otherDeck.bpm) >= gapLimit && (deck.stemsActive || otherDeck.stemsActive) && TYPE !== "cut";
+      const bigGap = gapLimit > 0 && bpmDiff(bpmOut, bpmIn) >= gapLimit && TYPE !== "cut";
+      const vocalHold = bigGap && (deck.stemsActive || otherDeck.stemsActive);
       // beat-matched: the incoming tempo follows the outgoing one and it starts exactly on a beat (or on a bar)
       let wait = 0;
       if (step?.sync && TYPE !== "cut") {
@@ -1924,7 +1930,9 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           relayFade(other, Math.max(secs, 0.05), TYPE, !!step?.bassSwap && !tech, tech ? { tech, mode: stemMode } : undefined, { holdVocals: vocalHold });
           if (vocalHold) {
             releaseVocalsWhenHome(otherDeck, otherDeck.origin?.id);
-            showDjAction(`voix coupées (${Math.round(bpmDiff(deck.bpm, otherDeck.bpm))} BPM d'écart)`);
+            showDjAction(`voix coupées (${Math.round(bpmDiff(bpmOut, bpmIn))} BPM d'écart)`);
+          } else if (bigGap) {
+            showDjAction(`${Math.round(bpmDiff(bpmOut, bpmIn))} BPM d'écart : stems indisponibles, voix gardées`);
           }
         }
         // the style's own touch on the change: an echo out, a riser, a phaser... on top of the blend (from force 3)
