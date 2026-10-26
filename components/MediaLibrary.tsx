@@ -1884,6 +1884,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       const gapLimit = dj?.vocalGap ?? VOCAL_GAP_BPM;
       const bigGap = gapLimit > 0 && bpmDiff(bpmOut, bpmIn) >= gapLimit && TYPE !== "cut";
       const vocalHold = bigGap && (deck.stemsActive || otherDeck.stemsActive);
+      // what the DJ saw at this change (visible in the console of the app: useful when a change does not sound as expected)
+      console.info("[DJ enchaînement]", { type: TYPE, bpmOut, bpmIn, ecart: Math.round(bpmDiff(bpmOut, bpmIn) * 10) / 10, seuil: gapLimit, stemsOut: deck.stemsActive && deck.stemReady, stemsIn: otherDeck.stemsActive && otherDeck.stemReady, voixCoupees: vocalHold });
       // beat-matched: the incoming tempo follows the outgoing one and it starts exactly on a beat (or on a bar)
       let wait = 0;
       if (step?.sync && TYPE !== "cut") {
@@ -1902,6 +1904,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       if (tech) flash(`DJ : ${STEM_TECH_LABEL[tech]}`);
       const go = () => {
         if (!relayRef.current) return;
+        let vocalNote = "";
         // same volume as the song that is leaving
         if (dj?.loudness !== false && step) {
           const lo = cachedLoudness(deck.origin?.id ?? "");
@@ -1928,12 +1931,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           brakeOut(deck);
         } else {
           relayFade(other, Math.max(secs, 0.05), TYPE, !!step?.bassSwap && !tech, tech ? { tech, mode: stemMode } : undefined, { holdVocals: vocalHold });
-          if (vocalHold) {
-            releaseVocalsWhenHome(otherDeck, otherDeck.origin?.id);
-            showDjAction(`voix coupées (${Math.round(bpmDiff(bpmOut, bpmIn))} BPM d'écart)`);
-          } else if (bigGap) {
-            showDjAction(`${Math.round(bpmDiff(bpmOut, bpmIn))} BPM d'écart : stems indisponibles, voix gardées`);
-          }
+          if (vocalHold) releaseVocalsWhenHome(otherDeck, otherDeck.origin?.id);
+          vocalNote = vocalHold ? `voix coupées (${Math.round(bpmDiff(bpmOut, bpmIn))} BPM d'écart)` : bigGap ? `${Math.round(bpmDiff(bpmOut, bpmIn))} BPM d'écart, stems indisponibles : voix gardées` : "";
         }
         // the style's own touch on the change: an echo out, a riser, a phaser... on top of the blend (from force 3)
         const live = getDjLive();
@@ -1944,9 +1943,11 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           const move = deck.bpm > 0 ? pickTransitionMove(force, relayIdx.current[side], feelT) : null;
           if (move) {
             runAccent(deck, move, amountFor(FORCE_PROFILE[force].amount, feelT), Math.max(2, secs), FORCE_PROFILE[force].len);
-            showDjAction(`${ACCENT_LABEL[move]} (enchaînement)`);
+            showDjAction(`${vocalNote ? `${vocalNote} + ` : ""}${ACCENT_LABEL[move]} (enchaînement)`);
+            vocalNote = "";
           }
         }
+        if (vocalNote) showDjAction(vocalNote); // (when no move of the style came with the change)
         if (step?.sync && TYPE !== "cut") window.setTimeout(() => pitchHome(otherDeck), (secs + 1) * 1000);
         window.setTimeout(() => announceOver(other), TYPE === "cut" ? 300 : Math.min(secs * 0.35, 4) * 1000);
       };
