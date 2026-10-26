@@ -201,36 +201,60 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
     flash(count > 0 ? (tracks.length === 1 ? `Préparation lancée : ${tracks[0].name}` : `Préparation lancée : ${count} titre(s)`) : "Déjà en préparation ou déjà prêt");
   };
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) return;
-    setIsSearching(true);
+  const [searchMore, setSearchMore] = useState(false); // "encore plus" / "étendre": a longer search is running
+  const [searchLevel, setSearchLevel] = useState(0); // how many times the list was made longer (each adds 40 results)
+  const [searchExtended, setSearchExtended] = useState(false); // the query was widened with its variants
+
+  // `level` 0 = a first search; 1.. = the same search with more results; `extend` adds the variants of the query
+  const runSearch = async (level: number, extend: boolean) => {
+    const q = searchQuery.trim();
+    if (!q) return;
+    const more = level > 0 || extend;
+    if (more) setSearchMore(true);
+    else {
+      setIsSearching(true);
+      setSearchResults([]);
+      setProbed({});
+    }
     setSearchOpen(true);
     setShowSearchFilters(false);
     setSearchError("");
-    setProbed({});
     setChecking(false);
-
+    const n = Math.min(40 + level * 40, 150);
+    // a widened search also asks for the usual versions of a song, which a plain query hides behind the official clip
+    const queries = extend ? [q, `${q} remix`, `${q} live`, `${q} extended mix`, `${q} audio`] : [q];
     try {
-      const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(searchQuery)}&n=40&min=0&max=100000`);
-      const data = await res.json();
-      const results = data.tracks.map((track: AudiusTrack) => ({
-        ...track,
-        bpm: track.bpm ? Number(track.bpm) || undefined : undefined
-      }));
+      const lists = await Promise.all(
+        queries.map((qq) =>
+          fetch(`/api/youtube/search?q=${encodeURIComponent(qq)}&n=${qq === q ? n : 30}&min=0&max=100000`)
+            .then((r) => r.json() as Promise<{ tracks?: AudiusTrack[] }>)
+            .catch(() => ({ tracks: [] as AudiusTrack[] }))
+        )
+      );
+      const seen = new Set<string>();
+      const results: AudiusTrack[] = [];
+      for (const t of [...(more ? searchResults : []), ...lists.flatMap((l) => l.tracks ?? [])]) {
+        if (seen.has(t.id)) continue;
+        seen.add(t.id);
+        results.push({ ...t, bpm: t.bpm ? Number(t.bpm) || undefined : undefined });
+      }
       setSearchResults(results);
-
-      // Start quality probing
+      setSearchLevel(level);
+      setSearchExtended(extend || (more && searchExtended));
+      // quality is checked for the new results only
+      const fresh = results.filter((t) => !probed[t.id]).map((t) => t.id);
       setChecking(true);
-      const ids = results.map((t: AudiusTrack) => t.id);
-      probeQualities(ids, (id, result) => {
-        setProbed(prev => ({ ...prev, [id]: result }));
+      probeQualities(fresh, (id, result) => {
+        setProbed((prev) => ({ ...prev, [id]: result }));
       }, 3).finally(() => setChecking(false));
-    } catch (err) {
+    } catch {
       setSearchError("Échec de la recherche");
     } finally {
       setIsSearching(false);
+      setSearchMore(false);
     }
   };
+  const handleSearch = () => runSearch(0, false);
 
   const addLaterTrack = (track: AudiusTrack) => {
     persist(data => {
@@ -1071,6 +1095,16 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
             </div>
             <div className="grid max-h-[46vh] gap-2 overflow-y-auto pr-1 [grid-template-columns:repeat(auto-fill,minmax(320px,1fr))]">
               {filteredSearchResults.map((track) => renderSearchResultCard(track))}
+              {!isSearching && (
+                <div className="col-span-full flex flex-wrap items-center justify-center gap-2 py-2">
+                  <button type="button" disabled={searchMore || searchLevel >= 3} onClick={() => runSearch(searchLevel + 1, false)} className="prep-btn-accent px-4 py-1.5 text-[11px]" title="Relance la recherche avec 40 résultats de plus">
+                    {searchMore ? "Recherche…" : searchLevel >= 3 ? "Maximum atteint" : "+ Encore plus de résultats"}
+                  </button>
+                  <button type="button" disabled={searchMore || searchExtended} onClick={() => runSearch(searchLevel, true)} className="prep-btn-ghost px-4 py-1.5 text-[11px]" title="Ajoute les versions remix, live, extended et audio de ta recherche">
+                    {searchExtended ? "Recherche étendue" : "Étendre la recherche"}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}

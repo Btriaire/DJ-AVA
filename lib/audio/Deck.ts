@@ -1240,6 +1240,8 @@ export class Deck {
     this.stemsActive = false;
     this.stemBuffers = [];
     this.stemNames = [];
+    this.stemRamps.forEach((id) => window.clearInterval(id));
+    this.stemRamps.clear();
     this.stemVol = [];
     for (let i = 0; i < this.stemLoopWrapTimer.length; i++) this.clearStemLoopTimer(i);
     this.stemLoopWrapCount = this.stemLoopWrapCount.map(() => 0);
@@ -1536,8 +1538,41 @@ export class Deck {
   // per-stem volume (0..1+); index follows stemNames order
   setStemVol(i: number, v: number) {
     if (i < 0 || i >= this.stemVol.length) return;
+    this.stopStemRamp(i);
+    this.applyStemVol(i, v, 0.012);
+  }
+
+  // a stem goes to its new level over `sec` seconds (smooth curve), never with a step: what the intelligent DJ uses
+  // to take stems down and bring them back. Any other change of that stem cancels the ramp.
+  rampStemVol(i: number, to: number, sec: number) {
+    if (i < 0 || i >= this.stemVol.length) return;
+    this.stopStemRamp(i);
+    const from = this.stemVol[i];
+    if (sec <= 0.06 || Math.abs(to - from) < 0.005) {
+      this.applyStemVol(i, to, 0.012);
+      return;
+    }
+    const t0 = performance.now();
+    const id = window.setInterval(() => {
+      const k = Math.min(1, (performance.now() - t0) / (sec * 1000));
+      const e = 0.5 - 0.5 * Math.cos(Math.PI * k); // slow start, slow end
+      this.applyStemVol(i, from + (to - from) * e, 0.04);
+      if (k >= 1) this.stopStemRamp(i);
+    }, 40);
+    this.stemRamps.set(i, id);
+  }
+
+  private stemRamps = new Map<number, number>();
+  private stopStemRamp(i: number) {
+    const id = this.stemRamps.get(i);
+    if (id !== undefined) window.clearInterval(id);
+    this.stemRamps.delete(i);
+  }
+
+  private applyStemVol(i: number, v: number, tc: number) {
     this.stemVol[i] = v;
-    if (this.stemGains[i]) this.stemGains[i].gain.value = v;
+    const g = this.stemGains[i]?.gain;
+    if (g) g.setTargetAtTime(v, this.ctx.currentTime, tc);
     this.recomputeStemMakeup();
   }
 
@@ -1693,13 +1728,13 @@ export class Deck {
     if (!this.stemBus) return;
     const n = this.stemVol.length;
     if (!this.stemMakeup || n === 0) {
-      this.stemBus.gain.value = 1;
+      this.stemBus.gain.setTargetAtTime(1, this.ctx.currentTime, 0.03);
       return;
     }
     let power = 0;
     for (const v of this.stemVol) power += v * v;
     const makeup = power > 1e-4 ? Math.sqrt(n / power) : 1;
-    this.stemBus.gain.value = Math.min(4, Math.max(1, makeup)); // ≤ +12 dB, never cut
+    this.stemBus.gain.setTargetAtTime(Math.min(4, Math.max(1, makeup)), this.ctx.currentTime, 0.03); // ≤ +12 dB, never cut
   }
 
   // toggle the auto makeup gain (and reapply / reset the bus immediately)

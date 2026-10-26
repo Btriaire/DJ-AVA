@@ -1,4 +1,5 @@
 import type { TransitionType } from "@/lib/library";
+import { techAllowed, type DjRules } from "@/lib/djRules";
 
 // Transitions that play with the STEMS of the two songs (drums, bass, other, vocals) instead of only the
 // crossfader: one stem at a time leaves or enters, so the blend is built like a DJ with a stem mixer would.
@@ -107,7 +108,7 @@ export function stemFrame(tech: StemTech, k: number, mode: StemMode = "smooth"):
 // set does not repeat the same trick; what the two songs have (stems loaded or not) limits the choice.
 // `bpm` (the slower of the two songs) and `sync` let the choice fit the songs: drums played together need the
 // same beat, a slammed bass needs a tempo that can take it, a calm pair only gets the soft techniques.
-export function pickTech(o: { outStems: boolean; inStems: boolean; index: number; mode: StemMode; type: TransitionType; sec: number; bpm?: number; sync?: boolean; noVocals?: boolean }): StemTech | null {
+export function pickTech(o: { outStems: boolean; inStems: boolean; index: number; mode: StemMode; type: TransitionType; sec: number; bpm?: number; sync?: boolean; noVocals?: boolean; rules?: DjRules }): StemTech | null {
   if (o.mode === "off" || o.type === "cut" || o.sec < 6) return null;
   const bpm = o.bpm ?? 120;
   const beat = o.sync !== false && bpm >= 90; // drum-on-drum blends only work on a shared beat
@@ -118,6 +119,6 @@ export function pickTech(o: { outStems: boolean; inStems: boolean; index: number
   // voices switched off (the tempos are too far apart): no technique built around a voice
   const VOICE_TECHS: StemTech[] = ["vocalhandoff", "stripout"];
   const pool: StemTech[] = o.outStems && o.inStems ? both : o.inStems ? ["build"] : o.outStems ? ["stripout"] : [];
-  const list = pool.filter((t) => !o.noVocals || !VOICE_TECHS.includes(t));
+  const list = pool.filter((t) => (!o.noVocals || !VOICE_TECHS.includes(t)) && techAllowed(t, o.rules));
   return list.length ? list[o.index % list.length] : null;
 }

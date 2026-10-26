@@ -1109,7 +1109,7 @@ export default function RadioView({
                   const b = byId.get(show.trackIds[i + 1]);
                   const step = show.plan[i];
                   // the first song plays before it can be switched to stems: it only leaves with its stems from the second song on
-                  return a && b && step ? pickTech({ outStems: i > 0 && stemReady(a.id), inStems: stemReady(b.id), index: i, mode: prefs.dj.stems ?? "punchy", type: step.type, sec: step.sec }) : null;
+                  return a && b && step ? pickTech({ outStems: i > 0 && stemReady(a.id), inStems: stemReady(b.id), index: i, mode: prefs.dj.stems ?? "punchy", type: step.type, sec: step.sec, rules: prefs.dj.rules }) : null;
                 }}
                 stemWait={getPrepWait()}
                 onRename={(name) => renameShow(show.key, name)}

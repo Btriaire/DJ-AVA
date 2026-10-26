@@ -46,6 +46,7 @@ import { cachedLoudness, loudnessFor, matchTrimDb } from "@/lib/audio/levelMatch
 import { getDjLive, setDjStems, showDjAction, useDjLive } from "@/lib/djLive";
 import { ACCENT_LABEL, MASTER_MOVES, gateSetting, isGentleGenre, PROFILE as FORCE_PROFILE, accentDue, amountFor, forceOf, isCalm, isMasterMove, pickAccent, pickTransitionMove, type AccentKind, type Feel, type Genre } from "@/lib/djForce";
 import type { FxName } from "@/lib/audio/FXRack";
+import { capAmount, fadeFactor, getDjRules, transitionAllowed, type DjRules } from "@/lib/djRules";
 import { pickTech, stemFrame, STEM_TECH_LABEL, type StemMode, type StemName, type StemTech } from "@/lib/stemMix";
 import { getMemLevel } from "@/lib/memoryGovernor";
 
@@ -1386,8 +1387,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     const vOut = hold ? outDeck.stemNames.indexOf("vocals") : -1;
     const vIn = hold ? inDeck.stemNames.indexOf("vocals") : -1;
     const holdVocals = (k: number) => {
-      if (vOut >= 0 && outDeck.stemsActive) outDeck.setStemVol(vOut, 1 - Math.min(1, k / 0.2));
-      if (vIn >= 0 && inDeck.stemsActive) inDeck.setStemVol(vIn, 0);
+      if (vOut >= 0 && outDeck.stemsActive) outDeck.rampStemVol(vOut, 1 - Math.min(1, k / 0.2), 0.35);
+      if (vIn >= 0 && inDeck.stemsActive) inDeck.rampStemVol(vIn, 0, 0.35);
     };
     const BASS_CUT = -24; // dB
     // bass swap: the incoming song's low end is held back, then the two lows trade places around the middle of the blend
@@ -1408,7 +1409,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
         for (const [name, v] of Object.entries(lv) as [StemName, number][]) {
           if (hold && name === "vocals") continue; // the voices are handled apart
           const i = d.stemNames.indexOf(name);
-          if (i >= 0) d.setStemVol(i, v);
+          if (i >= 0) d.rampStemVol(i, v, k > 0 ? 0.35 : 0); // between two ticks the level glides, it does not jump
         }
       };
       put(outDeck, f.out);
@@ -1728,7 +1729,9 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   }
   // One move of the DJ on the song that plays (the "force" of the DJ sets how often, how strongly and for how long).
   // Every move puts everything back by itself. Resolves to the length of the move in seconds.
-  function runAccent(deck: typeof engine.deckA, kind: AccentKind, amount: number, maxSec = 12, len = 1, voiceOff = false, genreForGate: Genre = "auto"): number {
+  function runAccent(deck: typeof engine.deckA, kind: AccentKind, amount: number, maxSec = 12, len = 1, voiceOff = false, genreForGate: Genre = "auto", rules?: DjRules): number {
+    amount = capAmount(amount, rules);
+    const glide = fadeFactor(rules); // how slowly the stems go down and come back
     const spb = 60 / deck.bpm;
     const bar = spb * 4;
     const L = (sec: number) => Math.min(sec * len, maxSec); // the length of this move, stretched by the force
@@ -1756,8 +1759,11 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       const vi = voiceOff ? deck.stemNames.indexOf("vocals") : -1;
       const idx = all.filter((i) => i !== vi);
       if (!idx.length) return 0;
-      idx.forEach((i) => deck.setStemVol(i, 0));
-      later(sec * 1000, () => idx.forEach((i) => deck.setStemVol(i, 1)));
+      // never a cut: the stems glide down and glide back (a bass drop comes back faster, but still over a few tenths)
+      const out = Math.min(1.4, Math.max(0.4, sec * 0.3)) * glide;
+      const back = (kind === "bassdrop" ? 0.3 : Math.min(1.2, Math.max(0.5, sec * 0.25))) * glide;
+      idx.forEach((i) => deck.rampStemVol(i, 0, out));
+      later(Math.max(out, sec - back * 0.5) * 1000, () => idx.forEach((i) => deck.rampStemVol(i, 1, back)));
       return sec;
     };
     switch (kind) {
@@ -1840,11 +1846,12 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     // what the DJ knows of the song: its tempo, whether it is classical, the stems it really has
     const feel: Feel = { bpm: deck.bpm, classical: dj?.style === "classical", stems: deck.stemsActive && deck.stemReady ? deck.stemNames.filter((n) => !(vocalHeld.current[side] && n === "vocals")) : [], genre: live.on && !gentle ? live.genre : dj?.genre };
     if (!accentDue(force, barIdx, st.lastBar, deck.position(), remain, fadeSec, isCalm(feel))) return;
-    const kind = pickAccent(force, st.count, feel);
+    const rules = dj?.rules ?? getDjRules();
+    const kind = pickAccent(force, st.count, feel, rules);
     if (!kind) return;
     st.lastBar = barIdx;
     st.count++;
-    const sec = runAccent(deck, kind, amountFor(FORCE_PROFILE[force].amount, feel), 14, FORCE_PROFILE[force].len, vocalHeld.current[side], feel.genre ?? "auto");
+    const sec = runAccent(deck, kind, amountFor(FORCE_PROFILE[force].amount, feel), 14, FORCE_PROFILE[force].len, vocalHeld.current[side], feel.genre ?? "auto", rules);
     // eslint-disable-next-line react-hooks/purity -- gestionnaire d'événement, hors rendu
     st.busy = performance.now() + sec * 1000 + 400; // the next move waits for this one to finish
     showDjAction(`${ACCENT_LABEL[kind]}${deck.name ? ` (${side})` : ""}`);
@@ -1858,7 +1865,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       setDjStems(playing.filter((d) => d.stemsActive && d.stemReady).length, playing.filter((d) => d.stemReady || d.stemCached).length);
       // The DJ uses the stems of a song that has them but plays as one block (played by hand, first song of a relay...):
       // loaded first (from the disk cache, nothing is computed), then switched on at the start of a bar
-      const wantsStems = getDjLive().on || (relayRef.current && !!relayPlaylist()?.dj && relayPlaylist()?.dj?.stems !== "off");
+      const wantsStems = (getDjLive().on || (relayRef.current && !!relayPlaylist()?.dj && relayPlaylist()?.dj?.stems !== "off")) && (relayPlaylist()?.dj?.rules ?? getDjRules()).autoStems !== false;
       if (wantsStems) {
         for (const side of ["A", "B"] as const) {
           const d = side === "A" ? engine.deckA : engine.deckB;
@@ -1903,7 +1910,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       let v = 0;
       const ramp = window.setInterval(() => {
         v = Math.min(1, v + 0.1);
-        deck.setStemVol(i, v);
+        deck.rampStemVol(i, v, 0.3);
         if (v >= 1 || deck.origin?.id !== id) window.clearInterval(ramp);
       }, 200);
     }, 400);
@@ -1948,7 +1955,9 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       // the mix plan (prepared in advance, one step per song) wins over the set's single style and length
       const step = relayStepFor(side);
       const FADE = step ? Math.max(step.sec, 0) : relayTransitionSec();
-      const TYPE = step?.type ?? relayTransitionType();
+      const rules = dj?.rules ?? getDjRules();
+      const wanted = step?.type ?? relayTransitionType();
+      const TYPE = transitionAllowed(wanted, rules) ? wanted : "fade"; // a blend the user forbade since the plan was made
       const preload = livePreloadSec(other);
       const deck = side === "A" ? engine.deckA : engine.deckB;
       const otherDeck = other === "A" ? engine.deckA : engine.deckB;
@@ -1999,7 +2008,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       const stemMode: StemMode = dj?.stems ?? "punchy";
       const tech =
         step && dj
-          ? pickTech({ outStems: deck.stemsActive && deck.stemReady, inStems: otherDeck.stemsActive && otherDeck.stemReady, index: relayIdx.current[side], mode: stemMode, type: TYPE, sec: secs, bpm: Math.min(deck.bpm || 120, otherDeck.bpm || 120), sync: !!step?.sync, noVocals: vocalHold })
+          ? pickTech({ outStems: deck.stemsActive && deck.stemReady, inStems: otherDeck.stemsActive && otherDeck.stemReady, index: relayIdx.current[side], mode: stemMode, type: TYPE, sec: secs, bpm: Math.min(deck.bpm || 120, otherDeck.bpm || 120), sync: !!step?.sync, noVocals: vocalHold, rules })
           : null;
       if (tech) flash(`DJ : ${STEM_TECH_LABEL[tech]}`);
       const go = () => {
@@ -2045,9 +2054,9 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           const gentle = isGentleGenre(dj?.genre);
           const force = live.on && !gentle ? live.force : forceOf(dj);
           const feelT: Feel = { bpm: Math.min(deck.bpm || 120, otherDeck.bpm || 120), classical: dj?.style === "classical", genre: live.on && !gentle ? live.genre : dj?.genre };
-          const move = deck.bpm > 0 ? pickTransitionMove(force, relayIdx.current[side], feelT) : null;
+          const move = deck.bpm > 0 ? pickTransitionMove(force, relayIdx.current[side], feelT, rules) : null;
           if (move) {
-            runAccent(deck, move, amountFor(FORCE_PROFILE[force].amount, feelT), Math.max(2, secs), FORCE_PROFILE[force].len);
+            runAccent(deck, move, amountFor(FORCE_PROFILE[force].amount, feelT), Math.max(2, secs), FORCE_PROFILE[force].len, false, "auto", rules);
             showDjAction(`${vocalNote ? `${vocalNote} + ` : ""}${ACCENT_LABEL[move]} (enchaînement)`);
             vocalNote = "";
           }

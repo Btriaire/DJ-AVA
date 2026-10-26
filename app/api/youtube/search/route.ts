@@ -17,7 +17,8 @@ export async function GET(req: NextRequest) {
   if (!q) return NextResponse.json({ tracks: [] });
 
   // 1. Try forwarding to VPS backend (Option B: equipped with yt-dlp & cookies)
-  if (!IS_VPS) {
+  // the VPS backend gives at most 50 results: a longer list (the "encore plus" button) is searched here
+  if (!IS_VPS && (intParam(req, "n") ?? 0) <= 50) {
     try {
       const vpsUrl = new URL("/api/youtube/search", VPS_BACKEND);
       req.nextUrl.searchParams.forEach((val, key) => vpsUrl.searchParams.set(key, val));

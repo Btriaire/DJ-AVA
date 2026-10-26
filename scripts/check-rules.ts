@@ -1,0 +1,36 @@
+// npx tsx scripts/check-rules.ts : the rules of the intelligent DJ keep forbidden moves, blends and techniques out
+import assert from "node:assert/strict";
+import { pickAccent, pickTransitionMove, STEM_MOVES, type AccentKind } from "../lib/djForce";
+import { capAmount, fadeFactor, hasRules, moveAllowed, techAllowed, transitionAllowed } from "../lib/djRules";
+import { pickTech } from "../lib/stemMix";
+import { planStep, DEFAULT_DJ } from "../lib/mixPlan";
+import type { LibTrack } from "../lib/library";
+
+const feel = { bpm: 124, stems: ["drums", "bass", "other", "vocals"] as const, genre: "club" as const };
+const noStem = { noMoves: [...STEM_MOVES] };
+for (let n = 0; n < 60; n++) {
+  const k = pickAccent(5, n, { ...feel, stems: [...feel.stems] }, noStem);
+  assert(!k || !STEM_MOVES.includes(k), `stem move ${k} despite the rule`);
+  const v = pickAccent(5, n, { ...feel, stems: [...feel.stems] }, { touchVoices: false });
+  assert(!v || !["voiceout", "vocalsolo", "vocalecho"].includes(v as AccentKind), `voice move ${v}`);
+  const m = pickTransitionMove(5, n, { bpm: 124, genre: "club" }, { noMoves: ["riserbuild", "echoexit", "buildup", "phaserswirl"] });
+  assert(m === null, `transition move ${m}`);
+}
+assert(!techAllowed("vocalhandoff", { touchVoices: false }) && techAllowed("build", { touchVoices: false }));
+for (let i = 0; i < 20; i++) {
+  const t = pickTech({ outStems: true, inStems: true, index: i, mode: "punchy", type: "fade", sec: 12, rules: { noTechs: ["drumswap", "bassslam"], touchVoices: false } });
+  assert(!t || !["drumswap", "bassslam", "vocalhandoff", "stripout"].includes(t), `tech ${t}`);
+}
+const a = { id: "a", name: "a", bpm: 124, durationSec: 240 } as LibTrack;
+const b = { id: "b", name: "b", bpm: 126, durationSec: 240 } as LibTrack;
+const allFx = ["echo", "dub", "wash", "flanger", "gate", "noise", "roll", "brake", "reverse", "loop", "highpass", "eq", "drop", "filter"] as const;
+for (let i = 0; i < 12; i++) {
+  const s = planStep(a, b, "flow", { ...DEFAULT_DJ, force: 5, rules: { noTransitions: [...allFx] } }, i);
+  assert(!allFx.includes(s.type as (typeof allFx)[number]), `blend ${s.type} despite the rules`);
+  const s2 = planStep(a, b, "flow", { ...DEFAULT_DJ, force: 5, rules: { noTransitions: ["echo", "gate"] } }, i);
+  assert(s2.type !== "echo" && s2.type !== "gate");
+}
+assert(moveAllowed("echothrow") && transitionAllowed("echo") && !hasRules({}) && hasRules({ maxAmount: 0.5 }));
+assert(capAmount(1, { maxAmount: 0.5 }) === 0.5 && capAmount(1, { maxAmount: 0.1 }) === 0.3 && capAmount(0.4, { maxAmount: 0.5 }) === 0.4);
+assert(fadeFactor({ stemFade: "soft" }) > fadeFactor() && fadeFactor({ stemFade: "quick" }) < 1);
+console.log("check-rules: ok");

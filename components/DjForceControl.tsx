@@ -1,4 +1,5 @@
 "use client";
+import { DjRulesPanel } from "./DjRulesPanel";
 import { BLEND_LABEL, VOCAL_GAP_BPM, type DjOptions } from "@/lib/mixPlan";
 import { FORCES, FORCE_HINT, FORCE_LABEL, GENRES, GENRE_HINT, GENRE_LABEL, PROFILE, applyForce, forceOf, type DjForce, type Genre } from "@/lib/djForce";
 
@@ -81,6 +82,7 @@ export function DjForceControl({ dj, disabled, onChange }: { dj: DjOptions; disa
           ))}
         </div>
       </div>
+      <DjRulesPanel dj={dj} disabled={disabled} onChange={onChange} />
     </div>
   );
 }

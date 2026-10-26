@@ -102,7 +102,7 @@ function ytdlpJson(args: string[]): Promise<string> {
 }
 
 export interface YTSearchOpts {
-  limit?: number; // how many candidates to pull from yt-dlp (clamped 1..50)
+  limit?: number; // how many candidates to pull from yt-dlp (clamped 1..150)
   minDur?: number; // seconds, inclusive lower bound (e.g. > 15 min → 900)
   maxDur?: number; // seconds, exclusive upper bound (0 / undefined = no cap)
 }
@@ -148,7 +148,7 @@ export async function searchYouTubeInner(q: string, opts: YTSearchOpts = {}): Pr
   const tracks: YTTrack[] = [];
   const min = opts.minDur && opts.minDur > 0 ? opts.minDur : 0;
   const max = opts.maxDur && opts.maxDur > 0 ? opts.maxDur : Infinity;
-  const limit = Math.min(Math.max(Math.round(opts.limit ?? 30), 1), 50);
+  const limit = Math.min(Math.max(Math.round(opts.limit ?? 30), 1), 150);
 
   for (const s of sections) {
     const items = s?.itemSectionRenderer?.contents || [];
@@ -187,7 +187,7 @@ export async function searchYouTube(q: string, opts: YTSearchOpts = {}): Promise
   }
 
   // 2. Fallback to yt-dlp if installed
-  const limit = Math.min(Math.max(Math.round(opts.limit ?? 30), 1), 50);
+  const limit = Math.min(Math.max(Math.round(opts.limit ?? 30), 1), 150);
   const raw = await ytdlpJson([
     `ytsearch${limit}:${q}`,
     "--flat-playlist",

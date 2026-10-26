@@ -1,5 +1,6 @@
 import type { DjOptions } from "@/lib/mixPlan";
 import type { TransitionType } from "@/lib/library";
+import { moveAllowed, type DjRules } from "@/lib/djRules";
 
 // "Force du DJ": how much the intelligent DJ does, from a discreet helper (1) to a DJ who never stops (5).
 // One number sets the style of the transitions (plain blends -> an effect on every change) and how often the DJ
@@ -204,7 +205,7 @@ const PALETTE: Record<Exclude<Genre, "auto">, readonly AccentKind[]> = {
   zen: ["filterbreath", "reverbwash", "echothrow", "echoexit", "freezehold"],
   calm: ["reverbwash", "echoexit", "filterbreath", "freezehold"],
 };
-const STEM_MOVES: readonly AccentKind[] = ["drumsout", "drumsolo", "bassdrop", "otherout", "vocalecho", "vocalsolo", "voiceout"];
+export const STEM_MOVES: readonly AccentKind[] = ["drumsout", "drumsolo", "bassdrop", "otherout", "vocalecho", "vocalsolo", "voiceout"];
 
 export const isCalm = (f: Feel) => !!f.classical || (f.bpm > 0 && f.bpm < CALM_BPM);
 // a calm song is touched more gently
@@ -275,12 +276,12 @@ const ALL_STEMS = ["drums", "bass", "other", "vocals"] as const;
 
 // the move the DJ makes at the n-th intervention of a song: rotates through the moves of the force that suit the
 // song (see RULE). `feel` = the song; `true` stands for a 120 BPM song with all its stems, `false` for one without.
-export function pickAccent(force: DjForce, n: number, feel: Feel | boolean): AccentKind | null {
+export function pickAccent(force: DjForce, n: number, feel: Feel | boolean, rules?: DjRules): AccentKind | null {
   const f: Feel = typeof feel === "boolean" ? { bpm: 120, stems: feel ? ALL_STEMS : [], genre: "club" } : feel;
   const genre = genreOf(f);
   const palette = PALETTE[genre];
   // zen and calm take their whole (short) palette, whatever the force: the force only sets how often
-  const pool = (isGentleGenre(genre) ? [...palette] : PROFILE[force].pool.filter((k) => palette.includes(k))).filter((k) => RULE[k](f));
+  const pool = (isGentleGenre(genre) ? [...palette] : PROFILE[force].pool.filter((k) => palette.includes(k))).filter((k) => RULE[k](f) && moveAllowed(k, rules));
   if (!pool.length) return null;
   // a song that has its stems gets them used on every other move (from force 3): that is what they are prepared for
   const stemPool = pool.filter((k) => STEM_MOVES.includes(k));
@@ -302,9 +303,9 @@ const TRANSITION_MOVES: Record<Exclude<Genre, "auto">, readonly MasterKind[]> = 
   zen: [],
   calm: [],
 };
-export function pickTransitionMove(force: DjForce, index: number, feel: Feel): MasterKind | null {
+export function pickTransitionMove(force: DjForce, index: number, feel: Feel, rules?: DjRules): MasterKind | null {
   if (force < 3 || isCalm(feel) && force < 5 || index % (force >= 5 ? 1 : 2) !== 0) return null;
-  const list = TRANSITION_MOVES[genreOf(feel)].filter((k) => RULE[k](feel));
+  const list = TRANSITION_MOVES[genreOf(feel)].filter((k) => RULE[k](feel) && moveAllowed(k, rules));
   return list.length ? list[(index >> (force >= 5 ? 0 : 1)) % list.length] : null;
 }
 
