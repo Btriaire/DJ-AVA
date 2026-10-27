@@ -44,7 +44,11 @@ export class RhythmBus {
 
   constructor(private engine: DJEngine, readonly deck: Deck) {}
 
+  notes: StemNotes | null = null; // the notes the events come from (identity check: a new track must reload)
+  private pulses = new Map<string, number>(); // rack pulse generation per parameter, so a later hit is not cut short by an earlier reset
+
   load(n: StemNotes | null | undefined) {
+    this.notes = n ?? null;
     this.events = buildEvents(n);
     this.hash = this.deck.stemHash;
     this.until = 0;
@@ -114,8 +118,10 @@ export class RhythmBus {
       const rack = this.deck.rack;
       const peak = def.def + (def.max - def.def) * Math.min(1, r.amount * e.vel * 1.4);
       // a pulse: the parameter jumps with the hit and falls back to its default (setParam is immediate, so it waits for the hit)
+      const gen = (this.pulses.get(r.arg) ?? 0) + 1;
+      this.pulses.set(r.arg, gen);
       setTimeout(() => rack.setParam(id as RackModuleId, key, peak), Math.max(0, (at - eng.ctx.currentTime) * 1000));
-      setTimeout(() => rack.setParam(id as RackModuleId, key, def.def), Math.max(0, (at - eng.ctx.currentTime + PULSE_SEC) * 1000));
+      setTimeout(() => { if (this.pulses.get(r.arg!) === gen) rack.setParam(id as RackModuleId, key, def.def); }, Math.max(0, (at - eng.ctx.currentTime + PULSE_SEC) * 1000));
     }
   }
 

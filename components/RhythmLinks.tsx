@@ -29,7 +29,11 @@ const busFor = (engine: DJEngine, d: Deck) => {
   return b;
 };
 const load = (): Record<Side, RhythmRoute[]> => {
-  try { return { A: [], B: [], ...JSON.parse(localStorage.getItem(KEY) ?? "{}") }; } catch { return { A: [], B: [] }; }
+  try {
+    const j = JSON.parse(localStorage.getItem(KEY) ?? "{}") as Partial<Record<Side, unknown>>;
+    const ok = (a: unknown): RhythmRoute[] => (Array.isArray(a) ? a.filter((r) => r && typeof r.id === "string" && typeof r.amount === "number" && SOURCES.some((s) => s.id === r.source) && KINDS.some((k) => k.id === r.kind)) : []);
+    return { A: ok(j.A), B: ok(j.B) };
+  } catch { return { A: [], B: [] }; }
 };
 const save = (r: Record<Side, RhythmRoute[]>) => { try { localStorage.setItem(KEY, JSON.stringify(r)); } catch { /* private window */ } };
 
@@ -48,8 +52,7 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
       for (const s of ["A", "B"] as const) {
         const d = s === "A" ? engine.deckA : engine.deckB;
         const b = busFor(engine, d);
-        if (d.stemNotes && !b.ready) { b.load(d.stemNotes); b.start(); }
-        if (!d.stemNotes && b.ready) { b.load(null); b.stop(); }
+        if (b.notes !== d.stemNotes) { b.load(d.stemNotes); b.start(); } // a new track replaces the events even without passing through null
       }
       tick((n) => n + 1);
     }, 800);
