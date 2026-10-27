@@ -15,6 +15,7 @@ export default function ArtistSearch({ setName, onAdd }: ArtistSearchProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
+  const [searched, setSearched] = useState(false); // a search was made (the empty message only follows one)
   const [addedTracks, setAddedTracks] = useState<Set<string>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -26,7 +27,7 @@ export default function ArtistSearch({ setName, onAdd }: ArtistSearchProps) {
 
     try {
       const response = await fetch(
-        `/api/youtube/search?q=${encodeURIComponent(query)}&n=40&min=0&max=100000`
+        `/api/youtube/search?q=${encodeURIComponent(query)}&n=${append ? offset + 40 : 40}&min=0&max=100000`
       );
       if (!response.ok) throw new Error("Échec de la recherche");
 
@@ -37,6 +38,7 @@ export default function ArtistSearch({ setName, onAdd }: ArtistSearchProps) {
 
       setResults(append ? [...results, ...newTracks] : newTracks);
       setOffset(append ? offset + 40 : 40);
+      setSearched(true);
     } catch (err) {
       setError("Échec de la recherche");
     } finally {
@@ -118,7 +120,7 @@ export default function ArtistSearch({ setName, onAdd }: ArtistSearchProps) {
         </div>
       )}
 
-      {!loading && !error && results.length === 0 && query.trim() && (
+      {!loading && !error && searched && results.length === 0 && (
         <div className="py-4 text-gray-500">Aucun résultat trouvé</div>
       )}
 
