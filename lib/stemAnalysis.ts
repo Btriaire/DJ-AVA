@@ -6,7 +6,7 @@ import { ffmpegPath, stemPath, isCached, MODEL_STEMS, type StemModel, type StemO
 
 export type SectionKind = "peak" | "slow" | "blank" | "normal";
 export interface StemSection { start: number; end: number; kind: SectionKind; drums: number; vocals: number; level: number }
-export interface StemMap { version: 1; hop: number; duration: number; sections: StemSection[]; energy: number[]; drums: number[]; vocals: number[] }
+export interface StemMap { version: 1; stems?: Record<string, number[]>; hop: number; duration: number; sections: StemSection[]; energy: number[]; drums: number[]; vocals: number[] }
 
 const HOP = 0.5; // seconds
 const MIN_SECTION = 2; // seconds
@@ -129,7 +129,8 @@ export function analyseEnvelopes(env: Record<string, number[]>, hop: number): St
         sections: mergedSections,
         energy: normalizedEnergy,
         drums,
-        vocals
+        vocals,
+        stems: Object.fromEntries(stems.map((n) => { const m = Math.max(...env[n], 1e-6); return [n, env[n].map((v) => Math.round((v / m) * 100) / 100)]; })) // per-stem energy 0..1, for the cascade
     };
 }
 

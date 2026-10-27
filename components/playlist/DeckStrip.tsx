@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Cover, BpmChip, KeyChip, Icon, fmtDur } from "../prep/parts";
+import StemMapView from "../StemMapView";
 import { DECK_COLOR, type DeckInfo, type DeckLive, type Side } from "./types";
 
 export interface DeckStripProps {
@@ -95,6 +96,7 @@ function DeckCard({
         </div>
       </div>
 
+      {loaded && info.stemMap && <StemMapView map={info.stemMap} position={pos} height={72} label={`Carte du titre du deck ${side}`} />}
       <div className="flex items-center gap-2">
         <span className="w-9 shrink-0 font-mono text-[10px] tabular-nums text-neutral-500">{loaded ? fmtDur(pos) : "—"}</span>
         <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10" role="progressbar" aria-label={`Position du deck ${side}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>

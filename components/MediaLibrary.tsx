@@ -3161,6 +3161,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
         art: active[side]?.art ?? origin?.art,
         bpm: origin?.bpm ?? (d.effectiveBPM || undefined),
         camelot: origin?.camelot,
+        stemMap: d.stemMap,
         live: liveOf(side),
         trackNo: ci >= 0 ? ci + 1 : undefined,
         trackCount: pl ? ids.length : undefined,

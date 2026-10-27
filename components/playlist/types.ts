@@ -1,3 +1,4 @@
+import type { StemMapLike } from "../StemMapView";
 import type { StemInfo } from "../prep/parts";
 
 export type Side = "A" | "B";
@@ -17,6 +18,7 @@ export interface DeckInfo {
   art?: string;
   bpm?: number;
   camelot?: string;
+  stemMap?: StemMapLike | null; // peaks, slow parts and blanks of the song (when its stems were analysed)
   live: boolean; // LIVE loop on for this deck
   trackNo?: number; // 1-based position in the set that drives this deck
   trackCount?: number;
