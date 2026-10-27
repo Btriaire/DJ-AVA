@@ -35,7 +35,7 @@ import { SetWizard, type SetDraft, type WizardInitial } from "./playlist/SetWiza
 import { buildJourney } from "./prep/Journey";
 import { analyzeLibraryTrack } from "@/lib/analyzeTrack";
 import { alignDelaySec } from "@/lib/audio/beatAlign";
-import { TRANSITIONS, TRANSITION_FX, crossfadeAt } from "@/lib/transitions";
+import { EFFECT_TRANSITIONS, TRANSITIONS, TRANSITION_FX, crossfadeAt } from "@/lib/transitions";
 import { VOCAL_GAP_BPM, announcement, bpmDiff, DEFAULT_DJ, planMix, type DjOptions, type MixStep } from "@/lib/mixPlan";
 import { playLines, speak, stopSpeaking } from "@/lib/djVoice";
 import { INTRO_LINE, OUTRO_LINE, djLineFor } from "@/lib/djLines";
@@ -1821,7 +1821,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     const dj = relayPlaylist()?.dj;
     const live = getDjLive();
     // the top-bar switch rules (and works on songs played by hand); otherwise the set's own DJ options
-    const active = live.on || (!!dj && dj.auto !== false);
+    const active = live.on; // the DJ switch of the top bar rules: off = no move at all
     if (!active || !deck.playing || !(deck.bpm > 0) || relayFading.current) return; // no move in the middle of a change
     // a zen or calm set keeps its own gentle force and style, whatever the top-bar DJ says
     const gentle = isGentleGenre(dj?.genre);
@@ -1870,7 +1870,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       setDjStems(playing.filter((d) => d.stemsActive && d.stemReady).length, playing.filter((d) => d.stemReady || d.stemCached).length);
       // The DJ uses the stems of a song that has them but plays as one block (played by hand, first song of a relay...):
       // loaded first (from the disk cache, nothing is computed), then switched on at the start of a bar
-      const wantsStems = (getDjLive().on || (relayRef.current && !!relayPlaylist()?.dj && relayPlaylist()?.dj?.stems !== "off")) && (relayPlaylist()?.dj?.rules ?? getDjRules()).autoStems !== false;
+      const wantsStems = getDjLive().on && (relayPlaylist()?.dj?.rules ?? getDjRules()).autoStems !== false;
       if (wantsStems) {
         for (const side of ["A", "B"] as const) {
           const d = side === "A" ? engine.deckA : engine.deckB;
@@ -1962,7 +1962,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       const FADE = step ? Math.max(step.sec, 0) : relayTransitionSec();
       const rules = dj?.rules ?? getDjRules();
       const wanted = step?.type ?? relayTransitionType();
-      const TYPE = transitionAllowed(wanted, rules) ? wanted : "fade"; // a blend the user forbade since the plan was made
+      const djOn = getDjLive().on; // DJ off: no effect on the change, a plain blend
+      const TYPE = transitionAllowed(wanted, rules) && (djOn || !EFFECT_TRANSITIONS.includes(wanted)) ? wanted : "fade"; // a blend the user forbade since the plan was made
       const preload = livePreloadSec(other);
       const deck = side === "A" ? engine.deckA : engine.deckB;
       const otherDeck = other === "A" ? engine.deckA : engine.deckB;
@@ -2012,7 +2013,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       // both songs in stem mode (or one of them): a stem technique replaces the plain blend
       const stemMode: StemMode = dj?.stems ?? "punchy";
       const tech =
-        step && dj
+        step && dj && djOn
           ? pickTech({ outStems: deck.stemsActive && deck.stemReady, inStems: otherDeck.stemsActive && otherDeck.stemReady, index: relayIdx.current[side], mode: stemMode, type: TYPE, sec: secs, bpm: Math.min(deck.bpm || 120, otherDeck.bpm || 120), sync: !!step?.sync, noVocals: vocalHold, rules })
           : null;
       if (tech) flash(`DJ : ${STEM_TECH_LABEL[tech]}`);
@@ -2055,7 +2056,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
         }
         // the style's own touch on the change: an echo out, a riser, a phaser... on top of the blend (from force 3)
         const live = getDjLive();
-        if (TYPE !== "cut" && !braking && (live.on || (!!dj && dj.auto !== false))) {
+        if (TYPE !== "cut" && !braking && live.on) {
           const gentle = isGentleGenre(dj?.genre);
           const force = live.on && !gentle ? live.force : forceOf(dj);
           const feelT: Feel = { bpm: Math.min(deck.bpm || 120, otherDeck.bpm || 120), classical: dj?.style === "classical", genre: live.on && !gentle ? live.genre : dj?.genre };
