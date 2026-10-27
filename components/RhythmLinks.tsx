@@ -12,11 +12,13 @@ import { Icon } from "./prep/parts";
 type Side = "A" | "B";
 const KEY = "djsynth.rhythm.v1";
 const SOURCES: { id: RhythmSource; label: string }[] = [{ id: "drums", label: "Batterie" }, { id: "bass", label: "Basse" }, { id: "synth", label: "Synthé" }];
-const KINDS: { id: RouteKind; label: string }[] = [{ id: "synth", label: "Synthé DJ (en harmonie)" }, { id: "drum", label: "Boîte à rythmes" }, { id: "rack", label: "Pulse sur un effet du rack" }];
+const KINDS: { id: RouteKind; label: string }[] = [{ id: "synth", label: "Synthé DJ (en harmonie)" }, { id: "drum", label: "Boîte à rythmes" }, { id: "rack", label: "Pulse sur un effet du rack" }, { id: "synth2", label: "Synthé classique" }, { id: "sampler", label: "Super sampler (en harmonie)" }, { id: "pad", label: "Pad du sampler" }, { id: "seqrec", label: "Séquenceur synthé (écriture)" }];
 const PRESETS: { label: string; route: Omit<RhythmRoute, "id" | "on"> }[] = [
   { label: "Basse → Synthé DJ", route: { source: "bass", kind: "synth", amount: 0.7 } },
   { label: "Synthé → Synthé DJ", route: { source: "synth", kind: "synth", amount: 0.5 } },
   { label: "Batterie → Synthé sur la tonique", route: { source: "drums", kind: "synth", amount: 0.5 } },
+  { label: "Basse → Séquenceur synthé", route: { source: "bass", kind: "seqrec", amount: 0.8 } },
+  { label: "Synthé → Super sampler", route: { source: "synth", kind: "sampler", amount: 0.6 } },
   { label: "Batterie → Clap", route: { source: "drums", kind: "drum", arg: "clap", amount: 0.6 } },
 ];
 
@@ -97,7 +99,7 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
                   </button>
                   <span className="font-semibold">{SOURCES.find((s) => s.id === r.source)?.label}</span>
                   <span aria-hidden>→</span>
-                  <span>{r.kind === "synth" ? "Synthé DJ" : r.kind === "drum" ? `Pad ${r.arg}` : `Pulse ${r.arg?.replace(":", " · ")}`}</span>
+                  <span>{r.kind === "synth" ? "Synthé DJ" : r.kind === "synth2" ? "Synthé classique" : r.kind === "sampler" ? "Super sampler" : r.kind === "seqrec" ? "Séquenceur synthé" : r.kind === "pad" ? `Pad ${Number(r.arg) + 1}` : r.kind === "drum" ? `Voix ${r.arg}` : `Pulse ${r.arg?.replace(":", " · ")}`}</span>
                   <input type="range" min={0.1} max={1} step={0.05} value={r.amount} aria-label="Force" onChange={(e) => patch(side, r.id, { amount: Number(e.target.value) })} className="min-w-[80px] flex-1" />
                   <button type="button" aria-label="Supprimer la liaison" onClick={() => apply(side, routes[side].filter((x) => x.id !== r.id))} className="min-h-9 min-w-9 rounded-md text-neutral-400 hover:bg-neutral-800"><Icon name="x" size={14} /></button>
                 </div>
@@ -119,12 +121,17 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
             {SOURCES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
           <span aria-hidden>→</span>
-          <select aria-label="Cible" className={sel} value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value as RouteKind, arg: e.target.value === "drum" ? "kick" : e.target.value === "rack" ? "isolator:" + (rackParams("isolator")[0]?.key ?? "") : undefined })}>
+          <select aria-label="Cible" className={sel} value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value as RouteKind, arg: e.target.value === "drum" ? "kick" : e.target.value === "pad" ? "0" : e.target.value === "rack" ? "isolator:" + (rackParams("isolator")[0]?.key ?? "") : undefined })}>
             {KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
           </select>
           {draft.kind === "drum" && (
             <select aria-label="Voix" className={sel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
               {DRUM_VOICES.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
+            </select>
+          )}
+          {draft.kind === "pad" && (
+            <select aria-label="Pad" className={sel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
+              {Array.from({ length: engine.sampler.pads.length }, (_, i) => <option key={i} value={String(i)}>Pad {i + 1}</option>)}
             </select>
           )}
           {draft.kind === "rack" && (

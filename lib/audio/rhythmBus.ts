@@ -7,11 +7,11 @@ import type { StemNotes } from "../stemNotes";
 // The detected rhythm of a song (drum attacks, bass notes, synth notes) as a source of events. They are never
 // played themselves: each one is sent, a little ahead of time, to the modules the user connected to it.
 export type RhythmSource = "drums" | "bass" | "synth";
-export type RouteKind = "synth" | "drum" | "rack";
+export type RouteKind = "synth" | "drum" | "rack" | "synth2" | "sampler" | "pad" | "seqrec";
 export interface RhythmRoute {
   id: string;
   source: RhythmSource;
-  kind: RouteKind; // synth: the DJ synth plays a note in harmony; drum: a drum voice; rack: a pulse on a rack parameter
+  kind: RouteKind; // synth2: the classic synth; sampler: the super sampler (arg unused); pad: a sampler pad ("0".."n"); seqrec: writes the notes into the synth step sequencer when it is armed; synth: the DJ synth plays a note in harmony; drum: a drum voice; rack: a pulse on a rack parameter
   arg?: string; // drum: the voice; rack: "moduleId:paramKey"
   amount: number; // 0..1
   on: boolean;
@@ -109,6 +109,17 @@ export class RhythmBus {
       const shift = this.deck.keyLock ? this.deck.keyShift : 12 * Math.log2(this.deck.playRate);
       const midi = (e.midi ?? this.bassMidi + 12) + shift;
       eng.djSynth.noteOn(midi, vel, at, Math.max(0.06, dur));
+    } else if (r.kind === "synth2" || r.kind === "sampler" || r.kind === "seqrec") {
+      const shift = this.deck.keyLock ? this.deck.keyShift : 12 * Math.log2(this.deck.playRate);
+      const midi = Math.round((e.midi ?? this.bassMidi + 12) + shift);
+      const wait = Math.max(0, (at - eng.ctx.currentTime) * 1000);
+      if (r.kind === "synth2") {
+        setTimeout(() => eng.synth.noteOn(midi, vel), wait); // the classic synth has no start time: timer jitter only
+        setTimeout(() => eng.synth.noteOff(midi), wait + Math.max(60, dur * 1000));
+      } else if (r.kind === "sampler") eng.superSampler.playStep(midi, Math.max(0.06, dur), at, vel);
+      else setTimeout(() => eng.synthSeq.recordNote(midi), wait);
+    } else if (r.kind === "pad" && r.arg) {
+      eng.sampler.playAt(Number(r.arg), at, vel);
     } else if (r.kind === "drum" && r.arg) {
       eng.drums.hit(r.arg as DrumVoice, vel, at);
     } else if (r.kind === "rack" && r.arg) {
