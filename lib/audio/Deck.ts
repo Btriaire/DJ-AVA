@@ -1072,6 +1072,18 @@ export class Deck {
     this.volume.gain.value = v;
   }
 
+  // a short dip of the fader at a given audio time (pumping): back to where it was after `sec`
+  private duckBase = 1;
+  private duckUntil = 0;
+  duckAt(when: number, depth: number, sec: number) {
+    const g = this.volume.gain;
+    if (when > this.duckUntil) this.duckBase = g.value;
+    this.duckUntil = when + sec;
+    g.cancelScheduledValues(when);
+    g.setValueAtTime(this.duckBase * (1 - depth), when);
+    g.linearRampToValueAtTime(this.duckBase, when + sec);
+  }
+
   get volumeValue(): number {
     return this.volume.gain.value;
   }
@@ -1080,7 +1092,7 @@ export class Deck {
   }
 
   // last bipolar filter position (the biquad itself doesn't store x)
-  private filterX = 0;
+  filterX = 0;
 
   // bipolar filter: -1..0 = lowpass sweep, 0 = bypass, 0..1 = highpass sweep
   setFilter(x: number) {
