@@ -47,7 +47,7 @@ export async function analyseVocalPitch(
     if (otherPath) args.push(otherPath);
 
     const result = await new Promise<string>((resolve, reject) => {
-      const child = spawn(python, args, { timeout: TIMEOUT_MS });
+      const child = spawn("nice", ["-n", "19", python, ...args], { timeout: TIMEOUT_MS });
 
       let stdout = "";
       child.stdout.on("data", (chunk) => (stdout += chunk));
@@ -140,4 +140,11 @@ export function keyDistance(a: KeyInfo, b: KeyInfo): number {
   const modeDiff = aMode !== bMode ? 1 : 0;
 
   return Math.min(numDiff + modeDiff, 6);
+}
+
+// songs prepared before the voice map existed get it once, in the background, one at a time
+let backfill: Promise<unknown> = Promise.resolve();
+export function backfillVocalPitch(hash: string, model: StemModel, opts?: StemOpts): void {
+  if (readVocalPitch(hash, model, opts)) return;
+  backfill = backfill.then(() => analyseVocalPitch(hash, model, opts)).catch(() => undefined);
 }

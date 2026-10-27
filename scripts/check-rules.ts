@@ -1,6 +1,6 @@
 // npx tsx scripts/check-rules.ts : the rules of the intelligent DJ keep forbidden moves, blends and techniques out
 import assert from "node:assert/strict";
-import { pickAccent, pickTransitionMove, STEM_MOVES, type AccentKind } from "../lib/djForce";
+import { voiceStateAt, fitsVoice, pickAccent, pickTransitionMove, STEM_MOVES, type AccentKind } from "../lib/djForce";
 import { capAmount, fadeFactor, hasRules, moveAllowed, techAllowed, transitionAllowed } from "../lib/djRules";
 import { pickTech } from "../lib/stemMix";
 import { planStep, DEFAULT_DJ } from "../lib/mixPlan";
@@ -41,3 +41,10 @@ assert.equal(nextSectionStart(map, 2, "peak"), 10);
 assert(!fitsSection("roll", "slow") && fitsSection("reverbwash", "slow") && !fitsSection("reverbwash", "peak") && fitsSection("roll", "peak") && !fitsSection("roll", "blank") && fitsSection("echoexit", "blank") && fitsSection("roll", undefined));
 for (let n = 0; n < 40; n++) assert(pickAccent(5, n, { bpm: 124, genre: "club", section: "slow", stems: [] }) !== "roll");
 console.log("check-rules sections ok");
+const vmap = { voice: [-1, -1, 60, 60, -1, -1, -1, -1, -1, -1, -1, -1], voiceStep: 1 };
+assert.equal(voiceStateAt(vmap, 2), "sung");
+assert.equal(voiceStateAt(vmap, 9), "gap");
+assert.equal(voiceStateAt(null, 2), undefined);
+assert(!fitsVoice("tapestop", "sung") && fitsVoice("tapestop", "gap") && fitsVoice("reverbwash", "sung") && fitsVoice("roll", undefined));
+for (let n = 0; n < 40; n++) assert(pickAccent(5, n, { bpm: 124, genre: "club", voice: "sung", stems: [] }) !== "tapestop");
+console.log("check-rules voice ok");

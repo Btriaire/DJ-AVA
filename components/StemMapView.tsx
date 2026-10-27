@@ -6,6 +6,8 @@ export interface StemMapLike {
   duration: number;
   energy: number[];
   stems?: Record<string, number[]>;
+  voice?: number[]; // sung note (MIDI) every voiceStep seconds, -1 = no voice
+  voiceStep?: number;
   sections: { start: number; end: number; kind: "peak" | "slow" | "blank" | "normal" }[];
 }
 
@@ -124,6 +126,16 @@ export default function StemMapView({
         ctx.fillRect(x, y, w, rowHeight);
       });
     });
+
+    // The sung notes: one thin line at the foot of the map, the hue follows the note (C...B), a gap is left empty
+    if (map.voice && map.voiceStep) {
+      const w = (map.voiceStep / map.duration) * width;
+      map.voice.forEach((n, j) => {
+        if (n < 0) return;
+        ctx.fillStyle = `oklch(0.78 0.16 ${(n % 12) * 30})`;
+        ctx.fillRect((j * map.voiceStep!) / map.duration * width, height - 5, w + 0.5, 4);
+      });
+    }
 
     // Total energy curve
     const maxEnergy = Math.max(...map.energy, 1);

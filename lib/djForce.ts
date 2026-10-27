@@ -148,6 +148,16 @@ const IN_SLOW_NO: readonly AccentKind[] = ["roll", "gatechop", "noiseburst", "sc
 const IN_PEAK_NO: readonly AccentKind[] = ["reverbwash", "freezehold", "tapestop", "halftimedrop", "echoexit", "filterbreath", "drumsout", "bassdrop", "vocalsolo"];
 const IN_BLANK_OK: readonly AccentKind[] = ["reverbwash", "echoexit", "freezehold", "echothrow", "riserbuild", "buildup"];
 export const fitsSection = (k: AccentKind, s: SectionKind | undefined): boolean => !s || s === "normal" || (s === "slow" ? !IN_SLOW_NO.includes(k) : s === "peak" ? !IN_PEAK_NO.includes(k) : IN_BLANK_OK.includes(k));
+// while the voice sings, a move that cuts, stutters or stops the whole song would break the line; in a gap anything goes
+const IN_VOICE_NO: readonly AccentKind[] = ["tapestop", "freezehold", "halftimedrop", "doublecut", "scatterslice", "crushgrit", "noiseburst", "roll", "gatechop"];
+export type VoiceState = "sung" | "gap";
+// is the voice singing at time t (the contour has one note per voiceStep seconds, -1 = silence)? undefined when the song has no voice map
+export const voiceStateAt = (map: { voice?: number[]; voiceStep?: number } | null | undefined, t: number): VoiceState | undefined => {
+  if (!map?.voice?.length || !map.voiceStep) return undefined;
+  const i = Math.floor(t / map.voiceStep);
+  return map.voice.slice(Math.max(0, i - 2), i + 3).some((n) => n >= 0) ? "sung" : "gap";
+};
+export const fitsVoice = (k: AccentKind, v: VoiceState | undefined): boolean => v !== "sung" || !IN_VOICE_NO.includes(k);
 // the build-ups that announce a peak when it starts a few seconds later
 export const RISERS: readonly AccentKind[] = ["riserbuild", "buildup", "noiseburst"];
 
@@ -156,6 +166,7 @@ export interface Feel {
   classical?: boolean;
   stems?: readonly string[];
   genre?: Genre; // the style the DJ plays (missing or "auto": read from the tempo)
+  voice?: VoiceState; // is the voice singing right now (from the pitch map), when known
   section?: SectionKind; // where the song is now according to its map (peak, slow, blank), when the stems were analysed
 }
 
@@ -296,7 +307,7 @@ export function pickAccent(force: DjForce, n: number, feel: Feel | boolean, rule
   const genre = genreOf(f);
   const palette = PALETTE[genre];
   // zen and calm take their whole (short) palette, whatever the force: the force only sets how often
-  const pool = (isGentleGenre(genre) ? [...palette] : PROFILE[force].pool.filter((k) => palette.includes(k))).filter((k) => RULE[k](f) && moveAllowed(k, rules) && fitsSection(k, f.section));
+  const pool = (isGentleGenre(genre) ? [...palette] : PROFILE[force].pool.filter((k) => palette.includes(k))).filter((k) => RULE[k](f) && moveAllowed(k, rules) && fitsSection(k, f.section) && fitsVoice(k, f.voice));
   if (!pool.length) return null;
   // a song that has its stems gets them used on every other move (from force 3): that is what they are prepared for
   const stemPool = pool.filter((k) => STEM_MOVES.includes(k));

@@ -1398,7 +1398,11 @@ export class Deck {
     try {
       const r = await fetch(`/api/stems/map?hash=${hash}&model=${this.stemModel}${this.stemOptsQS()}`);
       const j = (await r.json()) as { map: StemMap | null };
-      if (gen === this.loadGen) this.stemMap = j.map;
+      if (gen !== this.loadGen) return;
+      this.stemMap = j.map;
+      // the sung notes of the voice (made at preparation): read only, nothing is computed while loading
+      const p = (await (await fetch(`/api/stems/pitch?read=1&hash=${hash}&model=${this.stemModel}${this.stemOptsQS()}`)).json()) as { pitch: { contour: number[]; hop: number } | null };
+      if (gen === this.loadGen && this.stemMap && p.pitch) this.stemMap = { ...this.stemMap, voice: p.pitch.contour, voiceStep: p.pitch.hop * 4 };
     } catch {
       // no map: the DJ simply works without it
     }

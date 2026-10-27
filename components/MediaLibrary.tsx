@@ -44,7 +44,7 @@ import { useStemsShared } from "@/lib/stemsShared";
 import { type QueueTrack, getRelayHost, publishRelayHost, registerRelayHost, relayHostStart, relayHostStop, subscribeRelayHost } from "@/lib/relayHost";
 import { cachedLoudness, loudnessFor, matchTrimDb } from "@/lib/audio/levelMatch";
 import { getDjLive, setDjStems, showDjAction, useDjLive } from "@/lib/djLive";
-import { RISERS, ruleOk, nextSectionStart, sectionKindAt, ACCENT_LABEL, MASTER_MOVES, gateSetting, isGentleGenre, PROFILE as FORCE_PROFILE, accentDue, amountFor, forceOf, isCalm, isMasterMove, pickAccent, pickTransitionMove, type AccentKind, type Feel, type Genre } from "@/lib/djForce";
+import { RISERS, ruleOk, nextSectionStart, sectionKindAt, voiceStateAt, ACCENT_LABEL, MASTER_MOVES, gateSetting, isGentleGenre, PROFILE as FORCE_PROFILE, accentDue, amountFor, forceOf, isCalm, isMasterMove, pickAccent, pickTransitionMove, type AccentKind, type Feel, type Genre } from "@/lib/djForce";
 import type { FxName } from "@/lib/audio/FXRack";
 import { moveAllowed, capAmount, fadeFactor, getDjRules, transitionAllowed, type DjRules } from "@/lib/djRules";
 import { pickTech, stemFrame, STEM_TECH_LABEL, type StemMode, type StemName, type StemTech } from "@/lib/stemMix";
@@ -1867,6 +1867,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     // the map of the song: the move fits the passage that plays, and a peak that starts in a few seconds gets its build-up
     const pos = deck.position();
     feel.section = sectionKindAt(deck.stemMap, pos);
+    feel.voice = voiceStateAt(deck.stemMap, pos);
     const peakIn = nextSectionStart(deck.stemMap, pos, "peak");
     const riser = force >= 3 && peakIn !== null && peakIn - pos > 3 && peakIn - pos < 14 ? RISERS.find((k) => moveAllowed(k, rules) && ruleOk(k, feel)) : undefined;
     const kind = riser ?? pickAccent(force, st.count, feel, rules);

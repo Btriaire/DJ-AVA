@@ -15,4 +15,5 @@ lsof -ti tcp:3217 2>/dev/null | xargs kill -9 2>/dev/null || true
 rm -rf /Applications/DJSynth.app
 cp -R /tmp/djsynth-pkg/DJSynth-darwin-arm64/DJSynth.app /Applications/DJSynth.app
 xattr -cr /Applications/DJSynth.app
+sh scripts/setup-pitch.sh || true
 echo "DJSynth installé dans /Applications"
