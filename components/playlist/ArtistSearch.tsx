@@ -18,6 +18,17 @@ export default function ArtistSearch({ setName, onAdd }: ArtistSearchProps) {
   const [searched, setSearched] = useState(false); // a search was made (the empty message only follows one)
   const [addedTracks, setAddedTracks] = useState<Set<string>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
+  // "/" jumps to the search field (unless one is already being typed in)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (e.key !== "/" || t?.matches("input, textarea, select, [contenteditable]")) return;
+      e.preventDefault();
+      inputRef.current?.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const fetchResults = async (append = false) => {
     if (!query.trim()) return;
@@ -88,7 +99,8 @@ export default function ArtistSearch({ setName, onAdd }: ArtistSearchProps) {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Chercher un artiste ou un titre sur YouTube…"
               className="prep-input w-full pl-10"
-              aria-label="Rechercher un artiste ou un titre"
+              aria-label="Rechercher un artiste ou un titre (raccourci : /)"
+              autoFocus
             />
             <Icon
               name="search"
@@ -148,8 +160,8 @@ export default function ArtistSearch({ setName, onAdd }: ArtistSearchProps) {
                     <button
                       onClick={() => handleAddTrack(track)}
                       disabled={!setName || addedTracks.has(track.id)}
-                      className={`prep-btn-ghost h-10 px-3 ${
-                        addedTracks.has(track.id) ? "opacity-70" : ""
+                      className={`prep-btn-ghost inline-flex min-h-11 min-w-[7.5rem] items-center justify-center whitespace-nowrap px-3 ${
+                        addedTracks.has(track.id) ? "bg-emerald-500/20 text-emerald-300" : ""
                       }`}
                       aria-label={
                         !setName
