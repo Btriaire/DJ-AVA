@@ -490,6 +490,23 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       return { ...d, tracks: [track, ...d.tracks] };
     });
   }
+  // a result found by artist in the Sets view: filed in the library (if new) and added to the open set
+  function addFoundToSet(t: AudiusTrack) {
+    const plId = activePl;
+    if (!plId) {
+      flash("Choisis d'abord un set");
+      return;
+    }
+    const existing = dataRef.current.tracks.find((x) => x.url === t.id && x.source === "youtube");
+    const id = existing?.id ?? uid();
+    if (!existing) {
+      persist((d) => ({
+        ...d,
+        tracks: [{ id, name: t.title, source: "youtube", url: t.id, deck: null, art: t.artwork ?? undefined, durationSec: t.duration || undefined, bpm: t.bpm ?? undefined, later: true, addedAt: Date.now() } as LibTrack, ...d.tracks],
+      }));
+    }
+    addTracksAt(plId, [id]);
+  }
   async function importFiles(fileList: FileList) {
     // snapshot now: the input is cleared after this call, which empties a live FileList
     const files = Array.from(fileList);
@@ -3244,6 +3261,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
             else flash("Relais : ouvre un set d'au moins 2 titres, puis relance");
           },
         }}
+        onAddFound={addFoundToSet}
         rail={{
           tracks: data.tracks,
           playlists: data.playlists,

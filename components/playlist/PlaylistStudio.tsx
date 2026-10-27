@@ -8,6 +8,8 @@ import { LibraryPane, type LibraryPaneProps } from "./LibraryPane";
 import { SetDetail, type SetDetailProps } from "./SetDetail";
 import { SetRail, type SetRailProps } from "./SetRail";
 import { TRANSITION_LABEL } from "@/lib/transitions";
+import type { AudiusTrack } from "@/lib/audius";
+import ArtistSearch from "./ArtistSearch";
 import { LaunchPanel } from "./LaunchPanel";
 import "./playlist.css";
 
@@ -27,10 +29,11 @@ export interface PlaylistStudioProps {
   library: LibraryPaneProps;
   extras: ReactNode;
   journey: JourneyStep[];
+  onAddFound: (t: AudiusTrack) => void; // a track found by artist, filed in the library and added to the open set
   wizard: ReactNode | null;
 }
 
-export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, journey, wizard }: PlaylistStudioProps) {
+export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, journey, wizard, onAddFound }: PlaylistStudioProps) {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(() => {
     if (rail.activeId) {
       return 2;
@@ -111,7 +114,10 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
       case 2:
         return (
           <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
-            <LibraryPane {...library} />
+            <div className="flex min-w-0 flex-col gap-3">
+              <ArtistSearch setName={detail.playlist?.name ?? null} onAdd={onAddFound} />
+              <LibraryPane {...library} />
+            </div>
             <div className="flex flex-col gap-2 lg:sticky lg:top-2">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-sm font-bold text-neutral-100">Dans le set : {setTracks.length} titre(s)</h2>
