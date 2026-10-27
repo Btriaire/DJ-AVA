@@ -107,25 +107,17 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
 
       case 2:
         return (
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <LibraryPane {...library} />
-              <div className="text-sm text-neutral-300">
-                {detail.tracks.length} titres dans le set
-                <button
-                  type="button"
-                  className="ml-2 text-xs prep-btn-ghost"
-                  onClick={() => setStep(3)}
-                >
-                  Configurer le mix
+          <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
+            <LibraryPane {...library} />
+            <div className="flex flex-col gap-2 lg:sticky lg:top-2">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-bold text-neutral-100">Dans le set : {detail.tracks.length} titre(s)</h2>
+                <button type="button" className="prep-btn-accent px-3 py-1.5 text-xs" onClick={() => setStep(3)} disabled={detail.tracks.length === 0}>
+                  Suivant : régler le mix
                 </button>
               </div>
+              <SetDetail {...detail} view="titles" onOpenLibrary={() => {}} />
             </div>
-            <SetDetail
-              {...detail}
-              view="titles"
-              onOpenLibrary={() => {}}
-            />
           </div>
         );
 

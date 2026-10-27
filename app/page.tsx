@@ -35,6 +35,7 @@ import { MemoryGauge } from "@/components/MemoryGauge";
 import { RecoveryNotice } from "@/components/RecoveryNotice";
 import { DjLiveControl } from "@/components/DjLiveControl";
 import { NextUpBar } from "@/components/NextUpBar";
+import { DeckMaps } from "@/components/DeckMaps";
 import { DjSynthLogo } from "@/components/DjSynthLogo";
 import { MixScope } from "@/components/MixScope";
 import { CpuMeter } from "@/components/CpuMeter";
@@ -1237,7 +1238,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
         </div>
       </header>
 
-      {ready && engine && (view === "console" || view === "platine") && <NextUpBar />}
+      {ready && engine && (view === "console" || view === "platine") && <><NextUpBar /><DeckMaps engine={engine} /></>}
 
       {ready && engine && showLibrary && view !== "platine" && (
         <LibraryPanel
