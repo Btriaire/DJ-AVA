@@ -14,6 +14,10 @@ export interface RhythmRoute {
   kind: RouteKind; // synth2: the classic synth; sampler: the super sampler (arg unused); pad: a sampler pad ("0".."n"); seqrec: writes the notes into the synth step sequencer when it is armed; synth: the DJ synth plays a note in harmony; drum: a drum voice; rack: a pulse on a rack parameter
   arg?: string; // drum: the voice; rack: "moduleId:paramKey"
   amount: number; // 0..1
+  grid?: number; // snap each event to the beat grid: 1 = beat, 2 = eighth, 4 = sixteenth (off when absent)
+  transpose?: number; // semitones added to the notes (synth, sampler, sequencer targets)
+  gate?: number; // note length factor (1 = as detected)
+  density?: number; // 0..1: share of the events kept (steady: the same events are always dropped)
   on: boolean;
 }
 interface Ev { t: number; source: RhythmSource; vel: number; dur: number; midi?: number }
@@ -92,12 +96,27 @@ export class RhythmBus {
         const e = this.events[i];
         const at = tAudio + (e.t - p) / rate;
         if (e.source === "bass" && e.midi !== undefined) this.bassMidi = e.midi;
-        for (const r of live) if (r.source === e.source) this.fire(r, e, at, e.dur / rate);
+        for (const r of live) {
+          if (r.source !== e.source) continue;
+          if (r.density !== undefined && r.density < 1 && (e.t * 7.31) % 1 > r.density) continue;
+          this.fire(r, e, this.snap(r, e, at, rate), (e.dur * (r.gate ?? 1)) / rate);
+        }
       }
       tAudio += (pEnd - p) / rate;
       p = loop && pEnd >= loop[1] ? loop[0] : pEnd;
     }
     this.until = end;
+  }
+
+  // the event moves to the nearest line of the beat grid; if that is already past, to the next one
+  private snap(r: RhythmRoute, e: Ev, at: number, rate: number): number {
+    const d = this.deck;
+    if (!r.grid || !d.bpm) return at;
+    const step = 60 / d.bpm / r.grid;
+    const k = (e.t - d.beatGridOffset) / step;
+    let a = at + ((Math.round(k) * step + d.beatGridOffset) - e.t) / rate;
+    if (a < this.engine.ctx.currentTime) a = at + ((Math.ceil(k) * step + d.beatGridOffset) - e.t) / rate;
+    return a;
   }
 
   private fire(r: RhythmRoute, e: Ev, at: number, dur: number) {
@@ -107,11 +126,11 @@ export class RhythmBus {
     if (r.kind === "synth") {
       // the notes of the song keep their pitch; a drum hit plays the root of the moment, an octave up, so it stays in key
       const shift = this.deck.keyLock ? this.deck.keyShift : 12 * Math.log2(this.deck.playRate);
-      const midi = (e.midi ?? this.bassMidi + 12) + shift;
+      const midi = (e.midi ?? this.bassMidi + 12) + shift + (r.transpose ?? 0);
       eng.djSynth.noteOn(midi, vel, at, Math.max(0.06, dur));
     } else if (r.kind === "synth2" || r.kind === "sampler" || r.kind === "seqrec") {
       const shift = this.deck.keyLock ? this.deck.keyShift : 12 * Math.log2(this.deck.playRate);
-      const midi = Math.round((e.midi ?? this.bassMidi + 12) + shift);
+      const midi = Math.round((e.midi ?? this.bassMidi + 12) + shift + (r.transpose ?? 0));
       const wait = Math.max(0, (at - eng.ctx.currentTime) * 1000);
       if (r.kind === "synth2") {
         setTimeout(() => eng.synth.noteOn(midi, vel), wait); // the classic synth has no start time: timer jitter only

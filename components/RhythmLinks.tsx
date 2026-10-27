@@ -101,6 +101,20 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
                   <span aria-hidden>→</span>
                   <span>{r.kind === "synth" ? "Synthé DJ" : r.kind === "synth2" ? "Synthé classique" : r.kind === "sampler" ? "Super sampler" : r.kind === "seqrec" ? "Séquenceur synthé" : r.kind === "pad" ? `Pad ${Number(r.arg) + 1}` : r.kind === "drum" ? `Voix ${r.arg}` : `Pulse ${r.arg?.replace(":", " · ")}`}</span>
                   <input type="range" min={0.1} max={1} step={0.05} value={r.amount} aria-label="Force" onChange={(e) => patch(side, r.id, { amount: Number(e.target.value) })} className="min-w-[80px] flex-1" />
+                  <select aria-label="Grille" value={r.grid ?? 0} onChange={(e) => patch(side, r.id, { grid: Number(e.target.value) || undefined })} className={sel}>
+                    <option value={0}>Libre</option><option value={1}>Sur le temps</option><option value={2}>1/8</option><option value={4}>1/16</option>
+                  </select>
+                  {["synth", "synth2", "sampler", "seqrec"].includes(r.kind) && (
+                    <select aria-label="Transposition" value={r.transpose ?? 0} onChange={(e) => patch(side, r.id, { transpose: Number(e.target.value) || undefined })} className={sel}>
+                      {[-24, -12, -7, -5, 0, 5, 7, 12, 24].map((n) => <option key={n} value={n}>{n > 0 ? `+${n}` : n} demi-tons</option>)}
+                    </select>
+                  )}
+                  <label className="flex items-center gap-1 text-[11px] text-neutral-400">Durée
+                    <input type="range" min={0.25} max={2} step={0.25} value={r.gate ?? 1} aria-label="Durée des notes" onChange={(e) => patch(side, r.id, { gate: Number(e.target.value) })} className="w-16" />
+                  </label>
+                  <label className="flex items-center gap-1 text-[11px] text-neutral-400">Densité
+                    <input type="range" min={0.1} max={1} step={0.1} value={r.density ?? 1} aria-label="Densité" onChange={(e) => patch(side, r.id, { density: Number(e.target.value) })} className="w-16" />
+                  </label>
                   <button type="button" aria-label="Supprimer la liaison" onClick={() => apply(side, routes[side].filter((x) => x.id !== r.id))} className="min-h-9 min-w-9 rounded-md text-neutral-400 hover:bg-neutral-800"><Icon name="x" size={14} /></button>
                 </div>
               ))}
