@@ -16,6 +16,7 @@ const ROW_DRAG = "application/x-djsynth-setrow";
 
 export interface SetDetailProps {
   playlist: Playlist | null;
+  view?: "titles" | "mix";
   tracks: LibTrack[];
   marks: (trackId: string) => TrackMark;
   stemOf: (trackId: string) => StemInfo;
@@ -94,7 +95,7 @@ function PrepRow({ title, text, status, bar, children }: { title: string; text: 
 export function SetDetail(props: SetDetailProps) {
   const [editing, setEditing] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<"clear" | "delete" | null>(null);
-  const [tab, setTab] = useState<TabKey>("tracks");
+  const [tab, setTab] = useState<TabKey>(props.view === "titles" ? "tracks" : props.view === "mix" ? "links" : "tracks");
   const [showOptimize, setShowOptimize] = useState(false);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
@@ -231,7 +232,7 @@ export function SetDetail(props: SetDetailProps) {
     document.getElementById(`pl-tab-${next}`)?.focus();
   };
 
-  const tabs: { key: TabKey; label: string; badge: ReactNode }[] = [
+  const allTabs: { key: TabKey; label: string; badge: ReactNode }[] = [
     { key: "tracks", label: "Titres", badge: <span className="pl-tab-count">{list.length}</span> },
     {
       key: "links",
@@ -245,6 +246,9 @@ export function SetDetail(props: SetDetailProps) {
       badge: <span className="pl-tab-count" style={allReady ? { color: "#34d399" } : undefined}>{ready}/{list.length}</span>,
     },
   ];
+  // the steps of the Sets view show one part of the set at a time
+  const tabs = props.view === "mix" ? allTabs.filter((t) => t.key !== "tracks") : allTabs;
+
 
   const transitionType = pl.transitionType ?? "fade";
   const transitionSec = pl.transitionSec ?? 12;
@@ -253,7 +257,8 @@ export function SetDetail(props: SetDetailProps) {
   return (
     <div className="flex flex-col gap-3">
       {/* Header: name, key figures, the launch buttons, what to do next */}
-      <div className="prep-card overflow-hidden" style={{ boxShadow: `inset 3px 0 0 ${STATUS_COLOR[health.status]}` }}>
+      {props.view === undefined && (
+        <div className="prep-card overflow-hidden" style={{ boxShadow: `inset 3px 0 0 ${STATUS_COLOR[health.status]}` }}>
         <div className="flex flex-col gap-3 p-3 pl-4">
           <div className="flex items-center gap-2">
             {editing === null ? (
@@ -370,10 +375,11 @@ export function SetDetail(props: SetDetailProps) {
           <NextStepBar flat hidePlay health={health} busy={analyzingNow} onAction={doNext} />
         </div>
       </div>
+      )}
 
       {/* Work area: one tab per job */}
       <div className="prep-card overflow-hidden">
-        <div className="pl-tabs" role="tablist" aria-label="Réglages du set" onKeyDown={onTabKey}>
+        <div className={props.view === "titles" ? "hidden" : "pl-tabs"} role="tablist" aria-label="Réglages du set" onKeyDown={onTabKey}>
           {tabs.map(t => (
             <button
               key={t.key}

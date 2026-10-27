@@ -923,10 +923,10 @@ const [showModulePicker, setShowModulePicker] = useState(false);
               onClick={() => { setLibRefresh((n) => n + 1); setView("playlist"); }}
               className={`inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${view === "playlist" ? "hw-btn-on shadow-sm" : "text-neutral-400 hover:text-neutral-200"}`}
               style={{ ["--led" as string]: "#a78bfa" }}
-              title="Crée et enchaîne des playlists : recherche à gauche, set à droite, choix du deck, BPM"
+              title="Sets en 4 étapes : choisir, ajouter des titres, régler le mix, lancer"
             >
               <IconPlaylist className="w-3.5 h-3.5" />
-              <span>Playlist</span>
+              <span>Sets</span>
             </button>
             <button
               onClick={() => { setView("preparation"); setShowLibrary(false); }}
