@@ -2033,6 +2033,11 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
         wait = alignDelaySec(deck, otherDeck, dj?.phrase === false ? 1 : 4);
         if (wait > Math.max(0, remain - 3)) wait = alignDelaySec(deck, otherDeck, 1); // too close to the end for a bar
       }
+      // no beat match asked: the change at least starts on a drum attack of the outgoing song (within half a second), not between two hits
+      else if (TYPE !== "cut") {
+        const hitAt = nextAttack(deck.stemNotes, deck.position(), 0.5);
+        if (hitAt !== null && hitAt - deck.position() < remain - 3) wait = Math.max(0, (hitAt - deck.position() - 0.03) / Math.max(deck.playRate, 0.5));
+      }
       const secs = TYPE === "cut" ? 0 : Math.min(FADE, Math.max(2, remain - wait - 0.2));
       const braking = TYPE === "cut" && step?.tail === "brake";
       // both songs in stem mode (or one of them): a stem technique replaces the plain blend

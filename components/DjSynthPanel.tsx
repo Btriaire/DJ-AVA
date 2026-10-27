@@ -10,6 +10,7 @@ import { PerfPad } from "./PerfPad";
 import { DjFxPanel } from "./DjFxPanel";
 import type { FxName } from "@/lib/audio/FXRack";
 import { STEM_INFO } from "./DeckPanel";
+import { RhythmLinks } from "./RhythmLinks";
 import { NoteFollower, loadStemLine, MIDI_TRACK } from "@/lib/audio/noteFollower";
 
 // stop a note replay (and a transcription in flight); the synth stays where it is
@@ -668,6 +669,7 @@ export function DjSynthPanel({ engine }: { engine: DJEngine }) {
       </div>
 
       {fxOpen && <DjFxPanel rack={s.fx} color={presetColor} />}
+      <RhythmLinks engine={engine} />
     </div>
   );
 }

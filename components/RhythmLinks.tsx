@@ -1,0 +1,144 @@
+"use client";
+import { useEffect, useState } from "react";
+import type { DJEngine } from "@/lib/audio/engine";
+import type { Deck } from "@/lib/audio/Deck";
+import { DRUM_VOICES } from "@/lib/audio/DrumMachine";
+import { RACK_MODULES } from "@/lib/audio/Rack";
+import { RhythmBus, type RhythmRoute, type RhythmSource, type RouteKind } from "@/lib/audio/rhythmBus";
+import { Icon } from "./prep/parts";
+
+// Liaisons: the rhythm detected in a song (drum attacks, bass notes, synth notes) is never played, but it can drive
+// the modules: the DJ synth in harmony, a drum voice, a pulse on a rack parameter.
+type Side = "A" | "B";
+const KEY = "djsynth.rhythm.v1";
+const SOURCES: { id: RhythmSource; label: string }[] = [{ id: "drums", label: "Batterie" }, { id: "bass", label: "Basse" }, { id: "synth", label: "Synthé" }];
+const KINDS: { id: RouteKind; label: string }[] = [{ id: "synth", label: "Synthé DJ (en harmonie)" }, { id: "drum", label: "Boîte à rythmes" }, { id: "rack", label: "Pulse sur un effet du rack" }];
+const PRESETS: { label: string; route: Omit<RhythmRoute, "id" | "on"> }[] = [
+  { label: "Basse → Synthé DJ", route: { source: "bass", kind: "synth", amount: 0.7 } },
+  { label: "Synthé → Synthé DJ", route: { source: "synth", kind: "synth", amount: 0.5 } },
+  { label: "Batterie → Synthé sur la tonique", route: { source: "drums", kind: "synth", amount: 0.5 } },
+  { label: "Batterie → Clap", route: { source: "drums", kind: "drum", arg: "clap", amount: 0.6 } },
+];
+
+let seq = 0;
+const newId = () => `r${Date.now()}-${seq++}`;
+const buses = new WeakMap<Deck, RhythmBus>();
+const busFor = (engine: DJEngine, d: Deck) => {
+  let b = buses.get(d);
+  if (!b) { b = new RhythmBus(engine, d); buses.set(d, b); }
+  return b;
+};
+const load = (): Record<Side, RhythmRoute[]> => {
+  try { return { A: [], B: [], ...JSON.parse(localStorage.getItem(KEY) ?? "{}") }; } catch { return { A: [], B: [] }; }
+};
+const save = (r: Record<Side, RhythmRoute[]>) => { try { localStorage.setItem(KEY, JSON.stringify(r)); } catch { /* private window */ } };
+
+export function RhythmLinks({ engine }: { engine: DJEngine }) {
+  const [routes, setRoutes] = useState<Record<Side, RhythmRoute[]>>({ A: [], B: [] });
+  const [, tick] = useState(0);
+  const [draft, setDraft] = useState<Omit<RhythmRoute, "id" | "on">>({ source: "bass", kind: "synth", amount: 0.7 });
+
+  useEffect(() => {
+    const saved = load();
+    busFor(engine, engine.deckA).routes = saved.A;
+    busFor(engine, engine.deckB).routes = saved.B;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- routes live in localStorage, read once after hydration
+    setRoutes(saved);
+    const id = window.setInterval(() => {
+      for (const s of ["A", "B"] as const) {
+        const d = s === "A" ? engine.deckA : engine.deckB;
+        const b = busFor(engine, d);
+        if (d.stemNotes && !b.ready) { b.load(d.stemNotes); b.start(); }
+        if (!d.stemNotes && b.ready) { b.load(null); b.stop(); }
+      }
+      tick((n) => n + 1);
+    }, 800);
+    return () => window.clearInterval(id);
+  }, [engine]);
+
+  const apply = (side: Side, next: RhythmRoute[]) => {
+    const all = { ...routes, [side]: next };
+    setRoutes(all);
+    save(all);
+    const d = side === "A" ? engine.deckA : engine.deckB;
+    const b = busFor(engine, d);
+    b.routes = next;
+    b.start();
+  };
+  const add = (side: Side, r: Omit<RhythmRoute, "id" | "on">) => apply(side, [...routes[side], { ...r, id: newId(), on: true }]);
+  const patch = (side: Side, id: string, p: Partial<RhythmRoute>) => apply(side, routes[side].map((r) => (r.id === id ? { ...r, ...p } : r)));
+
+  const rackParams = (mod: string) => RACK_MODULES.find((m) => m.id === mod)?.params ?? [];
+  const sel = "min-h-9 rounded-md border border-neutral-700 bg-neutral-900 px-2 text-xs text-neutral-100";
+
+  return (
+    <section className="prep rounded-xl border border-neutral-800 bg-neutral-950/60 p-3" aria-label="Liaisons rythmiques">
+      <h3 className="text-xs font-black uppercase tracking-[0.2em] text-neutral-200">Liaisons rythmiques</h3>
+      <p className="mt-1 text-[11px] text-neutral-400">Les notes détectées ne sont pas jouées : elles pilotent les modules que vous connectez.</p>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        {(["A", "B"] as const).map((side) => {
+          const d = side === "A" ? engine.deckA : engine.deckB;
+          const n = d.stemNotes;
+          return (
+            <div key={side} className="flex flex-col gap-2 rounded-lg border border-neutral-800 p-2.5">
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <b className="text-neutral-100">Deck {side}</b>
+                <span className="truncate text-neutral-400">
+                  {n ? `${n.drums?.length ?? 0} attaques · ${n.bass?.length ?? 0} basses · ${n.other?.length ?? 0} synthé` : d.stemReady ? "Notes en cours d'analyse…" : "Préparez les stems du morceau"}
+                </span>
+              </div>
+              {routes[side].map((r) => (
+                <div key={r.id} className="flex flex-wrap items-center gap-2 rounded-md bg-neutral-900/70 p-2 text-xs">
+                  <button type="button" aria-pressed={r.on} onClick={() => patch(side, r.id, { on: !r.on })} className={`min-h-9 rounded-md px-3 font-bold ${r.on ? "bg-orange-400 text-neutral-950" : "bg-neutral-700 text-neutral-300"}`}>
+                    {r.on ? "Actif" : "Coupé"}
+                  </button>
+                  <span className="font-semibold">{SOURCES.find((s) => s.id === r.source)?.label}</span>
+                  <span aria-hidden>→</span>
+                  <span>{r.kind === "synth" ? "Synthé DJ" : r.kind === "drum" ? `Pad ${r.arg}` : `Pulse ${r.arg?.replace(":", " · ")}`}</span>
+                  <input type="range" min={0.1} max={1} step={0.05} value={r.amount} aria-label="Force" onChange={(e) => patch(side, r.id, { amount: Number(e.target.value) })} className="min-w-[80px] flex-1" />
+                  <button type="button" aria-label="Supprimer la liaison" onClick={() => apply(side, routes[side].filter((x) => x.id !== r.id))} className="min-h-9 min-w-9 rounded-md text-neutral-400 hover:bg-neutral-800"><Icon name="x" size={14} /></button>
+                </div>
+              ))}
+              {!routes[side].length && <p className="text-[11px] text-neutral-500">Aucune liaison. Choisissez un raccourci ou composez la vôtre.</p>}
+              <div className="flex flex-wrap gap-1.5">
+                {PRESETS.map((p) => (
+                  <button key={p.label} type="button" onClick={() => add(side, p.route)} className="min-h-9 rounded-full border border-neutral-700 px-3 text-[11px] text-neutral-200 hover:border-orange-400/70">+ {p.label}</button>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <details className="mt-3">
+        <summary className="min-h-9 cursor-pointer text-xs font-bold text-neutral-200">Composer une liaison</summary>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <select aria-label="Source" className={sel} value={draft.source} onChange={(e) => setDraft({ ...draft, source: e.target.value as RhythmSource })}>
+            {SOURCES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+          </select>
+          <span aria-hidden>→</span>
+          <select aria-label="Cible" className={sel} value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value as RouteKind, arg: e.target.value === "drum" ? "kick" : e.target.value === "rack" ? "isolator:" + (rackParams("isolator")[0]?.key ?? "") : undefined })}>
+            {KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
+          </select>
+          {draft.kind === "drum" && (
+            <select aria-label="Voix" className={sel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
+              {DRUM_VOICES.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
+            </select>
+          )}
+          {draft.kind === "rack" && (
+            <>
+              <select aria-label="Module" className={sel} value={draft.arg?.split(":")[0]} onChange={(e) => setDraft({ ...draft, arg: `${e.target.value}:${rackParams(e.target.value)[0]?.key ?? ""}` })}>
+                {RACK_MODULES.filter((m) => m.id !== "eq").map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+              </select>
+              <select aria-label="Réglage" className={sel} value={draft.arg?.split(":")[1]} onChange={(e) => setDraft({ ...draft, arg: `${draft.arg?.split(":")[0]}:${e.target.value}` })}>
+                {rackParams(draft.arg?.split(":")[0] ?? "").map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+              </select>
+            </>
+          )}
+          {(["A", "B"] as const).map((s) => (
+            <button key={s} type="button" onClick={() => add(s, draft)} className="prep-btn-accent inline-flex min-h-9 items-center px-3 text-xs">Connecter au deck {s}</button>
+          ))}
+        </div>
+      </details>
+    </section>
+  );
+}
