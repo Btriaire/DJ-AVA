@@ -9,11 +9,11 @@ import type { StemNotes } from "../stemNotes";
 // The detected rhythm of a song (drum attacks, bass notes, synth notes) as a source of events. They are never
 // played themselves: each one is sent, a little ahead of time, to the modules the user connected to it.
 export type RhythmSource = "drums" | "bass" | "synth" | "beat" | "bar" | "voice";
-export type RouteKind = "synth" | "drum" | "rack" | "synth2" | "sampler" | "pad" | "seqrec" | "filter" | "duck" | "sfx" | "djknob";
+export type RouteKind = "synth" | "drum" | "rack" | "synth2" | "sampler" | "pad" | "seqrec" | "filter" | "duck" | "sfx" | "djknob" | "keypad" | "keyfx";
 export interface RhythmRoute {
   id: string;
   source: RhythmSource;
-  kind: RouteKind; // filter: "self:lp" | "self:hp" | "other:lp" | "other:hp" (a pulse on a deck filter); duck: "self" | "other" (the fader dips: pumping); sfx: a sound-effect id; djknob: a DJ synth knob pulse; synth2: the classic synth; sampler: the super sampler (arg unused); pad: a sampler pad ("0".."n"); seqrec: writes the notes into the synth step sequencer when it is armed; synth: the DJ synth plays a note in harmony; drum: a drum voice; rack: a pulse on a rack parameter
+  kind: RouteKind; // keypad: a key of the DJ keyboard ("0".."15"); keyfx: "impact" | "brake" | "scratch" | "drop"; filter: "self:lp" | "self:hp" | "other:lp" | "other:hp" (a pulse on a deck filter); duck: "self" | "other" (the fader dips: pumping); sfx: a sound-effect id; djknob: a DJ synth knob pulse; synth2: the classic synth; sampler: the super sampler (arg unused); pad: a sampler pad ("0".."n"); seqrec: writes the notes into the synth step sequencer when it is armed; synth: the DJ synth plays a note in harmony; drum: a drum voice; rack: a pulse on a rack parameter
   arg?: string; // drum: the voice; rack: "moduleId:paramKey"
   amount: number; // 0..1
   grid?: number; // snap each event to the beat grid: 1 = beat, 2 = eighth, 4 = sixteenth (off when absent)
@@ -186,6 +186,17 @@ export class RhythmBus {
       let base = 0;
       setTimeout(() => { base = eng.djSynth.knobs[k]; eng.djSynth.setKnob(k, Math.min(1, base + r.amount * e.vel * 0.6)); }, Math.max(0, (at - eng.ctx.currentTime) * 1000));
       setTimeout(() => { if (this.pulses.get(key) === gen) eng.djSynth.setKnob(k, base); }, Math.max(0, (at - eng.ctx.currentTime + PULSE_SEC * 2) * 1000));
+    } else if (r.kind === "keypad" && r.arg) {
+      const i = Number(r.arg);
+      const wait = Math.max(0, (at - eng.ctx.currentTime) * 1000);
+      setTimeout(() => eng.keyPad.trigger(i), wait);
+      setTimeout(() => eng.keyPad.release(i), wait + Math.max(80, dur * 1000));
+    } else if (r.kind === "keyfx" && r.arg) {
+      const wait = Math.max(0, (at - eng.ctx.currentTime) * 1000);
+      if (r.arg === "impact") eng.keyPad.impact(at);
+      else if (r.arg === "brake") setTimeout(() => eng.keyPad.brake(1), wait);
+      else if (r.arg === "scratch") setTimeout(() => eng.keyPad.scratch(), wait);
+      else if (r.arg === "drop") setTimeout(() => eng.keyPad.dropHQ(), wait);
     } else if (r.kind === "pad" && r.arg) {
       eng.sampler.playAt(Number(r.arg), at, vel);
     } else if (r.kind === "drum" && r.arg) {

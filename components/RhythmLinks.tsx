@@ -13,7 +13,7 @@ import { Icon } from "./prep/parts";
 type Side = "A" | "B";
 const KEY = "djsynth.rhythm.v1";
 const SOURCES: { id: RhythmSource; label: string }[] = [{ id: "drums", label: "Batterie" }, { id: "bass", label: "Basse" }, { id: "synth", label: "Synthé" }, { id: "voice", label: "Voix chantée" }, { id: "beat", label: "Chaque temps" }, { id: "bar", label: "Chaque mesure" }];
-const KINDS: { id: RouteKind; label: string }[] = [{ id: "synth", label: "Synthé DJ (en harmonie)" }, { id: "drum", label: "Boîte à rythmes" }, { id: "rack", label: "Pulse sur un effet du rack" }, { id: "synth2", label: "Synthé classique" }, { id: "sampler", label: "Super sampler (en harmonie)" }, { id: "pad", label: "Pad du sampler" }, { id: "seqrec", label: "Séquenceur synthé (écriture)" }, { id: "duck", label: "Pompe du volume (sidechain)" }, { id: "filter", label: "Filtre d'un deck (pulse)" }, { id: "sfx", label: "Effet sonore (riser, impact…)" }, { id: "djknob", label: "Bouton du synthé DJ (pulse)" }];
+const KINDS: { id: RouteKind; label: string }[] = [{ id: "synth", label: "Synthé DJ (en harmonie)" }, { id: "drum", label: "Boîte à rythmes" }, { id: "rack", label: "Pulse sur un effet du rack" }, { id: "synth2", label: "Synthé classique" }, { id: "sampler", label: "Super sampler (en harmonie)" }, { id: "pad", label: "Pad du sampler" }, { id: "seqrec", label: "Séquenceur synthé (écriture)" }, { id: "duck", label: "Pompe du volume (sidechain)" }, { id: "filter", label: "Filtre d'un deck (pulse)" }, { id: "sfx", label: "Effet sonore (riser, impact…)" }, { id: "djknob", label: "Bouton du synthé DJ (pulse)" }, { id: "keypad", label: "DJ Keyboard : touche" }, { id: "keyfx", label: "DJ Keyboard : effet (impact, frein…)" }];
 const PRESETS: { label: string; route: Omit<RhythmRoute, "id" | "on"> }[] = [
   { label: "Basse → Synthé DJ", route: { source: "bass", kind: "synth", amount: 0.7 } },
   { label: "Synthé → Synthé DJ", route: { source: "synth", kind: "synth", amount: 0.5 } },
@@ -26,12 +26,17 @@ const PRESETS: { label: string; route: Omit<RhythmRoute, "id" | "on"> }[] = [
   { label: "Batterie → Filtre passe-bas", route: { source: "drums", kind: "filter", arg: "self:lp", amount: 0.5 } },
   { label: "Mesure → Impact", route: { source: "bar", kind: "sfx", arg: "impact", amount: 0.7 } },
   { label: "Basse → Ouverture du synthé", route: { source: "bass", kind: "djknob", arg: "cutoff", amount: 0.6 } },
+  { label: "Batterie → Touches du Keyboard", route: { source: "drums", kind: "keypad", arg: "0", amount: 0.7 } },
+  { label: "Mesure → Impact du Keyboard", route: { source: "bar", kind: "keyfx", arg: "impact", amount: 0.7 } },
   { label: "Batterie → Clap", route: { source: "drums", kind: "drum", arg: "clap", amount: 0.6 } },
 ];
 
+const KEYFX = [{ id: "impact", label: "Impact" }, { id: "brake", label: "Frein 1 temps" }, { id: "scratch", label: "Scratch" }, { id: "drop", label: "Drop" }];
 const KNOBS = [{ id: "cutoff", label: "Filtre" }, { id: "reso", label: "Résonance" }, { id: "drive", label: "Saturation" }, { id: "wobble", label: "Wobble" }, { id: "env", label: "Enveloppe" }];
 const targetLabel = (r: RhythmRoute) => {
   const k = KINDS.find((x) => x.id === r.kind)?.label ?? r.kind;
+  if (r.kind === "keypad") return `Keyboard touche ${Number(r.arg) + 1}`;
+  if (r.kind === "keyfx") return `Keyboard · ${KEYFX.find((x) => x.id === r.arg)?.label ?? r.arg}`;
   if (r.kind === "pad") return `Pad ${Number(r.arg) + 1}`;
   if (r.kind === "drum") return `Voix ${r.arg}`;
   if (r.kind === "rack") return `Pulse ${r.arg?.replace(":", " · ")}`;
@@ -155,12 +160,22 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
             {SOURCES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
           <span aria-hidden>→</span>
-          <select aria-label="Cible" className={sel} value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value as RouteKind, arg: e.target.value === "drum" ? "kick" : e.target.value === "pad" ? "0" : e.target.value === "duck" ? "self" : e.target.value === "filter" ? "self:lp" : e.target.value === "sfx" ? "impact" : e.target.value === "djknob" ? "cutoff" : e.target.value === "rack" ? "isolator:" + (rackParams("isolator")[0]?.key ?? "") : undefined })}>
+          <select aria-label="Cible" className={sel} value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value as RouteKind, arg: e.target.value === "drum" ? "kick" : e.target.value === "pad" ? "0" : e.target.value === "keypad" ? "0" : e.target.value === "keyfx" ? "impact" : e.target.value === "duck" ? "self" : e.target.value === "filter" ? "self:lp" : e.target.value === "sfx" ? "impact" : e.target.value === "djknob" ? "cutoff" : e.target.value === "rack" ? "isolator:" + (rackParams("isolator")[0]?.key ?? "") : undefined })}>
             {KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
           </select>
           {draft.kind === "drum" && (
             <select aria-label="Voix" className={sel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
               {DRUM_VOICES.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
+            </select>
+          )}
+          {draft.kind === "keypad" && (
+            <select aria-label="Touche" className={sel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
+              {Array.from({ length: 16 }, (_, i) => <option key={i} value={String(i)}>Touche {i + 1}</option>)}
+            </select>
+          )}
+          {draft.kind === "keyfx" && (
+            <select aria-label="Effet du keyboard" className={sel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
+              {KEYFX.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
             </select>
           )}
           {draft.kind === "duck" && (
