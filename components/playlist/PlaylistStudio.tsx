@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, type ReactNode } from "react";
-import { StatTile, Icon } from "../prep/parts";
+import { useState, type ReactNode } from "react";
+import { Icon } from "../prep/parts";
 import { Journey, type JourneyStep } from "../prep/Journey";
 import { DeckStrip, type DeckStripProps } from "./DeckStrip";
 import { LibraryPane, type LibraryPaneProps } from "./LibraryPane";
@@ -31,7 +31,6 @@ export interface PlaylistStudioProps {
 
 export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, journey, wizard }: PlaylistStudioProps) {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(() => {
-    // Initialize step based on active set
     if (rail.activeId) {
       return 2;
     }
@@ -59,12 +58,11 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
     }
   };
 
-  const stepLabels = ["Choisir", "Titres", "Mix", "Lancer"];
-  const stepDescriptions = [
-    "Sélectionnez un set existant ou créez-en un",
-    "Ajoutez des titres à votre set",
-    "Configurez les enchaînements et le mix",
-    "Lancez votre set sur les platines"
+  const stepLabels = [
+    { num: 1, label: "Choisir un set", sub: selectedSet || "Aucun set sélectionné" },
+    { num: 2, label: "Ajouter des titres", sub: `${detail.tracks.length} titres` },
+    { num: 3, label: "Régler le mix", sub: detail.driving ? "Doux 10 s · DJ actif" : "Non configuré" },
+    { num: 4, label: "Lancer", sub: detail.tracks.length >= 2 ? "Prêt" : `${2 - detail.tracks.length} titre(s) manque(nt)` }
   ];
 
   const stepLockedReasons = [
@@ -74,18 +72,10 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
     "Ajoutez au moins deux titres au set"
   ];
 
-  // Calculate LaunchPanel props
   const readyCount = detail.tracks.filter((track) => detail.stemOf(track.id).state === "done").length;
-
   const totalSec = detail.tracks.reduce((sum, track) => sum + (track.durationSec || 0), 0);
-
-  const bpmValues = detail.tracks
-    .map(track => track.bpm)
-    .filter((bpm): bpm is number => bpm !== undefined && bpm !== null);
-
-  const bpmRange = bpmValues.length > 0
-    ? `${Math.min(...bpmValues)}–${Math.max(...bpmValues)} BPM`
-    : "0–0 BPM";
+  const bpmValues = detail.tracks.map(track => track.bpm).filter((bpm): bpm is number => bpm !== undefined && bpm !== null);
+  const bpmRange = bpmValues.length > 0 ? `${Math.min(...bpmValues)}–${Math.max(...bpmValues)} BPM` : "0–0 BPM";
 
   const renderStepContent = () => {
     switch (step) {
@@ -117,21 +107,25 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
 
       case 2:
         return (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
-              <h2 className="text-lg font-bold">Bibliothèque</h2>
-              <p className="text-sm text-neutral-400">Recherchez un artiste ou un titre à ajouter</p>
               <LibraryPane {...library} />
+              <div className="text-sm text-neutral-300">
+                {detail.tracks.length} titres dans le set
+                <button
+                  type="button"
+                  className="ml-2 text-xs prep-btn-ghost"
+                  onClick={() => setStep(3)}
+                >
+                  Configurer le mix
+                </button>
+              </div>
             </div>
-            <div className="flex flex-col gap-2">
-              <h2 className="text-lg font-bold">Titres du set</h2>
-              <p className="text-sm text-neutral-400">Liste des titres actuellement dans le set</p>
-              <SetDetail
-                {...detail}
-                view="titles"
-                onOpenLibrary={() => {}}
-              />
-            </div>
+            <SetDetail
+              {...detail}
+              view="titles"
+              onOpenLibrary={() => {}}
+            />
           </div>
         );
 
@@ -152,39 +146,33 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
 
       case 4:
         return (
-          <LaunchPanel
-            playlist={detail.playlist}
-            tracks={detail.tracks}
-            driving={detail.driving}
-            onPlay={(dest) => detail.onPlay(dest)}
-            onBack={() => setStep(3)}
-            ready={readyCount}
-            totalSec={totalSec}
-            bpmRange={bpmRange}
-          />
+          <>
+            <DeckStrip {...decks} />
+            <LaunchPanel
+              playlist={detail.playlist}
+              tracks={detail.tracks}
+              driving={detail.driving}
+              onPlay={(dest) => detail.onPlay(dest)}
+              onBack={() => setStep(3)}
+              ready={readyCount}
+              totalSec={totalSec}
+              bpmRange={bpmRange}
+            />
+          </>
         );
     }
   };
 
   return (
     <div className="prep hw-screwed hw-panel flex flex-1 flex-col gap-4 p-3 sm:p-5">
-      <header className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-        <div className="min-w-[220px]">
-          <h1 className="text-base font-black uppercase tracking-[0.25em] text-neutral-100">Sets</h1>
-          <p className="mt-0.5 text-[11px] text-neutral-400">Composez vos sets, réglez leurs enchaînements, lancez-les sur les platines.</p>
-        </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:w-[760px]">
-          {tiles.map((t) => (
-            <StatTile key={t.label} label={t.label} value={t.value} sub={t.sub} color={t.color} meter={t.meter} />
-          ))}
-        </div>
+      <header className="flex flex-col gap-1">
+        <h1 className="text-base font-black uppercase tracking-[0.25em] text-neutral-100">Sets</h1>
+        <p className="text-[11px] text-neutral-400">Composez vos sets, réglez leurs enchaînements, lancez-les sur les platines.</p>
       </header>
 
-      <DeckStrip {...decks} />
-
       <div className="flex flex-col gap-4">
-        <div className="flex items-center gap-2">
-          {stepLabels.map((label, index) => {
+        <div className="flex items-start gap-2 flex-wrap">
+          {stepLabels.map((s, index) => {
             const stepNumber = index + 1 as 1 | 2 | 3 | 4;
             const isActive = step === stepNumber;
             const isCompleted = step > stepNumber;
@@ -194,21 +182,33 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
               (stepNumber === 4 && (!selectedSet || detail.tracks.length < 2));
 
             return (
-              <button
-                key={label}
-                type="button"
-                className={`flex items-center justify-center w-8 h-8 rounded-full text-xs font-medium ${
-                  isActive ? "bg-neutral-100 text-neutral-900" :
-                  isCompleted ? "bg-green-500 text-white" :
-                  isLocked ? "bg-neutral-700 text-neutral-400 cursor-not-allowed" :
-                  "bg-neutral-800 text-neutral-300"
-                }`}
-                onClick={() => handleStepClick(stepNumber)}
-                disabled={isLocked}
-                title={isLocked ? stepLockedReasons[index] : stepDescriptions[index]}
+              <div
+                key={s.label}
+                className={`flex flex-col items-start gap-1 ${isLocked ? "opacity-50" : ""}`}
               >
-                {isCompleted ? <Icon name="check" /> : stepNumber}
-              </button>
+                <div
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium ${
+                    isActive ? "bg-neutral-100 text-neutral-900" :
+                    isCompleted ? "bg-green-500/20 text-green-400" :
+                    isLocked ? "bg-neutral-800 text-neutral-500" :
+                    "bg-neutral-800 text-neutral-300"
+                  }`}
+                >
+                  {isCompleted ? <Icon name="check" size={14} /> : (
+                    <span className={`w-5 h-5 flex items-center justify-center rounded-full text-xs ${
+                      isActive ? "bg-neutral-900 text-neutral-100" :
+                      isLocked ? "bg-neutral-700 text-neutral-500" :
+                      "bg-neutral-700 text-neutral-300"
+                    }`}>
+                      {s.num}
+                    </span>
+                  )}
+                  <span>{s.label}</span>
+                </div>
+                <span className={`text-xs ${isLocked ? "text-neutral-500" : "text-neutral-400"}`}>
+                  {isLocked ? stepLockedReasons[index] : s.sub}
+                </span>
+              </div>
             );
           })}
         </div>
@@ -218,14 +218,15 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
         </div>
 
         <div className="flex justify-between mt-4">
-          <button
-            type="button"
-            className="prep-btn-ghost"
-            onClick={handleBack}
-            disabled={step === 1}
-          >
-            <Icon name="chevron" className="transform rotate-90" /> Retour
-          </button>
+          {step > 1 && (
+            <button
+              type="button"
+              className="prep-btn-ghost"
+              onClick={handleBack}
+            >
+              <Icon name="chevron" className="transform rotate-90" /> Retour
+            </button>
+          )}
           {step < 4 && (
             <button
               type="button"
@@ -237,7 +238,7 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
                 (step === 3 && detail.tracks.length < 2)
               }
             >
-              Suivant : {stepLabels[step]} <Icon name="chevron" className="transform -rotate-90" />
+              Suivant : {stepLabels[step].label} <Icon name="chevron" className="transform -rotate-90" />
             </button>
           )}
         </div>
