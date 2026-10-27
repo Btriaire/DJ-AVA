@@ -82,6 +82,12 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
   const bpmValues = setTracks.map(track => track.bpm).filter((bpm): bpm is number => bpm !== undefined && bpm !== null);
   const bpmRange = bpmValues.length > 0 ? `${Math.min(...bpmValues)}–${Math.max(...bpmValues)} BPM` : "0–0 BPM";
 
+  // why "Suivant" is off, said in words under the buttons
+  const nextBlocked: string | null =
+    step === 1 && !selectedSet ? "Choisissez ou créez un set pour continuer" :
+    step === 2 && setTracks.length === 0 ? "Ajoutez au moins un titre (recherche d'artiste ou bibliothèque)" :
+    step === 3 && setTracks.length < 2 ? "Il faut deux titres pour enchaîner : retournez en étape 2" : null;
+
   const renderStepContent = () => {
     switch (step) {
       case 1:
@@ -119,9 +125,6 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
             <div className="flex flex-col gap-2 lg:sticky lg:top-2">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-sm font-bold text-neutral-100">Dans le set : {setTracks.length} titre(s)</h2>
-                <button type="button" className="prep-btn-accent px-3 py-1.5 text-xs" onClick={() => setStep(3)} disabled={setTracks.length === 0}>
-                  Suivant : régler le mix
-                </button>
               </div>
               <SetDetail {...detail} view="titles" onOpenLibrary={() => {}} />
             </div>
@@ -170,73 +173,57 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
       </header>
 
       <div className="flex flex-col gap-4">
-        <div className="flex items-start gap-2 flex-wrap">
+        <nav aria-label="Étapes du set" className="flex items-stretch gap-1.5 overflow-x-auto pb-1">
           {stepLabels.map((s, index) => {
-            const stepNumber = index + 1 as 1 | 2 | 3 | 4;
+            const stepNumber = (index + 1) as 1 | 2 | 3 | 4;
             const isActive = step === stepNumber;
             const isCompleted = step > stepNumber;
             const isLocked =
               (stepNumber === 2 && !selectedSet) ||
               (stepNumber === 3 && (!selectedSet || setTracks.length === 0)) ||
               (stepNumber === 4 && (!selectedSet || setTracks.length < 2));
-
             return (
-              <div
+              <button
                 key={s.label}
-                className={`flex flex-col items-start gap-1 ${isLocked ? "opacity-50" : ""}`}
+                type="button"
+                disabled={isLocked}
+                aria-current={isActive ? "step" : undefined}
+                title={isLocked ? stepLockedReasons[index] : undefined}
+                onClick={() => handleStepClick(stepNumber)}
+                className={`flex min-h-12 min-w-[132px] flex-1 items-center gap-2 rounded-lg border px-3 py-2 text-left transition ${
+                  isActive ? "border-orange-400/70 bg-orange-400/10 text-neutral-50" :
+                  isCompleted ? "border-green-500/30 bg-green-500/10 text-green-300 hover:bg-green-500/15" :
+                  isLocked ? "cursor-not-allowed border-neutral-800 bg-neutral-900/40 text-neutral-600" :
+                  "border-neutral-700 bg-neutral-800/60 text-neutral-300 hover:border-neutral-500"
+                }`}
               >
-                <div
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium ${
-                    isActive ? "bg-neutral-100 text-neutral-900" :
-                    isCompleted ? "bg-green-500/20 text-green-400" :
-                    isLocked ? "bg-neutral-800 text-neutral-500" :
-                    "bg-neutral-800 text-neutral-300"
-                  }`}
-                >
-                  {isCompleted ? <Icon name="check" size={14} /> : (
-                    <span className={`w-5 h-5 flex items-center justify-center rounded-full text-xs ${
-                      isActive ? "bg-neutral-900 text-neutral-100" :
-                      isLocked ? "bg-neutral-700 text-neutral-500" :
-                      "bg-neutral-700 text-neutral-300"
-                    }`}>
-                      {s.num}
-                    </span>
-                  )}
-                  <span>{s.label}</span>
-                </div>
-                <span className={`text-xs ${isLocked ? "text-neutral-500" : "text-neutral-400"}`}>
-                  {isLocked ? stepLockedReasons[index] : s.sub}
+                <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${isActive ? "bg-orange-400 text-neutral-950" : isCompleted ? "bg-green-500/30" : "bg-neutral-700"}`}>
+                  {isCompleted ? <Icon name="check" size={13} /> : s.num}
                 </span>
-              </div>
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate text-xs font-bold">{s.label}</span>
+                  <span className="truncate text-[11px] opacity-70">{isLocked ? stepLockedReasons[index] : s.sub}</span>
+                </span>
+              </button>
             );
           })}
-        </div>
+        </nav>
 
         <div className="flex flex-col gap-4">
           {renderStepContent()}
         </div>
 
-        <div className="flex justify-between mt-4">
+        <div className="sticky bottom-0 z-10 -mx-3 mt-2 flex items-center gap-3 border-t border-neutral-800 bg-neutral-950/90 px-3 py-2.5 backdrop-blur sm:-mx-5 sm:px-5">
           {step > 1 && (
-            <button
-              type="button"
-              className="prep-btn-ghost min-h-10 px-4 text-xs"
-              onClick={handleBack}
-            >
+            <button type="button" className="prep-btn-ghost min-h-11 px-4 text-xs" onClick={handleBack}>
               <Icon name="chevron" className="transform rotate-90" /> Retour
             </button>
           )}
+          <span className="min-w-0 flex-1 truncate text-center text-[11px] text-neutral-400" aria-live="polite">
+            {nextBlocked ?? (detail.playlist ? `${detail.playlist.name} · ${setTracks.length} titre(s)${totalSec ? ` · ${Math.round(totalSec / 60)} min` : ""}` : "")}
+          </span>
           {step < 4 && (
-            <button
-              type="button"
-              className="prep-btn-accent ml-auto min-h-10 px-5 text-sm"
-              onClick={handleNext}
-              disabled={
-                (step === 1 && !selectedSet) ||
-                (step === 2 && setTracks.length === 0) ||
-                (step === 3 && setTracks.length < 2)
-              }
-            >
+            <button type="button" className="prep-btn-accent ml-auto min-h-11 px-5 text-sm" onClick={handleNext} disabled={!!nextBlocked}>
               Suivant : {stepLabels[step].label} <Icon name="chevron" className="transform -rotate-90" />
             </button>
           )}
