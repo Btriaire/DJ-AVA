@@ -203,6 +203,13 @@ export default function DX7Synth({ engine, embedded = false }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voiceId]);
 
+  // the rhythm links play this instrument with the detected notes while the module is open
+  useEffect(() => {
+    if (!engine) return;
+    engine.plugins.set("dx7", { play: (midi, vel, sec) => { const inst = instRef.current; if (inst) { void Tone.start(); inst.triggerAttackRelease(midiToNote(midi), sec, undefined, vel); } } });
+    return () => { engine.plugins.delete("dx7"); };
+  }, [engine]);
+
   const noteOn = useCallback((midi: number) => {
     const inst = instRef.current; if (!inst || loading) return;
     const m = midi + octave * 12;

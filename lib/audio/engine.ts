@@ -38,6 +38,8 @@ export class DJEngine {
   readonly synthSeq: StepSequencer;
   readonly sampler: Sampler;
   readonly midi: MidiManager; // Web MIDI input → synth + sampler (Arturia MiniLab)
+  // instruments of the plug-in modules (DX7…) that can be played by the rhythm links; a module registers itself while it is open
+  readonly plugins = new Map<string, { play(midi: number, vel: number, sec: number): void }>();
   readonly soundFx: SoundFX; // synthesised one-shot DJ effects (airhorn, riser…)
   readonly drums: DrumMachine;
   readonly djSynth: DjSynth;
