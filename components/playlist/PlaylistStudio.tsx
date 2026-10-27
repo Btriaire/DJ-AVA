@@ -42,11 +42,10 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
   });
   // the titles of the open set (detail.tracks is the whole library)
   const setTracks = (detail.playlist?.trackIds ?? []).map((id) => detail.tracks.find((t) => t.id === id)).filter((t): t is NonNullable<typeof t> => !!t);
-  const [selectedSet, setSelectedSet] = useState<string | null>(rail.activeId || null);
+  const selectedSet = detail.playlist?.id ?? null; // the set that is open
 
   const handleSetSelect = (id: string) => {
     rail.onSelect(id);
-    setSelectedSet(id);
     setStep(2);
   };
 
@@ -97,7 +96,6 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
               onSelect={handleSetSelect}
               onCreate={(name) => {
                 rail.onCreate(name);
-                setSelectedSet(rail.activeId);
                 setStep(2);
               }}
             />
@@ -222,7 +220,7 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
           {step > 1 && (
             <button
               type="button"
-              className="prep-btn-ghost"
+              className="prep-btn-ghost min-h-10 px-4 text-xs"
               onClick={handleBack}
             >
               <Icon name="chevron" className="transform rotate-90" /> Retour
@@ -231,7 +229,7 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
           {step < 4 && (
             <button
               type="button"
-              className="prep-btn-accent"
+              className="prep-btn-accent ml-auto min-h-10 px-5 text-sm"
               onClick={handleNext}
               disabled={
                 (step === 1 && !selectedSet) ||
