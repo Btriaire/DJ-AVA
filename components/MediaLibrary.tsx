@@ -44,6 +44,7 @@ import { useStemsShared } from "@/lib/stemsShared";
 import { type QueueTrack, getRelayHost, publishRelayHost, registerRelayHost, relayHostStart, relayHostStop, subscribeRelayHost } from "@/lib/relayHost";
 import { cachedLoudness, loudnessFor, matchTrimDb } from "@/lib/audio/levelMatch";
 import { getDjLive, setDjStems, showDjAction, useDjLive } from "@/lib/djLive";
+import { nextAttack } from "@/lib/stemNotesPure";
 import { RISERS, ruleOk, nextSectionStart, sectionKindAt, voiceStateAt, ACCENT_LABEL, MASTER_MOVES, gateSetting, isGentleGenre, PROFILE as FORCE_PROFILE, accentDue, amountFor, forceOf, isCalm, isMasterMove, pickAccent, pickTransitionMove, type AccentKind, type Feel, type Genre } from "@/lib/djForce";
 import type { FxName } from "@/lib/audio/FXRack";
 import { moveAllowed, capAmount, fadeFactor, getDjRules, transitionAllowed, type DjRules } from "@/lib/djRules";
@@ -1874,9 +1875,15 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     if (!kind) return;
     st.lastBar = barIdx;
     st.count++;
-    const sec = runAccent(deck, kind, amountFor(FORCE_PROFILE[force].amount, feel), 14, FORCE_PROFILE[force].len, vocalHeld.current[side], feel.genre ?? "auto", rules);
+    // the move lands on the next attack of the song (a drum hit or a bass note, at most 0.35 s away), not between two of them
+    const at = nextAttack(deck.stemNotes, pos, 0.35);
+    const wait = at === null ? 0 : Math.max(0, at - pos - 0.03);
+    const go = () => runAccent(deck, kind, amountFor(FORCE_PROFILE[force].amount, feel), 14, FORCE_PROFILE[force].len, vocalHeld.current[side], feel.genre ?? "auto", rules);
+    let sec = FORCE_PROFILE[force].len;
+    if (wait > 0.02) setTimeout(go, wait * 1000);
+    else sec = go();
     // eslint-disable-next-line react-hooks/purity -- gestionnaire d'événement, hors rendu
-    st.busy = performance.now() + sec * 1000 + 400; // the next move waits for this one to finish
+    st.busy = performance.now() + (wait + sec) * 1000 + 400; // the next move waits for this one to finish
     showDjAction(`${ACCENT_LABEL[kind]}${deck.name ? ` (${side})` : ""}`);
   }
   // songs played by hand (no relay on that deck) get the DJ's moves too when the top-bar switch is ON

@@ -1,3 +1,4 @@
+import type { StemNotes } from "@/lib/stemNotes";
 import type { StemMap } from "@/lib/stemAnalysis";
 import { getMemLevel } from "@/lib/memoryGovernor";
 import { detectBPM, buildWaveformPeaks } from "./bpm";
@@ -172,6 +173,7 @@ export class Deck {
   stemProgress: number | null = null;
   private stemProgressTimer: ReturnType<typeof setInterval> | null = null;
   stemCached = false; // server already has the stems on disk -> loading is instant
+  stemNotes: StemNotes | null = null; // MIDI notes of the song (never played: they only time the effects)
   stemMap: StemMap | null = null; // peaks, slow parts and blanks of the song (made when its stems were prepared)
   stemHash = ""; // server content hash of the loaded track (for the library badge)
   // when non-empty, the Rack DSP pedalboard is unhooked from the whole-mix
@@ -1246,6 +1248,7 @@ export class Deck {
     this.stemRamps.clear();
     this.stemVol = [];
     this.stemMap = null;
+    this.stemNotes = null;
     for (let i = 0; i < this.stemLoopWrapTimer.length; i++) this.clearStemLoopTimer(i);
     this.stemLoopWrapCount = this.stemLoopWrapCount.map(() => 0);
     this.stemLoopActive = [];
@@ -1402,6 +1405,11 @@ export class Deck {
       this.stemMap = j.map;
       // the sung notes of the voice (made at preparation): read only, nothing is computed while loading
       const p = (await (await fetch(`/api/stems/pitch?read=1&hash=${hash}&model=${this.stemModel}${this.stemOptsQS()}`)).json()) as { pitch: { contour: number[]; hop: number } | null };
+      const nj = (await (await fetch(`/api/stems/notes?read=1&hash=${hash}&model=${this.stemModel}${this.stemOptsQS()}`)).json()) as { notes: StemNotes | null };
+      if (gen === this.loadGen) {
+        this.stemNotes = nj.notes;
+        if (this.stemMap && nj.notes) this.stemMap = { ...this.stemMap, notes: { other: nj.notes.other, drums: nj.notes.drums } };
+      }
       if (gen === this.loadGen && this.stemMap && p.pitch) this.stemMap = { ...this.stemMap, voice: p.pitch.contour, voiceStep: p.pitch.hop * 4 };
     } catch {
       // no map: the DJ simply works without it

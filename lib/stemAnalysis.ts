@@ -6,7 +6,7 @@ import { ffmpegPath, stemPath, isCached, MODEL_STEMS, type StemModel, type StemO
 
 export type SectionKind = "peak" | "slow" | "blank" | "normal";
 export interface StemSection { start: number; end: number; kind: SectionKind; drums: number; vocals: number; level: number }
-export interface StemMap { version: 1; stems?: Record<string, number[]>; hop: number; duration: number; sections: StemSection[]; energy: number[]; drums: number[]; vocals: number[]; voice?: number[]; voiceStep?: number }
+export interface StemMap { version: 1; stems?: Record<string, number[]>; hop: number; duration: number; sections: StemSection[]; energy: number[]; drums: number[]; vocals: number[]; voice?: number[]; voiceStep?: number; notes?: { other?: number[][]; drums?: number[][] } }
 
 const HOP = 0.5; // seconds
 const MIN_SECTION = 2; // seconds

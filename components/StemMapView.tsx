@@ -8,6 +8,7 @@ export interface StemMapLike {
   stems?: Record<string, number[]>;
   voice?: number[]; // sung note (MIDI) every voiceStep seconds, -1 = no voice
   voiceStep?: number;
+  notes?: { other?: number[][]; drums?: number[][] }; // synth notes [start, end, midi, strength] and drum attacks [time, strength]
   sections: { start: number; end: number; kind: "peak" | "slow" | "blank" | "normal" }[];
 }
 
@@ -125,6 +126,18 @@ export default function StemMapView({
         ctx.fillStyle = color;
         ctx.fillRect(x, y, w, rowHeight);
       });
+    });
+
+    // The notes that time the effects: synth notes as dots (height = pitch), drum attacks as ticks on the top edge
+    const ny = height - 17;
+    map.notes?.other?.forEach(([a, , n, v]) => {
+      ctx.fillStyle = `oklch(0.85 0.1 ${(n % 12) * 30} / ${0.35 + 0.5 * v})`;
+      ctx.fillRect((a / map.duration) * width, ny - 8 * (((n - 36) % 48) / 48), 1.5, 2);
+    });
+    map.notes?.drums?.forEach(([a, v]) => {
+      if (v < 0.35) return;
+      ctx.fillStyle = "oklch(0.9 0.05 80 / 0.6)";
+      ctx.fillRect((a / map.duration) * width, 0, 1, 3);
     });
 
     // The sung notes: one thin line at the foot of the map, the hue follows the note (C...B), a gap is left empty
