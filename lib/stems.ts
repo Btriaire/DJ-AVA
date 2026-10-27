@@ -255,7 +255,10 @@ export async function separate(
     await existing;
     return hash;
   }
-  const job = doSeparate(hash, model, shifts, data, opts).finally(() => inflight.delete(key));
+  // once the stems exist, their map (peaks, slow parts, blanks) is made: only at preparation, never while playing
+  const job = doSeparate(hash, model, shifts, data, opts)
+    .then(() => import("@/lib/stemAnalysis").then((m) => m.analyseStems(hash, model, opts)).then(() => undefined, () => undefined))
+    .finally(() => inflight.delete(key));
   inflight.set(key, job);
   await job;
   return hash;

@@ -138,11 +138,25 @@ export const isMasterMove = (k: AccentKind): k is MasterKind => k in MASTER_MOVE
 
 // What the DJ knows about the song that plays: its tempo, whether it is a classical piece, and the stems it has
 // ready (empty = the song plays as one block). Every move is judged against it (see RULE).
+// The map of a song made when its stems were prepared (lib/stemAnalysis.ts), as far as the DJ needs it (client side)
+export type SectionKind = "peak" | "slow" | "blank" | "normal";
+export interface MapSection { start: number; end: number; kind: SectionKind }
+export const sectionKindAt = (map: { sections: MapSection[] } | null | undefined, t: number): SectionKind | undefined => map?.sections.find((s) => t >= s.start && t < s.end)?.kind;
+export const nextSectionStart = (map: { sections: MapSection[] } | null | undefined, t: number, kind: SectionKind): number | null => map?.sections.find((s) => s.kind === kind && s.start > t)?.start ?? null;
+// what suits each kind of passage: a quick effect on a slow part is a mistake, a soft wash on a peak drowns it, a blank takes tails only
+const IN_SLOW_NO: readonly AccentKind[] = ["roll", "gatechop", "noiseburst", "scatterslice", "doublecut", "crushgrit", "mashfx", "riserbuild", "buildup", "pumpduck", "drumsolo"];
+const IN_PEAK_NO: readonly AccentKind[] = ["reverbwash", "freezehold", "tapestop", "halftimedrop", "echoexit", "filterbreath", "drumsout", "bassdrop", "vocalsolo"];
+const IN_BLANK_OK: readonly AccentKind[] = ["reverbwash", "echoexit", "freezehold", "echothrow", "riserbuild", "buildup"];
+export const fitsSection = (k: AccentKind, s: SectionKind | undefined): boolean => !s || s === "normal" || (s === "slow" ? !IN_SLOW_NO.includes(k) : s === "peak" ? !IN_PEAK_NO.includes(k) : IN_BLANK_OK.includes(k));
+// the build-ups that announce a peak when it starts a few seconds later
+export const RISERS: readonly AccentKind[] = ["riserbuild", "buildup", "noiseburst"];
+
 export interface Feel {
   bpm: number;
   classical?: boolean;
   stems?: readonly string[];
   genre?: Genre; // the style the DJ plays (missing or "auto": read from the tempo)
+  section?: SectionKind; // where the song is now according to its map (peak, slow, blank), when the stems were analysed
 }
 
 // "auto" reads the style from the tempo: lively = club, middle = pop, slow = chill
@@ -205,6 +219,7 @@ const PALETTE: Record<Exclude<Genre, "auto">, readonly AccentKind[]> = {
   zen: ["filterbreath", "reverbwash", "echothrow", "echoexit", "freezehold"],
   calm: ["reverbwash", "echoexit", "filterbreath", "freezehold"],
 };
+export const ruleOk = (k: AccentKind, f: Feel): boolean => RULE[k](f);
 export const STEM_MOVES: readonly AccentKind[] = ["drumsout", "drumsolo", "bassdrop", "otherout", "vocalecho", "vocalsolo", "voiceout"];
 
 export const isCalm = (f: Feel) => !!f.classical || (f.bpm > 0 && f.bpm < CALM_BPM);
@@ -281,7 +296,7 @@ export function pickAccent(force: DjForce, n: number, feel: Feel | boolean, rule
   const genre = genreOf(f);
   const palette = PALETTE[genre];
   // zen and calm take their whole (short) palette, whatever the force: the force only sets how often
-  const pool = (isGentleGenre(genre) ? [...palette] : PROFILE[force].pool.filter((k) => palette.includes(k))).filter((k) => RULE[k](f) && moveAllowed(k, rules));
+  const pool = (isGentleGenre(genre) ? [...palette] : PROFILE[force].pool.filter((k) => palette.includes(k))).filter((k) => RULE[k](f) && moveAllowed(k, rules) && fitsSection(k, f.section));
   if (!pool.length) return null;
   // a song that has its stems gets them used on every other move (from force 3): that is what they are prepared for
   const stemPool = pool.filter((k) => STEM_MOVES.includes(k));

@@ -1,3 +1,4 @@
+import type { StemMap } from "@/lib/stemAnalysis";
 import { getMemLevel } from "@/lib/memoryGovernor";
 import { detectBPM, buildWaveformPeaks } from "./bpm";
 import { detectKey, transposeKey, KeyResult } from "./key";
@@ -171,6 +172,7 @@ export class Deck {
   stemProgress: number | null = null;
   private stemProgressTimer: ReturnType<typeof setInterval> | null = null;
   stemCached = false; // server already has the stems on disk -> loading is instant
+  stemMap: StemMap | null = null; // peaks, slow parts and blanks of the song (made when its stems were prepared)
   stemHash = ""; // server content hash of the loaded track (for the library badge)
   // when non-empty, the Rack DSP pedalboard is unhooked from the whole-mix
   // chain and spliced onto ONLY these stems instead — every other stem stays
@@ -1243,6 +1245,7 @@ export class Deck {
     this.stemRamps.forEach((id) => window.clearInterval(id));
     this.stemRamps.clear();
     this.stemVol = [];
+    this.stemMap = null;
     for (let i = 0; i < this.stemLoopWrapTimer.length; i++) this.clearStemLoopTimer(i);
     this.stemLoopWrapCount = this.stemLoopWrapCount.map(() => 0);
     this.stemLoopActive = [];
@@ -1380,11 +1383,25 @@ export class Deck {
     this.stemNames = names;
     this.stemVol = names.map(() => 1);
     this.stemBuffers = bufs;
+    void this.loadStemMap(hash);
     this.stemHash = hash;
     this.stemCached = true;
     for (let i = 0; i < names.length; i++) this.stemGains[i].gain.value = this.stemVol[i];
     this.recomputeStemMakeup();
     this.stemStatus = "ready";
+  }
+
+  // the map of the song (sections), read from the server: nothing is computed here
+  private async loadStemMap(hash: string) {
+    const gen = this.loadGen;
+    this.stemMap = null;
+    try {
+      const r = await fetch(`/api/stems/map?hash=${hash}&model=${this.stemModel}${this.stemOptsQS()}`);
+      const j = (await r.json()) as { map: StemMap | null };
+      if (gen === this.loadGen) this.stemMap = j.map;
+    } catch {
+      // no map: the DJ simply works without it
+    }
   }
 
   // query-string suffix carrying the current quality opts, shared by every

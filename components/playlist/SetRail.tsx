@@ -72,7 +72,7 @@ export function SetRail(props: SetRailProps) {
         </span>
       </div>
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center xl:flex-col xl:items-stretch">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <button
           type="button"
           className="prep-btn-accent flex min-h-10 items-center justify-center gap-1.5 px-3 text-xs"
@@ -83,7 +83,7 @@ export function SetRail(props: SetRailProps) {
           Créer un set pas à pas
         </button>
 
-        <div className="flex min-w-0 gap-2 sm:flex-1 sm:basis-[260px]">
+        <div className="flex min-w-0 gap-2 sm:flex-1 sm:basis-[260px] sm:min-w-[260px]">
           <input
             className="prep-input min-h-10 min-w-0 flex-1 px-2.5 text-xs"
             placeholder="Nom d'un set vide…"
@@ -126,7 +126,7 @@ export function SetRail(props: SetRailProps) {
       ) : shown.length === 0 ? (
         <p className="px-1 py-2 text-[12px] text-neutral-500">Aucun set ne correspond à « {query.trim()} ».</p>
       ) : (
-        <ul className="flex snap-x gap-2 overflow-x-auto pb-1 xl:max-h-[68vh] xl:snap-none xl:flex-col xl:overflow-y-auto xl:overflow-x-hidden xl:pb-0">
+        <ul className="flex snap-x gap-2 overflow-x-auto pb-1">
           {shown.map((p) => {
             const i = props.playlists.indexOf(p);
             const active = props.activeId === p.id;
@@ -141,7 +141,7 @@ export function SetRail(props: SetRailProps) {
             return (
               <li
                 key={p.id}
-                className="pl-set prep-drop prep-card relative flex min-w-[260px] shrink-0 snap-start items-center gap-1 p-1.5 xl:min-w-0 xl:shrink"
+                className="pl-set prep-drop prep-card relative flex min-w-[260px] shrink-0 snap-start items-center gap-1 p-1.5"
                 data-active={active}
                 data-over={overId === p.id}
                 onDragOver={(e) => {

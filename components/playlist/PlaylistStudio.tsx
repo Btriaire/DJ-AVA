@@ -54,8 +54,8 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
 
       <DeckStrip {...decks} />
 
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_400px] xl:grid-cols-[240px_minmax(0,1fr)_420px]">
-        <aside className="min-w-0 lg:col-span-2 xl:col-span-1" aria-label="Mes sets">
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_400px] xl:grid-cols-[minmax(0,1fr)_440px]">
+        <aside className="min-w-0 lg:col-span-2" aria-label="Mes sets">
           <SetRail {...rail} />
         </aside>
 

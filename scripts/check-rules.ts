@@ -34,3 +34,10 @@ assert(moveAllowed("echothrow") && transitionAllowed("echo") && !hasRules({}) &&
 assert(capAmount(1, { maxAmount: 0.5 }) === 0.5 && capAmount(1, { maxAmount: 0.1 }) === 0.3 && capAmount(0.4, { maxAmount: 0.5 }) === 0.4);
 assert(fadeFactor({ stemFade: "soft" }) > fadeFactor() && fadeFactor({ stemFade: "quick" }) < 1);
 console.log("check-rules: ok");
+import { fitsSection, nextSectionStart, sectionKindAt } from "../lib/djForce";
+const map = { sections: [{ start: 0, end: 10, kind: "slow" as const }, { start: 10, end: 20, kind: "peak" as const }, { start: 20, end: 25, kind: "blank" as const }] };
+assert.equal(sectionKindAt(map, 12), "peak");
+assert.equal(nextSectionStart(map, 2, "peak"), 10);
+assert(!fitsSection("roll", "slow") && fitsSection("reverbwash", "slow") && !fitsSection("reverbwash", "peak") && fitsSection("roll", "peak") && !fitsSection("roll", "blank") && fitsSection("echoexit", "blank") && fitsSection("roll", undefined));
+for (let n = 0; n < 40; n++) assert(pickAccent(5, n, { bpm: 124, genre: "club", section: "slow", stems: [] }) !== "roll");
+console.log("check-rules sections ok");
