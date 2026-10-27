@@ -7,6 +7,7 @@ import { DeckStrip, type DeckStripProps } from "./DeckStrip";
 import { LibraryPane, type LibraryPaneProps } from "./LibraryPane";
 import { SetDetail, type SetDetailProps } from "./SetDetail";
 import { SetRail, type SetRailProps } from "./SetRail";
+import { TRANSITION_LABEL } from "@/lib/transitions";
 import { LaunchPanel } from "./LaunchPanel";
 import "./playlist.css";
 
@@ -36,6 +37,8 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
     }
     return 1;
   });
+  // the titles of the open set (detail.tracks is the whole library)
+  const setTracks = (detail.playlist?.trackIds ?? []).map((id) => detail.tracks.find((t) => t.id === id)).filter((t): t is NonNullable<typeof t> => !!t);
   const [selectedSet, setSelectedSet] = useState<string | null>(rail.activeId || null);
 
   const handleSetSelect = (id: string) => {
@@ -53,16 +56,16 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
   };
 
   const handleStepClick = (newStep: 1 | 2 | 3 | 4) => {
-    if (newStep === 1 || (newStep === 2 && selectedSet) || (newStep === 3 && selectedSet && detail.tracks.length > 0) || (newStep === 4 && selectedSet && detail.tracks.length >= 2)) {
+    if (newStep === 1 || (newStep === 2 && selectedSet) || (newStep === 3 && selectedSet && setTracks.length > 0) || (newStep === 4 && selectedSet && setTracks.length >= 2)) {
       setStep(newStep);
     }
   };
 
   const stepLabels = [
-    { num: 1, label: "Choisir un set", sub: selectedSet || "Aucun set sélectionné" },
-    { num: 2, label: "Ajouter des titres", sub: `${detail.tracks.length} titres` },
-    { num: 3, label: "Régler le mix", sub: detail.driving ? "Doux 10 s · DJ actif" : "Non configuré" },
-    { num: 4, label: "Lancer", sub: detail.tracks.length >= 2 ? "Prêt" : `${2 - detail.tracks.length} titre(s) manque(nt)` }
+    { num: 1, label: "Choisir un set", sub: detail.playlist?.name ?? "Aucun set sélectionné" },
+    { num: 2, label: "Ajouter des titres", sub: `${setTracks.length} titres` },
+    { num: 3, label: "Régler le mix", sub: detail.playlist ? `${TRANSITION_LABEL[detail.playlist.transitionType ?? "fade"]} ${detail.playlist.transitionSec ?? 12} s${detail.playlist.dj?.auto === false ? "" : " · DJ actif"}` : "—" },
+    { num: 4, label: "Lancer", sub: setTracks.length >= 2 ? "Prêt" : `${2 - setTracks.length} titre(s) manque(nt)` }
   ];
 
   const stepLockedReasons = [
@@ -72,9 +75,9 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
     "Ajoutez au moins deux titres au set"
   ];
 
-  const readyCount = detail.tracks.filter((track) => detail.stemOf(track.id).state === "done").length;
-  const totalSec = detail.tracks.reduce((sum, track) => sum + (track.durationSec || 0), 0);
-  const bpmValues = detail.tracks.map(track => track.bpm).filter((bpm): bpm is number => bpm !== undefined && bpm !== null);
+  const readyCount = setTracks.filter((track) => detail.stemOf(track.id).state === "done").length;
+  const totalSec = setTracks.reduce((sum, track) => sum + (track.durationSec || 0), 0);
+  const bpmValues = setTracks.map(track => track.bpm).filter((bpm): bpm is number => bpm !== undefined && bpm !== null);
   const bpmRange = bpmValues.length > 0 ? `${Math.min(...bpmValues)}–${Math.max(...bpmValues)} BPM` : "0–0 BPM";
 
   const renderStepContent = () => {
@@ -111,8 +114,8 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
             <LibraryPane {...library} />
             <div className="flex flex-col gap-2 lg:sticky lg:top-2">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-sm font-bold text-neutral-100">Dans le set : {detail.tracks.length} titre(s)</h2>
-                <button type="button" className="prep-btn-accent px-3 py-1.5 text-xs" onClick={() => setStep(3)} disabled={detail.tracks.length === 0}>
+                <h2 className="text-sm font-bold text-neutral-100">Dans le set : {setTracks.length} titre(s)</h2>
+                <button type="button" className="prep-btn-accent px-3 py-1.5 text-xs" onClick={() => setStep(3)} disabled={setTracks.length === 0}>
                   Suivant : régler le mix
                 </button>
               </div>
@@ -142,7 +145,7 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
             <DeckStrip {...decks} />
             <LaunchPanel
               playlist={detail.playlist}
-              tracks={detail.tracks}
+              tracks={setTracks}
               driving={detail.driving}
               onPlay={(dest) => detail.onPlay(dest)}
               onBack={() => setStep(3)}
@@ -170,8 +173,8 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
             const isCompleted = step > stepNumber;
             const isLocked =
               (stepNumber === 2 && !selectedSet) ||
-              (stepNumber === 3 && (!selectedSet || detail.tracks.length === 0)) ||
-              (stepNumber === 4 && (!selectedSet || detail.tracks.length < 2));
+              (stepNumber === 3 && (!selectedSet || setTracks.length === 0)) ||
+              (stepNumber === 4 && (!selectedSet || setTracks.length < 2));
 
             return (
               <div
@@ -226,8 +229,8 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
               onClick={handleNext}
               disabled={
                 (step === 1 && !selectedSet) ||
-                (step === 2 && detail.tracks.length === 0) ||
-                (step === 3 && detail.tracks.length < 2)
+                (step === 2 && setTracks.length === 0) ||
+                (step === 3 && setTracks.length < 2)
               }
             >
               Suivant : {stepLabels[step].label} <Icon name="chevron" className="transform -rotate-90" />
