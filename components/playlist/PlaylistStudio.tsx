@@ -208,7 +208,7 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
 
         <div className="sticky bottom-0 z-10 -mx-3 mt-2 flex items-center gap-3 border-t border-neutral-800 bg-neutral-950/90 px-3 py-2.5 backdrop-blur sm:-mx-5 sm:px-5">
           {step > 1 && (
-            <button type="button" className="prep-btn-ghost min-h-11 whitespace-nowrap px-4 text-xs" onClick={handleBack}>
+            <button type="button" className="prep-btn-ghost inline-flex min-h-11 items-center gap-2 whitespace-nowrap px-4 text-xs" onClick={handleBack}>
               <Icon name="chevron" className="transform rotate-90" /> Retour
             </button>
           )}
@@ -216,7 +216,7 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
             {nextBlocked ?? (detail.playlist ? `${detail.playlist.name} · ${setTracks.length} titre(s)${totalSec ? ` · ${Math.round(totalSec / 60)} min` : ""}` : "")}
           </span>
           {step < 4 && (
-            <button type="button" className="prep-btn-accent ml-auto min-h-11 whitespace-nowrap px-5 text-sm" onClick={handleNext} disabled={!!nextBlocked}>
+            <button type="button" className="prep-btn-accent ml-auto inline-flex min-h-11 items-center gap-2 whitespace-nowrap px-5 text-sm" onClick={handleNext} disabled={!!nextBlocked}>
               Suivant : {stepLabels[step].label} <Icon name="chevron" className="transform -rotate-90" />
             </button>
           )}
