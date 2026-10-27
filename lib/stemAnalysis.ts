@@ -141,7 +141,7 @@ export async function analyseStems(hash: string, model: StemModel, opts?: StemOp
     try {
         const existing = await readFile(mapPath, "utf-8");
         const map = JSON.parse(existing) as StemMap;
-        if (map.version === 1) return map;
+        if (map.version === 1 && map.stems) return map;
     } catch {}
 
     const envelopes: Record<string, number[]> = {};
@@ -182,7 +182,7 @@ export function readStemMap(hash: string, model: StemModel, opts?: StemOpts): St
         const mapPath = join(dirname(stemPath(hash, model, "drums", opts)), "map.json");
         const content = readFileSync(mapPath, "utf-8");
         const map = JSON.parse(content) as StemMap;
-        return map.version === 1 ? map : null;
+        return map.version === 1 && map.stems ? map : null;
     } catch {
         return null;
     }
