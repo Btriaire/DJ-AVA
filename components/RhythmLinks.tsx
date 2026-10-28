@@ -6,7 +6,7 @@ import { DRUM_VOICES } from "@/lib/audio/DrumMachine";
 import { RACK_MODULES } from "@/lib/audio/Rack";
 import { RhythmBus, type RhythmRoute, type RhythmSource, type RouteKind } from "@/lib/audio/rhythmBus";
 import { SFX_LIST } from "@/lib/audio/SoundFX";
-import { Icon } from "./prep/parts";
+import { PresetPicker, RouteCard } from "./RhythmCards";
 
 // Liaisons: the rhythm detected in a song (drum attacks, bass notes, synth notes) is never played, but it can drive
 // the modules: the DJ synth in harmony, a drum voice, a pulse on a rack parameter.
@@ -51,6 +51,17 @@ const targetLabel = (r: RhythmRoute) => {
   if (r.kind === "filter") return (r.arg ?? "").replace("self", "Filtre").replace("other", "Filtre autre").replace(":lp", " passe-bas").replace(":hp", " passe-haut");
   return k.replace(/ \(.*\)/, "");
 };
+
+// the shortcuts grouped by what drives them
+const PRESET_GROUPS = (() => {
+  const order: { title: string; sources: RhythmSource[] }[] = [
+    { title: "Batterie", sources: ["drums"] },
+    { title: "Basse", sources: ["bass"] },
+    { title: "Synthé et voix", sources: ["synth", "voice"] },
+    { title: "Temps et mesures", sources: ["beat", "bar"] },
+  ];
+  return order.map((o) => ({ title: o.title, items: PRESETS.filter((p) => o.sources.includes(p.route.source)) })).filter((g) => g.items.length);
+})();
 
 let seq = 0;
 const newId = () => `r${Date.now()}-${seq++}`;
@@ -234,6 +245,12 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
     <section className="prep rounded-xl border border-neutral-800 bg-neutral-950/60 p-3" aria-label="Liaisons rythmiques">
       <h3 className="text-xs font-black uppercase tracking-[0.2em] text-neutral-200">Liaisons rythmiques</h3>
       <p className="mt-1 text-[11px] text-neutral-400">Les notes détectées ne sont pas jouées : elles pilotent les modules que vous connectez.</p>
+      <div className="mt-3">
+        <PresetPicker
+          groups={PRESET_GROUPS.map((g) => ({ title: g.title, items: g.items.map((p) => ({ label: p.label })) }))}
+          onPick={(g, i, side) => add(side, PRESET_GROUPS[g].items[i].route)}
+        />
+      </div>
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         {(["A", "B"] as const).map((side) => {
           const d = side === "A" ? engine.deckA : engine.deckB;
@@ -247,38 +264,36 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
                 </span>
               </div>
               {routes[side].map((r) => (
-                <div key={r.id} className="flex flex-wrap items-center gap-2 rounded-md bg-neutral-900/70 p-2 text-xs">
-                  <button type="button" aria-pressed={r.on} onClick={() => patch(side, r.id, { on: !r.on })} className={`min-h-9 rounded-md px-3 font-bold ${r.on ? "bg-orange-400 text-neutral-950" : "bg-neutral-700 text-neutral-300"}`}>
-                    {r.on ? "Actif" : "Coupé"}
-                  </button>
-                  <span className="font-semibold">{SOURCES.find((s) => s.id === r.source)?.label}</span>
-                  <span aria-hidden>→</span>
-                  <span>{targetLabel(r)}</span>
-                  <input type="range" min={0.1} max={1} step={0.05} value={r.amount} aria-label="Force" onChange={(e) => patch(side, r.id, { amount: Number(e.target.value) })} className="min-w-[80px] flex-1" />
-                  <select aria-label="Grille" value={r.grid ?? 0} onChange={(e) => patch(side, r.id, { grid: Number(e.target.value) || undefined })} className={sel}>
-                    <option value={0}>Libre</option><option value={1}>Sur le temps</option><option value={2}>1/8</option><option value={4}>1/16</option>
-                  </select>
-                  {["synth", "synth2", "sampler", "seqrec", "plugin"].includes(r.kind) && (
-                    <select aria-label="Transposition" value={r.transpose ?? 0} onChange={(e) => patch(side, r.id, { transpose: Number(e.target.value) || undefined })} className={sel}>
-                      {[-24, -12, -7, -5, 0, 5, 7, 12, 24].map((n) => <option key={n} value={n}>{n > 0 ? `+${n}` : n} demi-tons</option>)}
+                <RouteCard
+                  key={r.id}
+                  r={r}
+                  sourceLabel={SOURCES.find((x) => x.id === r.source)?.label ?? r.source}
+                  targetLabel={targetLabel(r)}
+                  readFire={() => busFor(engine, d).lastFire.get(r.id)}
+                  onToggle={() => patch(side, r.id, { on: !r.on })}
+                  onAmount={(v) => patch(side, r.id, { amount: v })}
+                  onRemove={() => apply(side, routes[side].filter((x) => x.id !== r.id))}
+                >
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <select aria-label="Grille" value={r.grid ?? 0} onChange={(e) => patch(side, r.id, { grid: Number(e.target.value) || undefined })} className={sel}>
+                      <option value={0}>Libre</option><option value={1}>Sur le temps</option><option value={2}>1/8</option><option value={4}>1/16</option>
                     </select>
-                  )}
-                  <label className="flex items-center gap-1 text-[11px] text-neutral-400">Durée
-                    <input type="range" min={0.25} max={2} step={0.25} value={r.gate ?? 1} aria-label="Durée des notes" onChange={(e) => patch(side, r.id, { gate: Number(e.target.value) })} className="w-16" />
-                  </label>
-                  <label className="flex items-center gap-1 text-[11px] text-neutral-400">Densité
-                    <input type="range" min={0.1} max={1} step={0.1} value={r.density ?? 1} aria-label="Densité" onChange={(e) => patch(side, r.id, { density: Number(e.target.value) })} className="w-16" />
-                  </label>
-                  <button type="button" aria-label="Supprimer la liaison" onClick={() => apply(side, routes[side].filter((x) => x.id !== r.id))} className="min-h-9 min-w-9 rounded-md text-neutral-400 hover:bg-neutral-800"><Icon name="x" size={14} /></button>
+                    {["synth", "synth2", "sampler", "seqrec", "plugin"].includes(r.kind) && (
+                      <select aria-label="Transposition" value={r.transpose ?? 0} onChange={(e) => patch(side, r.id, { transpose: Number(e.target.value) || undefined })} className={sel}>
+                        {[-24, -12, -7, -5, 0, 5, 7, 12, 24].map((n) => <option key={n} value={n}>{n > 0 ? `+${n}` : n} demi-tons</option>)}
+                      </select>
+                    )}
+                    <label className="flex items-center gap-1 text-[11px] text-neutral-400">Durée
+                      <input type="range" min={0.25} max={2} step={0.25} value={r.gate ?? 1} aria-label="Durée des notes" onChange={(e) => patch(side, r.id, { gate: Number(e.target.value) })} className="w-20 accent-orange-400" />
+                    </label>
+                    <label className="flex items-center gap-1 text-[11px] text-neutral-400">Densité
+                      <input type="range" min={0.1} max={1} step={0.1} value={r.density ?? 1} aria-label="Densité" onChange={(e) => patch(side, r.id, { density: Number(e.target.value) })} className="w-20 accent-orange-400" />
+                    </label>
+                  </div>
                   <FineSettings r={r} patch={(p) => patch(side, r.id, p)} />
-                </div>
+                </RouteCard>
               ))}
-              {!routes[side].length && <p className="text-[11px] text-neutral-500">Aucune liaison. Choisissez un raccourci ou composez la vôtre.</p>}
-              <div className="flex flex-wrap gap-1.5">
-                {PRESETS.map((p) => (
-                  <button key={p.label} type="button" onClick={() => add(side, p.route)} className="min-h-9 rounded-full border border-neutral-700 px-3 text-[11px] text-neutral-200 hover:border-orange-400/70">+ {p.label}</button>
-                ))}
-              </div>
+              {!routes[side].length && <p className="text-[11px] text-neutral-500">Aucune liaison. Utilisez « Nouvelle liaison » ci-dessus.</p>}
             </div>
           );
         })}

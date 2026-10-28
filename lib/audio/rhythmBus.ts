@@ -78,6 +78,7 @@ export class RhythmBus {
 
   constructor(private engine: DJEngine, readonly deck: Deck) {}
 
+  readonly lastFire = new Map<string, number>(); // route id -> performance.now() of its last event, for the activity light
   bpm = 0; // tempo the beat events were built with
   notes: StemNotes | null = null; // the notes the events come from (identity check: a new track must reload)
   private pulses = new Map<string, number>(); // rack pulse generation per parameter, so a later hit is not cut short by an earlier reset
@@ -180,6 +181,7 @@ export class RhythmBus {
       acc = Math.round((e.t - this.deck.beatGridOffset) / spb) % 4 === 0 ? 1.3 : 0.75;
     }
     const vel = Math.min(1, e.vel * r.amount * 1.4 * acc);
+    if (vel >= 0.05) this.lastFire.set(r.id, performance.now());
     if (vel < 0.05) return;
     const eng = this.engine;
     if (r.kind === "synth") {
