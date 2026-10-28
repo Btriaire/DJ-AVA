@@ -1341,3 +1341,60 @@ body.has-zoom::before {
     inset 0 2px 0 var(--led),
     0 0 12px color-mix(in srgb, var(--led) 55%, transparent);
 }
+
+/* Préparation: the record in its sleeve, peeking out of the tray card (MaRuche/Pol, second pass) */
+/* Conteneur de la pochette */
+.prep-sleeve {
+    position: relative;
+    isolation: isolate;               /* crée un nouveau contexte de pile */
+    border-radius: 8px;               /* coins arrondis de l’image */
+    box-shadow:
+        inset 2px 2px 4px rgba(255,255,255,.15),   /* biseau clair haut‑gauche */
+        inset -2px -2px 4px rgba(0,0,0,.35),       /* ombre bas‑droite */
+        0 4px 12px rgba(0,0,0,.4);                 /* ombre portée sous la pochette */
+}
+
+/* Disque vinyle placé derrière la pochette */
+.prep-sleeve::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    width: 92%;                       /* diamètre du disque */
+    height: 92%;
+    left: 22%;                        /* dépasse de 14 % à droite */
+    top: 50%;
+    transform: translateY(-50%);      /* centrage vertical */
+    border-radius: 50%;
+    background-color: #0b0b0d;        /* noir de base */
+    background-image:
+        /* étiquette colorée avec trou noir central */
+        radial-gradient(circle at center,
+            #0b0b0d 0%,
+            #0b0b0d 4%,
+            var(--prep-accent, #22d3ee) 4%,
+            var(--prep-accent, #22d3ee) 34%,
+            transparent 34%),
+        /* reflet conique léger */
+        conic-gradient(from 45deg,
+            rgba(255,255,255,.08) 0deg 30deg,
+            transparent 30deg 360deg),
+        /* sillons très fins */
+        repeating-radial-gradient(circle,
+            #0b0b0d 0,
+            #0b0b0d 1px,
+            #1a1a1e 1px,
+            #1a1a1e 2px);
+    transition: transform 160ms ease-out;
+}
+
+/* Déplacement du disque au survol de la carte */
+.prep-row:hover .prep-sleeve::before {
+    transform: translate(8%, -50%);
+}
+
+/* Respect de la préférence de l’utilisateur */
+@media (prefers-reduced-motion: reduce) {
+    .prep-sleeve::before {
+        transition: none;
+    }
+}

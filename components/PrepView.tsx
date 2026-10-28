@@ -780,7 +780,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
     return (
       <div key={track.id} data-checked={checked} {...rowDrag(track)} className="prep-row flex cursor-grab flex-col gap-2 p-2 active:cursor-grabbing">
         <div className="relative">
-          <Cover art={track.art} name={track.name} camelot={track.camelot} fill rounded={8} />
+          <div className="prep-sleeve"><Cover art={track.art} name={track.name} camelot={track.camelot} fill rounded={8} /></div>
           <label className="prep-check absolute left-0 top-0">
             <input type="checkbox" checked={checked} onChange={() => toggleLaterSelected(track.id)} className="accent-[var(--prep-accent)]" aria-label={`Sélectionner ${track.name}`} />
           </label>
