@@ -620,7 +620,7 @@ export function VoiceExtractor() {
                         className="flex items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs hover:brightness-125 disabled:opacity-50"
                         style={{ background: "linear-gradient(180deg,#232427,#17181a)", border: "1px solid #000", color: "#e9e5f0" }}
                       >
-                        {t.artwork && <img src={t.artwork} alt="" className="h-8 w-8 rounded-sm object-cover" />}
+                        {t.artwork && <img loading="lazy" decoding="async" src={t.artwork} alt="" className="h-8 w-8 rounded-sm object-cover" />}
                         <span className="flex-1 truncate">{t.title}</span>
                         <span style={{ color: "#8d8697" }}>{fmtTime(t.duration)}</span>
                       </button>

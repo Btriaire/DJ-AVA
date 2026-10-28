@@ -795,7 +795,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
             />
             {/* cover art of the playing single = spinning vinyl label */}
             {deck.coverArt && (
-              <img
+              <img loading="lazy" decoding="async"
                 src={deck.coverArt}
                 alt=""
                 className="absolute inset-0 m-auto rounded-full object-cover"

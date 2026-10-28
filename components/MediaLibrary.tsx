@@ -2265,7 +2265,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
         <div className={`${inPl ? "h-24 w-24" : "h-16 w-16"} hw-cover shrink-0 rounded-md bg-neutral-900`}>
           {t.art ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={thumbSrc(t.art, 120)} alt="" className="h-full w-full object-cover" />
+            <img loading="lazy" decoding="async" src={thumbSrc(t.art, 120)} alt="" className="h-full w-full object-cover" />
           ) : (
             <div
               className="hw-vinyl flex h-full w-full items-center justify-center text-base font-black text-white drop-shadow"
@@ -2805,7 +2805,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                     className="flex items-center gap-3 rounded bg-neutral-800/50 p-2 hover:bg-neutral-800"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
+                    <img loading="lazy" decoding="async"
                       src={t.artwork ?? ""}
                       alt=""
                       className="h-16 w-16 shrink-0 rounded bg-neutral-700 object-cover"
@@ -3046,7 +3046,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                     return (
                       <li key={t.id} className="flex items-center gap-3 rounded bg-neutral-800/50 p-2 hover:bg-neutral-800">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={t.artwork ?? ""} alt="" className="h-14 w-14 shrink-0 rounded bg-neutral-700 object-cover" />
+                        <img loading="lazy" decoding="async" src={t.artwork ?? ""} alt="" className="h-14 w-14 shrink-0 rounded bg-neutral-700 object-cover" />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
                             <span
@@ -3600,7 +3600,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                   >
                     {a?.art ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={thumbSrc(a.art, 120)} alt="" className="h-full w-full object-cover" />
+                      <img loading="lazy" decoding="async" src={thumbSrc(a.art, 120)} alt="" className="h-full w-full object-cover" />
                     ) : (
                       <div
                         className="hw-vinyl flex h-full w-full items-center justify-center text-2xl font-black drop-shadow"
@@ -3639,7 +3639,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                       >
                         {nextT.art ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={thumbSrc(nextT.art, 120)} alt="" className="h-full w-full object-cover" />
+                          <img loading="lazy" decoding="async" src={thumbSrc(nextT.art, 120)} alt="" className="h-full w-full object-cover" />
                         ) : (
                           <div
                             className="flex h-full w-full items-center justify-center text-base"

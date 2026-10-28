@@ -174,7 +174,7 @@ export function SourcePanel({ engine, color, busy, onOpenBytes, onOpenBuffer, ba
                   {t.art && (
                     <div className="hw-cover shrink-0" style={{ width: 32, height: 32 }}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
+                      <img loading="lazy" decoding="async"
                         src={t.art}
                         alt=""
                         className="object-cover h-full w-full"

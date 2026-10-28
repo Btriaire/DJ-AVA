@@ -375,7 +375,7 @@ export function YouTubeSearch({ ctx, color, busy, onOpen }: {
               title="Double-clic : pochette en grand et paramètres du fichier"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
+              <img loading="lazy" decoding="async"
                 src={t.artwork || `https://i.ytimg.com/vi/${t.id}/mqdefault.jpg`}
                 alt=""
                 className="object-cover h-full w-full"
@@ -419,7 +419,7 @@ export function YouTubeSearch({ ctx, color, busy, onOpen }: {
           >
             <div className="hw-cover w-full md:w-[560px] shrink-0">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
+              <img loading="lazy" decoding="async"
                 src={
                   artworkFallback === 0 ? `https://i.ytimg.com/vi/${selectedTrack.id}/maxresdefault.jpg` :
                   artworkFallback === 1 ? `https://i.ytimg.com/vi/${selectedTrack.id}/hqdefault.jpg` :

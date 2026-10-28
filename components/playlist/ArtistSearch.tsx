@@ -144,7 +144,7 @@ export default function ArtistSearch({ setName, onAdd }: ArtistSearchProps) {
               {results.map((track) => (
                 <li key={track.id} className="py-2">
                   <div className="flex items-center gap-3">
-                    <img
+                    <img loading="lazy" decoding="async"
                       src={track.artwork || "/placeholder-artwork.jpg"}
                       alt={`Pochette de ${track.title}`}
                       className="w-10 h-10 object-cover rounded"

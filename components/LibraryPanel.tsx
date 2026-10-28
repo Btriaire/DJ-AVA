@@ -197,7 +197,7 @@ export function LibraryPanel({ engine, onClose, onLoaded }: Props) {
                     className="flex items-center gap-3 rounded bg-neutral-800/50 p-2 hover:bg-neutral-800"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
+                    <img loading="lazy" decoding="async"
                       src={t.artwork ?? ""}
                       alt=""
                       className="h-10 w-10 shrink-0 rounded bg-neutral-700 object-cover"

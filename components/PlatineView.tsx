@@ -471,7 +471,7 @@ function DeckColumn({
           <div className="absolute left-1/2 top-1/2 aspect-square w-[40%] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-full ring-2 ring-black/60">
             {deck.coverArt ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={deck.coverArt} alt="" className="h-full w-full object-cover" />
+              <img loading="lazy" decoding="async" src={deck.coverArt} alt="" className="h-full w-full object-cover" />
             ) : (
               <div className="flex h-full w-full items-center justify-center bg-neutral-800 text-3xl text-neutral-600">
                 ♪
