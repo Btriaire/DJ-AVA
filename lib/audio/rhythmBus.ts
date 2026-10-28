@@ -7,17 +7,18 @@ import { RACK_DEF, type RackModuleId } from "./Rack";
 import type { StemNotes } from "../stemNotes";
 import { voiceStateAt } from "../djForce";
 import { SCALES } from "./theory";
+import { applyModule, getModulePreset, snapshotModule, type ModulePreset } from "../modulePresets";
 import { jitterMs, nextGridTime, patternAllows, quantizeTime, snapToScale } from "./rhythmMath";
 
 // The detected rhythm of a song (drum attacks, bass notes, synth notes) as a source of events. They are never
 // played themselves: each one is sent, a little ahead of time, to the modules the user connected to it.
 export type RhythmSource = "drums" | "bass" | "synth" | "beat" | "bar" | "voice" | "kick" | "snare" | "hat";
-export type RouteKind = "synth" | "drum" | "rack" | "synth2" | "sampler" | "pad" | "seqrec" | "filter" | "duck" | "sfx" | "djknob" | "keypad" | "keyfx" | "plugin" | "voices";
+export type RouteKind = "synth" | "drum" | "rack" | "synth2" | "sampler" | "pad" | "seqrec" | "filter" | "duck" | "sfx" | "djknob" | "keypad" | "keyfx" | "plugin" | "voices" | "rackpreset";
 export interface RhythmRoute {
   id: string;
   source: RhythmSource;
   kind: RouteKind; // plugin: a plug-in instrument by id ("dx7"), played with the detected notes; keypad: a key of the DJ keyboard ("0".."15"); keyfx: "impact" | "brake" | "scratch" | "drop"; filter: "self:lp" | "self:hp" | "other:lp" | "other:hp" (a pulse on a deck filter); duck: "self" | "other" (the fader dips: pumping); sfx: a sound-effect id; djknob: a DJ synth knob pulse; synth2: the classic synth; sampler: the super sampler (arg unused); pad: a sampler pad ("0".."n"); seqrec: writes the notes into the synth step sequencer when it is armed; synth: the DJ synth plays a note in harmony; drum: a drum voice; rack: a pulse on a rack parameter
-  arg?: string; // drum: the voice; rack: "moduleId:paramKey"
+  arg?: string; // rackpreset: "moduleId:presetName"; drum: the voice; rack: "moduleId:paramKey"
   amount: number;
   level?: number; // Vol: gain 0..4 (-inf..+12 dB), 1 = unity // 0..1
   grid?: number; // snap each event to the beat grid: 1 = beat, 2 = eighth, 4 = sixteenth (off when absent)
@@ -30,6 +31,8 @@ export interface RhythmRoute {
   avoidVoice?: boolean; // silent while the voice sings
   snapKey?: boolean; // note targets: the note goes to the nearest note of the DJ synth key
   accent?: boolean; // louder on the first beat of a bar, softer elsewhere
+  hold?: boolean; // rackpreset: the preset stays until the link is turned off (otherwise it goes back after `len` beats)
+  len?: number; // rackpreset: beats before the module goes back (default 1)
   density?: number; // 0..1: share of the events kept (steady: the same events are always dropped)
   on: boolean;
 }
@@ -118,12 +121,14 @@ export class RhythmBus {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     this.wasPlaying = false;
+    for (const k of [...this.held.keys()]) this.release(k);
   }
 
   private pump() {
     const d = this.deck;
     if (d.stemHash !== this.hash) { this.stop(); return; } // another track: the owner loads its notes again
     const live = this.enabled ? this.routes.filter((r) => r.on) : [];
+    for (const [k, h] of this.held) if (!live.some((r) => r.id === h.route)) this.release(k); // a held preset goes back when its link is off
     const now = this.engine.ctx.currentTime;
     if (!d.playing || !live.length) { this.wasPlaying = false; return; }
     const pos = d.position();
@@ -193,6 +198,26 @@ export class RhythmBus {
 
   private beatRel(k: number): number { return Math.max(0.18, Math.min(0.7, (this.deck.bpm > 0 ? 60 / this.deck.bpm : 0.5) * k)); }
   private bases = new Map<string, number>();
+  // rack module presets in force: the module as it was before the first hit, and the link that holds it
+  private held = new Map<string, { id: RackModuleId; base: ModulePreset; route: string; gen: number }>();
+  private release(key: string) {
+    const h = this.held.get(key);
+    if (!h) return;
+    this.held.delete(key);
+    applyModule(this.deck.rack, h.id, h.base);
+  }
+  private presetHit(r: RhythmRoute, id: RackModuleId, p: ModulePreset, at: number) {
+    const key = `m${id}`;
+    const beat = this.deck.bpm > 0 ? 60 / this.deck.bpm : 0.5;
+    setTimeout(() => {
+      let h = this.held.get(key);
+      if (!h) { h = { id, base: snapshotModule(this.deck.rack, id), route: r.id, gen: 0 }; this.held.set(key, h); }
+      h.route = r.id;
+      const gen = ++h.gen;
+      applyModule(this.deck.rack, id, p);
+      if (!r.hold) setTimeout(() => { if (this.held.get(key)?.gen === gen) this.release(key); }, (r.len ?? 1) * beat * 1000);
+    }, Math.max(0, (at - this.engine.ctx.currentTime) * 1000));
+  }
   // a parameter pulse: jumps to `peak` at the hit, then eases back to where it was (the value before the first pulse
   // of a burst, so overlapping pulses never leave it displaced)
   private pulse(key: string, get: () => number, set: (v: number) => void, peakOf: (base: number) => number, at: number, rel: number) {
@@ -279,6 +304,11 @@ export class RhythmBus {
       eng.sampler.playAt(Number(r.arg), at, vel);
     } else if (r.kind === "drum" && r.arg) {
       eng.drums.hit(r.arg as DrumVoice, vel, at);
+    } else if (r.kind === "rackpreset" && r.arg) {
+      const i = r.arg.indexOf(":");
+      const id = r.arg.slice(0, i);
+      const p = getModulePreset(id, r.arg.slice(i + 1));
+      if (p) this.presetHit(r, id as RackModuleId, p, at);
     } else if (r.kind === "rack" && r.arg) {
       const [id, key] = r.arg.split(":");
       const def = RACK_DEF.get(id as RackModuleId)?.params.find((p) => p.key === key);

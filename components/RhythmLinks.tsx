@@ -4,6 +4,7 @@ import type { DJEngine } from "@/lib/audio/engine";
 import type { Deck } from "@/lib/audio/Deck";
 import { DRUM_VOICES } from "@/lib/audio/DrumMachine";
 import { RACK_MODULES } from "@/lib/audio/Rack";
+import { listModulePresets } from "@/lib/modulePresets";
 import { RhythmBus, type RhythmRoute, type RhythmSource, type RouteKind } from "@/lib/audio/rhythmBus";
 import { SFX_LIST } from "@/lib/audio/SoundFX";
 import { PresetPicker, RouteCard } from "./RhythmCards";
@@ -13,7 +14,7 @@ import { PresetPicker, RouteCard } from "./RhythmCards";
 type Side = "A" | "B";
 const KEY = "djsynth.rhythm.v1";
 const SOURCES: { id: RhythmSource; label: string }[] = [{ id: "drums", label: "Batterie" }, { id: "kick", label: "Grosse caisse" }, { id: "snare", label: "Caisse claire" }, { id: "hat", label: "Charleston" }, { id: "bass", label: "Basse" }, { id: "synth", label: "Synthé" }, { id: "voice", label: "Voix chantée" }, { id: "beat", label: "Chaque temps" }, { id: "bar", label: "Chaque mesure" }];
-const KINDS: { id: RouteKind; label: string }[] = [{ id: "synth", label: "Synthé DJ (en harmonie)" }, { id: "drum", label: "Boîte à rythmes" }, { id: "rack", label: "Pulse sur un effet du rack" }, { id: "synth2", label: "Synthé (module Global, 1er)" }, { id: "sampler", label: "Super-Sampler (en harmonie)" }, { id: "pad", label: "Pad du sampler" }, { id: "seqrec", label: "Séquenceur synthé (écriture)" }, { id: "duck", label: "Pompe du volume (sidechain)" }, { id: "filter", label: "Filtre d'un deck (pulse)" }, { id: "sfx", label: "Effet sonore (riser, impact…)" }, { id: "djknob", label: "Bouton du synthé DJ (pulse)" }, { id: "plugin", label: "DX7 (module ouvert)" }, { id: "voices", label: "Nappes : chœur, cordes, synthé planant" }, { id: "keypad", label: "DJ Keys : touche" }, { id: "keyfx", label: "DJ Keys : effet (impact, frein…)" }];
+const KINDS: { id: RouteKind; label: string }[] = [{ id: "synth", label: "Synthé DJ (en harmonie)" }, { id: "drum", label: "Boîte à rythmes" }, { id: "rack", label: "Pulse sur un effet du rack" }, { id: "rackpreset", label: "Préréglage d'un module du rack" }, { id: "synth2", label: "Synthé (module Global, 1er)" }, { id: "sampler", label: "Super-Sampler (en harmonie)" }, { id: "pad", label: "Pad du sampler" }, { id: "seqrec", label: "Séquenceur synthé (écriture)" }, { id: "duck", label: "Pompe du volume (sidechain)" }, { id: "filter", label: "Filtre d'un deck (pulse)" }, { id: "sfx", label: "Effet sonore (riser, impact…)" }, { id: "djknob", label: "Bouton du synthé DJ (pulse)" }, { id: "plugin", label: "DX7 (module ouvert)" }, { id: "voices", label: "Nappes : chœur, cordes, synthé planant" }, { id: "keypad", label: "DJ Keys : touche" }, { id: "keyfx", label: "DJ Keys : effet (impact, frein…)" }];
 const PRESETS: { label: string; route: Omit<RhythmRoute, "id" | "on"> }[] = [
   { label: "Basse → Synthé DJ", route: { source: "bass", kind: "synth", amount: 0.7 } },
   { label: "Synthé → Synthé DJ", route: { source: "synth", kind: "synth", amount: 0.5 } },
@@ -59,6 +60,7 @@ const targetLabel = (r: RhythmRoute) => {
   if (r.kind === "keyfx") return `DJ Keys · ${KEYFX.find((x) => x.id === r.arg)?.label ?? r.arg}`;
   if (r.kind === "pad") return `Pad ${Number(r.arg) + 1}`;
   if (r.kind === "drum") return `Voix ${r.arg}`;
+  if (r.kind === "rackpreset") return `${(r.arg ?? "").replace(":", " · ")}${r.hold ? " (hold)" : ""}`;
   if (r.kind === "rack") return `Pulse ${r.arg?.replace(":", " · ")}`;
   if (r.kind === "sfx") return SFX_LIST.find((f) => f.id === r.arg)?.label ?? k;
   if (r.kind === "djknob") return `Synthé · ${KNOBS.find((x) => x.id === r.arg)?.label ?? r.arg}`;
@@ -159,6 +161,20 @@ export function FineSettings({ r, patch }: { r: RhythmRoute; patch: (p: Partial<
     <details className="w-full text-neutral-200">
       <summary className="min-h-9 text-xs font-bold cursor-pointer">Réglages fins</summary>
       <div className="flex flex-wrap gap-2 text-[11px] text-neutral-400">
+        {r.kind === "rackpreset" && (
+          <div className="flex flex-col gap-1">
+            <label>Retour du module</label>
+            <label className="flex min-h-8 items-center gap-1">
+              <input type="checkbox" checked={!!r.hold} onChange={(e) => patch({ hold: e.target.checked })} />
+              Hold (reste tant que la liaison est active)
+            </label>
+            {!r.hold && (
+              <select aria-label="Durée avant retour" className="min-h-8 rounded-md bg-neutral-800 px-2" value={r.len ?? 1} onChange={(e) => patch({ len: Number(e.target.value) })}>
+                {[0.5, 1, 2, 4, 8].map((b) => <option key={b} value={b}>{b} temps</option>)}
+              </select>
+            )}
+          </div>
+        )}
         {(r.grid ?? 0) >= 2 && (
           <div className="flex flex-col gap-1">
             <label>Swing</label>
@@ -277,6 +293,7 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
   const add = (side: Side, r: Omit<RhythmRoute, "id" | "on">) => apply(side, [...routes[side], { ...r, id: newId(), on: true }]);
   const patch = (side: Side, id: string, p: Partial<RhythmRoute>) => apply(side, routes[side].map((r) => (r.id === id ? { ...r, ...p } : r)));
 
+  const presetArg = (mod: string) => `${mod}:${listModulePresets(mod)[0] ?? ""}`;
   const rackParams = (mod: string) => RACK_MODULES.find((m) => m.id === mod)?.params ?? [];
   const sel = "min-h-9 rounded-md border border-neutral-700 bg-neutral-900 px-2 text-xs text-neutral-100";
 
@@ -358,7 +375,7 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
             {SOURCES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
           <span aria-hidden>→</span>
-          <select aria-label="Cible" className={sel} value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value as RouteKind, arg: e.target.value === "drum" ? "kick" : e.target.value === "pad" ? "0" : e.target.value === "plugin" ? "dx7" : e.target.value === "voices" ? "choir" : e.target.value === "keypad" ? "0" : e.target.value === "keyfx" ? "impact" : e.target.value === "duck" ? "self" : e.target.value === "filter" ? "self:lp" : e.target.value === "sfx" ? "impact" : e.target.value === "djknob" ? "cutoff" : e.target.value === "rack" ? "isolator:" + (rackParams("isolator")[0]?.key ?? "") : undefined })}>
+          <select aria-label="Cible" className={sel} value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value as RouteKind, arg: e.target.value === "drum" ? "kick" : e.target.value === "pad" ? "0" : e.target.value === "plugin" ? "dx7" : e.target.value === "voices" ? "choir" : e.target.value === "keypad" ? "0" : e.target.value === "keyfx" ? "impact" : e.target.value === "duck" ? "self" : e.target.value === "filter" ? "self:lp" : e.target.value === "sfx" ? "impact" : e.target.value === "djknob" ? "cutoff" : e.target.value === "rackpreset" ? presetArg("reverb") : e.target.value === "rack" ? "isolator:" + (rackParams("isolator")[0]?.key ?? "") : undefined })}>
             {KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
           </select>
           {draft.kind === "drum" && (
@@ -406,6 +423,17 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
             <select aria-label="Pad" className={sel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
               {Array.from({ length: engine.sampler.pads.length }, (_, i) => <option key={i} value={String(i)}>Pad {i + 1}</option>)}
             </select>
+          )}
+          {draft.kind === "rackpreset" && (
+            <>
+              <select aria-label="Module" className={sel} value={draft.arg?.split(":")[0]} onChange={(e) => setDraft({ ...draft, arg: presetArg(e.target.value) })}>
+                {RACK_MODULES.filter((m) => m.id !== "eq").map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+              </select>
+              <select aria-label="Préréglage" className={sel} value={draft.arg?.slice((draft.arg?.indexOf(":") ?? 0) + 1)} onChange={(e) => setDraft({ ...draft, arg: `${draft.arg?.split(":")[0]}:${e.target.value}` })}>
+                {listModulePresets(draft.arg?.split(":")[0] ?? "").length === 0 && <option value="">Aucun : enregistre-en un dans le rack</option>}
+                {listModulePresets(draft.arg?.split(":")[0] ?? "").map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </>
           )}
           {draft.kind === "rack" && (
             <>

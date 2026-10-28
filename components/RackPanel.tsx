@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Deck } from "@/lib/audio/Deck";
 import { subscribeAutomation, getAutomationVersion } from "@/lib/audio/deckAutomation";
 import { Rack, RACK_MODULES, RackModuleId, RackPreset, XY_TARGETS, XY_FILTER_TYPES } from "@/lib/audio/Rack";
+import { applyModule, deleteModulePreset, getModulePreset, listModulePresets, saveModulePreset, snapshotModule } from "@/lib/modulePresets";
 import { levelColor } from "./EqVisuals";
 import { Knob } from "./Knob";
 import { XyPad } from "./XyPad";
@@ -458,6 +459,47 @@ function RackModuleDetail({
         <span className="text-[9px] font-bold tracking-wider" style={{ color: on ? color : "#6b6b6b" }}>{on ? "ACTIF" : "BYPASS"}</span>
         <span className="text-[10px] text-neutral-400">{def.title}</span>
         <div className="ml-auto flex items-center gap-1">
+          <select
+            aria-label="Préréglages du module"
+            className="mr-1 max-w-[110px] rounded bg-neutral-900 text-[10px] text-neutral-300"
+            value=""
+            title="Préréglages de ce module (utilisables par les liaisons rythmiques)"
+            onChange={(e) => {
+              const p = getModulePreset(id, e.target.value);
+              if (!p) return;
+              applyModule(rack, id, p);
+              flashLcd(`${def.label} · ${e.target.value}`);
+              onChanged();
+            }}
+          >
+            <option value="">Préréglages…</option>
+            {listModulePresets(id).map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+          <button
+            className="text-[10px] font-bold text-neutral-400 hover:text-neutral-100"
+            title="Enregistre tout le réglage de ce module sous un nom"
+            onClick={() => {
+              const name = window.prompt(`Nom du préréglage de ${def.label} ?`);
+              if (!name) return;
+              saveModulePreset(id, name, snapshotModule(rack, id));
+              flashLcd(`${def.label} · ${name} ENREGISTRÉ`);
+              onChanged();
+            }}
+          >
+            ENREG.
+          </button>
+          <button
+            className="mr-2 text-[10px] font-bold text-neutral-500 hover:text-neutral-100"
+            title="Supprime un préréglage de ce module"
+            onClick={() => {
+              const name = window.prompt(`Préréglage à supprimer parmi : ${listModulePresets(id).join(", ") || "aucun"}`);
+              if (!name || !getModulePreset(id, name)) return;
+              deleteModulePreset(id, name);
+              onChanged();
+            }}
+          >
+            SUPPR.
+          </button>
           <button
             className="mr-2 text-[10px] font-bold text-neutral-400 hover:text-neutral-100"
             title="Remet les paramètres de ce module à leurs valeurs par défaut"
