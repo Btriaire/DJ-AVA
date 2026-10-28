@@ -9,7 +9,8 @@ import type { VelCurve } from "@/lib/audio/rhythmMath";
 import { GLOBAL_MODULES, listModulePresets } from "@/lib/modulePresets";
 import { RhythmBus, type RhythmRoute, type RhythmSource, type RouteKind } from "@/lib/audio/rhythmBus";
 import { SFX_LIST } from "@/lib/audio/SoundFX";
-import { PresetPicker, RouteCard } from "./RhythmCards";
+import { PresetPicker, RouteCard, SOURCE_STYLE } from "./RhythmCards";
+import { HSlider, Segmented, ToggleSwitch } from "./RhythmSlider";
 
 // Liaisons: the rhythm detected in a song (drum attacks, bass notes, synth notes) is never played, but it can drive
 // the modules: the DJ synth in harmony, a drum voice, a pulse on a rack parameter.
@@ -136,167 +137,95 @@ export function FineSettings({ r, patch, measure }: { r: RhythmRoute; patch: (p:
     patch({ pattern: current.split('').map((c, i) => (i === index ? (c === 'x' ? '.' : 'x') : c)).join('') });
   };
 
-  const renderPatternEditor = () => {
-    if (!r.grid) return null;
-    const pattern = current;
+  const color = SOURCE_STYLE[r.source].glow;
+  const pct = (v: number) => `${Math.round(v * 100)} %`;
+  const ms = (v: number) => `${v > 0 ? "+" : ""}${v} ms`;
+  const beats = (b: number) => `${b}`;
+  const box = "flex flex-col gap-2 rounded-lg border border-neutral-700 bg-black/30 p-2";
+  const title = "text-[10px] font-black uppercase tracking-[0.18em] text-neutral-500";
+  const selCls = "min-h-9 w-full rounded-md border border-neutral-700 bg-neutral-900 px-2 text-[11px] text-neutral-100";
 
-    return (
+  // the pattern: a row of step pads, lit when the step plays
+  const patternEditor = r.grid ? (
+    <div className={box}>
+      <span className={title}>Motif</span>
       <div className="flex flex-wrap gap-1">
-        {Array.from({ length: steps }).map((_, i) => (
-          <button
-            key={i}
-            type="button"
-            aria-pressed={pattern[i] === 'x'}
-            className={`min-h-8 min-w-8 rounded-md ${pattern[i] === 'x' ? 'bg-orange-400 text-neutral-950' : 'bg-neutral-800 text-neutral-400'}`}
-            onClick={() => handlePatternToggle(i)}
-          >
-            {pattern[i]}
-          </button>
-        ))}
-        <button
-          type="button"
-          className="min-h-8 px-2 rounded-md bg-neutral-800 text-neutral-400 hover:bg-neutral-700"
-          onClick={() => patch({ pattern: undefined })}
-        >
-          Motif libre
-        </button>
+        {Array.from({ length: steps }).map((_, i) => {
+          const on = current[i] === "x";
+          return (
+            <button
+              key={i} type="button" aria-pressed={on} aria-label={`Pas ${i + 1}`}
+              className={`h-9 min-w-9 flex-1 rounded-md border outline-none focus-visible:ring-2 focus-visible:ring-white/60 ${on ? "border-transparent text-neutral-950" : "border-neutral-700 bg-neutral-900 text-neutral-600"} ${i % 4 === 0 ? "ring-1 ring-white/10" : ""}`}
+              style={on ? { background: color, boxShadow: `0 0 8px ${color}` } : undefined}
+              onClick={() => handlePatternToggle(i)}
+            >
+              <span className="text-[10px] font-bold">{i + 1}</span>
+            </button>
+          );
+        })}
       </div>
-    );
-  };
+      <button type="button" className="min-h-9 self-start rounded-md border border-neutral-700 px-3 text-[11px] text-neutral-300 hover:bg-neutral-800" onClick={() => patch({ pattern: undefined })}>Motif libre</button>
+    </div>
+  ) : null;
+
+  const presets = r.kind === "rackpreset" ? listModulePresets((r.arg ?? "").split(":")[0]) : [];
 
   return (
     <details className="w-full text-neutral-200">
-      <summary className="min-h-9 text-xs font-bold cursor-pointer">Réglages fins</summary>
-      <div className="flex flex-wrap gap-2 text-[11px] text-neutral-400">
-        <div className="flex flex-col gap-1">
-          <label>Courbe de vélocité</label>
-          <select aria-label="Courbe de vélocité" className="min-h-8 rounded-md bg-neutral-800 px-2" value={r.curve ?? ""} onChange={(e) => patch({ curve: (e.target.value || undefined) as VelCurve | undefined })}>
-            <option value="">Linéaire</option>
-            <option value="soft">Douce (coups faibles aussi)</option>
-            <option value="hard">Dure (coups forts seulement)</option>
-          </select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label>Probabilité</label>
-          <input type="range" min={0.1} max={1} step={0.05} value={r.prob ?? 1} aria-label="Probabilité" className="w-24" onChange={(e) => patch({ prob: parseFloat(e.target.value) })} />
-          <span>{Math.round((r.prob ?? 1) * 100)} %</span>
-        </div>
-        {r.kind === "rackpreset" && (
-          <div className="flex flex-col gap-1">
-            <label>Retour du module</label>
-            <label className="flex min-h-8 items-center gap-1">
-              <input type="checkbox" checked={!!r.hold} onChange={(e) => patch({ hold: e.target.checked })} />
-              Hold (reste tant que la liaison est active)
-            </label>
-            {!r.hold && (
-              <select aria-label="Durée avant retour" className="min-h-8 rounded-md bg-neutral-800 px-2" value={r.len ?? 1} onChange={(e) => patch({ len: Number(e.target.value) })}>
-                {[0.5, 1, 2, 4, 8].map((b) => <option key={b} value={b}>{b} temps</option>)}
-              </select>
-            )}
-            <label>Alterner avec</label>
-            <select aria-label="Alterner avec" className="min-h-8 rounded-md bg-neutral-800 px-2" value={r.alt ?? ""} onChange={(e) => patch({ alt: e.target.value || undefined })}>
-              <option value="">Pas d&apos;alternance</option>
-              {listModulePresets((r.arg ?? "").split(":")[0]).map((preset) => <option key={preset} value={preset}>{preset}</option>)}
-            </select>
-            <label>Glissement (morphing)</label>
-            <select aria-label="Glissement" className="min-h-8 rounded-md bg-neutral-800 px-2" value={r.morph ?? 0} onChange={(e) => patch({ morph: Number(e.target.value) || undefined })}>
-              <option value={0}>Aucun</option>
-              {[1, 2, 4, 8, 16].map((b) => <option key={b} value={b}>{b} temps</option>)}
-            </select>
-          </div>
-        )}
-        {(r.grid ?? 0) >= 2 && (
-          <div className="flex flex-col gap-1">
-            <label>Swing</label>
-            <input
-              type="range"
-              min={0}
-              max={0.6}
-              step={0.05}
-              value={r.swing ?? 0}
-              className="w-24"
-              onChange={(e) => patch({ swing: parseFloat(e.target.value) })}
-            />
-            {measure && (
-              <button type="button" className="min-h-8 rounded-md bg-neutral-800 px-2" onClick={() => { const v = measure(); if (v !== undefined) patch({ swing: v }); }}>
-                Mesurer sur le morceau
-              </button>
-            )}
-          </div>
-        )}
-
-        <div className="flex flex-col gap-1">
-          <label>Humaniser (ms)</label>
-          <input
-            type="range"
-            min={0}
-            max={30}
-            step={1}
-            value={r.humanize ?? 0}
-            className="w-24"
-            onChange={(e) => patch({ humanize: parseInt(e.target.value) })}
+      <summary className="min-h-9 cursor-pointer text-xs font-bold">Réglages fins</summary>
+      <div className="mt-1 flex flex-col gap-2 text-[11px] text-neutral-400">
+        <div className={box}>
+          <span className={title}>Dynamique</span>
+          <Segmented
+            label="Courbe de vélocité" color={color} value={r.curve ?? "lin"}
+            options={[{ value: "soft", label: "Douce" }, { value: "lin", label: "Linéaire" }, { value: "hard", label: "Dure" }]}
+            onChange={(v) => patch({ curve: v === "lin" ? undefined : (v as VelCurve) })}
           />
-          <span>{r.humanize ?? 0} ms</span>
+          <HSlider label="Probabilité" min={0.1} max={1} step={0.05} value={r.prob ?? 1} reset={1} ticks={9} color={color} format={pct} onChange={(v) => patch({ prob: v })} />
+          <ToggleSwitch label="Accents sur le premier temps" color={color} checked={r.accent ?? false} onChange={(v) => patch({ accent: v })} />
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label>Décalage (ms)</label>
-          <input
-            type="range"
-            min={-60}
-            max={60}
-            step={5}
-            value={r.nudge ?? 0}
-            className="w-24"
-            onChange={(e) => patch({ nudge: parseInt(e.target.value) })}
-          />
-          <span>{r.nudge ?? 0} ms</span>
-        </div>
-
-        {renderPatternEditor()}
-
-        <div className="flex flex-col gap-1">
-          <label className="flex items-center gap-1 min-h-9">
-            <input
-              type="checkbox"
-              checked={r.avoidVoice ?? false}
-              className="accent-orange-400"
-              onChange={(e) => patch({ avoidVoice: e.target.checked, onlyVoice: e.target.checked ? false : r.onlyVoice })}
-            />
-            Se taire quand la voix chante
-          </label>
-
-          <label className="flex items-center gap-1 min-h-9">
-            <input
-              type="checkbox"
-              checked={r.onlyVoice ?? false}
-              className="accent-orange-400"
-              onChange={(e) => patch({ onlyVoice: e.target.checked, avoidVoice: e.target.checked ? false : r.avoidVoice })}
-            />
-            Jouer seulement quand la voix chante
-          </label>
-
-          <label className="flex items-center gap-1 min-h-9">
-            <input
-              type="checkbox"
-              checked={r.accent ?? false}
-              className="accent-orange-400"
-              onChange={(e) => patch({ accent: e.target.checked })}
-            />
-            Accents sur le premier temps
-          </label>
-
-          {isNoteKind && (
-            <label className="flex items-center gap-1 min-h-9">
-              <input
-                type="checkbox"
-                checked={r.snapKey ?? false}
-                className="accent-orange-400"
-                onChange={(e) => patch({ snapKey: e.target.checked })}
-              />
-              Caler sur la tonalité du synthé
-            </label>
+        <div className={box}>
+          <span className={title}>Placement</span>
+          {(r.grid ?? 0) >= 2 && (
+            <>
+              <HSlider label="Swing" min={0} max={0.6} step={0.05} value={r.swing ?? 0} reset={0} ticks={12} color={color} format={pct} onChange={(v) => patch({ swing: v })} />
+              {measure && (
+                <button type="button" className="min-h-9 self-start rounded-md border border-neutral-700 px-3 text-[11px] text-neutral-300 hover:bg-neutral-800" onClick={() => { const v = measure(); if (v !== undefined) patch({ swing: v }); }}>
+                  Mesurer sur le morceau
+                </button>
+              )}
+            </>
           )}
+          <HSlider label="Humaniser" min={0} max={30} step={1} value={r.humanize ?? 0} reset={0} ticks={6} color={color} format={(v) => `${v} ms`} onChange={(v) => patch({ humanize: v })} />
+          <HSlider label="Décalage" min={-60} max={60} step={5} value={r.nudge ?? 0} reset={0} ticks={12} color={color} format={ms} onChange={(v) => patch({ nudge: v })} />
+        </div>
+
+        {patternEditor}
+
+        {r.kind === "rackpreset" && (
+          <div className={box}>
+            <span className={title}>Préréglage du module</span>
+            <ToggleSwitch label="Hold" hint="Reste tant que la liaison est active" color={color} checked={!!r.hold} onChange={(v) => patch({ hold: v })} />
+            {!r.hold && (
+              <Segmented label="Retour après (temps)" color={color} value={r.len ?? 1} options={[0.5, 1, 2, 4, 8].map((b) => ({ value: b, label: beats(b) }))} onChange={(v) => patch({ len: v })} />
+            )}
+            <Segmented label="Glissement (temps)" color={color} value={r.morph ?? 0} options={[{ value: 0, label: "Non" }, ...[1, 2, 4, 8, 16].map((b) => ({ value: b, label: beats(b) }))]} onChange={(v) => patch({ morph: v || undefined })} />
+            <label className="flex flex-col gap-0.5">
+              <span className="text-[10px] uppercase tracking-wider text-neutral-400">Alterner avec</span>
+              <select aria-label="Alterner avec" className={selCls} value={r.alt ?? ""} onChange={(e) => patch({ alt: e.target.value || undefined })}>
+                <option value="">Pas d&apos;alternance</option>
+                {presets.map((preset) => <option key={preset} value={preset}>{preset}</option>)}
+              </select>
+            </label>
+          </div>
+        )}
+
+        <div className={box}>
+          <span className={title}>Voix et tonalité</span>
+          <ToggleSwitch label="Se taire quand la voix chante" color={color} checked={r.avoidVoice ?? false} onChange={(v) => patch({ avoidVoice: v, onlyVoice: v ? false : r.onlyVoice })} />
+          <ToggleSwitch label="Jouer seulement quand la voix chante" color={color} checked={r.onlyVoice ?? false} onChange={(v) => patch({ onlyVoice: v, avoidVoice: v ? false : r.avoidVoice })} />
+          {isNoteKind && <ToggleSwitch label="Caler sur la tonalité du synthé" color={color} checked={r.snapKey ?? false} onChange={(v) => patch({ snapKey: v })} />}
         </div>
       </div>
     </details>
@@ -434,21 +363,23 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
                   onCopyOther={() => apply(side === "A" ? "B" : "A", [...routes[side === "A" ? "B" : "A"], { ...r, id: newId() }])}
                   otherLabel={side === "A" ? "B" : "A"}
                 >
-                  <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <select aria-label="Grille" value={r.grid ?? 0} onChange={(e) => patch(side, r.id, { grid: Number(e.target.value) || undefined })} className={sel}>
-                      <option value={0}>Libre</option><option value={1}>Sur le temps</option><option value={2}>1/8</option><option value={4}>1/16</option>
-                    </select>
+                  <div className="flex flex-col gap-2 rounded-lg border border-neutral-700 bg-black/30 p-2 text-xs">
+                    <span className="text-[10px] font-black uppercase tracking-[0.18em] text-neutral-500">Jeu</span>
+                    <Segmented
+                      label="Grille" color={SOURCE_STYLE[r.source].glow} value={r.grid ?? 0}
+                      options={[{ value: 0, label: "Libre" }, { value: 1, label: "Temps" }, { value: 2, label: "1/8" }, { value: 4, label: "1/16" }]}
+                      onChange={(v) => patch(side, r.id, { grid: v || undefined })}
+                    />
                     {["synth", "synth2", "sampler", "seqrec", "plugin", "voices"].includes(r.kind) && (
-                      <select aria-label="Transposition" value={r.transpose ?? 0} onChange={(e) => patch(side, r.id, { transpose: Number(e.target.value) || undefined })} className={sel}>
-                        {[-24, -12, -7, -5, 0, 5, 7, 12, 24].map((n) => <option key={n} value={n}>{n > 0 ? `+${n}` : n} demi-tons</option>)}
-                      </select>
+                      <label className="flex flex-col gap-0.5">
+                        <span className="text-[10px] uppercase tracking-wider text-neutral-400">Transposition</span>
+                        <select aria-label="Transposition" value={r.transpose ?? 0} onChange={(e) => patch(side, r.id, { transpose: Number(e.target.value) || undefined })} className="min-h-9 w-full rounded-md border border-neutral-700 bg-neutral-900 px-2 text-[11px] text-neutral-100">
+                          {[-24, -12, -7, -5, 0, 5, 7, 12, 24].map((n) => <option key={n} value={n}>{n > 0 ? `+${n}` : n} demi-tons</option>)}
+                        </select>
+                      </label>
                     )}
-                    <label className="flex items-center gap-1 text-[11px] text-neutral-400">Durée
-                      <input type="range" min={0.25} max={2} step={0.25} value={r.gate ?? 1} aria-label="Durée des notes" onChange={(e) => patch(side, r.id, { gate: Number(e.target.value) })} className="w-20 accent-orange-400" />
-                    </label>
-                    <label className="flex items-center gap-1 text-[11px] text-neutral-400">Densité
-                      <input type="range" min={0.1} max={1} step={0.1} value={r.density ?? 1} aria-label="Densité" onChange={(e) => patch(side, r.id, { density: Number(e.target.value) })} className="w-20 accent-orange-400" />
-                    </label>
+                    <HSlider label="Durée des notes" min={0.25} max={2} step={0.25} value={r.gate ?? 1} reset={1} ticks={7} color={SOURCE_STYLE[r.source].glow} format={(v) => `x${v}`} onChange={(v) => patch(side, r.id, { gate: v })} />
+                    <HSlider label="Densité" min={0.1} max={1} step={0.1} value={r.density ?? 1} reset={1} ticks={9} color={SOURCE_STYLE[r.source].glow} format={(v) => `${Math.round(v * 100)} %`} onChange={(v) => patch(side, r.id, { density: v })} />
                   </div>
                   <FineSettings r={r} patch={(p) => patch(side, r.id, p)} measure={() => busFor(engine, d).measuredSwing()} />
                 </RouteCard>
