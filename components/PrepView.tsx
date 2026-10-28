@@ -1,5 +1,7 @@
 "use client";
 
+import { searchTracks } from "@/lib/trackSearch";
+import { dedupeOnline, rankOnline } from "@/lib/trackRank";
 import { useState, useRef, useMemo, useSyncExternalStore, useEffect } from "react";
 import { loadLibrary, saveLibrary, uid, idbGetBlob } from "@/lib/library";
 import { enqueuePrep, getPrepState, subscribePrep, forgetPrep, cancelPrep } from "@/lib/stemPrep";
@@ -249,11 +251,12 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
         seen.add(t.id);
         results.push({ ...t, bpm: t.bpm ? Number(t.bpm) || undefined : undefined });
       }
-      setSearchResults(results);
+      const ranked = rankOnline(q, dedupeOnline(results)); // the answers to the query first, one entry per song
+      setSearchResults(ranked);
       setSearchLevel(level);
       setSearchExtended(extend || (more && searchExtended));
       // quality is checked for the new results only
-      const fresh = results.filter((t) => !probed[t.id]).map((t) => t.id);
+      const fresh = ranked.filter((t) => !probed[t.id]).map((t) => t.id);
       setChecking(true);
       probeQualities(fresh, (id, result) => {
         setProbed((prev) => ({ ...prev, [id]: result }));
@@ -561,10 +564,9 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   const filteredTracks = useMemo((): LibTrack[] => {
     let result = [...laterTracks];
 
-    const q = trayQuery.trim().toLowerCase();
-    if (q) {
-      result = result.filter(t => [t.name, t.theme, t.group].some(v => (v ?? "").toLowerCase().includes(q)));
-    }
+    // tolerant search (accents, typos, "phrases", -words, bpm:120-130, key:8A...), best match first
+    const hasQuery = trayQuery.trim() !== "";
+    if (hasQuery) result = searchTracks(result, trayQuery);
 
     if (filterTheme) {
       result = result.filter(t => t.theme === filterTheme);
@@ -633,7 +635,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
         });
       case "recent":
       default:
-        return result.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+        return hasQuery ? result : result.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0)); // a search keeps the best match first
     }
   }, [laterTracks, trayQuery, sortBy, filterTheme, filterGroup, durationFilter, qualityFilter, videoFilter]);
 

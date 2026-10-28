@@ -1,4 +1,5 @@
 "use client";
+import { searchTracks } from "@/lib/trackSearch";
 import { Fragment, useMemo, useState, type ChangeEvent, type DragEvent, type ReactNode } from "react";
 import type { LibTrack } from "@/lib/library";
 import { BpmChip, Cover, Icon, KeyChip, StemPill, fmtDur } from "../prep/parts";
@@ -73,18 +74,15 @@ export function LibraryPane({
   };
 
   const visible = useMemo(() => {
-    const filtered = tracks.filter(t =>
-      (query === "" ||
-        t.name.toLowerCase().includes(query.toLowerCase()) ||
-        (t.theme?.toLowerCase().includes(query.toLowerCase()) ?? false) ||
-        (t.group?.toLowerCase().includes(query.toLowerCase()) ?? false)) &&
+    // tolerant search (accents, typos, "phrases", -words, bpm:120-130, key:8A...), best match first
+    const filtered = searchTracks(tracks, query).filter(t =>
       (theme === "" || t.theme === theme) &&
       (group === "" || t.group === group)
     );
 
     return [...filtered].sort((a, b) => {
       switch (sort) {
-        case "recent": return b.addedAt - a.addedAt;
+        case "recent": return query.trim() ? 0 : b.addedAt - a.addedAt; // a search keeps the best match first (the sort is stable)
         case "title": return a.name.localeCompare(b.name);
         case "bpm": {
           const x = a.bpm && a.bpm > 0 ? a.bpm : Infinity; // unknown BPM last

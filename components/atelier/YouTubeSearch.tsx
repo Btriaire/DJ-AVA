@@ -1,4 +1,5 @@
 "use client";
+import { dedupeOnline, rankOnline } from "@/lib/trackRank";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { detectBPM } from "@/lib/audio/bpm";
 import { detectKey } from "@/lib/audio/key";
@@ -159,7 +160,7 @@ export function YouTubeSearch({ ctx, color, busy, onOpen }: {
         setResults([]);
         setFilteredResults([]);
       } else {
-        const tracks = data.tracks ?? [];
+        const tracks = rankOnline(query, dedupeOnline(data.tracks ?? []));
         setResults(tracks);
 
         if (filter && filter.key !== "all") {

@@ -1,4 +1,5 @@
 "use client";
+import { searchTracks } from "@/lib/trackSearch";
 import { useState, type KeyboardEvent, type ReactNode } from "react";
 import type { LibTrack, Playlist } from "@/lib/library";
 import { Icon, Mosaic, fmtDur } from "../prep/parts";
@@ -60,8 +61,7 @@ export function SetRail(props: SetRailProps) {
     return type === "cut" ? "Coupe" : `${TRANSITION_LABEL[type]} ${sec} s`;
   };
 
-  const q = query.trim().toLowerCase();
-  const shown = props.playlists.filter(p => !q || p.name.toLowerCase().includes(q));
+  const shown = searchTracks(props.playlists, query); // tolerant to accents and typos, best match first
 
   return (
     <div className="flex flex-col gap-2.5">

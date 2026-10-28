@@ -1,5 +1,6 @@
 "use client";
 
+import { dedupeOnline, rankOnline } from "@/lib/trackRank";
 import { useState, useEffect, useRef } from "react";
 import { Icon } from "../prep/parts";
 import type { AudiusTrack } from "@/lib/audius";
@@ -47,7 +48,7 @@ export default function ArtistSearch({ setName, onAdd }: ArtistSearchProps) {
         (track: AudiusTrack) => !results.some((r) => r.id === track.id)
       );
 
-      setResults(append ? [...results, ...newTracks] : newTracks);
+      setResults(rankOnline(query, dedupeOnline(append ? [...results, ...newTracks] : newTracks)));
       setOffset(append ? offset + 40 : 40);
       setSearched(true);
     } catch (err) {

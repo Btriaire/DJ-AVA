@@ -1,4 +1,5 @@
 "use client";
+import { dedupeOnline, rankOnline } from "@/lib/trackRank";
 import { useRef, useState } from "react";
 import { DJEngine } from "@/lib/audio/engine";
 import { AudiusTrack } from "@/lib/audius";
@@ -78,7 +79,7 @@ export function LibraryPanel({ engine, onClose, onLoaded }: Props) {
       const r = await fetch(`/api/${tab}/search?q=${encodeURIComponent(q)}`);
       const j = await r.json();
       if (j.error) setErr(j.error);
-      setResults(j.tracks ?? []);
+      setResults(rankOnline(q, dedupeOnline(j.tracks ?? [])));
     } catch (e) {
       setErr((e as Error).message);
     } finally {

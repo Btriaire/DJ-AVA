@@ -1,4 +1,5 @@
 "use client";
+import { searchTracks } from "@/lib/trackSearch";
 import { useState } from "react";
 import { YouTubeSearch } from "./YouTubeSearch";
 import { loadLibrary, idbGetBlob, type LibTrack } from "@/lib/library";
@@ -82,9 +83,7 @@ export function SourcePanel({ engine, color, busy, onOpenBytes, onOpenBuffer, ba
     }
   };
 
-  const filteredLibrary = library.filter(t =>
-    t.name.toLowerCase().includes(libraryFilter.toLowerCase())
-  );
+  const filteredLibrary = searchTracks(library, libraryFilter);
 
   return (
     <div className="hw-panel flex flex-col gap-2 p-3">

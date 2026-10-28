@@ -60,3 +60,11 @@ console.log("check-rules notes ok");
 import { selfTest as rhythmMathTest } from "../lib/audio/rhythmMath";
 rhythmMathTest();
 console.log("check-rules rhythm math ok");
+
+import { selfTest as trackSearchTest } from "../lib/trackSearch";
+trackSearchTest();
+console.log("check-rules track search ok");
+
+import { selfTest as trackRankTest } from "../lib/trackRank";
+trackRankTest();
+console.log("check-rules track rank ok");
