@@ -1382,8 +1382,9 @@ body.has-zoom::before {
         repeating-radial-gradient(circle,
             #0b0b0d 0,
             #0b0b0d 1px,
-            #1a1a1e 1px,
-            #1a1a1e 2px);
+            #2a2a31 1px,
+            #2a2a31 2px);
+    box-shadow: 0 0 0 1px rgba(255,255,255,.10), 2px 3px 6px rgba(0,0,0,.6); /* rim catching the light, static */
     transition: transform 160ms ease-out;
 }
 
