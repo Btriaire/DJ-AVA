@@ -296,12 +296,12 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
           onPick={(g, i, side) => add(side, PRESET_GROUPS[g].items[i].route)}
         />
       </div>
-      <div className="mt-3 grid gap-3">
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
         {(["A", "B"] as const).map((side) => {
           const d = side === "A" ? engine.deckA : engine.deckB;
           const n = d.stemNotes;
           return (
-            <div key={side} className="flex flex-col gap-2 rounded-lg border border-neutral-800 p-2.5">
+            <div key={side} className="flex min-w-0 flex-col gap-2 rounded-lg border border-neutral-800 p-2.5">
               <div className="flex items-center justify-between gap-2 text-xs">
                 <b className="text-neutral-100">Deck {side}</b>
                 <span className="truncate text-neutral-400">
