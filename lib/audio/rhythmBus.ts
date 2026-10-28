@@ -190,6 +190,31 @@ export class RhythmBus {
     return m;
   }
 
+  private beatRel(k: number): number { return Math.max(0.18, Math.min(0.7, (this.deck.bpm > 0 ? 60 / this.deck.bpm : 0.5) * k)); }
+  private bases = new Map<string, number>();
+  // a parameter pulse: jumps to `peak` at the hit, then eases back to where it was (the value before the first pulse
+  // of a burst, so overlapping pulses never leave it displaced)
+  private pulse(key: string, get: () => number, set: (v: number) => void, peakOf: (base: number) => number, at: number, rel: number) {
+    const gen = (this.pulses.get(key) ?? 0) + 1;
+    this.pulses.set(key, gen);
+    setTimeout(() => {
+      if (this.pulses.get(key) !== gen) return;
+      const base = this.bases.get(key) ?? get();
+      this.bases.set(key, base);
+      const peak = peakOf(base);
+      set(peak);
+      const t0 = performance.now();
+      const step = () => {
+        if (this.pulses.get(key) !== gen) return;
+        const x = (performance.now() - t0) / (rel * 1000);
+        if (x >= 1) { set(base); this.bases.delete(key); return; }
+        set(base + (peak - base) * (1 - x) ** 2);
+        setTimeout(step, 16);
+      };
+      setTimeout(step, 16);
+    }, Math.max(0, (at - this.engine.ctx.currentTime) * 1000));
+  }
+
   private fire(r: RhythmRoute, e: Ev, at: number, dur: number) {
     let acc = 1;
     if (r.accent && this.deck.bpm > 0) {
@@ -214,27 +239,19 @@ export class RhythmBus {
       else setTimeout(() => eng.synthSeq.recordNote(midi), wait);
     } else if (r.kind === "duck") {
       const d = r.arg === "other" ? this.other() : this.deck;
-      d.duckAt(at, Math.min(0.95, r.amount * e.vel), Math.max(0.08, Math.min(0.5, dur * 1.5)));
+      const beat = this.deck.bpm > 0 ? 60 / this.deck.bpm : 0.5;
+      // a real pump: deep, and as long as half a beat so the recovery is heard
+      d.duckAt(at, Math.min(0.95, 0.3 + r.amount * e.vel * 0.8), Math.max(0.15, Math.min(0.5, beat * 0.55)));
     } else if (r.kind === "filter" && r.arg) {
       const [who, kind] = r.arg.split(":");
       const d = who === "other" ? this.other() : this.deck;
-      const peak = (kind === "lp" ? -1 : 1) * Math.min(1, r.amount * e.vel * 1.3);
-      const key = `f${r.arg}`;
-      const gen = (this.pulses.get(key) ?? 0) + 1;
-      this.pulses.set(key, gen);
-      let back = 0;
-      setTimeout(() => { back = d.filterX; d.setFilter(peak); }, Math.max(0, (at - eng.ctx.currentTime) * 1000));
-      setTimeout(() => { if (this.pulses.get(key) === gen) d.setFilter(back); }, Math.max(0, (at - eng.ctx.currentTime + PULSE_SEC * 1.5) * 1000));
+      const mag = Math.min(1, 0.35 + r.amount * e.vel * 0.9);
+      this.pulse(`f${who}${r.id}`, () => d.filterX, (v) => d.setFilter(v), () => (kind === "lp" ? -mag : mag), at, this.beatRel(0.9));
     } else if (r.kind === "sfx" && r.arg) {
-      setTimeout(() => eng.soundFx.trigger(r.arg as SfxId), Math.max(0, (at - eng.ctx.currentTime) * 1000));
+      setTimeout(() => eng.soundFx.trigger(r.arg as SfxId, Math.min(1.5, 0.25 + r.amount * e.vel * 1.2)), Math.max(0, (at - eng.ctx.currentTime) * 1000));
     } else if (r.kind === "djknob" && r.arg) {
       const k = r.arg as keyof DjKnobs;
-      const key = `k${r.arg}`;
-      const gen = (this.pulses.get(key) ?? 0) + 1;
-      this.pulses.set(key, gen);
-      let base = 0;
-      setTimeout(() => { base = eng.djSynth.knobs[k]; eng.djSynth.setKnob(k, Math.min(1, base + r.amount * e.vel * 0.6)); }, Math.max(0, (at - eng.ctx.currentTime) * 1000));
-      setTimeout(() => { if (this.pulses.get(key) === gen) eng.djSynth.setKnob(k, base); }, Math.max(0, (at - eng.ctx.currentTime + PULSE_SEC * 2) * 1000));
+      this.pulse(`k${r.id}`, () => eng.djSynth.knobs[k], (v) => eng.djSynth.setKnob(k, v), (base) => Math.min(1, base + 0.25 + r.amount * e.vel * 0.75), at, this.beatRel(1.2));
     } else if (r.kind === "voices") {
       const style = r.arg === "strings" || r.arg === "dream" ? r.arg : "choir";
       eng.padVoices.play(style, this.noteFor(r, e), vel, at, dur);
@@ -244,10 +261,13 @@ export class RhythmBus {
     } else if (r.kind === "keypad" && r.arg) {
       const i = Number(r.arg);
       const wait = Math.max(0, (at - eng.ctx.currentTime) * 1000);
-      setTimeout(() => eng.keyPad.trigger(i), wait);
+      const lv = Math.min(1.5, 0.25 + r.amount * e.vel * 1.2);
+      setTimeout(() => { eng.keyPad.levelFor(lv, dur + 0.6); eng.keyPad.trigger(i); }, wait);
       setTimeout(() => eng.keyPad.release(i), wait + Math.max(80, dur * 1000));
     } else if (r.kind === "keyfx" && r.arg) {
       const wait = Math.max(0, (at - eng.ctx.currentTime) * 1000);
+      const lv = Math.min(1.5, 0.25 + r.amount * e.vel * 1.2);
+      setTimeout(() => eng.keyPad.levelFor(lv, 1.2), wait);
       if (r.arg === "impact") eng.keyPad.impact(at);
       else if (r.arg === "brake") setTimeout(() => eng.keyPad.brake(1), wait);
       else if (r.arg === "scratch") setTimeout(() => eng.keyPad.scratch(), wait);
@@ -261,12 +281,7 @@ export class RhythmBus {
       const def = RACK_DEF.get(id as RackModuleId)?.params.find((p) => p.key === key);
       if (!def) return;
       const rack = this.deck.rack;
-      const peak = def.def + (def.max - def.def) * Math.min(1, r.amount * e.vel * 1.4);
-      // a pulse: the parameter jumps with the hit and falls back to its default (setParam is immediate, so it waits for the hit)
-      const gen = (this.pulses.get(r.arg) ?? 0) + 1;
-      this.pulses.set(r.arg, gen);
-      setTimeout(() => rack.setParam(id as RackModuleId, key, peak), Math.max(0, (at - eng.ctx.currentTime) * 1000));
-      setTimeout(() => { if (this.pulses.get(r.arg!) === gen) rack.setParam(id as RackModuleId, key, def.def); }, Math.max(0, (at - eng.ctx.currentTime + PULSE_SEC) * 1000));
+      this.pulse(`r${r.id}`, () => def.def, (v) => rack.setParam(id as RackModuleId, key, v), () => def.def + (def.max - def.def) * Math.min(1, 0.3 + r.amount * e.vel), at, this.beatRel(0.9));
     }
   }
 

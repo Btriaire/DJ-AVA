@@ -48,12 +48,14 @@ export const SFX_LIST: SfxDef[] = [
 export class SoundFX {
   readonly ctx: AudioContext;
   readonly output: GainNode;
+  private dest!: AudioNode; // where the sounds of the trigger in progress connect (a trigger can be quieter than the module)
   // every currently-sounding source, so STOP can cut them all at once
   private active: AudioScheduledSourceNode[] = [];
 
   constructor(ctx: AudioContext) {
     this.ctx = ctx;
     this.output = ctx.createGain();
+    this.dest = this.output;
     this.output.gain.value = 0.9;
   }
 
@@ -91,11 +93,22 @@ export class SoundFX {
   private gain(v = 1): GainNode {
     const g = this.ctx.createGain();
     g.gain.value = v;
-    g.connect(this.output);
+    g.connect(this.dest);
     return g;
   }
 
-  trigger(id: SfxId) {
+  trigger(id: SfxId, level = 1) {
+    const prev = this.dest;
+    if (level < 0.98 || level > 1.02) {
+      const t = this.ctx.createGain();
+      t.gain.value = level;
+      t.connect(this.output);
+      this.dest = t;
+    }
+    try { this.fire(id); } finally { this.dest = prev; }
+  }
+
+  private fire(id: SfxId) {
     if (this.ctx.state !== "running") this.ctx.resume().catch(() => {});
     const c = this.ctx;
     const t = c.currentTime;

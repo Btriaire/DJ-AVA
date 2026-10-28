@@ -483,6 +483,15 @@ export class SamplePad {
     this.voices.delete(slice);
   }
 
+  // the level of this module for the next `sec` seconds (a rhythm link plays it softer or louder)
+  levelFor(mult: number, sec: number): void {
+    const g = this.outGain.gain;
+    const t = this.ctx.currentTime;
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(this.settings.volume * mult, t);
+    g.setValueAtTime(this.settings.volume, t + sec);
+  }
+
   trigger(slice: number): void {
     if (slice < 0 || slice >= PAD_SLICES) return;
 
