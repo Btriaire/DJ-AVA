@@ -68,3 +68,7 @@ console.log("check-rules track search ok");
 import { selfTest as trackRankTest } from "../lib/trackRank";
 trackRankTest();
 console.log("check-rules track rank ok");
+
+import { selfTest as recipesTest } from "../lib/rhythmRecipes";
+recipesTest();
+console.log("check-rules recipes ok");

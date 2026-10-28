@@ -13,6 +13,7 @@ import { FX_META, type FxName } from "@/lib/audio/fxTypes";
 import { PresetPicker, RouteCard, SOURCE_STYLE } from "./RhythmCards";
 import { HSlider, Segmented, ToggleSwitch } from "./RhythmSlider";
 import { PatchCable, SourcePads, TargetTiles } from "./RhythmPatch";
+import { RECIPES, scaleRecipe, type Intensity } from "@/lib/rhythmRecipes";
 
 // Liaisons: the rhythm detected in a song (drum attacks, bass notes, synth notes) is never played, but it can drive
 // the modules: the DJ synth in harmony, a drum voice, a pulse on a rack parameter.
@@ -64,15 +65,6 @@ const PRESETS: { label: string; route: Omit<RhythmRoute, "id" | "on"> }[] = [
 export const STEMS = [{ id: "drums", label: "Batterie" }, { id: "bass", label: "Basse" }, { id: "other", label: "Autre" }, { id: "vocals", label: "Voix" }];
 const STEM_FX_PICK: FxName[] = ["reverse", "roll", "echo", "echoout", "brake", "gate", "dub", "flanger", "wash", "freeze", "halftime"];
 const stemLabel = (n?: string) => STEMS.find((x) => x.id === n)?.label ?? n ?? "";
-// the demo of a deck that is transformed, not layered: pumping bass, a lighter pump on the rest, a reverb throw on the
-// snare, a high-pass breathing on the off-beat hats, a reverse at each phrase
-const RECIPE_HOUSE: Omit<RhythmRoute, "id" | "on">[] = [
-  { source: "kick", kind: "stemduck", arg: "bass", amount: 0.8, depth: 0.75, len: 0.55 },
-  { source: "kick", kind: "stemduck", arg: "other", amount: 0.6, depth: 0.4, len: 0.5 },
-  { source: "snare", kind: "stemsend", arg: "vocals:reverb", amount: 0.7, len: 1 },
-  { source: "hat", kind: "stemfilter", arg: "other:hp", amount: 0.4, density: 0.5 },
-  { source: "phrase8", kind: "stemfx", arg: "other:reverse", amount: 0.8, len: 1 },
-];
 const NAPPES = [{ id: "choir", label: "Chœur" }, { id: "strings", label: "Cordes" }, { id: "dream", label: "Synthé planant" }];
 const KEYFX = [{ id: "impact", label: "Impact" }, { id: "brake", label: "Frein 1 temps" }, { id: "scratch", label: "Scratch" }, { id: "drop", label: "Drop" }];
 const KNOBS = [{ id: "cutoff", label: "Filtre" }, { id: "reso", label: "Résonance" }, { id: "drive", label: "Saturation" }, { id: "wobble", label: "Wobble" }, { id: "env", label: "Enveloppe" }];
@@ -274,6 +266,8 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
   const [routes, setRoutes] = useState<Record<Side, RhythmRoute[]>>({ A: [], B: [] });
   const [, tick] = useState(0);
   const [master, setMaster] = useState(true);
+  const [recipe, setRecipe] = useState(RECIPES[0].id);
+  const [intensity, setIntensity] = useState<Intensity>("medium");
   const [draft, setDraft] = useState<Omit<RhythmRoute, "id" | "on">>({ source: "bass", kind: "synth", amount: 0.7 });
 
   useEffect(() => {
@@ -337,18 +331,41 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
         />
       </div>
       <div className="mt-2 flex flex-col gap-2 rounded-lg border border-neutral-700 bg-black/30 p-2">
-        <span className="text-[10px] font-black uppercase tracking-[0.18em] text-neutral-500">Recette · le morceau transformé</span>
-        <p className="text-[11px] text-neutral-400">Pompe house : la grosse caisse fait respirer la basse et le reste, la caisse claire lance la reverb de la voix, le charleston fait respirer l&apos;aigu, un reverse à chaque phrase. Il faut les stems du deck.</p>
-        <div className="grid grid-cols-2 gap-2">
-          {(["A", "B"] as const).map((side) => (
+        <span className="text-[10px] font-black uppercase tracking-[0.18em] text-neutral-500">Recettes · le morceau transformé</span>
+        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-5">
+          {RECIPES.map((rc) => (
             <button
-              key={side} type="button"
-              onClick={() => apply(side, [...routes[side], ...RECIPE_HOUSE.map((r) => ({ ...r, id: newId(), on: true }))])}
-              className="min-h-11 rounded-md border border-neutral-600 bg-neutral-800 text-xs font-black uppercase tracking-wider text-neutral-100 hover:bg-neutral-700 focus-visible:ring-2 focus-visible:ring-white/60"
+              key={rc.id} type="button" aria-pressed={recipe === rc.id} onClick={() => setRecipe(rc.id)}
+              className={`min-h-11 rounded-md border px-2 text-[11px] font-bold focus-visible:ring-2 focus-visible:ring-white/60 ${recipe === rc.id ? "border-emerald-400 bg-emerald-400/15 text-neutral-50" : "border-neutral-700 bg-neutral-900 text-neutral-300 hover:bg-neutral-800"}`}
             >
-              Pompe house → deck {side}
+              {rc.label}
             </button>
           ))}
+        </div>
+        <p className="text-[11px] text-neutral-400">{RECIPES.find((x) => x.id === recipe)?.hint} Il faut les stems du deck.</p>
+        <Segmented label="Intensité" color="oklch(78% 0.17 150)" value={intensity} options={[{ value: "light", label: "Léger" }, { value: "medium", label: "Moyen" }, { value: "strong", label: "Fort" }]} onChange={(v) => setIntensity(v as Intensity)} />
+        <div className="grid grid-cols-2 gap-2">
+          {(["A", "B"] as const).map((side) => {
+            const rc = RECIPES.find((x) => x.id === recipe)!;
+            const has = routes[side].some((x) => x.recipe === rc.id);
+            return (
+              <div key={side} className="flex flex-col gap-1">
+                <button
+                  type="button"
+                  // a recipe already on the deck is replaced: picking another intensity and pressing again updates it
+                  onClick={() => apply(side, [...routes[side].filter((x) => x.recipe !== rc.id), ...scaleRecipe(rc, intensity, rc.id).map((r) => ({ ...r, id: newId(), on: true }))])}
+                  className="min-h-11 rounded-md border border-neutral-600 bg-neutral-800 text-xs font-black uppercase tracking-wider text-neutral-100 hover:bg-neutral-700 focus-visible:ring-2 focus-visible:ring-white/60"
+                >
+                  {has ? `Mettre à jour · deck ${side}` : `Ajouter au deck ${side}`}
+                </button>
+                {has && (
+                  <button type="button" onClick={() => apply(side, routes[side].filter((x) => x.recipe !== rc.id))} className="min-h-9 rounded-md border border-neutral-700 text-[11px] text-neutral-400 hover:bg-neutral-800">
+                    Retirer du deck {side}
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
       <div className="mt-3 grid gap-3 md:grid-cols-2">

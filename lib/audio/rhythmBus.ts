@@ -37,6 +37,7 @@ export interface RhythmRoute {
   curve?: VelCurve; // soft: weak hits count more, hard: only strong hits count
   prob?: number; // 0..1: chance that each hit plays (default 1)
   morph?: number; // rackpreset: beats the module takes to glide to the preset (absent = a quick 80 ms change)
+  recipe?: string; // the recipe this link came from (links added together, removed together)
   depth?: number; // stemduck: 0..1 how deep the stem dips (default 0.7)
   hold?: boolean; // rackpreset: the preset stays until the link is turned off (otherwise it goes back after `len` beats)
   len?: number; // rackpreset: beats before the module goes back (default 1)
