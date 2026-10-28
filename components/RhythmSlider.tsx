@@ -122,7 +122,7 @@ export function Segmented<T extends string | number>({ label, value, options, on
   return (
     <div className="flex flex-col gap-0.5">
       <span className="text-[10px] uppercase tracking-wider text-neutral-400">{label}</span>
-      <div role="radiogroup" aria-label={label} className="flex gap-0.5 rounded-md border border-neutral-700 bg-black/60 p-0.5" onKeyDown={onKeyDown}>
+      <div role="radiogroup" aria-label={label} className="flex min-w-0 gap-0.5 rounded-md border border-neutral-700 bg-black/60 p-0.5" onKeyDown={onKeyDown}>
         {options.map((o, i) => {
           const on = i === active;
           const style: CSSProperties | undefined = on ? { background: `color-mix(in oklch, ${color} 22%, transparent)`, boxShadow: `inset 0 -2px 0 ${color}, 0 0 5px ${color}` } : undefined;
@@ -130,7 +130,7 @@ export function Segmented<T extends string | number>({ label, value, options, on
             <button
               key={String(o.value)} type="button" role="radio" aria-checked={on} tabIndex={on ? 0 : -1}
               ref={(el) => { refs.current[i] = el; }}
-              className={`min-h-9 flex-1 rounded px-2 text-[11px] font-bold outline-none focus-visible:ring-2 focus-visible:ring-white/60 ${on ? "text-neutral-50" : "text-neutral-400 hover:text-neutral-100"}`}
+              className={`min-h-9 min-w-0 flex-1 truncate rounded px-1 text-[11px] font-bold outline-none focus-visible:ring-2 focus-visible:ring-white/60 ${on ? "text-neutral-50" : "text-neutral-400 hover:text-neutral-100"}`}
               style={style}
               onClick={() => { if (!on) onChange(o.value); }}
             >
