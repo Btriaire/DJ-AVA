@@ -56,3 +56,7 @@ assert.equal(nextAttack(sn, 1.01, 0.6), 1.5);
 assert.equal(nextAttack(null, 1, 1), null);
 assert.deepEqual(notesAt(sn, 1.7).sort(), [0, 4]);
 console.log("check-rules notes ok");
+
+import { selfTest as rhythmMathTest } from "../lib/audio/rhythmMath";
+rhythmMathTest();
+console.log("check-rules rhythm math ok");

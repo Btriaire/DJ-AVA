@@ -29,6 +29,9 @@ const PRESETS: { label: string; route: Omit<RhythmRoute, "id" | "on"> }[] = [
   { label: "Batterie → Touches du Keyboard", route: { source: "drums", kind: "keypad", arg: "0", amount: 0.7 } },
   { label: "Mesure → Impact du Keyboard", route: { source: "bar", kind: "keyfx", arg: "impact", amount: 0.7 } },
   { label: "Basse → DX7", route: { source: "bass", kind: "plugin", arg: "dx7", amount: 0.7 } },
+  { label: "Basse → Synthé DJ en swing", route: { source: "bass", kind: "synth", amount: 0.7, grid: 2, swing: 0.3 } },
+  { label: "Temps → Pompe 4/4", route: { source: "beat", kind: "duck", arg: "self", amount: 0.4, grid: 1, pattern: "xxxx" } },
+  { label: "Synthé → Synthé DJ, hors voix", route: { source: "synth", kind: "synth", amount: 0.5, avoidVoice: true, snapKey: true } },
   { label: "Batterie → Clap", route: { source: "drums", kind: "drum", arg: "clap", amount: 0.6 } },
 ];
 
@@ -65,6 +68,130 @@ const load = (): Record<Side, RhythmRoute[]> => {
   } catch { return { A: [], B: [] }; }
 };
 const save = (r: Record<Side, RhythmRoute[]>) => { try { localStorage.setItem(KEY, JSON.stringify(r)); } catch { /* private window */ } };
+
+export function FineSettings({ r, patch }: { r: RhythmRoute; patch: (p: Partial<RhythmRoute>) => void }) {
+  const isNoteKind = ["synth", "synth2", "sampler", "seqrec", "plugin"].includes(r.kind);
+
+  const steps = Math.min(16, (r.grid ?? 1) * 4);
+  const current = (r.pattern || 'x'.repeat(steps)).padEnd(steps, 'x').slice(0, steps);
+  const handlePatternToggle = (index: number) => {
+    patch({ pattern: current.split('').map((c, i) => (i === index ? (c === 'x' ? '.' : 'x') : c)).join('') });
+  };
+
+  const renderPatternEditor = () => {
+    if (!r.grid) return null;
+    const pattern = current;
+
+    return (
+      <div className="flex flex-wrap gap-1">
+        {Array.from({ length: steps }).map((_, i) => (
+          <button
+            key={i}
+            type="button"
+            aria-pressed={pattern[i] === 'x'}
+            className={`min-h-8 min-w-8 rounded-md ${pattern[i] === 'x' ? 'bg-orange-400 text-neutral-950' : 'bg-neutral-800 text-neutral-400'}`}
+            onClick={() => handlePatternToggle(i)}
+          >
+            {pattern[i]}
+          </button>
+        ))}
+        <button
+          type="button"
+          className="min-h-8 px-2 rounded-md bg-neutral-800 text-neutral-400 hover:bg-neutral-700"
+          onClick={() => patch({ pattern: undefined })}
+        >
+          Motif libre
+        </button>
+      </div>
+    );
+  };
+
+  return (
+    <details className="w-full text-neutral-200">
+      <summary className="min-h-9 text-xs font-bold cursor-pointer">Réglages fins</summary>
+      <div className="flex flex-wrap gap-2 text-[11px] text-neutral-400">
+        {(r.grid ?? 0) >= 2 && (
+          <div className="flex flex-col gap-1">
+            <label>Swing</label>
+            <input
+              type="range"
+              min={0}
+              max={0.6}
+              step={0.05}
+              value={r.swing ?? 0}
+              className="w-24"
+              onChange={(e) => patch({ swing: parseFloat(e.target.value) })}
+            />
+          </div>
+        )}
+
+        <div className="flex flex-col gap-1">
+          <label>Humaniser (ms)</label>
+          <input
+            type="range"
+            min={0}
+            max={30}
+            step={1}
+            value={r.humanize ?? 0}
+            className="w-24"
+            onChange={(e) => patch({ humanize: parseInt(e.target.value) })}
+          />
+          <span>{r.humanize ?? 0} ms</span>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label>Décalage (ms)</label>
+          <input
+            type="range"
+            min={-60}
+            max={60}
+            step={5}
+            value={r.nudge ?? 0}
+            className="w-24"
+            onChange={(e) => patch({ nudge: parseInt(e.target.value) })}
+          />
+          <span>{r.nudge ?? 0} ms</span>
+        </div>
+
+        {renderPatternEditor()}
+
+        <div className="flex flex-col gap-1">
+          <label className="flex items-center gap-1 min-h-9">
+            <input
+              type="checkbox"
+              checked={r.avoidVoice ?? false}
+              className="accent-orange-400"
+              onChange={(e) => patch({ avoidVoice: e.target.checked })}
+            />
+            Se taire quand la voix chante
+          </label>
+
+          <label className="flex items-center gap-1 min-h-9">
+            <input
+              type="checkbox"
+              checked={r.accent ?? false}
+              className="accent-orange-400"
+              onChange={(e) => patch({ accent: e.target.checked })}
+            />
+            Accents sur le premier temps
+          </label>
+
+          {isNoteKind && (
+            <label className="flex items-center gap-1 min-h-9">
+              <input
+                type="checkbox"
+                checked={r.snapKey ?? false}
+                className="accent-orange-400"
+                onChange={(e) => patch({ snapKey: e.target.checked })}
+              />
+              Caler sur la tonalité du synthé
+            </label>
+          )}
+        </div>
+      </div>
+    </details>
+  );
+}
 
 export function RhythmLinks({ engine }: { engine: DJEngine }) {
   const [routes, setRoutes] = useState<Record<Side, RhythmRoute[]>>({ A: [], B: [] });
@@ -143,6 +270,7 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
                     <input type="range" min={0.1} max={1} step={0.1} value={r.density ?? 1} aria-label="Densité" onChange={(e) => patch(side, r.id, { density: Number(e.target.value) })} className="w-16" />
                   </label>
                   <button type="button" aria-label="Supprimer la liaison" onClick={() => apply(side, routes[side].filter((x) => x.id !== r.id))} className="min-h-9 min-w-9 rounded-md text-neutral-400 hover:bg-neutral-800"><Icon name="x" size={14} /></button>
+                  <FineSettings r={r} patch={(p) => patch(side, r.id, p)} />
                 </div>
               ))}
               {!routes[side].length && <p className="text-[11px] text-neutral-500">Aucune liaison. Choisissez un raccourci ou composez la vôtre.</p>}

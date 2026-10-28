@@ -5,6 +5,9 @@ import type { DjKnobs } from "./DjSynth";
 import type { SfxId } from "./SoundFX";
 import { RACK_DEF, type RackModuleId } from "./Rack";
 import type { StemNotes } from "../stemNotes";
+import { voiceStateAt } from "../djForce";
+import { SCALES } from "./theory";
+import { jitterMs, nextGridTime, patternAllows, quantizeTime, snapToScale } from "./rhythmMath";
 
 // The detected rhythm of a song (drum attacks, bass notes, synth notes) as a source of events. They are never
 // played themselves: each one is sent, a little ahead of time, to the modules the user connected to it.
@@ -19,6 +22,13 @@ export interface RhythmRoute {
   grid?: number; // snap each event to the beat grid: 1 = beat, 2 = eighth, 4 = sixteenth (off when absent)
   transpose?: number; // semitones added to the notes (synth, sampler, sequencer targets)
   gate?: number; // note length factor (1 = as detected)
+  swing?: number; // 0..0.6: the odd lines of the grid come late by swing x a step
+  humanize?: number; // ms of steady pseudo-random shift
+  nudge?: number; // ms, fixed shift
+  pattern?: string; // 'x' and '.' per grid step: only the 'x' steps play (needs a grid)
+  avoidVoice?: boolean; // silent while the voice sings
+  snapKey?: boolean; // note targets: the note goes to the nearest note of the DJ synth key
+  accent?: boolean; // louder on the first beat of a bar, softer elsewhere
   density?: number; // 0..1: share of the events kept (steady: the same events are always dropped)
   on: boolean;
 }
@@ -123,6 +133,8 @@ export class RhythmBus {
         for (const r of live) {
           if (r.source !== e.source) continue;
           if (r.density !== undefined && r.density < 1 && (e.t * 7.31) % 1 > r.density) continue;
+          if (r.avoidVoice && voiceStateAt(this.deck.stemMap, e.t) === "sung") continue;
+          if (r.grid && r.pattern && this.deck.bpm > 0 && !patternAllows(r.pattern, e.t, this.deck.beatGridOffset, 60 / this.deck.bpm / r.grid)) continue;
           this.fire(r, e, this.snap(r, e, at, rate), (e.dur * (r.gate ?? 1)) / rate);
         }
       }
@@ -137,26 +149,45 @@ export class RhythmBus {
 
   private snap(r: RhythmRoute, e: Ev, at: number, rate: number): number {
     const d = this.deck;
-    if (!r.grid || !d.bpm) return at;
-    const step = 60 / d.bpm / r.grid;
-    const k = (e.t - d.beatGridOffset) / step;
-    let a = at + ((Math.round(k) * step + d.beatGridOffset) - e.t) / rate;
-    if (a < this.engine.ctx.currentTime) a = at + ((Math.ceil(k) * step + d.beatGridOffset) - e.t) / rate;
-    return a;
+    const now = this.engine.ctx.currentTime;
+    let a = at;
+    if (r.grid && d.bpm) {
+      const step = 60 / d.bpm / r.grid;
+      const sw = r.grid >= 2 ? r.swing ?? 0 : 0;
+      a = at + (quantizeTime(e.t, d.beatGridOffset, step, sw) - e.t) / rate;
+      if (a < now) a = at + (nextGridTime(e.t, d.beatGridOffset, step, sw) - e.t) / rate;
+    }
+    const ms = (r.nudge ?? 0) + (r.humanize ? jitterMs(e.t, r.humanize) : 0);
+    return Math.max(now, a + Math.max(-60, Math.min(60 + 30, ms)) / 1000);
+  }
+
+  // the note a target plays: the song's note (or the bass root for a drum hit), moved with the deck's key, transposed, then put in key if asked
+  private noteFor(r: RhythmRoute, e: Ev): number {
+    const d = this.deck;
+    const shift = d.keyLock ? d.keyShift : 12 * Math.log2(d.playRate);
+    let m = Math.round((e.midi ?? this.bassMidi + 12) + shift + (r.transpose ?? 0));
+    if (r.snapKey) {
+      const js = this.engine.djSynth;
+      m = snapToScale(m, js.root, SCALES.find((x) => x.id === js.scale)?.steps ?? []);
+    }
+    return m;
   }
 
   private fire(r: RhythmRoute, e: Ev, at: number, dur: number) {
-    const vel = Math.min(1, e.vel * r.amount * 1.4);
+    let acc = 1;
+    if (r.accent && this.deck.bpm > 0) {
+      const spb = 60 / this.deck.bpm;
+      acc = Math.round((e.t - this.deck.beatGridOffset) / spb) % 4 === 0 ? 1.3 : 0.75;
+    }
+    const vel = Math.min(1, e.vel * r.amount * 1.4 * acc);
     if (vel < 0.05) return;
     const eng = this.engine;
     if (r.kind === "synth") {
       // the notes of the song keep their pitch; a drum hit plays the root of the moment, an octave up, so it stays in key
-      const shift = this.deck.keyLock ? this.deck.keyShift : 12 * Math.log2(this.deck.playRate);
-      const midi = (e.midi ?? this.bassMidi + 12) + shift + (r.transpose ?? 0);
+      const midi = this.noteFor(r, e);
       eng.djSynth.noteOn(midi, vel, at, Math.max(0.06, dur));
     } else if (r.kind === "synth2" || r.kind === "sampler" || r.kind === "seqrec") {
-      const shift = this.deck.keyLock ? this.deck.keyShift : 12 * Math.log2(this.deck.playRate);
-      const midi = Math.round((e.midi ?? this.bassMidi + 12) + shift + (r.transpose ?? 0));
+      const midi = this.noteFor(r, e);
       const wait = Math.max(0, (at - eng.ctx.currentTime) * 1000);
       if (r.kind === "synth2") {
         eng.synth.noteOn(midi, vel, at); // starts on the audio clock; only the release rides on a timer
@@ -187,8 +218,7 @@ export class RhythmBus {
       setTimeout(() => { base = eng.djSynth.knobs[k]; eng.djSynth.setKnob(k, Math.min(1, base + r.amount * e.vel * 0.6)); }, Math.max(0, (at - eng.ctx.currentTime) * 1000));
       setTimeout(() => { if (this.pulses.get(key) === gen) eng.djSynth.setKnob(k, base); }, Math.max(0, (at - eng.ctx.currentTime + PULSE_SEC * 2) * 1000));
     } else if (r.kind === "plugin" && r.arg) {
-      const shift = this.deck.keyLock ? this.deck.keyShift : 12 * Math.log2(this.deck.playRate);
-      const midi = Math.round((e.midi ?? this.bassMidi + 12) + shift + (r.transpose ?? 0));
+      const midi = this.noteFor(r, e);
       setTimeout(() => eng.plugins.get(r.arg!)?.play(midi, vel, Math.max(0.08, dur)), Math.max(0, (at - eng.ctx.currentTime) * 1000));
     } else if (r.kind === "keypad" && r.arg) {
       const i = Number(r.arg);
