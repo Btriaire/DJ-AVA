@@ -8,7 +8,7 @@ import type { StemNotes } from "../stemNotes";
 import { voiceStateAt } from "../djForce";
 import { SCALES } from "./theory";
 import { applyAny, getModulePreset, snapshotAny, type ModulePreset, type PresetModuleId } from "../modulePresets";
-import { jitterMs, nextGridTime, patternAllows, quantizeTime, snapToScale } from "./rhythmMath";
+import { curveVel, jitterMs, measureSwing, nextGridTime, patternAllows, quantizeTime, snapToScale, type VelCurve } from "./rhythmMath";
 
 // The detected rhythm of a song (drum attacks, bass notes, synth notes) as a source of events. They are never
 // played themselves: each one is sent, a little ahead of time, to the modules the user connected to it.
@@ -33,6 +33,7 @@ export interface RhythmRoute {
   snapKey?: boolean; // note targets: the note goes to the nearest note of the DJ synth key
   accent?: boolean; // louder on the first beat of a bar, softer elsewhere
   alt?: string; // rackpreset: name of a second preset of the same module; the hits alternate between arg's preset and this one
+  curve?: VelCurve; // soft: weak hits count more, hard: only strong hits count
   prob?: number; // 0..1: chance that each hit plays (default 1)
   morph?: number; // rackpreset: beats the module takes to glide to the preset (absent = a quick 80 ms change)
   hold?: boolean; // rackpreset: the preset stays until the link is turned off (otherwise it goes back after `len` beats)
@@ -110,6 +111,13 @@ export class RhythmBus {
     this.until = 0;
   }
 
+  // the swing of the song, from its hi-hat (or any drum) hits against the beat grid
+  measuredSwing(): number | undefined {
+    const hat = this.events.filter((e) => e.source === "hat").map((e) => e.t);
+    const times = hat.length >= 8 ? hat : this.events.filter((e) => e.source === "drums").map((e) => e.t);
+    return measureSwing(times, this.deck.bpm, this.deck.beatGridOffset);
+  }
+
   enabled = true; // master switch for all the links of this deck
   get ready(): boolean { return this.events.length > 0; }
   // the events no longer match the deck: another track, notes that arrived, a tempo that was found
@@ -160,7 +168,7 @@ export class RhythmBus {
           if (r.avoidVoice && voiceStateAt(this.deck.stemMap, e.t) === "sung") continue;
           if (r.onlyVoice && voiceStateAt(this.deck.stemMap, e.t) === "gap") continue;
           if (r.grid && r.pattern && this.deck.bpm > 0 && !patternAllows(r.pattern, e.t, this.deck.beatGridOffset, 60 / this.deck.bpm / r.grid)) continue;
-          this.fire(r, e, this.snap(r, e, at, rate), (e.dur * (r.gate ?? 1)) / rate);
+          this.fire(r, r.curve ? { ...e, vel: curveVel(e.vel, r.curve) } : e, this.snap(r, e, at, rate), (e.dur * (r.gate ?? 1)) / rate);
         }
       }
       tAudio += (pEnd - p) / rate;

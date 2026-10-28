@@ -79,6 +79,31 @@ export function snapToScale(midi: number, root: number, steps: readonly number[]
 }
 
 /** Self-test for all functions: throws on the first failing case. */
+export type VelCurve = "soft" | "hard";
+
+// soft: weak hits count more, hard: only the strong ones do
+export function curveVel(v: number, c?: VelCurve): number {
+  if (c === "soft") return Math.min(1, Math.max(0, v ** 0.6));
+  if (c === "hard") return Math.min(1, Math.max(0, v ** 1.8));
+  return v;
+}
+
+// the swing of a song: how late its off-beat hits (the odd eighth lines) sit, as a share of an eighth (what quantizeTime calls swing)
+export function measureSwing(times: number[], bpm: number, offset: number): number | undefined {
+  if (!(bpm > 0)) return undefined;
+  const step = 60 / bpm / 2;
+  const late: number[] = [];
+  for (const t of times) {
+    const s = (t - offset) / step;
+    const k = Math.round(s);
+    const d = s - k;
+    if (Math.abs(k) % 2 === 1 && d > -0.2) late.push(d); // a hit far ahead of the line is not swing
+  }
+  if (late.length < 8) return undefined;
+  const avg = late.reduce((a, b) => a + b, 0) / late.length;
+  return Math.min(0.6, Math.max(0, Math.round(avg * 20) / 20));
+}
+
 export function selfTest(): void {
     const ok = (c: boolean, m: string) => { if (!c) throw new Error(m); };
     ok(quantizeTime(1.2, 0, 1) === 1, "quantizeTime");
@@ -93,4 +118,9 @@ export function selfTest(): void {
     ok(snapToScale(61, 0, [0, 2, 4, 5, 7, 9, 11]) === 60, "snapToScale C major tie goes down");
     ok(snapToScale(66, 0, [0, 2, 4, 5, 7, 9, 11]) === 65, "snapToScale F");
     ok(snapToScale(70, 2, [0, 2, 3, 5, 7, 8, 10]) === 70, "snapToScale keeps in-scale notes");
+    ok(curveVel(0.5, "soft") > 0.5 && curveVel(0.5, "hard") < 0.5 && curveVel(0.5) === 0.5, "curveVel");
+    const odd = Array.from({ length: 16 }, (_, i) => 2 * i + 1);
+    ok(measureSwing(odd.map((k) => k * 0.25), 120, 0) === 0, "measureSwing straight");
+    ok(measureSwing(odd.map((k) => (k + 0.3) * 0.25), 120, 0) === 0.3, "measureSwing 0.3");
+    ok(measureSwing([0, 0.5, 1], 120, 0) === undefined, "measureSwing needs hits");
 }

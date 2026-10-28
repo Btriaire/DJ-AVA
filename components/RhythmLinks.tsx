@@ -5,6 +5,7 @@ import type { Deck } from "@/lib/audio/Deck";
 import { DRUM_VOICES } from "@/lib/audio/DrumMachine";
 import { RACK_MODULES } from "@/lib/audio/Rack";
 import { deleteScene, getScene, listScenes, saveScene } from "@/lib/rhythmScenes";
+import type { VelCurve } from "@/lib/audio/rhythmMath";
 import { GLOBAL_MODULES, listModulePresets } from "@/lib/modulePresets";
 import { RhythmBus, type RhythmRoute, type RhythmSource, type RouteKind } from "@/lib/audio/rhythmBus";
 import { SFX_LIST } from "@/lib/audio/SoundFX";
@@ -126,7 +127,7 @@ export function RhythmRunner({ engine }: { engine: DJEngine }) {
   return null;
 }
 
-export function FineSettings({ r, patch }: { r: RhythmRoute; patch: (p: Partial<RhythmRoute>) => void }) {
+export function FineSettings({ r, patch, measure }: { r: RhythmRoute; patch: (p: Partial<RhythmRoute>) => void; measure?: () => number | undefined }) {
   const isNoteKind = ["synth", "synth2", "sampler", "seqrec", "plugin", "voices"].includes(r.kind);
 
   const steps = Math.min(16, (r.grid ?? 1) * 4);
@@ -168,6 +169,14 @@ export function FineSettings({ r, patch }: { r: RhythmRoute; patch: (p: Partial<
       <summary className="min-h-9 text-xs font-bold cursor-pointer">Réglages fins</summary>
       <div className="flex flex-wrap gap-2 text-[11px] text-neutral-400">
         <div className="flex flex-col gap-1">
+          <label>Courbe de vélocité</label>
+          <select aria-label="Courbe de vélocité" className="min-h-8 rounded-md bg-neutral-800 px-2" value={r.curve ?? ""} onChange={(e) => patch({ curve: (e.target.value || undefined) as VelCurve | undefined })}>
+            <option value="">Linéaire</option>
+            <option value="soft">Douce (coups faibles aussi)</option>
+            <option value="hard">Dure (coups forts seulement)</option>
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
           <label>Probabilité</label>
           <input type="range" min={0.1} max={1} step={0.05} value={r.prob ?? 1} aria-label="Probabilité" className="w-24" onChange={(e) => patch({ prob: parseFloat(e.target.value) })} />
           <span>{Math.round((r.prob ?? 1) * 100)} %</span>
@@ -208,6 +217,11 @@ export function FineSettings({ r, patch }: { r: RhythmRoute; patch: (p: Partial<
               className="w-24"
               onChange={(e) => patch({ swing: parseFloat(e.target.value) })}
             />
+            {measure && (
+              <button type="button" className="min-h-8 rounded-md bg-neutral-800 px-2" onClick={() => { const v = measure(); if (v !== undefined) patch({ swing: v }); }}>
+                Mesurer sur le morceau
+              </button>
+            )}
           </div>
         )}
 
@@ -436,7 +450,7 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
                       <input type="range" min={0.1} max={1} step={0.1} value={r.density ?? 1} aria-label="Densité" onChange={(e) => patch(side, r.id, { density: Number(e.target.value) })} className="w-20 accent-orange-400" />
                     </label>
                   </div>
-                  <FineSettings r={r} patch={(p) => patch(side, r.id, p)} />
+                  <FineSettings r={r} patch={(p) => patch(side, r.id, p)} measure={() => busFor(engine, d).measuredSwing()} />
                 </RouteCard>
               ))}
               </div>
