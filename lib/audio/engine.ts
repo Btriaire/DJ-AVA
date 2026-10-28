@@ -90,7 +90,20 @@ export class DJEngine {
     this.meterAnalyser.fftSize = 1024;
     this.meterAnalyser.smoothingTimeConstant = 0.75;
     this.meterBuf = new Uint8Array(this.meterAnalyser.frequencyBinCount);
-    this.master.connect(this.masterFx.input);
+    // safety limiter between the mix and the master FX (the link effects can go well past full scale, and nothing else limits the mix).
+    // Falken's idea. The compressor node adds an automatic make-up gain (about +1.2 dB at these settings): the trim gives it back,
+    // so the level of a quiet mix does not change
+    const limiter = this.ctx.createDynamicsCompressor();
+    limiter.threshold.value = -2;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.1;
+    const trim = this.ctx.createGain();
+    trim.gain.value = 0.88;
+    this.master.connect(limiter);
+    limiter.connect(trim);
+    trim.connect(this.masterFx.input);
     this.masterFx.output.connect(this.meterAnalyser);
     this.meterAnalyser.connect(this.ctx.destination);
     this.bgStreamDest = this.ctx.createMediaStreamDestination();
