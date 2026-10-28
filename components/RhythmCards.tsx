@@ -197,9 +197,12 @@ export function RouteCard(props: {
   onAmount: (v: number) => void;
   onLevel: (v: number) => void;
   onRemove: () => void;
+  onDuplicate?: () => void;
+  onCopyOther?: () => void;
+  otherLabel?: string;
   children?: ReactNode;
 }) {
-  const { r, sourceLabel, targetLabel, readFire, onToggle, onAmount, onLevel, onRemove, children } = props;
+  const { r, sourceLabel, targetLabel, readFire, onToggle, onAmount, onLevel, onRemove, onDuplicate, onCopyOther, otherLabel, children } = props;
   const color = SOURCE_STYLE[r.source].glow;
   const screw = <span className="h-1.5 w-1.5 rounded-full bg-neutral-600 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.6)]" />;
 
@@ -236,19 +239,31 @@ export function RouteCard(props: {
       </div>
 
       {/* ON / MUTE with its LED, and delete */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-1.5">
         <button
           type="button" role="switch" aria-checked={r.on}
           aria-label={r.on ? "Couper la liaison" : "Activer la liaison"}
           onClick={onToggle}
-          className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-md border border-neutral-600 bg-neutral-800 text-[11px] font-bold tracking-wider text-neutral-200 hover:bg-neutral-700"
+          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-md border border-neutral-600 bg-neutral-800 text-[11px] font-bold tracking-wider text-neutral-200 hover:bg-neutral-700"
         >
           <span className="h-2.5 w-2.5 rounded-full" style={{ background: r.on ? "oklch(78% 0.22 145)" : "oklch(55% 0.2 25)", boxShadow: r.on ? "0 0 8px oklch(78% 0.22 145)" : "none" }} />
           {r.on ? "ON" : "MUTE"}
         </button>
-        <button type="button" onClick={onRemove} aria-label="Supprimer la liaison" className="flex min-h-11 w-11 items-center justify-center rounded-md border border-neutral-700 text-neutral-400 hover:text-neutral-100">
+        <div className="flex gap-1.5">
+          {onDuplicate && (
+            <button type="button" onClick={onDuplicate} aria-label="Dupliquer la liaison" title="Dupliquer la liaison" className="flex min-h-11 flex-1 items-center justify-center rounded-md border border-neutral-700 text-neutral-400 hover:text-neutral-100">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></svg>
+            </button>
+          )}
+          {onCopyOther && (
+            <button type="button" onClick={onCopyOther} aria-label={`Copier vers le deck ${otherLabel}`} title={`Copier vers le deck ${otherLabel}`} className="flex min-h-11 flex-1 items-center justify-center rounded-md border border-neutral-700 text-neutral-400 hover:text-neutral-100 text-[11px] font-bold">
+              →{otherLabel}
+            </button>
+          )}
+          <button type="button" onClick={onRemove} aria-label="Supprimer la liaison" className="flex min-h-11 flex-1 items-center justify-center rounded-md border border-neutral-700 text-neutral-400 hover:text-neutral-100">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 18L18 6M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
         </button>
+        </div>
       </div>
 
       {children && (

@@ -32,6 +32,8 @@ export interface RhythmRoute {
   snapKey?: boolean; // note targets: the note goes to the nearest note of the DJ synth key
   accent?: boolean; // louder on the first beat of a bar, softer elsewhere
   alt?: string; // rackpreset: name of a second preset of the same module; the hits alternate between arg's preset and this one
+  prob?: number; // 0..1: chance that each hit plays (default 1)
+  morph?: number; // rackpreset: beats the module takes to glide to the preset (absent = a quick 80 ms change)
   hold?: boolean; // rackpreset: the preset stays until the link is turned off (otherwise it goes back after `len` beats)
   len?: number; // rackpreset: beats before the module goes back (default 1)
   density?: number; // 0..1: share of the events kept (steady: the same events are always dropped)
@@ -153,6 +155,7 @@ export class RhythmBus {
         for (const r of live) {
           if (r.source !== e.source) continue;
           if (r.density !== undefined && r.density < 1 && (e.t * 7.31) % 1 > r.density) continue;
+          if (r.prob !== undefined && r.prob < 1 && Math.random() > r.prob) continue;
           if (r.avoidVoice && voiceStateAt(this.deck.stemMap, e.t) === "sung") continue;
           if (r.grid && r.pattern && this.deck.bpm > 0 && !patternAllows(r.pattern, e.t, this.deck.beatGridOffset, 60 / this.deck.bpm / r.grid)) continue;
           this.fire(r, e, this.snap(r, e, at, rate), (e.dur * (r.gate ?? 1)) / rate);
@@ -216,8 +219,8 @@ export class RhythmBus {
       if (!h) { h = { id, base: snapshotAny(this.engine, this.deck.rack, id), route: r.id, gen: 0 }; this.held.set(key, h); }
       h.route = r.id;
       const gen = ++h.gen;
-      applyAny(this.engine, this.deck.rack, id, p, 80);
-      if (!r.hold) setTimeout(() => { if (this.held.get(key)?.gen === gen) this.release(key); }, (r.len ?? 1) * beat * 1000);
+      applyAny(this.engine, this.deck.rack, id, p, Math.max(80, (r.morph ?? 0) * beat * 1000));
+      if (!r.hold) setTimeout(() => { if (this.held.get(key)?.gen === gen) this.release(key); }, ((r.len ?? 1) + (r.morph ?? 0)) * beat * 1000);
     }, Math.max(0, (at - this.engine.ctx.currentTime) * 1000));
   }
   // a parameter pulse: jumps to `peak` at the hit, then eases back to where it was (the value before the first pulse

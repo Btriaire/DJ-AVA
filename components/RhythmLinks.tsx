@@ -166,6 +166,11 @@ export function FineSettings({ r, patch }: { r: RhythmRoute; patch: (p: Partial<
     <details className="w-full text-neutral-200">
       <summary className="min-h-9 text-xs font-bold cursor-pointer">Réglages fins</summary>
       <div className="flex flex-wrap gap-2 text-[11px] text-neutral-400">
+        <div className="flex flex-col gap-1">
+          <label>Probabilité</label>
+          <input type="range" min={0.1} max={1} step={0.05} value={r.prob ?? 1} aria-label="Probabilité" className="w-24" onChange={(e) => patch({ prob: parseFloat(e.target.value) })} />
+          <span>{Math.round((r.prob ?? 1) * 100)} %</span>
+        </div>
         {r.kind === "rackpreset" && (
           <div className="flex flex-col gap-1">
             <label>Retour du module</label>
@@ -182,6 +187,11 @@ export function FineSettings({ r, patch }: { r: RhythmRoute; patch: (p: Partial<
             <select aria-label="Alterner avec" className="min-h-8 rounded-md bg-neutral-800 px-2" value={r.alt ?? ""} onChange={(e) => patch({ alt: e.target.value || undefined })}>
               <option value="">Pas d&apos;alternance</option>
               {listModulePresets((r.arg ?? "").split(":")[0]).map((preset) => <option key={preset} value={preset}>{preset}</option>)}
+            </select>
+            <label>Glissement (morphing)</label>
+            <select aria-label="Glissement" className="min-h-8 rounded-md bg-neutral-800 px-2" value={r.morph ?? 0} onChange={(e) => patch({ morph: Number(e.target.value) || undefined })}>
+              <option value={0}>Aucun</option>
+              {[1, 2, 4, 8, 16].map((b) => <option key={b} value={b}>{b} temps</option>)}
             </select>
           </div>
         )}
@@ -368,6 +378,9 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
                   onAmount={(v) => patch(side, r.id, { amount: v })}
                   onLevel={(v) => patch(side, r.id, { level: v })}
                   onRemove={() => apply(side, routes[side].filter((x) => x.id !== r.id))}
+                  onDuplicate={() => apply(side, routes[side].flatMap((x) => (x.id === r.id ? [x, { ...r, id: newId() }] : [x])))}
+                  onCopyOther={() => apply(side === "A" ? "B" : "A", [...routes[side === "A" ? "B" : "A"], { ...r, id: newId() }])}
+                  otherLabel={side === "A" ? "B" : "A"}
                 >
                   <div className="flex flex-wrap items-center gap-2 text-xs">
                     <select aria-label="Grille" value={r.grid ?? 0} onChange={(e) => patch(side, r.id, { grid: Number(e.target.value) || undefined })} className={sel}>
