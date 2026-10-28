@@ -4,6 +4,7 @@ import type { DrumVoice } from "./DrumMachine";
 import type { DjKnobs } from "./DjSynth";
 import type { SfxId } from "./SoundFX";
 import { RACK_DEF, type RackModuleId } from "./Rack";
+import type { FxName } from "./FXRack";
 import type { StemNotes } from "../stemNotes";
 import { voiceStateAt } from "../djForce";
 import { SCALES } from "./theory";
@@ -12,8 +13,8 @@ import { curveVel, jitterMs, measureSwing, nextGridTime, patternAllows, quantize
 
 // The detected rhythm of a song (drum attacks, bass notes, synth notes) as a source of events. They are never
 // played themselves: each one is sent, a little ahead of time, to the modules the user connected to it.
-export type RhythmSource = "drums" | "bass" | "synth" | "beat" | "bar" | "voice" | "kick" | "snare" | "hat";
-export type RouteKind = "synth" | "drum" | "rack" | "synth2" | "sampler" | "pad" | "seqrec" | "filter" | "duck" | "sfx" | "djknob" | "keypad" | "keyfx" | "plugin" | "voices" | "rackpreset";
+export type RhythmSource = "drums" | "bass" | "synth" | "beat" | "bar" | "voice" | "kick" | "snare" | "hat" | "phrase8" | "phrase16";
+export type RouteKind = "synth" | "drum" | "rack" | "synth2" | "sampler" | "pad" | "seqrec" | "filter" | "duck" | "sfx" | "djknob" | "keypad" | "keyfx" | "plugin" | "voices" | "rackpreset" | "stemduck" | "stemfilter" | "stemsend" | "stemfx";
 export interface RhythmRoute {
   id: string;
   source: RhythmSource;
@@ -36,6 +37,7 @@ export interface RhythmRoute {
   curve?: VelCurve; // soft: weak hits count more, hard: only strong hits count
   prob?: number; // 0..1: chance that each hit plays (default 1)
   morph?: number; // rackpreset: beats the module takes to glide to the preset (absent = a quick 80 ms change)
+  depth?: number; // stemduck: 0..1 how deep the stem dips (default 0.7)
   hold?: boolean; // rackpreset: the preset stays until the link is turned off (otherwise it goes back after `len` beats)
   len?: number; // rackpreset: beats before the module goes back (default 1)
   density?: number; // 0..1: share of the events kept (steady: the same events are always dropped)
@@ -65,6 +67,9 @@ export function buildEvents(n: StemNotes | null | undefined, d?: Deck): Ev[] {
     for (let k = 0, t = off; t < d.duration; k++, t = off + k * spb) {
       out.push({ t, source: "beat", vel: 0.7, dur: spb * 0.5 });
       if (k % 4 === 0) out.push({ t, source: "bar", vel: 1, dur: spb * 2 });
+      // phrases: every 8 and every 16 bars from the first bar of the grid
+      if (k % 32 === 0) out.push({ t, source: "phrase8", vel: 1, dur: spb * 4 });
+      if (k % 64 === 0) out.push({ t, source: "phrase16", vel: 1, dur: spb * 4 });
     }
   }
   const v = d?.stemMap?.voice;
@@ -287,6 +292,31 @@ export class RhythmBus {
       const beat = this.deck.bpm > 0 ? 60 / this.deck.bpm : 0.5;
       // a real pump: deep, and as long as half a beat so the recovery is heard
       d.duckAt(at, Math.min(0.95, 0.3 + amt * e.vel * 0.8), Math.max(0.15, Math.min(0.5, beat * 0.55)));
+    } else if (r.kind.startsWith("stem") && r.arg) {
+      // the links that transform the song: they act on one of its stems (MaRuche/Falken)
+      const d = this.deck;
+      const [name, opt] = r.arg.split(":");
+      const i = d.stemIndex(name);
+      if (i < 0 || !d.stemsActive) return; // the deck plays the full mix: no stem to act on
+      const beat = d.bpm > 0 ? 60 / d.bpm : 0.5;
+      if (r.kind === "stemduck") {
+        d.duckStemAt(i, at, Math.min(0.97, (r.depth ?? 0.7) * Math.min(1.2, 0.5 + amt * e.vel)), beat * (r.len ?? 0.55));
+      } else if (r.kind === "stemfilter") {
+        const mag = Math.min(1, 0.35 + amt * e.vel * 0.9);
+        this.pulse(`sf${i}${r.id}`, () => d.stemFilterX[i] ?? 0, (v) => d.setStemFilter(i, v), () => (opt === "lp" ? -mag : mag), at, this.beatRel(0.9));
+      } else if (r.kind === "stemsend") {
+        const rev = opt !== "delay";
+        this.pulse(`ss${i}${r.id}`, () => (rev ? d.stemReverbSend[i] : d.stemDelaySend[i]) ?? 0, (v) => (rev ? d.setStemReverbSend(i, v) : d.setStemDelaySend(i, v)),
+          (base) => Math.min(1, base + 0.4 + amt * e.vel * 0.6), at, Math.max(0.2, beat * (r.len ?? 1)));
+      } else if (r.kind === "stemfx" && opt) {
+        const rack = d.stemFxRack(i);
+        if (!rack) return;
+        const wait = Math.max(0, (at - eng.ctx.currentTime) * 1000);
+        setTimeout(() => {
+          rack.setWet(opt as FxName, 0.85);
+          setTimeout(() => rack.setWet(opt as FxName, 0), (r.len ?? 1) * beat * 1000); // len is in beats
+        }, wait);
+      }
     } else if (r.kind === "filter" && r.arg) {
       const [who, kind] = r.arg.split(":");
       const d = who === "other" ? this.other() : this.deck;

@@ -1084,6 +1084,22 @@ export class Deck {
     g.linearRampToValueAtTime(this.duckBase, when + sec);
   }
 
+  // index of a stem by its name ("drums", "bass", "other", "vocals"), -1 when the deck has no such stem
+  stemIndex(name: string): number {
+    return this.stemNames.indexOf(name);
+  }
+
+  // one stem dips and comes back (a real sidechain on that stem only): 3 ms attack, smooth exponential return.
+  // stemOut[i] is never touched by the faders, so it can be automated freely (MaRuche/Falken)
+  duckStemAt(i: number, when: number, depth: number, sec: number): void {
+    if (i < 0 || i >= this.stemOut.length) return;
+    const g = this.stemOut[i].gain;
+    g.cancelScheduledValues(when);
+    g.setValueAtTime(g.value, when);
+    g.linearRampToValueAtTime(1 - Math.min(0.99, depth), when + 0.003);
+    g.setTargetAtTime(1, when + 0.003, Math.max(0.01, sec / 3));
+  }
+
   get volumeValue(): number {
     return this.volume.gain.value;
   }

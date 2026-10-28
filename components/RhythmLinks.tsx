@@ -9,6 +9,7 @@ import type { VelCurve } from "@/lib/audio/rhythmMath";
 import { GLOBAL_MODULES, listModulePresets } from "@/lib/modulePresets";
 import { RhythmBus, type RhythmRoute, type RhythmSource, type RouteKind } from "@/lib/audio/rhythmBus";
 import { SFX_LIST } from "@/lib/audio/SoundFX";
+import { FX_META, type FxName } from "@/lib/audio/fxTypes";
 import { PresetPicker, RouteCard, SOURCE_STYLE } from "./RhythmCards";
 import { HSlider, Segmented, ToggleSwitch } from "./RhythmSlider";
 import { PatchCable, SourcePads, TargetTiles } from "./RhythmPatch";
@@ -17,9 +18,10 @@ import { PatchCable, SourcePads, TargetTiles } from "./RhythmPatch";
 // the modules: the DJ synth in harmony, a drum voice, a pulse on a rack parameter.
 type Side = "A" | "B";
 const KEY = "djsynth.rhythm.v1";
-const SOURCES: { id: RhythmSource; label: string }[] = [{ id: "drums", label: "Batterie" }, { id: "kick", label: "Grosse caisse" }, { id: "snare", label: "Caisse claire" }, { id: "hat", label: "Charleston" }, { id: "bass", label: "Basse" }, { id: "synth", label: "Autre (synthé, piano…)" }, { id: "voice", label: "Voix chantée" }, { id: "beat", label: "Chaque temps" }, { id: "bar", label: "Chaque mesure" }];
-const KINDS: { id: RouteKind; label: string }[] = [{ id: "synth", label: "Synthé DJ (en harmonie)" }, { id: "drum", label: "Boîte à rythmes" }, { id: "rack", label: "Pulse sur un effet du rack" }, { id: "rackpreset", label: "Préréglage d'un module du rack" }, { id: "synth2", label: "Synthé (module Global, 1er)" }, { id: "sampler", label: "Super-Sampler (en harmonie)" }, { id: "pad", label: "Pad du sampler" }, { id: "seqrec", label: "Séquenceur synthé (écriture)" }, { id: "duck", label: "Pompe du volume (sidechain)" }, { id: "filter", label: "Filtre d'un deck (pulse)" }, { id: "sfx", label: "Effet sonore (riser, impact…)" }, { id: "djknob", label: "Bouton du synthé DJ (pulse)" }, { id: "plugin", label: "DX7 (module ouvert)" }, { id: "voices", label: "Nappes : chœur, cordes, synthé planant" }, { id: "keypad", label: "DJ Keys : touche" }, { id: "keyfx", label: "DJ Keys : effet (impact, frein…)" }];
+const SOURCES: { id: RhythmSource; label: string }[] = [{ id: "drums", label: "Batterie" }, { id: "kick", label: "Grosse caisse" }, { id: "snare", label: "Caisse claire" }, { id: "hat", label: "Charleston" }, { id: "bass", label: "Basse" }, { id: "synth", label: "Autre (synthé, piano…)" }, { id: "voice", label: "Voix chantée" }, { id: "beat", label: "Chaque temps" }, { id: "bar", label: "Chaque mesure" }, { id: "phrase8", label: "Chaque phrase (8 mesures)" }, { id: "phrase16", label: "Toutes les 16 mesures" }];
+const KINDS: { id: RouteKind; label: string }[] = [{ id: "stemduck", label: "Pompe sur un stem du morceau" }, { id: "stemfilter", label: "Filtre d'un stem (pulse)" }, { id: "stemsend", label: "Jet de reverb ou d'écho sur un stem" }, { id: "stemfx", label: "Effet DJ sur un stem (reverse, roll…)" }, { id: "synth", label: "Synthé DJ (en harmonie)" }, { id: "drum", label: "Boîte à rythmes" }, { id: "rack", label: "Pulse sur un effet du rack" }, { id: "rackpreset", label: "Préréglage d'un module du rack" }, { id: "synth2", label: "Synthé (module Global, 1er)" }, { id: "sampler", label: "Super-Sampler (en harmonie)" }, { id: "pad", label: "Pad du sampler" }, { id: "seqrec", label: "Séquenceur synthé (écriture)" }, { id: "duck", label: "Pompe du volume (sidechain)" }, { id: "filter", label: "Filtre d'un deck (pulse)" }, { id: "sfx", label: "Effet sonore (riser, impact…)" }, { id: "djknob", label: "Bouton du synthé DJ (pulse)" }, { id: "plugin", label: "DX7 (module ouvert)" }, { id: "voices", label: "Nappes : chœur, cordes, synthé planant" }, { id: "keypad", label: "DJ Keys : touche" }, { id: "keyfx", label: "DJ Keys : effet (impact, frein…)" }];
 const TARGET_GROUPS: { title: string; kinds: RouteKind[] }[] = [
+  { title: "Le morceau : ses stems", kinds: ["stemduck", "stemfilter", "stemsend", "stemfx"] },
   { title: "Notes", kinds: ["synth", "synth2", "sampler", "plugin", "voices", "seqrec"] },
   { title: "Rythme", kinds: ["drum", "pad", "keypad", "keyfx", "sfx"] },
   { title: "Effets", kinds: ["rack", "rackpreset", "filter", "duck", "djknob"] },
@@ -58,11 +60,28 @@ const PRESETS: { label: string; route: Omit<RhythmRoute, "id" | "on"> }[] = [
   { label: "Batterie → Clap", route: { source: "drums", kind: "drum", arg: "clap", amount: 0.6 } },
 ];
 
+// the stems a link can act on (names of htdemucs), and the DJ effects of a stem that read well when fired on a hit
+export const STEMS = [{ id: "drums", label: "Batterie" }, { id: "bass", label: "Basse" }, { id: "other", label: "Autre" }, { id: "vocals", label: "Voix" }];
+const STEM_FX_PICK: FxName[] = ["reverse", "roll", "echo", "echoout", "brake", "gate", "dub", "flanger", "wash", "freeze", "halftime"];
+const stemLabel = (n?: string) => STEMS.find((x) => x.id === n)?.label ?? n ?? "";
+// the demo of a deck that is transformed, not layered: pumping bass, a lighter pump on the rest, a reverb throw on the
+// snare, a high-pass breathing on the off-beat hats, a reverse at each phrase
+const RECIPE_HOUSE: Omit<RhythmRoute, "id" | "on">[] = [
+  { source: "kick", kind: "stemduck", arg: "bass", amount: 0.8, depth: 0.75, len: 0.55 },
+  { source: "kick", kind: "stemduck", arg: "other", amount: 0.6, depth: 0.4, len: 0.5 },
+  { source: "snare", kind: "stemsend", arg: "vocals:reverb", amount: 0.7, len: 1 },
+  { source: "hat", kind: "stemfilter", arg: "other:hp", amount: 0.4, density: 0.5 },
+  { source: "phrase8", kind: "stemfx", arg: "other:reverse", amount: 0.8, len: 1 },
+];
 const NAPPES = [{ id: "choir", label: "Chœur" }, { id: "strings", label: "Cordes" }, { id: "dream", label: "Synthé planant" }];
 const KEYFX = [{ id: "impact", label: "Impact" }, { id: "brake", label: "Frein 1 temps" }, { id: "scratch", label: "Scratch" }, { id: "drop", label: "Drop" }];
 const KNOBS = [{ id: "cutoff", label: "Filtre" }, { id: "reso", label: "Résonance" }, { id: "drive", label: "Saturation" }, { id: "wobble", label: "Wobble" }, { id: "env", label: "Enveloppe" }];
 const targetLabel = (r: RhythmRoute) => {
   const k = KINDS.find((x) => x.id === r.kind)?.label ?? r.kind;
+  if (r.kind === "stemduck") return `Pompe · ${stemLabel(r.arg)}`;
+  if (r.kind === "stemfilter") { const [n, f] = (r.arg ?? "").split(":"); return `${f === "lp" ? "Passe-bas" : "Passe-haut"} · ${stemLabel(n)}`; }
+  if (r.kind === "stemsend") { const [n, f] = (r.arg ?? "").split(":"); return `${f === "delay" ? "Jet d'écho" : "Jet de reverb"} · ${stemLabel(n)}`; }
+  if (r.kind === "stemfx") { const [n, f] = (r.arg ?? "").split(":"); return `${FX_META.get(f as FxName)?.label ?? f} · ${stemLabel(n)}`; }
   if (r.kind === "voices") return NAPPES.find((x) => x.id === r.arg)?.label ?? "Chœur";
   if (r.kind === "plugin") return r.arg === "dx7" ? "DX7" : String(r.arg);
   if (r.kind === "keypad") return `DJ Keys touche ${Number(r.arg) + 1}`;
@@ -84,7 +103,7 @@ const PRESET_GROUPS = (() => {
     { title: "Batterie", sources: ["drums", "kick", "snare", "hat"] },
     { title: "Basse", sources: ["bass"] },
     { title: "Synthé et voix", sources: ["synth", "voice"] },
-    { title: "Temps et mesures", sources: ["beat", "bar"] },
+    { title: "Temps, mesures et phrases", sources: ["beat", "bar", "phrase8", "phrase16"] },
   ];
   return order.map((o) => ({ title: o.title, items: PRESETS.filter((p) => o.sources.includes(p.route.source)) })).filter((g) => g.items.length);
 })();
@@ -209,6 +228,19 @@ export function FineSettings({ r, patch, measure }: { r: RhythmRoute; patch: (p:
 
         {patternEditor}
 
+        {r.kind === "stemduck" && (
+          <div className={box}>
+            <span className={title}>Pompe du stem</span>
+            <HSlider label="Profondeur" min={0.1} max={1} step={0.05} value={r.depth ?? 0.7} reset={0.7} ticks={9} color={color} format={pct} onChange={(v) => patch({ depth: v })} />
+            <Segmented label="Retour (temps)" color={color} value={r.len ?? 0.55} options={[0.25, 0.55, 1, 2].map((b) => ({ value: b, label: b === 0.55 ? "1/2" : b === 0.25 ? "1/4" : String(b) }))} onChange={(v) => patch({ len: v })} />
+          </div>
+        )}
+        {(r.kind === "stemsend" || r.kind === "stemfx") && (
+          <div className={box}>
+            <span className={title}>{r.kind === "stemfx" ? "Durée de l'effet" : "Durée du jet"}</span>
+            <Segmented label="Temps" color={color} value={r.len ?? 1} options={[0.5, 1, 2, 4].map((b) => ({ value: b, label: String(b) }))} onChange={(v) => patch({ len: v })} />
+          </div>
+        )}
         {r.kind === "rackpreset" && (
           <div className={box}>
             <span className={title}>Préréglage du module</span>
@@ -280,7 +312,7 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
   const draftColor = SOURCE_STYLE[draft.source].glow;
   // what a target needs first when it is picked
   const defaultArg = (k: RouteKind): string | undefined =>
-    k === "drum" ? "kick" : k === "pad" ? "0" : k === "plugin" ? "dx7" : k === "voices" ? "choir" : k === "keypad" ? "0" : k === "keyfx" ? "impact" : k === "duck" ? "self"
+    k === "stemduck" ? "bass" : k === "stemfilter" ? "other:hp" : k === "stemsend" ? "vocals:reverb" : k === "stemfx" ? "other:reverse" : k === "drum" ? "kick" : k === "pad" ? "0" : k === "plugin" ? "dx7" : k === "voices" ? "choir" : k === "keypad" ? "0" : k === "keyfx" ? "impact" : k === "duck" ? "self"
     : k === "filter" ? "self:lp" : k === "sfx" ? "impact" : k === "djknob" ? "cutoff" : k === "rackpreset" ? presetArg("reverb") : k === "rack" ? "isolator:" + (rackParams("isolator")[0]?.key ?? "") : undefined;
 
   return (
@@ -303,6 +335,21 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
           groups={PRESET_GROUPS.map((g) => ({ title: g.title, items: g.items.map((p) => ({ label: p.label })) }))}
           onPick={(g, i, side) => add(side, PRESET_GROUPS[g].items[i].route)}
         />
+      </div>
+      <div className="mt-2 flex flex-col gap-2 rounded-lg border border-neutral-700 bg-black/30 p-2">
+        <span className="text-[10px] font-black uppercase tracking-[0.18em] text-neutral-500">Recette · le morceau transformé</span>
+        <p className="text-[11px] text-neutral-400">Pompe house : la grosse caisse fait respirer la basse et le reste, la caisse claire lance la reverb de la voix, le charleston fait respirer l&apos;aigu, un reverse à chaque phrase. Il faut les stems du deck.</p>
+        <div className="grid grid-cols-2 gap-2">
+          {(["A", "B"] as const).map((side) => (
+            <button
+              key={side} type="button"
+              onClick={() => apply(side, [...routes[side], ...RECIPE_HOUSE.map((r) => ({ ...r, id: newId(), on: true }))])}
+              className="min-h-11 rounded-md border border-neutral-600 bg-neutral-800 text-xs font-black uppercase tracking-wider text-neutral-100 hover:bg-neutral-700 focus-visible:ring-2 focus-visible:ring-white/60"
+            >
+              Pompe house → deck {side}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         {(["A", "B"] as const).map((side) => {
@@ -350,6 +397,9 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
                       {routes[side].every((x) => x.on) ? "Tout couper" : "Tout réactiver"}
                     </button>
                   </>
+                )}
+                {routes[side].some((x) => x.kind.startsWith("stem")) && !d.stemsActive && (
+                  <span className="truncate rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[11px] text-amber-200" title="Les liaisons sur stems n'agissent que quand le deck joue ses stems séparés">Activez les stems du deck</span>
                 )}
                 {n ? (
                   <span className="truncate text-neutral-400">{`${n.drums?.length ?? 0} attaques · ${n.bass?.length ?? 0} basses · ${n.other?.length ?? 0} autres`}</span>
@@ -429,6 +479,26 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
           <div className="flex flex-col gap-2 rounded-md border border-neutral-700 bg-black/40 p-2">
             <span className="text-[10px] font-black uppercase tracking-[0.18em] text-neutral-500">Réglage de la sortie</span>
             <div className="flex flex-wrap items-center gap-2">
+          {["stemduck", "stemfilter", "stemsend", "stemfx"].includes(draft.kind) && (
+            <select aria-label="Stem" className={lcdSel} value={(draft.arg ?? "").split(":")[0]} onChange={(e) => { const rest = (draft.arg ?? "").split(":")[1]; setDraft({ ...draft, arg: rest ? `${e.target.value}:${rest}` : e.target.value }); }}>
+              {STEMS.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+            </select>
+          )}
+          {draft.kind === "stemfilter" && (
+            <select aria-label="Filtre du stem" className={lcdSel} value={(draft.arg ?? "").split(":")[1]} onChange={(e) => setDraft({ ...draft, arg: `${(draft.arg ?? "").split(":")[0]}:${e.target.value}` })}>
+              <option value="hp">Passe-haut</option><option value="lp">Passe-bas</option>
+            </select>
+          )}
+          {draft.kind === "stemsend" && (
+            <select aria-label="Envoi" className={lcdSel} value={(draft.arg ?? "").split(":")[1]} onChange={(e) => setDraft({ ...draft, arg: `${(draft.arg ?? "").split(":")[0]}:${e.target.value}` })}>
+              <option value="reverb">Reverb</option><option value="delay">Écho</option>
+            </select>
+          )}
+          {draft.kind === "stemfx" && (
+            <select aria-label="Effet du stem" className={lcdSel} value={(draft.arg ?? "").split(":")[1]} onChange={(e) => setDraft({ ...draft, arg: `${(draft.arg ?? "").split(":")[0]}:${e.target.value}` })}>
+              {STEM_FX_PICK.map((f) => <option key={f} value={f}>{FX_META.get(f)?.label ?? f}</option>)}
+            </select>
+          )}
           {draft.kind === "drum" && (
             <select aria-label="Voix" className={lcdSel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
               {DRUM_VOICES.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}

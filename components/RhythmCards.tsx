@@ -14,6 +14,8 @@ export const SOURCE_STYLE: Record<RhythmSource, { glow: string }> = {
   voice: { glow: "oklch(84% 0.16 95)" },
   beat: { glow: "oklch(76% 0.17 150)" },
   bar: { glow: "oklch(76% 0.17 150)" },
+  phrase8: { glow: "oklch(80% 0.15 110)" },
+  phrase16: { glow: "oklch(80% 0.15 110)" },
 };
 
 export function ActivityDot({ read, on }: { read: () => number | undefined; on: boolean }) {
@@ -171,6 +173,7 @@ export const DEVICE: Record<RouteKind, { name: string; icon: "keys" | "pads" | "
   sampler: { name: "Super-Sampler", icon: "pads" }, pad: { name: "Sampler", icon: "pads" }, drum: { name: "Boîte à rythmes", icon: "pads" },
   keypad: { name: "DJ Keys", icon: "pads" }, keyfx: { name: "DJ Keys", icon: "pads" },
   seqrec: { name: "Séquenceur", icon: "steps" }, rack: { name: "Rack", icon: "knob" }, rackpreset: { name: "Rack · préréglage", icon: "knob" }, djknob: { name: "Synthé DJ", icon: "knob" },
+  stemduck: { name: "Stem du morceau", icon: "knob" }, stemfilter: { name: "Stem du morceau", icon: "knob" }, stemsend: { name: "Stem du morceau", icon: "knob" }, stemfx: { name: "Stem du morceau", icon: "knob" },
   filter: { name: "Filtre du deck", icon: "knob" }, duck: { name: "Volume du deck", icon: "knob" }, sfx: { name: "Effets sonores", icon: "speaker" },
 };
 export function DeviceIcon({ kind }: { kind: RouteKind }) {
