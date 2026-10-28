@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ModulePresetBar } from "./ModulePresetBar";
 import type { DJEngine } from "@/lib/audio/engine";
 import { PAD_SLICES, ECHO_DIVS, SLICE_DIVS, DRUM_NAMES, type PadBank, type PadSettings } from "@/lib/audio/SamplePad";
 import { Knob } from "./Knob";
@@ -260,6 +261,7 @@ export const DJKeyboard = ({ engine }: Props) => {
   return (
     <div className="w-full @[640px]:grid @[640px]:grid-cols-[minmax(0,1fr)_230px] gap-3">
       <div className="hw-carbon hw-screwed p-4 space-y-4 rounded-lg">
+        <ModulePresetBar engine={engine} id="djkeys" label="DJ Keys" onApplied={() => setSettings({ ...engine.keyPad.settings })} />
         <div className="hw-brushed p-2 rounded-t-lg flex justify-between items-center">
           <div className="text-xs font-bold">DJ KEYS</div>
           <div className="flex items-center gap-2">

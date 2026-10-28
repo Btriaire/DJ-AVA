@@ -4,7 +4,7 @@ import type { DJEngine } from "@/lib/audio/engine";
 import { applyAny, deleteModulePreset, getModulePreset, listModulePresets, saveModulePreset, snapshotAny, type PresetModuleId } from "@/lib/modulePresets";
 
 // save the whole module under a name, recall it, delete it; the rhythm links use the same presets
-export function ModulePresetBar({ engine, id, label, onApplied }: { engine: DJEngine; id: "djsynth" | "supersampler"; label: string; onApplied?: () => void }) {
+export function ModulePresetBar({ engine, id, label, onApplied }: { engine: DJEngine; id: "djsynth" | "supersampler" | "djkeys"; label: string; onApplied?: () => void }) {
   const [, bump] = useState(0);
   const deck = engine.deckA;
   const sel = "min-h-8 rounded-md border border-neutral-700 bg-neutral-900 px-2 text-xs text-neutral-200";

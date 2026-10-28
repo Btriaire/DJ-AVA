@@ -3,10 +3,11 @@ import type { Rack, RackModuleId } from "./audio/Rack";
 import { RACK_DEF } from "./audio/Rack";
 import type { DJEngine } from "./audio/engine";
 import type { DjSynthState } from "./audio/DjSynth";
+import type { PadSettings } from "./audio/SamplePad";
 
 export interface ModulePreset { on: boolean; mix: number; params: Record<string, number>; flags: Record<string, boolean>; extra?: unknown }
 // besides the rack modules, two engine-wide modules have presets
-export const GLOBAL_MODULES = [{ id: "djsynth", label: "Synthé DJ" }, { id: "supersampler", label: "Super-Sampler" }] as const;
+export const GLOBAL_MODULES = [{ id: "djsynth", label: "Synthé DJ" }, { id: "supersampler", label: "Super-Sampler" }, { id: "djkeys", label: "DJ Keys" }] as const;
 export type PresetModuleId = RackModuleId | (typeof GLOBAL_MODULES)[number]["id"];
 type Store = Partial<Record<string, Record<string, ModulePreset>>>;
 
@@ -96,6 +97,10 @@ export function snapshotAny(eng: DJEngine, rack: Rack, id: PresetModuleId): Modu
     }
     return { on: true, mix: 1, params, flags };
   }
+  if (id === "djkeys") {
+    const { pitch, reverse, hold, filter, echo, echoDiv, sliceDiv, gate, volume, reverb } = eng.keyPad.settings;
+    return { on: true, mix: 1, params: { pitch, filter, echo, volume, reverb, echoDiv, sliceDiv }, flags: { reverse, hold, gate } };
+  }
   return snapshotModule(rack, id);
 }
 
@@ -112,5 +117,13 @@ export function applyAny(eng: DJEngine, rack: Rack, id: PresetModuleId, p: Modul
     const cur = ss.getParams() as unknown as Record<string, number>;
     for (const [k, v] of Object.entries(p.params)) if (SS_STEPPED.has(k)) set(k, v);
     glideNums(ss, id, cur, Object.fromEntries(Object.entries(p.params).filter(([k]) => !SS_STEPPED.has(k))), ms, set);
+  } else if (id === "djkeys") {
+    const kp = eng.keyPad;
+    const { flags, params } = p;
+    for (const k of ["reverse", "hold", "gate"] as const) if (typeof flags[k] === "boolean") kp.set(k, flags[k]);
+    for (const k of ["echoDiv", "sliceDiv"] as const) if (typeof params[k] === "number") kp.set(k, params[k]);
+    const { pitch, filter, echo, volume, reverb } = params;
+    const cur = kp.settings as unknown as Record<string, number>;
+    glideNums(kp, id, cur, { pitch, filter, echo, volume, reverb }, ms, (k, v) => kp.set(k as keyof PadSettings, v));
   } else applyModule(rack, id, p, ms);
 }
