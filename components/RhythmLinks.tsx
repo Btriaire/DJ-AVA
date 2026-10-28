@@ -11,19 +11,25 @@ import { RhythmBus, type RhythmRoute, type RhythmSource, type RouteKind } from "
 import { SFX_LIST } from "@/lib/audio/SoundFX";
 import { PresetPicker, RouteCard, SOURCE_STYLE } from "./RhythmCards";
 import { HSlider, Segmented, ToggleSwitch } from "./RhythmSlider";
+import { PatchCable, SourcePads, TargetTiles } from "./RhythmPatch";
 
 // Liaisons: the rhythm detected in a song (drum attacks, bass notes, synth notes) is never played, but it can drive
 // the modules: the DJ synth in harmony, a drum voice, a pulse on a rack parameter.
 type Side = "A" | "B";
 const KEY = "djsynth.rhythm.v1";
-const SOURCES: { id: RhythmSource; label: string }[] = [{ id: "drums", label: "Batterie" }, { id: "kick", label: "Grosse caisse" }, { id: "snare", label: "Caisse claire" }, { id: "hat", label: "Charleston" }, { id: "bass", label: "Basse" }, { id: "synth", label: "Synthé" }, { id: "voice", label: "Voix chantée" }, { id: "beat", label: "Chaque temps" }, { id: "bar", label: "Chaque mesure" }];
+const SOURCES: { id: RhythmSource; label: string }[] = [{ id: "drums", label: "Batterie" }, { id: "kick", label: "Grosse caisse" }, { id: "snare", label: "Caisse claire" }, { id: "hat", label: "Charleston" }, { id: "bass", label: "Basse" }, { id: "synth", label: "Autre (synthé, piano…)" }, { id: "voice", label: "Voix chantée" }, { id: "beat", label: "Chaque temps" }, { id: "bar", label: "Chaque mesure" }];
 const KINDS: { id: RouteKind; label: string }[] = [{ id: "synth", label: "Synthé DJ (en harmonie)" }, { id: "drum", label: "Boîte à rythmes" }, { id: "rack", label: "Pulse sur un effet du rack" }, { id: "rackpreset", label: "Préréglage d'un module du rack" }, { id: "synth2", label: "Synthé (module Global, 1er)" }, { id: "sampler", label: "Super-Sampler (en harmonie)" }, { id: "pad", label: "Pad du sampler" }, { id: "seqrec", label: "Séquenceur synthé (écriture)" }, { id: "duck", label: "Pompe du volume (sidechain)" }, { id: "filter", label: "Filtre d'un deck (pulse)" }, { id: "sfx", label: "Effet sonore (riser, impact…)" }, { id: "djknob", label: "Bouton du synthé DJ (pulse)" }, { id: "plugin", label: "DX7 (module ouvert)" }, { id: "voices", label: "Nappes : chœur, cordes, synthé planant" }, { id: "keypad", label: "DJ Keys : touche" }, { id: "keyfx", label: "DJ Keys : effet (impact, frein…)" }];
+const TARGET_GROUPS: { title: string; kinds: RouteKind[] }[] = [
+  { title: "Notes", kinds: ["synth", "synth2", "sampler", "plugin", "voices", "seqrec"] },
+  { title: "Rythme", kinds: ["drum", "pad", "keypad", "keyfx", "sfx"] },
+  { title: "Effets", kinds: ["rack", "rackpreset", "filter", "duck", "djknob"] },
+];
 const PRESETS: { label: string; route: Omit<RhythmRoute, "id" | "on"> }[] = [
   { label: "Basse → Synthé DJ", route: { source: "bass", kind: "synth", amount: 0.7 } },
-  { label: "Synthé → Synthé DJ", route: { source: "synth", kind: "synth", amount: 0.5 } },
+  { label: "Autre → Synthé DJ", route: { source: "synth", kind: "synth", amount: 0.5 } },
   { label: "Batterie → Synthé sur la tonique", route: { source: "drums", kind: "synth", amount: 0.5 } },
   { label: "Basse → Séquenceur synthé", route: { source: "bass", kind: "seqrec", amount: 0.8 } },
-  { label: "Synthé → Super-Sampler", route: { source: "synth", kind: "sampler", amount: 0.6 } },
+  { label: "Autre → Super-Sampler", route: { source: "synth", kind: "sampler", amount: 0.6 } },
   { label: "Grosse caisse → Pompe du volume", route: { source: "kick", kind: "duck", arg: "self", amount: 0.6 } },
   { label: "Grosse caisse → Impact de DJ Keys", route: { source: "kick", kind: "keyfx", arg: "impact", amount: 0.7 } },
   { label: "Caisse claire → Super-Sampler", route: { source: "snare", kind: "sampler", amount: 0.7 } },
@@ -48,7 +54,7 @@ const PRESETS: { label: string; route: Omit<RhythmRoute, "id" | "on"> }[] = [
   { label: "Basse → DX7", route: { source: "bass", kind: "plugin", arg: "dx7", amount: 0.7 } },
   { label: "Basse → Synthé DJ en swing", route: { source: "bass", kind: "synth", amount: 0.7, grid: 2, swing: 0.3 } },
   { label: "Temps → Pompe 4/4", route: { source: "beat", kind: "duck", arg: "self", amount: 0.4, grid: 1, pattern: "xxxx" } },
-  { label: "Synthé → Synthé DJ, hors voix", route: { source: "synth", kind: "synth", amount: 0.5, avoidVoice: true, snapKey: true } },
+  { label: "Autre → Synthé DJ, hors voix", route: { source: "synth", kind: "synth", amount: 0.5, avoidVoice: true, snapKey: true } },
   { label: "Batterie → Clap", route: { source: "drums", kind: "drum", arg: "clap", amount: 0.6 } },
 ];
 
@@ -270,6 +276,12 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
   const presetArg = (mod: string) => `${mod}:${listModulePresets(mod)[0] ?? ""}`;
   const rackParams = (mod: string) => RACK_MODULES.find((m) => m.id === mod)?.params ?? [];
   const sel = "min-h-9 rounded-md border border-neutral-700 bg-neutral-900 px-2 text-xs text-neutral-100";
+  const lcdSel = "min-h-9 rounded-md border border-neutral-700 bg-black/70 px-2 font-mono text-[11px] text-neutral-100";
+  const draftColor = SOURCE_STYLE[draft.source].glow;
+  // what a target needs first when it is picked
+  const defaultArg = (k: RouteKind): string | undefined =>
+    k === "drum" ? "kick" : k === "pad" ? "0" : k === "plugin" ? "dx7" : k === "voices" ? "choir" : k === "keypad" ? "0" : k === "keyfx" ? "impact" : k === "duck" ? "self"
+    : k === "filter" ? "self:lp" : k === "sfx" ? "impact" : k === "djknob" ? "cutoff" : k === "rackpreset" ? presetArg("reverb") : k === "rack" ? "isolator:" + (rackParams("isolator")[0]?.key ?? "") : undefined;
 
   return (
     <section className="prep rounded-xl border border-neutral-800 bg-neutral-950/60 p-3" aria-label="Liaisons rythmiques">
@@ -340,7 +352,7 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
                   </>
                 )}
                 {n ? (
-                  <span className="truncate text-neutral-400">{`${n.drums?.length ?? 0} attaques · ${n.bass?.length ?? 0} basses · ${n.other?.length ?? 0} synthé`}</span>
+                  <span className="truncate text-neutral-400">{`${n.drums?.length ?? 0} attaques · ${n.bass?.length ?? 0} basses · ${n.other?.length ?? 0} autres`}</span>
                 ) : (
                   <span className="truncate rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[11px] text-amber-200">
                     {d.stemReady ? "Notes en cours d'analyse…" : "Préparez les stems du morceau"}
@@ -390,69 +402,86 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
           );
         })}
       </div>
-      <details className="mt-3">
-        <summary className="min-h-9 cursor-pointer text-xs font-bold text-neutral-200">Composer une liaison</summary>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <select aria-label="Source" className={sel} value={draft.source} onChange={(e) => setDraft({ ...draft, source: e.target.value as RhythmSource })}>
-            {SOURCES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-          </select>
-          <span aria-hidden>→</span>
-          <select aria-label="Cible" className={sel} value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value as RouteKind, arg: e.target.value === "drum" ? "kick" : e.target.value === "pad" ? "0" : e.target.value === "plugin" ? "dx7" : e.target.value === "voices" ? "choir" : e.target.value === "keypad" ? "0" : e.target.value === "keyfx" ? "impact" : e.target.value === "duck" ? "self" : e.target.value === "filter" ? "self:lp" : e.target.value === "sfx" ? "impact" : e.target.value === "djknob" ? "cutoff" : e.target.value === "rackpreset" ? presetArg("reverb") : e.target.value === "rack" ? "isolator:" + (rackParams("isolator")[0]?.key ?? "") : undefined })}>
-            {KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
-          </select>
+      <details className="mt-3 rounded-lg border border-neutral-700 bg-black/30">
+        <summary className="flex min-h-11 cursor-pointer items-center gap-2 px-3 text-xs font-black uppercase tracking-[0.18em] text-neutral-200">
+          <span className="h-2 w-2 rounded-full" style={{ background: draftColor, boxShadow: `0 0 6px ${draftColor}` }} aria-hidden="true" />
+          Composer une liaison
+        </summary>
+        <div className="flex flex-col gap-3 border-t border-neutral-800 p-3">
+          <div className="rounded-md border border-neutral-700 bg-black/70 px-3 py-2 font-mono text-[12px]" style={{ color: draftColor, textShadow: `0 0 6px ${draftColor}` }} aria-live="polite">
+            {SOURCES.find((x) => x.id === draft.source)?.label ?? draft.source} <span aria-hidden="true">→</span> {targetLabel({ ...draft, id: "", on: true })}
+          </div>
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_64px_minmax(0,1.4fr)]">
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-black uppercase tracking-[0.18em] text-neutral-500">Entrée · ce qui joue dans le morceau</span>
+              <SourcePads sources={SOURCES} value={draft.source} onChange={(src) => setDraft({ ...draft, source: src })} />
+            </div>
+            <div className="hidden items-center md:flex"><PatchCable color={draftColor} /></div>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-black uppercase tracking-[0.18em] text-neutral-500">Sortie · l&apos;appareil piloté</span>
+              <TargetTiles
+                groups={TARGET_GROUPS} color={draftColor} value={draft.kind}
+                label={(k) => KINDS.find((x) => x.id === k)?.label ?? k}
+                onChange={(k) => setDraft({ ...draft, kind: k, arg: defaultArg(k) })}
+              />
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 rounded-md border border-neutral-700 bg-black/40 p-2">
+            <span className="text-[10px] font-black uppercase tracking-[0.18em] text-neutral-500">Réglage de la sortie</span>
+            <div className="flex flex-wrap items-center gap-2">
           {draft.kind === "drum" && (
-            <select aria-label="Voix" className={sel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
+            <select aria-label="Voix" className={lcdSel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
               {DRUM_VOICES.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
             </select>
           )}
           {draft.kind === "keypad" && (
-            <select aria-label="Touche" className={sel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
+            <select aria-label="Touche" className={lcdSel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
               {Array.from({ length: 16 }, (_, i) => <option key={i} value={String(i)}>Touche {i + 1}</option>)}
             </select>
           )}
           {draft.kind === "voices" && (
-            <select aria-label="Nappe" className={sel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
+            <select aria-label="Nappe" className={lcdSel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
               {NAPPES.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
             </select>
           )}
           {draft.kind === "keyfx" && (
-            <select aria-label="Effet du keyboard" className={sel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
+            <select aria-label="Effet du keyboard" className={lcdSel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
               {KEYFX.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
             </select>
           )}
           {draft.kind === "duck" && (
-            <select aria-label="Deck" className={sel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
+            <select aria-label="Deck" className={lcdSel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
               <option value="self">Ce deck</option><option value="other">L&apos;autre deck</option>
             </select>
           )}
           {draft.kind === "filter" && (
-            <select aria-label="Filtre" className={sel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
+            <select aria-label="Filtre" className={lcdSel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
               <option value="self:lp">Passe-bas, ce deck</option><option value="self:hp">Passe-haut, ce deck</option>
               <option value="other:lp">Passe-bas, autre deck</option><option value="other:hp">Passe-haut, autre deck</option>
             </select>
           )}
           {draft.kind === "sfx" && (
-            <select aria-label="Effet" className={sel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
+            <select aria-label="Effet" className={lcdSel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
               {SFX_LIST.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
             </select>
           )}
           {draft.kind === "djknob" && (
-            <select aria-label="Bouton" className={sel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
+            <select aria-label="Bouton" className={lcdSel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
               {KNOBS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
             </select>
           )}
           {draft.kind === "pad" && (
-            <select aria-label="Pad" className={sel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
+            <select aria-label="Pad" className={lcdSel} value={draft.arg} onChange={(e) => setDraft({ ...draft, arg: e.target.value })}>
               {Array.from({ length: engine.sampler.pads.length }, (_, i) => <option key={i} value={String(i)}>Pad {i + 1}</option>)}
             </select>
           )}
           {draft.kind === "rackpreset" && (
             <>
-              <select aria-label="Module" className={sel} value={draft.arg?.split(":")[0]} onChange={(e) => setDraft({ ...draft, arg: presetArg(e.target.value) })}>
+              <select aria-label="Module" className={lcdSel} value={draft.arg?.split(":")[0]} onChange={(e) => setDraft({ ...draft, arg: presetArg(e.target.value) })}>
                 {GLOBAL_MODULES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
                 {RACK_MODULES.filter((m) => m.id !== "eq").map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
               </select>
-              <select aria-label="Préréglage" className={sel} value={draft.arg?.slice((draft.arg?.indexOf(":") ?? 0) + 1)} onChange={(e) => setDraft({ ...draft, arg: `${draft.arg?.split(":")[0]}:${e.target.value}` })}>
+              <select aria-label="Préréglage" className={lcdSel} value={draft.arg?.slice((draft.arg?.indexOf(":") ?? 0) + 1)} onChange={(e) => setDraft({ ...draft, arg: `${draft.arg?.split(":")[0]}:${e.target.value}` })}>
                 {listModulePresets(draft.arg?.split(":")[0] ?? "").length === 0 && <option value="">Aucun : enregistre-en un dans le rack</option>}
                 {listModulePresets(draft.arg?.split(":")[0] ?? "").map((n) => <option key={n} value={n}>{n}</option>)}
               </select>
@@ -460,17 +489,28 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
           )}
           {draft.kind === "rack" && (
             <>
-              <select aria-label="Module" className={sel} value={draft.arg?.split(":")[0]} onChange={(e) => setDraft({ ...draft, arg: `${e.target.value}:${rackParams(e.target.value)[0]?.key ?? ""}` })}>
+              <select aria-label="Module" className={lcdSel} value={draft.arg?.split(":")[0]} onChange={(e) => setDraft({ ...draft, arg: `${e.target.value}:${rackParams(e.target.value)[0]?.key ?? ""}` })}>
                 {RACK_MODULES.filter((m) => m.id !== "eq").map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
               </select>
-              <select aria-label="Réglage" className={sel} value={draft.arg?.split(":")[1]} onChange={(e) => setDraft({ ...draft, arg: `${draft.arg?.split(":")[0]}:${e.target.value}` })}>
+              <select aria-label="Réglage" className={lcdSel} value={draft.arg?.split(":")[1]} onChange={(e) => setDraft({ ...draft, arg: `${draft.arg?.split(":")[0]}:${e.target.value}` })}>
                 {rackParams(draft.arg?.split(":")[0] ?? "").map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
               </select>
             </>
           )}
-          {(["A", "B"] as const).map((s) => (
-            <button key={s} type="button" onClick={() => add(s, draft)} className="prep-btn-accent inline-flex min-h-9 items-center px-3 text-xs">Connecter au deck {s}</button>
-          ))}
+            </div>
+            <HSlider label="Force" min={0.1} max={1} step={0.05} value={draft.amount} reset={0.7} ticks={9} color={draftColor} format={(v) => `${Math.round(v * 100)} %`} onChange={(v) => setDraft({ ...draft, amount: v })} />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {(["A", "B"] as const).map((s) => (
+              <button
+                key={s} type="button" onClick={() => add(s, draft)}
+                className="flex min-h-12 items-center justify-center gap-2 rounded-md border border-neutral-600 bg-neutral-800 text-xs font-black uppercase tracking-wider text-neutral-100 hover:bg-neutral-700 focus-visible:ring-2 focus-visible:ring-white/60"
+              >
+                <span className="h-2.5 w-2.5 rounded-full" style={{ background: draftColor, boxShadow: `0 0 8px ${draftColor}` }} aria-hidden="true" />
+                Connecter au deck {s}
+              </button>
+            ))}
+          </div>
         </div>
       </details>
     </section>

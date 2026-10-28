@@ -165,7 +165,7 @@ export const pToVol = (p: number) => (p <= 0.01 ? 0 : 10 ** ((VOL_MIN_DB + p * (
 export const volLabel = (g: number) => (g <= 0.001 ? "-∞ dB" : `${20 * Math.log10(g) >= 0 ? "+" : ""}${(20 * Math.log10(g)).toFixed(1)} dB`);
 
 // the device a link drives: a name and a small drawing (keys, pads, knob, steps, speaker)
-const DEVICE: Record<RouteKind, { name: string; icon: "keys" | "pads" | "knob" | "steps" | "speaker" }> = {
+export const DEVICE: Record<RouteKind, { name: string; icon: "keys" | "pads" | "knob" | "steps" | "speaker" }> = {
   voices: { name: "Nappes (chœur, cordes…)", icon: "keys" },
   synth: { name: "Synthé DJ", icon: "keys" }, synth2: { name: "Synthé (module Global)", icon: "keys" }, plugin: { name: "DX7", icon: "keys" },
   sampler: { name: "Super-Sampler", icon: "pads" }, pad: { name: "Sampler", icon: "pads" }, drum: { name: "Boîte à rythmes", icon: "pads" },
@@ -173,7 +173,7 @@ const DEVICE: Record<RouteKind, { name: string; icon: "keys" | "pads" | "knob" |
   seqrec: { name: "Séquenceur", icon: "steps" }, rack: { name: "Rack", icon: "knob" }, rackpreset: { name: "Rack · préréglage", icon: "knob" }, djknob: { name: "Synthé DJ", icon: "knob" },
   filter: { name: "Filtre du deck", icon: "knob" }, duck: { name: "Volume du deck", icon: "knob" }, sfx: { name: "Effets sonores", icon: "speaker" },
 };
-function DeviceIcon({ kind }: { kind: RouteKind }) {
+export function DeviceIcon({ kind }: { kind: RouteKind }) {
   const c = { stroke: "currentColor", strokeWidth: 1.3, fill: "none" } as const;
   const i = DEVICE[kind].icon;
   return (
