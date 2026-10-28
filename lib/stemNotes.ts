@@ -9,8 +9,12 @@ export interface StemNotes {
   version: 1;
   other?: [number, number, number, number][];
   bass?: [number, number, number, number][];
-  drums?: [number, number][];
+  drums?: number[][]; // time, strength, class (0 kick, 1 snare, 2 hat) — class from rev 2
+  rev?: number; // 2: cleaned notes (no split held notes), classified drums, tuning
+  tuning?: number; // semitones from A440, -0.5..0.5
 }
+
+export const NOTES_REV = 2;
 
 const CACHE_FILE = "notes.json";
 const TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
@@ -20,14 +24,15 @@ let backfillQueue: Promise<void> = Promise.resolve();
 export async function analyseStemNotes(
   hash: string,
   model: StemModel,
-  opts?: StemOpts
+  opts?: StemOpts,
+  force = false
 ): Promise<StemNotes | null> {
   const vocalsPath = stemPath(hash, model, "vocals", opts);
   const cachePath = join(dirname(vocalsPath), CACHE_FILE);
 
   // Check cache first
   const cached = readStemNotes(hash, model, opts);
-  if (cached) return cached;
+  if (cached && !force) return cached;
 
   // Check if Python script exists
   const python = process.env.NOTES_PYTHON || join(homedir(), ".djsynth-midi/bin/python");
@@ -97,4 +102,11 @@ export async function backfillStemNotes(
 
     await analyseStemNotes(hash, model, opts);
   });
+}
+
+// songs analysed with an older version are redone once, in the background, one at a time
+export function upgradeStemNotes(hash: string, model: StemModel, opts?: StemOpts): void {
+  const cur = readStemNotes(hash, model, opts);
+  if (!cur || cur.rev === NOTES_REV) return;
+  backfillQueue = backfillQueue.then(async () => { await analyseStemNotes(hash, model, opts, true); });
 }

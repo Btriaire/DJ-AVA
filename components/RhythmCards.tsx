@@ -5,6 +5,9 @@ import type { RouteKind, RhythmRoute, RhythmSource } from "@/lib/audio/rhythmBus
 // one colour per source (OKLCH, no pink): the scribble strip, the knob ring and the fader cap
 const SOURCE_STYLE: Record<RhythmSource, { glow: string }> = {
   drums: { glow: "oklch(72% 0.17 45)" },
+  kick: { glow: "oklch(70% 0.19 35)" },
+  snare: { glow: "oklch(76% 0.15 65)" },
+  hat: { glow: "oklch(82% 0.12 85)" },
   bass: { glow: "oklch(70% 0.15 285)" },
   synth: { glow: "oklch(76% 0.12 205)" },
   voice: { glow: "oklch(84% 0.16 95)" },

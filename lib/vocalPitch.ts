@@ -17,8 +17,11 @@ export interface VocalPitch {
   voicedRatio: number;
   voiceKey?: KeyInfo;
   songKey?: KeyInfo;
-  contour: number[];
+  contour: number[]; // semitones to the tenth (fractional), -1 = no voice
+  rev?: number;
 }
+
+export const PITCH_REV = 2;
 
 const CACHE_FILE = "pitch.json";
 const TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
@@ -26,14 +29,15 @@ const TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 export async function analyseVocalPitch(
   hash: string,
   model: StemModel,
-  opts?: StemOpts
+  opts?: StemOpts,
+  force = false
 ): Promise<VocalPitch | null> {
   const vocalsPath = stemPath(hash, model, "vocals", opts);
   const cachePath = join(dirname(vocalsPath), CACHE_FILE);
 
   // Check cache first
   const cached = readVocalPitch(hash, model, opts);
-  if (cached) return cached;
+  if (cached && !force) return cached;
 
   // Check if Python script exists
   const python = process.env.PITCH_PYTHON || join(homedir(), ".djsynth-pitch/bin/python");
@@ -147,4 +151,11 @@ let backfill: Promise<unknown> = Promise.resolve();
 export function backfillVocalPitch(hash: string, model: StemModel, opts?: StemOpts): void {
   if (readVocalPitch(hash, model, opts)) return;
   backfill = backfill.then(() => analyseVocalPitch(hash, model, opts)).catch(() => undefined);
+}
+
+// songs analysed with an older version are redone once, in the background, one at a time
+export function upgradeVocalPitch(hash: string, model: StemModel, opts?: StemOpts): void {
+  const cur = readVocalPitch(hash, model, opts);
+  if (!cur || cur.rev === PITCH_REV) return;
+  backfill = backfill.then(() => analyseVocalPitch(hash, model, opts, true)).catch(() => undefined);
 }

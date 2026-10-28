@@ -12,7 +12,7 @@ import { PresetPicker, RouteCard } from "./RhythmCards";
 // the modules: the DJ synth in harmony, a drum voice, a pulse on a rack parameter.
 type Side = "A" | "B";
 const KEY = "djsynth.rhythm.v1";
-const SOURCES: { id: RhythmSource; label: string }[] = [{ id: "drums", label: "Batterie" }, { id: "bass", label: "Basse" }, { id: "synth", label: "Synthé" }, { id: "voice", label: "Voix chantée" }, { id: "beat", label: "Chaque temps" }, { id: "bar", label: "Chaque mesure" }];
+const SOURCES: { id: RhythmSource; label: string }[] = [{ id: "drums", label: "Batterie" }, { id: "kick", label: "Grosse caisse" }, { id: "snare", label: "Caisse claire" }, { id: "hat", label: "Charleston" }, { id: "bass", label: "Basse" }, { id: "synth", label: "Synthé" }, { id: "voice", label: "Voix chantée" }, { id: "beat", label: "Chaque temps" }, { id: "bar", label: "Chaque mesure" }];
 const KINDS: { id: RouteKind; label: string }[] = [{ id: "synth", label: "Synthé DJ (en harmonie)" }, { id: "drum", label: "Boîte à rythmes" }, { id: "rack", label: "Pulse sur un effet du rack" }, { id: "synth2", label: "Synthé (module Global, 1er)" }, { id: "sampler", label: "Super-Sampler (en harmonie)" }, { id: "pad", label: "Pad du sampler" }, { id: "seqrec", label: "Séquenceur synthé (écriture)" }, { id: "duck", label: "Pompe du volume (sidechain)" }, { id: "filter", label: "Filtre d'un deck (pulse)" }, { id: "sfx", label: "Effet sonore (riser, impact…)" }, { id: "djknob", label: "Bouton du synthé DJ (pulse)" }, { id: "plugin", label: "DX7 (module ouvert)" }, { id: "voices", label: "Nappes : chœur, cordes, synthé planant" }, { id: "keypad", label: "DJ Keys : touche" }, { id: "keyfx", label: "DJ Keys : effet (impact, frein…)" }];
 const PRESETS: { label: string; route: Omit<RhythmRoute, "id" | "on"> }[] = [
   { label: "Basse → Synthé DJ", route: { source: "bass", kind: "synth", amount: 0.7 } },
@@ -20,6 +20,11 @@ const PRESETS: { label: string; route: Omit<RhythmRoute, "id" | "on"> }[] = [
   { label: "Batterie → Synthé sur la tonique", route: { source: "drums", kind: "synth", amount: 0.5 } },
   { label: "Basse → Séquenceur synthé", route: { source: "bass", kind: "seqrec", amount: 0.8 } },
   { label: "Synthé → Super-Sampler", route: { source: "synth", kind: "sampler", amount: 0.6 } },
+  { label: "Grosse caisse → Pompe du volume", route: { source: "kick", kind: "duck", arg: "self", amount: 0.6 } },
+  { label: "Grosse caisse → Impact de DJ Keys", route: { source: "kick", kind: "keyfx", arg: "impact", amount: 0.7 } },
+  { label: "Caisse claire → Super-Sampler", route: { source: "snare", kind: "sampler", amount: 0.7 } },
+  { label: "Caisse claire → Filtre passe-bas", route: { source: "snare", kind: "filter", arg: "self:lp", amount: 0.6 } },
+  { label: "Charleston → DJ Keys (touche 4)", route: { source: "hat", kind: "keypad", arg: "3", amount: 0.6 } },
   { label: "Voix → Chœur", route: { source: "voice", kind: "voices", arg: "choir", amount: 0.8 } },
   { label: "Voix → Cordes", route: { source: "voice", kind: "voices", arg: "strings", amount: 0.8 } },
   { label: "Voix → Synthé planant", route: { source: "voice", kind: "voices", arg: "dream", amount: 0.8 } },
@@ -65,7 +70,7 @@ const targetLabel = (r: RhythmRoute) => {
 // the shortcuts grouped by what drives them
 const PRESET_GROUPS = (() => {
   const order: { title: string; sources: RhythmSource[] }[] = [
-    { title: "Batterie", sources: ["drums"] },
+    { title: "Batterie", sources: ["drums", "kick", "snare", "hat"] },
     { title: "Basse", sources: ["bass"] },
     { title: "Synthé et voix", sources: ["synth", "voice"] },
     { title: "Temps et mesures", sources: ["beat", "bar"] },

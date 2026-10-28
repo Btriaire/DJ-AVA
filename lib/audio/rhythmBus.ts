@@ -11,7 +11,7 @@ import { jitterMs, nextGridTime, patternAllows, quantizeTime, snapToScale } from
 
 // The detected rhythm of a song (drum attacks, bass notes, synth notes) as a source of events. They are never
 // played themselves: each one is sent, a little ahead of time, to the modules the user connected to it.
-export type RhythmSource = "drums" | "bass" | "synth" | "beat" | "bar" | "voice";
+export type RhythmSource = "drums" | "bass" | "synth" | "beat" | "bar" | "voice" | "kick" | "snare" | "hat";
 export type RouteKind = "synth" | "drum" | "rack" | "synth2" | "sampler" | "pad" | "seqrec" | "filter" | "duck" | "sfx" | "djknob" | "keypad" | "keyfx" | "plugin" | "voices";
 export interface RhythmRoute {
   id: string;
@@ -40,7 +40,11 @@ const PULSE_SEC = 0.14;
 
 export function buildEvents(n: StemNotes | null | undefined, d?: Deck): Ev[] {
   const out: Ev[] = [];
-  n?.drums?.forEach(([t, v]) => out.push({ t, source: "drums", vel: v, dur: 0.08 }));
+  n?.drums?.forEach(([t, v, c]) => {
+    out.push({ t, source: "drums", vel: v, dur: 0.08 });
+    // from rev 2 each hit has a class; "drums" stays the whole kit
+    if (c !== undefined) out.push({ t, source: c === 0 ? "kick" : c === 1 ? "snare" : "hat", vel: v, dur: 0.08 });
+  });
   n?.bass?.forEach(([s, e, m, v]) => out.push({ t: s, source: "bass", vel: v, dur: Math.max(0.05, e - s), midi: m }));
   n?.other?.forEach(([s, e, m, v]) => out.push({ t: s, source: "synth", vel: v, dur: Math.max(0.05, e - s), midi: m }));
   if (d && d.bpm > 0 && d.duration > 0) {
@@ -176,7 +180,9 @@ export class RhythmBus {
     const shift = d.keyLock ? d.keyShift : 12 * Math.log2(d.playRate);
     const raw = (e.midi ?? this.bassMidi + 12) + shift + (r.transpose ?? 0);
     // the pads follow the song's pitch to the cent (a tempo change bends it by a fraction of a semitone)
-    let m = r.kind === "voices" && !r.snapKey ? raw : Math.round(raw);
+    // detected notes sit on the A440 grid; the pads add the song's own tuning, the sung contour already has it
+    const tune = r.kind === "voices" && e.source !== "voice" ? (d.stemNotes?.tuning ?? 0) : 0;
+    let m = r.kind === "voices" && !r.snapKey ? raw + tune : Math.round(raw);
     if (r.snapKey) {
       const js = this.engine.djSynth;
       m = snapToScale(m, js.root, SCALES.find((x) => x.id === js.scale)?.steps ?? []);
