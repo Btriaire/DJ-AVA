@@ -159,7 +159,7 @@ export class RhythmBus {
       const midi = Math.round((e.midi ?? this.bassMidi + 12) + shift + (r.transpose ?? 0));
       const wait = Math.max(0, (at - eng.ctx.currentTime) * 1000);
       if (r.kind === "synth2") {
-        setTimeout(() => eng.synth.noteOn(midi, vel), wait); // the classic synth has no start time: timer jitter only
+        eng.synth.noteOn(midi, vel, at); // starts on the audio clock; only the release rides on a timer
         setTimeout(() => eng.synth.noteOff(midi), wait + Math.max(60, dur * 1000));
       } else if (r.kind === "sampler") eng.superSampler.playStep(midi, Math.max(0.06, dur), at, vel);
       else setTimeout(() => eng.synthSeq.recordNote(midi), wait);

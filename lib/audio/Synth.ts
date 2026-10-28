@@ -110,9 +110,10 @@ export class Synth {
     this.filtLFO.start();
   }
 
-  noteOn(note: number, velocity = 1) {
+  // `when` (audio time) starts the note exactly on that instant; the voice is registered at once
+  noteOn(note: number, velocity = 1, when?: number) {
     if (this.voices.has(note)) return;
-    const t = this.ctx.currentTime;
+    const t = Math.max(this.ctx.currentTime, when ?? 0);
     const midi = note + this.octave * 12;
     const peak = 0.8 * Math.max(0.05, Math.min(1, velocity)); // velocity-scaled amp
 
