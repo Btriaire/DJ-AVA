@@ -37,8 +37,8 @@ export function ActivityDot({ read, on }: { read: () => number | undefined; on: 
 // the device a link drives: a name and a small drawing (keys, pads, knob, steps, speaker)
 const DEVICE: Record<RouteKind, { name: string; icon: "keys" | "pads" | "knob" | "steps" | "speaker" }> = {
   synth: { name: "Synthé DJ", icon: "keys" }, synth2: { name: "Synthé (module Global)", icon: "keys" }, plugin: { name: "DX7", icon: "keys" },
-  sampler: { name: "Super Sampler", icon: "pads" }, pad: { name: "Sampler", icon: "pads" }, drum: { name: "Boîte à rythmes", icon: "pads" },
-  keypad: { name: "DJ-Keys", icon: "pads" }, keyfx: { name: "DJ-Keys", icon: "pads" },
+  sampler: { name: "Super-Sampler", icon: "pads" }, pad: { name: "Sampler", icon: "pads" }, drum: { name: "Boîte à rythmes", icon: "pads" },
+  keypad: { name: "DJ Keys", icon: "pads" }, keyfx: { name: "DJ Keys", icon: "pads" },
   seqrec: { name: "Séquenceur", icon: "steps" }, rack: { name: "Rack", icon: "knob" }, djknob: { name: "Synthé DJ", icon: "knob" },
   filter: { name: "Filtre du deck", icon: "knob" }, duck: { name: "Volume du deck", icon: "knob" }, sfx: { name: "Effets sonores", icon: "speaker" },
 };

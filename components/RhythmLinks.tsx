@@ -13,21 +13,25 @@ import { PresetPicker, RouteCard } from "./RhythmCards";
 type Side = "A" | "B";
 const KEY = "djsynth.rhythm.v1";
 const SOURCES: { id: RhythmSource; label: string }[] = [{ id: "drums", label: "Batterie" }, { id: "bass", label: "Basse" }, { id: "synth", label: "Synthé" }, { id: "voice", label: "Voix chantée" }, { id: "beat", label: "Chaque temps" }, { id: "bar", label: "Chaque mesure" }];
-const KINDS: { id: RouteKind; label: string }[] = [{ id: "synth", label: "Synthé DJ (en harmonie)" }, { id: "drum", label: "Boîte à rythmes" }, { id: "rack", label: "Pulse sur un effet du rack" }, { id: "synth2", label: "Synthé (module Global, 1er)" }, { id: "sampler", label: "Super sampler (en harmonie)" }, { id: "pad", label: "Pad du sampler" }, { id: "seqrec", label: "Séquenceur synthé (écriture)" }, { id: "duck", label: "Pompe du volume (sidechain)" }, { id: "filter", label: "Filtre d'un deck (pulse)" }, { id: "sfx", label: "Effet sonore (riser, impact…)" }, { id: "djknob", label: "Bouton du synthé DJ (pulse)" }, { id: "plugin", label: "DX7 (module ouvert)" }, { id: "keypad", label: "DJ Keyboard : touche" }, { id: "keyfx", label: "DJ Keyboard : effet (impact, frein…)" }];
+const KINDS: { id: RouteKind; label: string }[] = [{ id: "synth", label: "Synthé DJ (en harmonie)" }, { id: "drum", label: "Boîte à rythmes" }, { id: "rack", label: "Pulse sur un effet du rack" }, { id: "synth2", label: "Synthé (module Global, 1er)" }, { id: "sampler", label: "Super-Sampler (en harmonie)" }, { id: "pad", label: "Pad du sampler" }, { id: "seqrec", label: "Séquenceur synthé (écriture)" }, { id: "duck", label: "Pompe du volume (sidechain)" }, { id: "filter", label: "Filtre d'un deck (pulse)" }, { id: "sfx", label: "Effet sonore (riser, impact…)" }, { id: "djknob", label: "Bouton du synthé DJ (pulse)" }, { id: "plugin", label: "DX7 (module ouvert)" }, { id: "keypad", label: "DJ Keys : touche" }, { id: "keyfx", label: "DJ Keys : effet (impact, frein…)" }];
 const PRESETS: { label: string; route: Omit<RhythmRoute, "id" | "on"> }[] = [
   { label: "Basse → Synthé DJ", route: { source: "bass", kind: "synth", amount: 0.7 } },
   { label: "Synthé → Synthé DJ", route: { source: "synth", kind: "synth", amount: 0.5 } },
   { label: "Batterie → Synthé sur la tonique", route: { source: "drums", kind: "synth", amount: 0.5 } },
   { label: "Basse → Séquenceur synthé", route: { source: "bass", kind: "seqrec", amount: 0.8 } },
-  { label: "Synthé → Super sampler", route: { source: "synth", kind: "sampler", amount: 0.6 } },
+  { label: "Synthé → Super-Sampler", route: { source: "synth", kind: "sampler", amount: 0.6 } },
   { label: "Voix → Synthé DJ", route: { source: "voice", kind: "synth", amount: 0.9, transpose: -12 } },
   { label: "Temps → Pompe du volume", route: { source: "beat", kind: "duck", arg: "self", amount: 0.35 } },
   { label: "Batterie → Pompe de l'autre deck", route: { source: "drums", kind: "duck", arg: "other", amount: 0.4 } },
   { label: "Batterie → Filtre passe-bas", route: { source: "drums", kind: "filter", arg: "self:lp", amount: 0.5 } },
   { label: "Mesure → Impact", route: { source: "bar", kind: "sfx", arg: "impact", amount: 0.7 } },
   { label: "Basse → Ouverture du synthé", route: { source: "bass", kind: "djknob", arg: "cutoff", amount: 0.6 } },
-  { label: "Batterie → Touches du Keyboard", route: { source: "drums", kind: "keypad", arg: "0", amount: 0.7 } },
-  { label: "Mesure → Impact du Keyboard", route: { source: "bar", kind: "keyfx", arg: "impact", amount: 0.7 } },
+  { label: "Basse → Super-Sampler", route: { source: "bass", kind: "sampler", amount: 0.7 } },
+  { label: "Voix → Super-Sampler", route: { source: "voice", kind: "sampler", amount: 0.8 } },
+  { label: "Temps → DJ Keys (touche 2)", route: { source: "beat", kind: "keypad", arg: "1", amount: 0.7 } },
+  { label: "Basse → DJ Keys (touche 3)", route: { source: "bass", kind: "keypad", arg: "2", amount: 0.7 } },
+  { label: "Batterie → Touches de DJ Keys", route: { source: "drums", kind: "keypad", arg: "0", amount: 0.7 } },
+  { label: "Mesure → Impact de DJ Keys", route: { source: "bar", kind: "keyfx", arg: "impact", amount: 0.7 } },
   { label: "Basse → DX7", route: { source: "bass", kind: "plugin", arg: "dx7", amount: 0.7 } },
   { label: "Basse → Synthé DJ en swing", route: { source: "bass", kind: "synth", amount: 0.7, grid: 2, swing: 0.3 } },
   { label: "Temps → Pompe 4/4", route: { source: "beat", kind: "duck", arg: "self", amount: 0.4, grid: 1, pattern: "xxxx" } },
@@ -40,8 +44,8 @@ const KNOBS = [{ id: "cutoff", label: "Filtre" }, { id: "reso", label: "Résonan
 const targetLabel = (r: RhythmRoute) => {
   const k = KINDS.find((x) => x.id === r.kind)?.label ?? r.kind;
   if (r.kind === "plugin") return r.arg === "dx7" ? "DX7" : String(r.arg);
-  if (r.kind === "keypad") return `Keyboard touche ${Number(r.arg) + 1}`;
-  if (r.kind === "keyfx") return `Keyboard · ${KEYFX.find((x) => x.id === r.arg)?.label ?? r.arg}`;
+  if (r.kind === "keypad") return `DJ Keys touche ${Number(r.arg) + 1}`;
+  if (r.kind === "keyfx") return `DJ Keys · ${KEYFX.find((x) => x.id === r.arg)?.label ?? r.arg}`;
   if (r.kind === "pad") return `Pad ${Number(r.arg) + 1}`;
   if (r.kind === "drum") return `Voix ${r.arg}`;
   if (r.kind === "rack") return `Pulse ${r.arg?.replace(":", " · ")}`;
