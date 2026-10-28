@@ -18,6 +18,7 @@ import Solar42F from "@/components/Solar42F";
 import { SoundFxPanel } from "@/components/SoundFxPanel";
 import { DrumMachinePanel } from "@/components/DrumMachinePanel";
 import { DjSynthPanel } from "@/components/DjSynthPanel";
+import { RhythmRunner } from "@/components/RhythmLinks";
 import { SlicerPanel } from "@/components/SlicerPanel";
 import { HarmonyPanel } from "@/components/HarmonyPanel";
 import { MediaLibrary } from "@/components/MediaLibrary";
@@ -1571,6 +1572,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
                   left={[["djkbd", modules.djkbd && <DJKeyboard engine={engine} />], ["dance", modules.dance && <DancePanel engine={engine} />]]}
                   right={[["supersampler", modules.supersampler && <SuperSampler engine={engine} onLibraryChange={bumpLib} />]]}
                 />
+                <RhythmRunner engine={engine} />
                 <RackRow
                   onClose={closeRackModule}
                   left={[["drums", modules.drums && <DrumMachinePanel engine={engine} />]]}

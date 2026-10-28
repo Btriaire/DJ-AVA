@@ -96,6 +96,7 @@ export class RhythmBus {
     this.until = 0;
   }
 
+  enabled = true; // master switch for all the links of this deck
   get ready(): boolean { return this.events.length > 0; }
   // the events no longer match the deck: another track, notes that arrived, a tempo that was found
   get stale(): boolean { return this.notes !== this.deck.stemNotes || this.bpm !== this.deck.bpm || this.hash !== this.deck.stemHash; }
@@ -115,7 +116,7 @@ export class RhythmBus {
   private pump() {
     const d = this.deck;
     if (d.stemHash !== this.hash) { this.stop(); return; } // another track: the owner loads its notes again
-    const live = this.routes.filter((r) => r.on);
+    const live = this.enabled ? this.routes.filter((r) => r.on) : [];
     const now = this.engine.ctx.currentTime;
     if (!d.playing || !live.length) { this.wasPlaying = false; return; }
     const pos = d.position();

@@ -84,6 +84,29 @@ const load = (): Record<Side, RhythmRoute[]> => {
 };
 const save = (r: Record<Side, RhythmRoute[]>) => { try { localStorage.setItem(KEY, JSON.stringify(r)); } catch { /* private window */ } };
 
+const MASTER_KEY = "djsynth.rhythm.master";
+const loadMaster = () => { try { return localStorage.getItem(MASTER_KEY) !== "0"; } catch { return true; } };
+
+// always mounted (app/page.tsx): the links keep playing whether or not the DJ synth panel is open
+export function RhythmRunner({ engine }: { engine: DJEngine }) {
+  useEffect(() => {
+    const saved = load();
+    busFor(engine, engine.deckA).routes = saved.A;
+    busFor(engine, engine.deckB).routes = saved.B;
+    const id = window.setInterval(() => {
+      const on = loadMaster();
+      for (const s of ["A", "B"] as const) {
+        const d = s === "A" ? engine.deckA : engine.deckB;
+        const b = busFor(engine, d);
+        b.enabled = on;
+        if (b.stale) { b.load(d.stemNotes); b.start(); } // a new track replaces the events even without passing through null
+      }
+    }, 800);
+    return () => window.clearInterval(id);
+  }, [engine]);
+  return null;
+}
+
 export function FineSettings({ r, patch }: { r: RhythmRoute; patch: (p: Partial<RhythmRoute>) => void }) {
   const isNoteKind = ["synth", "synth2", "sampler", "seqrec", "plugin"].includes(r.kind);
 
@@ -211,24 +234,25 @@ export function FineSettings({ r, patch }: { r: RhythmRoute; patch: (p: Partial<
 export function RhythmLinks({ engine }: { engine: DJEngine }) {
   const [routes, setRoutes] = useState<Record<Side, RhythmRoute[]>>({ A: [], B: [] });
   const [, tick] = useState(0);
+  const [master, setMaster] = useState(true);
   const [draft, setDraft] = useState<Omit<RhythmRoute, "id" | "on">>({ source: "bass", kind: "synth", amount: 0.7 });
 
   useEffect(() => {
     const saved = load();
-    busFor(engine, engine.deckA).routes = saved.A;
-    busFor(engine, engine.deckB).routes = saved.B;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- routes live in localStorage, read once after hydration
     setRoutes(saved);
-    const id = window.setInterval(() => {
-      for (const s of ["A", "B"] as const) {
-        const d = s === "A" ? engine.deckA : engine.deckB;
-        const b = busFor(engine, d);
-        if (b.stale) { b.load(d.stemNotes); b.start(); } // a new track replaces the events even without passing through null
-      }
-      tick((n) => n + 1);
-    }, 800);
+    setMaster(loadMaster());
+    const id = window.setInterval(() => tick((n) => n + 1), 800);
     return () => window.clearInterval(id);
   }, [engine]);
+
+  const toggleMaster = () => {
+    const next = !master;
+    setMaster(next);
+    try { localStorage.setItem(MASTER_KEY, next ? "1" : "0"); } catch { /* private window */ }
+    busFor(engine, engine.deckA).enabled = next;
+    busFor(engine, engine.deckB).enabled = next;
+  };
 
   const apply = (side: Side, next: RhythmRoute[]) => {
     const all = { ...routes, [side]: next };
@@ -247,7 +271,18 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
 
   return (
     <section className="prep rounded-xl border border-neutral-800 bg-neutral-950/60 p-3" aria-label="Liaisons rythmiques">
-      <h3 className="text-xs font-black uppercase tracking-[0.2em] text-neutral-200">Liaisons rythmiques</h3>
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-xs font-black uppercase tracking-[0.2em] text-neutral-200">Liaisons rythmiques</h3>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={master}
+          onClick={toggleMaster}
+          className={`min-h-9 rounded-full border px-4 text-xs font-bold ${master ? "border-emerald-400 bg-emerald-400/20 text-emerald-200" : "border-neutral-600 bg-neutral-800 text-neutral-400"}`}
+        >
+          {master ? "Liaisons ACTIVES" : "Liaisons COUPÉES"}
+        </button>
+      </div>
       <p className="mt-1 text-[11px] text-neutral-400">Les notes détectées ne sont pas jouées : elles pilotent les modules que vous connectez.</p>
       <div className="mt-3">
         <PresetPicker
