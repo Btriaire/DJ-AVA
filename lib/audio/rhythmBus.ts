@@ -62,7 +62,9 @@ export function buildEvents(n: StemNotes | null | undefined, d?: Deck): Ev[] {
         // the note lasts as long as the voice holds that pitch (at least 0.25 s, so it can be heard)
         let j = i + 1;
         while (j < v.length && v[j] >= 0 && Math.round(v[j]) === m) j++;
-        out.push({ t: i * step, source: "voice", vel: 1, dur: Math.max(0.25, (j - i) * step), midi: m });
+        // the median of the contour over the note, in fractional semitones: the pads sit on the singer's real tuning, not on the nearest note
+        const run = Array.from(v.slice(i, j)).sort((a, b) => a - b);
+        out.push({ t: i * step, source: "voice", vel: 1, dur: Math.max(0.25, (j - i) * step), midi: run[run.length >> 1] });
       }
       last = m;
     }
