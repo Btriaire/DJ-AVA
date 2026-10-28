@@ -1570,6 +1570,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
             {/* instrument rack: optional modules side by side, aligned and the same height per row */}
             {(modules.djkbd || modules.dance || modules.supersampler || modules.drums || modules.djsynth || modules.rhythm || modules.slicer || modules.harmony || modules.synth || modules.sampler || modules.soundfx || modules.dx7 || modules.solar42) && (
               <div className={`hw-rack @container flex flex-col gap-4 ${deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}`}>
+                <RackRow onClose={closeRackModule} left={[["rhythm", modules.rhythm && <RhythmLinks engine={engine} />]]} right={[]} />
                 <RackRow
                   onClose={closeRackModule}
                   left={[["djkbd", modules.djkbd && <DJKeyboard engine={engine} />], ["dance", modules.dance && <DancePanel engine={engine} />]]}
@@ -1591,7 +1592,6 @@ const [showModulePicker, setShowModulePicker] = useState(false);
                   left={[["synth", modules.synth && <SynthPanel key={`synth-${resetKey}`} engine={engine} />]]}
                   right={[["sampler", modules.sampler && <SamplerPanel engine={engine} />], ["soundfx", modules.soundfx && <SoundFxPanel engine={engine} />]]}
                 />
-                <RackRow onClose={closeRackModule} left={[["rhythm", modules.rhythm && <RhythmLinks engine={engine} />]]} right={[]} />
                 <RackRow onClose={closeRackModule} left={[["dx7", modules.dx7 && <DX7Synth key={`dx7-${resetKey}`} engine={engine} embedded />]]} right={[]} />
                 <RackRow onClose={closeRackModule} left={[["solar42", modules.solar42 && <Solar42F key={`solar42-${resetKey}`} engine={engine} embedded />]]} right={[]} />
               </div>
