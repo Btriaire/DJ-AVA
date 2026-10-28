@@ -36,6 +36,7 @@ export function FxUnit({ rack, ids, color, storageKey }: { rack: FXRack; ids: Fx
   const press = useRef<Map<FxName, { at: number; wasOn: boolean }>>(new Map());
   const led = useRef<HTMLSpanElement>(null);
   const padHeld = useRef(false);
+  useEffect(() => { rack.warm(); }, [rack]); // the effects that replay the last beats start listening once the unit is shown
 
   function persist(next: Record<string, number> = levels) {
     if (!storageKey) return;

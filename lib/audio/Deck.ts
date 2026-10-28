@@ -938,6 +938,7 @@ export class Deck {
   }
 
   play() {
+    this.fx.warm(); // the deck effects that replay the last beats (reverse, roll, brake) listen while the deck plays
     // phase 1: streaming via MediaElement (buffer not yet decoded)
     if ((this._bufferLoading || this._streamOnly) && this.mediaEl) {
       if (this._playing) return;

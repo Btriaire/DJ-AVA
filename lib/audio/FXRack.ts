@@ -61,11 +61,6 @@ export class FXRack {
         p2: meta.p2?.def ?? 0
       });
 
-      if (meta.always) {
-        this.ensureUnit(meta.id);
-        wet.connect(this.output);
-        this.wetLive.add(meta.id);
-      }
     }
 
     if (typeof window !== "undefined" && !(ctx instanceof OfflineAudioContext)) {
@@ -80,6 +75,23 @@ export class FXRack {
           });
         }
       }, 250);
+    }
+  }
+
+  // The effects that play back the last beats (roll, brake, reverse) must listen all the time to have that past ready.
+  // They used to start with every rack (decks, master, synth, drums, each stem): many delay lines running for nothing.
+  // Now they start when the rack's FX are shown or first used.
+  private warmed = false;
+  warm() {
+    if (this.warmed) return;
+    this.warmed = true;
+    for (const meta of this.list) {
+      if (!meta.always) continue;
+      this.ensureUnit(meta.id);
+      if (!this.wetLive.has(meta.id)) {
+        this.wets.get(meta.id)!.connect(this.output);
+        this.wetLive.add(meta.id);
+      }
     }
   }
 
@@ -168,6 +180,7 @@ export class FXRack {
     if (!wet) return;
 
     const clamped = Math.max(0, Math.min(1, v));
+    if (clamped > 0 && meta.always) this.warm();
     const prevLevel = this.levels.get(name)!;
     this.levels.set(name, clamped);
     const unit = clamped > 0 ? this.ensureUnit(name) : this.units.get(name);

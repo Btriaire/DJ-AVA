@@ -138,6 +138,8 @@ export function RhythmRunner({ engine }: { engine: DJEngine }) {
         const b = busFor(engine, d);
         b.enabled = on;
         if (b.stale) { b.load(d.stemNotes); b.start(); } // a new track replaces the events even without passing through null
+        // a stem effect fired by a link (reverse, roll...) needs the past of that stem: its rack listens before the first hit
+        if (d.stemsActive) for (const r of b.routes) if (r.on && r.kind === "stemfx" && r.arg) d.stemFxRack(d.stemIndex(r.arg.split(":")[0]))?.warm();
       }
     }, 800);
     return () => window.clearInterval(id);
