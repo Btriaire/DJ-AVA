@@ -172,7 +172,9 @@ export class RhythmBus {
   private noteFor(r: RhythmRoute, e: Ev): number {
     const d = this.deck;
     const shift = d.keyLock ? d.keyShift : 12 * Math.log2(d.playRate);
-    let m = Math.round((e.midi ?? this.bassMidi + 12) + shift + (r.transpose ?? 0));
+    const raw = (e.midi ?? this.bassMidi + 12) + shift + (r.transpose ?? 0);
+    // the pads follow the song's pitch to the cent (a tempo change bends it by a fraction of a semitone)
+    let m = r.kind === "voices" && !r.snapKey ? raw : Math.round(raw);
     if (r.snapKey) {
       const js = this.engine.djSynth;
       m = snapToScale(m, js.root, SCALES.find((x) => x.id === js.scale)?.steps ?? []);

@@ -17,9 +17,9 @@ export class PadVoices {
     this.delay = ctx.createDelay(1);
     this.delay.delayTime.value = 0.32;
     const fb = ctx.createGain();
-    fb.gain.value = 0.38;
+    fb.gain.value = 0.2;
     const wet = ctx.createGain();
-    wet.gain.value = 0.35;
+    wet.gain.value = 0.2;
     this.delay.connect(fb);
     fb.connect(this.delay);
     this.delay.connect(wet);
@@ -43,9 +43,9 @@ export class PadVoices {
 
     const stage = ctx.createGain();
     const oscs: [OscillatorType, number, number][] =
-      style === "choir" ? [["sawtooth", -9, 1], ["sawtooth", 9, 1], ["triangle", 0, 1]] :
-      style === "strings" ? [["sawtooth", -14, 1], ["sawtooth", 0, 1], ["sawtooth", 14, 1]] :
-      [["sine", -6, 1], ["triangle", 6, 2], ["sine", 0, 0.5]];
+      style === "choir" ? [["sawtooth", -5, 1], ["sawtooth", 5, 1], ["triangle", 0, 1]] :
+      style === "strings" ? [["sawtooth", -7, 1], ["sawtooth", 0, 1], ["sawtooth", 7, 1]] :
+      [["sine", -3, 1], ["triangle", 3, 2], ["sine", 0, 0.5]];
     const nodes: OscillatorNode[] = oscs.map(([type, cents, mult]) => {
       const o = ctx.createOscillator();
       o.type = type;
@@ -59,7 +59,7 @@ export class PadVoices {
     lfo.frequency.value = style === "dream" ? 0.9 : 5;
     const depth = ctx.createGain();
     depth.gain.setValueAtTime(0, t);
-    depth.gain.linearRampToValueAtTime(style === "dream" ? 14 : 7, t + hold * 0.6);
+    depth.gain.linearRampToValueAtTime(style === "dream" ? 6 : 3, t + hold * 0.6);
     lfo.connect(depth);
     nodes.forEach((o) => depth.connect(o.detune));
     nodes.push(lfo);
