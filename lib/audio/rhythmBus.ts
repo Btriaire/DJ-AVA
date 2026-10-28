@@ -12,7 +12,7 @@ import { jitterMs, nextGridTime, patternAllows, quantizeTime, snapToScale } from
 // The detected rhythm of a song (drum attacks, bass notes, synth notes) as a source of events. They are never
 // played themselves: each one is sent, a little ahead of time, to the modules the user connected to it.
 export type RhythmSource = "drums" | "bass" | "synth" | "beat" | "bar" | "voice";
-export type RouteKind = "synth" | "drum" | "rack" | "synth2" | "sampler" | "pad" | "seqrec" | "filter" | "duck" | "sfx" | "djknob" | "keypad" | "keyfx" | "plugin";
+export type RouteKind = "synth" | "drum" | "rack" | "synth2" | "sampler" | "pad" | "seqrec" | "filter" | "duck" | "sfx" | "djknob" | "keypad" | "keyfx" | "plugin" | "voices";
 export interface RhythmRoute {
   id: string;
   source: RhythmSource;
@@ -225,6 +225,9 @@ export class RhythmBus {
       let base = 0;
       setTimeout(() => { base = eng.djSynth.knobs[k]; eng.djSynth.setKnob(k, Math.min(1, base + r.amount * e.vel * 0.6)); }, Math.max(0, (at - eng.ctx.currentTime) * 1000));
       setTimeout(() => { if (this.pulses.get(key) === gen) eng.djSynth.setKnob(k, base); }, Math.max(0, (at - eng.ctx.currentTime + PULSE_SEC * 2) * 1000));
+    } else if (r.kind === "voices") {
+      const style = r.arg === "strings" || r.arg === "dream" ? r.arg : "choir";
+      eng.padVoices.play(style, this.noteFor(r, e), vel, at, dur);
     } else if (r.kind === "plugin" && r.arg) {
       const midi = this.noteFor(r, e);
       setTimeout(() => eng.plugins.get(r.arg!)?.play(midi, vel, Math.max(0.08, dur)), Math.max(0, (at - eng.ctx.currentTime) * 1000));

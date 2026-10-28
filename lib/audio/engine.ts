@@ -1,4 +1,5 @@
 import { Deck } from "./Deck";
+import { PadVoices } from "./padVoices";
 import { automationFor } from "./deckAutomation";
 import { Synth } from "./Synth";
 import { StepSequencer } from "./StepSequencer";
@@ -39,6 +40,7 @@ export class DJEngine {
   readonly sampler: Sampler;
   readonly midi: MidiManager; // Web MIDI input → synth + sampler (Arturia MiniLab)
   // instruments of the plug-in modules (DX7…) that can be played by the rhythm links; a module registers itself while it is open
+  readonly padVoices: PadVoices;
   readonly plugins = new Map<string, { play(midi: number, vel: number, sec: number): void }>();
   readonly soundFx: SoundFX; // synthesised one-shot DJ effects (airhorn, riser…)
   readonly drums: DrumMachine;
@@ -126,6 +128,7 @@ export class DJEngine {
     this.drums.out.connect(this.master);
     this.djSynth = new DjSynth(this.ctx, () => this.masterClock());
     this.djSynth.out.connect(this.master);
+    this.padVoices = new PadVoices(this.ctx, this.master);
     this.keyPad = new SamplePad(this.ctx, this.master, () => this.keySourceInfo());
     this.superSampler = new SuperSampler(this.ctx, this.master, () => this.masterDeck()?.fxClock()?.bpm ?? 120);
     this.deckA.setSynthRoute(this.djSynth.out, this.master);
