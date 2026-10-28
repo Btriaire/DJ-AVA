@@ -211,14 +211,20 @@ export function RouteCard(props: {
       <div className="flex justify-between px-0.5">{screw}{screw}</div>
 
       {/* scribble strip: the source, then the device it drives */}
-      <div className="rounded-md px-2 py-1 text-center text-[11px] font-black uppercase tracking-wider text-black" style={{ background: color }}>
+      <div className="flex items-center justify-center gap-1.5 rounded-md px-2 py-1 text-center text-[11px] font-black uppercase tracking-wider text-black" style={{ background: color }}>
         {sourceLabel}
+        {r.kind === "rackpreset" && r.hold && (
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" role="img" aria-label="Hold"><title>Hold : le préréglage reste</title><path d="M17 9V7a5 5 0 0 0-10 0v2H5v12h14V9h-2zM9 7a3 3 0 0 1 6 0v2H9V7z" /></svg>
+        )}
+        {r.kind === "rackpreset" && r.alt && (
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" role="img" aria-label={`Alterne avec ${r.alt}`}><title>{`Alterne avec ${r.alt}`}</title><path d="M4 8h15m-4-4 4 4-4 4M20 16H5m4-4-4 4 4 4" /></svg>
+        )}
       </div>
       <div className="flex items-center gap-1.5 rounded-md bg-black/50 px-2 py-1.5">
         <DeviceIcon kind={r.kind} />
         <div className="flex min-w-0 flex-col leading-tight">
-          <span className="truncate text-[10px] text-neutral-400">{DEVICE[r.kind].name}</span>
-          <span className="truncate text-xs text-neutral-100">{targetLabel}</span>
+          <span className="truncate text-[10px] text-neutral-400" title={DEVICE[r.kind].name}>{DEVICE[r.kind].name}</span>
+          <span className="truncate text-xs text-neutral-100" title={targetLabel}>{targetLabel}</span>
         </div>
       </div>
 
@@ -235,12 +241,12 @@ export function RouteCard(props: {
           type="button" role="switch" aria-checked={r.on}
           aria-label={r.on ? "Couper la liaison" : "Activer la liaison"}
           onClick={onToggle}
-          className="flex min-h-9 flex-1 items-center justify-center gap-2 rounded-md border border-neutral-600 bg-neutral-800 text-[11px] font-bold tracking-wider text-neutral-200 hover:bg-neutral-700"
+          className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-md border border-neutral-600 bg-neutral-800 text-[11px] font-bold tracking-wider text-neutral-200 hover:bg-neutral-700"
         >
           <span className="h-2.5 w-2.5 rounded-full" style={{ background: r.on ? "oklch(78% 0.22 145)" : "oklch(55% 0.2 25)", boxShadow: r.on ? "0 0 8px oklch(78% 0.22 145)" : "none" }} />
           {r.on ? "ON" : "MUTE"}
         </button>
-        <button type="button" onClick={onRemove} aria-label="Supprimer la liaison" className="flex min-h-9 w-9 items-center justify-center rounded-md border border-neutral-700 text-neutral-400 hover:text-neutral-100">
+        <button type="button" onClick={onRemove} aria-label="Supprimer la liaison" className="flex min-h-11 w-11 items-center justify-center rounded-md border border-neutral-700 text-neutral-400 hover:text-neutral-100">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 18L18 6M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
         </button>
       </div>

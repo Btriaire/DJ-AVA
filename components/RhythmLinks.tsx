@@ -348,9 +348,13 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
                     </button>
                   </>
                 )}
-                <span className="truncate text-neutral-400">
-                  {n ? `${n.drums?.length ?? 0} attaques · ${n.bass?.length ?? 0} basses · ${n.other?.length ?? 0} synthé` : d.stemReady ? "Notes en cours d'analyse…" : "Préparez les stems du morceau"}
-                </span>
+                {n ? (
+                  <span className="truncate text-neutral-400">{`${n.drums?.length ?? 0} attaques · ${n.bass?.length ?? 0} basses · ${n.other?.length ?? 0} synthé`}</span>
+                ) : (
+                  <span className="truncate rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[11px] text-amber-200">
+                    {d.stemReady ? "Notes en cours d'analyse…" : "Préparez les stems du morceau"}
+                  </span>
+                )}
               </div>
               <div className="flex gap-2 overflow-x-auto pb-2">
               {routes[side].map((r) => (
