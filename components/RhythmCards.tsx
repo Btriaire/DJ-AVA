@@ -3,13 +3,13 @@ import { useEffect, useState, type ReactNode } from "react";
 import type { RouteKind, RhythmRoute, RhythmSource } from "@/lib/audio/rhythmBus";
 
 // full class names, so Tailwind can see them: border of the card and tint of the source chip
-const SOURCE_STYLE: Record<RhythmSource, { border: string; chip: string }> = {
-  drums: { border: "border-l-orange-400", chip: "bg-orange-400/15 text-orange-200" },
-  bass: { border: "border-l-purple-400", chip: "bg-purple-400/15 text-purple-200" },
-  synth: { border: "border-l-cyan-400", chip: "bg-cyan-400/15 text-cyan-200" },
-  voice: { border: "border-l-fuchsia-400", chip: "bg-fuchsia-400/15 text-fuchsia-200" },
-  beat: { border: "border-l-emerald-400", chip: "bg-emerald-400/15 text-emerald-200" },
-  bar: { border: "border-l-emerald-400", chip: "bg-emerald-400/15 text-emerald-200" },
+const SOURCE_STYLE: Record<RhythmSource, { glow: string; border: string; chip: string }> = {
+  drums: { glow: "#fb923c", border: "border-l-orange-400", chip: "bg-orange-400/15 text-orange-200" },
+  bass: { glow: "#c084fc", border: "border-l-purple-400", chip: "bg-purple-400/15 text-purple-200" },
+  synth: { glow: "#22d3ee", border: "border-l-cyan-400", chip: "bg-cyan-400/15 text-cyan-200" },
+  voice: { glow: "#e879f9", border: "border-l-fuchsia-400", chip: "bg-fuchsia-400/15 text-fuchsia-200" },
+  beat: { glow: "#34d399", border: "border-l-emerald-400", chip: "bg-emerald-400/15 text-emerald-200" },
+  bar: { glow: "#34d399", border: "border-l-emerald-400", chip: "bg-emerald-400/15 text-emerald-200" },
 };
 
 export function ActivityDot({ read, on }: { read: () => number | undefined; on: boolean }) {
@@ -31,6 +31,62 @@ export function ActivityDot({ read, on }: { read: () => number | undefined; on: 
         !on ? "bg-neutral-800" : active ? "bg-emerald-400 shadow-[0_0_6px_1px_rgba(52,211,153,0.6)]" : "bg-neutral-600"
       }`}
     />
+  );
+}
+
+// rotary knob: drag up/down, mouse wheel or arrow keys; 270 degrees of travel
+export function Knob({ label, value, min, max, step, onChange, color }: { label: string; value: number; min: number; max: number; step: number; onChange: (v: number) => void; color: string }) {
+  const frac = (value - min) / (max - min);
+  const a = (-135 + frac * 270) * (Math.PI / 180);
+  const set = (v: number) => onChange(Math.round(Math.min(max, Math.max(min, v)) / step) * step);
+  const arc = (f: number) => {
+    const t = (-135 + f * 270 - 90) * (Math.PI / 180);
+    return `${22 + 17 * Math.cos(t)} ${22 + 17 * Math.sin(t)}`;
+  };
+  return (
+    <div className="flex flex-col items-center gap-0.5">
+      <svg
+        width="44" height="44" viewBox="0 0 44 44" role="slider" tabIndex={0} aria-label={label}
+        aria-valuemin={min} aria-valuemax={max} aria-valuenow={value} className="cursor-ns-resize touch-none select-none outline-none focus-visible:ring-2 focus-visible:ring-white/60 rounded-full"
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId);
+          const y0 = e.clientY, v0 = value;
+          const move = (m: PointerEvent) => set(v0 + ((y0 - m.clientY) / 120) * (max - min));
+          const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+          window.addEventListener("pointermove", move);
+          window.addEventListener("pointerup", up);
+        }}
+        onWheel={(e) => set(value - Math.sign(e.deltaY) * step)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowUp" || e.key === "ArrowRight") { e.preventDefault(); set(value + step); }
+          if (e.key === "ArrowDown" || e.key === "ArrowLeft") { e.preventDefault(); set(value - step); }
+        }}
+      >
+        <circle cx="22" cy="22" r="15" fill="#171717" stroke="#404040" />
+        <path d={`M ${arc(0)} A 17 17 0 ${frac > 0.67 ? 1 : 0} 1 ${arc(Math.max(frac, 0.001))}`} stroke={color} strokeWidth="3" strokeLinecap="round" fill="none" />
+        <line x1="22" y1="22" x2={22 + 11 * Math.sin(a)} y2={22 - 11 * Math.cos(a)} stroke="#e5e5e5" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+      <span className="text-[10px] uppercase tracking-wider text-neutral-400">{label} {Math.round(frac * 100)}</span>
+    </div>
+  );
+}
+
+// row of LEDs that lights up and fades on every event the link plays
+export function Meter({ read, on, color }: { read: () => number | undefined; on: boolean; color: string }) {
+  const [lit, setLit] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const t = read();
+      setLit(on && t !== undefined ? Math.max(0, 1 - (performance.now() - t) / 700) : 0);
+    }, 70);
+    return () => window.clearInterval(id);
+  }, [read, on]);
+  return (
+    <div className="flex flex-1 items-center gap-1" aria-hidden="true">
+      {Array.from({ length: 10 }, (_, i) => (
+        <span key={i} className="h-3 flex-1 rounded-sm" style={{ background: lit > i / 10 ? color : "#262626", boxShadow: lit > i / 10 ? `0 0 6px ${color}` : "none" }} />
+      ))}
+    </div>
   );
 }
 
@@ -125,18 +181,9 @@ export function RouteCard(props: {
         </button>
       </div>
 
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-neutral-300">Force</span>
-        <input
-          type="range"
-          min={0.1}
-          max={1}
-          step={0.05}
-          aria-label="Force"
-          value={r.amount}
-          onChange={(e) => onAmount(parseFloat(e.target.value))}
-          className="flex-1 accent-orange-400"
-        />
+      <div className="flex items-center gap-3">
+        <Knob label="Force" value={r.amount} min={0.1} max={1} step={0.05} onChange={onAmount} color={style.glow} />
+        <Meter read={readFire} on={r.on} color={style.glow} />
       </div>
 
       {children && (

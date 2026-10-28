@@ -18,7 +18,7 @@ import Solar42F from "@/components/Solar42F";
 import { SoundFxPanel } from "@/components/SoundFxPanel";
 import { DrumMachinePanel } from "@/components/DrumMachinePanel";
 import { DjSynthPanel } from "@/components/DjSynthPanel";
-import { RhythmRunner } from "@/components/RhythmLinks";
+import { RhythmLinks, RhythmRunner } from "@/components/RhythmLinks";
 import { SlicerPanel } from "@/components/SlicerPanel";
 import { HarmonyPanel } from "@/components/HarmonyPanel";
 import { MediaLibrary } from "@/components/MediaLibrary";
@@ -286,6 +286,7 @@ export default function Home() {
     fxpad: boolean;
     stemprep: boolean;
     djsynth: boolean;
+    rhythm: boolean;
     dance: boolean;
     djkbd: boolean;
     supersampler: boolean;
@@ -327,6 +328,7 @@ export default function Home() {
     fxpad: true,
     stemprep: true,
     djsynth: false,
+    rhythm: true,
     dance: true,
     djkbd: true,
     supersampler: true,
@@ -427,6 +429,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
     { key: "solar42", label: "Solar 42F · Drone", scope: "global", category: "Instruments & Sources" },
     { key: "sampler", label: "Sculpteur de son", scope: "global", category: "Instruments & Sources" },
     { key: "soundfx", label: "FX Sonores", scope: "global", category: "Instruments & Sources" },
+    { key: "rhythm", label: "Liaisons rythmiques · Batterie, basse, voix pilotent les modules", scope: "global", category: "Instruments & Sources" },
     { key: "djsynth", label: "Synthé DJ · Basse & Stab", scope: "global", category: "Instruments & Sources" },
     { key: "drums", label: "Boîte à rythmes", scope: "global", category: "Instruments & Sources" },
     { key: "dance", label: "Montée & Drop · Build-up sur 4, 8 ou 16 temps, drop sur le temps, pompe des stems", scope: "global", category: "Performance DJ" },
@@ -1565,7 +1568,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
             )}
 
             {/* instrument rack: optional modules side by side, aligned and the same height per row */}
-            {(modules.djkbd || modules.dance || modules.supersampler || modules.drums || modules.djsynth || modules.slicer || modules.harmony || modules.synth || modules.sampler || modules.soundfx || modules.dx7 || modules.solar42) && (
+            {(modules.djkbd || modules.dance || modules.supersampler || modules.drums || modules.djsynth || modules.rhythm || modules.slicer || modules.harmony || modules.synth || modules.sampler || modules.soundfx || modules.dx7 || modules.solar42) && (
               <div className={`hw-rack @container flex flex-col gap-4 ${deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}`}>
                 <RackRow
                   onClose={closeRackModule}
@@ -1588,6 +1591,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
                   left={[["synth", modules.synth && <SynthPanel key={`synth-${resetKey}`} engine={engine} />]]}
                   right={[["sampler", modules.sampler && <SamplerPanel engine={engine} />], ["soundfx", modules.soundfx && <SoundFxPanel engine={engine} />]]}
                 />
+                <RackRow onClose={closeRackModule} left={[["rhythm", modules.rhythm && <RhythmLinks engine={engine} />]]} right={[]} />
                 <RackRow onClose={closeRackModule} left={[["dx7", modules.dx7 && <DX7Synth key={`dx7-${resetKey}`} engine={engine} embedded />]]} right={[]} />
                 <RackRow onClose={closeRackModule} left={[["solar42", modules.solar42 && <Solar42F key={`solar42-${resetKey}`} engine={engine} embedded />]]} right={[]} />
               </div>
