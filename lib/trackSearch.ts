@@ -18,7 +18,7 @@ export interface ParsedQuery {
   phrases: string[];
   exclude: string[];
   bpm?: [number, number];
-  key?: string;
+  keys?: string[]; // key:8A or a list key:8A,9A
   artist: string[];
   theme: string[];
   group: string[];
@@ -66,7 +66,8 @@ export function parseQuery(q: string): ParsedQuery {
         else if (lt) r.bpm = [0, Number(lt[1])];
         else if (one) r.bpm = [Number(one[1]) - 3, Number(one[1]) + 3];
       } else if (f === "key") {
-        if (v) r.key = v.toUpperCase();
+        const ks = v.split(",").map((x) => x.trim().toUpperCase()).filter(Boolean);
+        if (ks.length) r.keys = ks;
       } else {
         const x = normalizeText(v);
         if (x) r[f as "artist" | "theme" | "group"].push(x);
@@ -155,7 +156,7 @@ export function searchTracks<T extends SearchableTrack>(tracks: T[], q: string):
   const out: { t: T; score: number; i: number }[] = [];
   tracks.forEach((t, i) => {
     if (p.bpm && (t.bpm == null || !bpmOk(t.bpm, p.bpm))) return;
-    if (p.key && (t.camelot ?? "").toUpperCase() !== p.key) return;
+    if (p.keys && !p.keys.includes((t.camelot ?? "").toUpperCase())) return;
     const name = normalizeText(t.name);
     const theme = normalizeText(t.theme ?? "");
     const group = normalizeText(t.group ?? "");
@@ -181,6 +182,26 @@ export function searchTracks<T extends SearchableTrack>(tracks: T[], q: string):
   return out.sort((a, b) => b.score - a.score || (b.t.addedAt ?? 0) - (a.t.addedAt ?? 0) || a.i - b.i).map((x) => x.t);
 }
 
+// the keys that mix well with a Camelot key: itself, its two neighbours, its relative (MaRuche/Falken)
+export function harmonicKeys(camelot: string): string[] {
+  const m = camelot.toUpperCase().trim();
+  const match = /^([1-9]|1[0-2])([AB])$/.exec(m);
+  if (!match) return [];
+  const num = parseInt(match[1], 10);
+  const letter = match[2];
+  const wrap = (n: number) => (n < 1 ? 12 : n > 12 ? 1 : n);
+  return [m, `${wrap(num - 1)}${letter}`, `${wrap(num + 1)}${letter}`, `${num}${letter === "A" ? "B" : "A"}`];
+}
+
+// a query for the tracks that follow this one: harmonic keys, and the tempo a turntable reaches (±6 %)
+export function compatibleQuery(t: { camelot?: string; bpm?: number }): string {
+  const parts: string[] = [];
+  const keys = t.camelot ? harmonicKeys(t.camelot) : [];
+  if (keys.length) parts.push(`key:${keys.join(",")}`);
+  if (t.bpm && t.bpm > 0) parts.push(`bpm:${Math.round(t.bpm * 0.94)}-${Math.round(t.bpm * 1.06)}`);
+  return parts.join(" ");
+}
+
 export function selfTest(): void {
   const ok = (c: boolean, m: string) => { if (!c) throw new Error(`trackSearch: ${m}`); };
   ok(normalizeText("Café  Del_Mar (feat. X)") === "cafe del mar x", "normalize");
@@ -203,6 +224,11 @@ export function selfTest(): void {
   ok(names("group:berlin").length === 1 && names("theme:chill").length === 1, "group and theme");
   ok(names('artist:"daft punk"').length === 1, "quoted field value");
   ok(names("del")[0].startsWith("Café") || names("del").length >= 1, "inside a word");
+  ok(JSON.stringify(harmonicKeys("8a")) === JSON.stringify(["8A", "7A", "9A", "8B"]), "harmonicKeys 8a");
+  ok(harmonicKeys("12B").includes("1B") && harmonicKeys("12B").includes("11B"), "harmonicKeys wraps 12 to 1");
+  ok(harmonicKeys("x").length === 0, "harmonicKeys invalid");
+  ok(searchTracks(lib, "key:8A,9A").length === 2, "a list of keys");
+  ok(compatibleQuery({ camelot: "8A", bpm: 124 }) === "key:8A,7A,9A,8B bpm:117-131", "compatibleQuery");
   const ranked = searchTracks([{ name: "The One", addedAt: 1 }, { name: "One more", addedAt: 0 }, { name: "Someone", addedAt: 5 }], "one").map((t) => t.name);
   ok(ranked[0] !== "Someone", "a whole word beats the inside of a word");
 }

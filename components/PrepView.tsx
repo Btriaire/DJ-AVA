@@ -1,6 +1,6 @@
 "use client";
 
-import { searchTracks } from "@/lib/trackSearch";
+import { compatibleQuery, searchTracks } from "@/lib/trackSearch";
 import { dedupeOnline, rankOnline } from "@/lib/trackRank";
 import { useState, useRef, useMemo, useSyncExternalStore, useEffect } from "react";
 import { loadLibrary, saveLibrary, uid, idbGetBlob } from "@/lib/library";
@@ -1199,6 +1199,23 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
               <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-500"><Icon name="search" size={12} /></span>
               <input value={trayQuery} onChange={(e) => setTrayQuery(e.target.value)} placeholder="Filtrer le bac…" className="prep-input prep-tap w-full py-1 pl-7 pr-2 text-xs" aria-label="Filtrer les titres mis de côté" />
             </div>
+            {(() => {
+              // one track checked: keep in the tray only what mixes after it (harmonic keys, tempo within a turntable's ±6 %)
+              const one = selectedLaterIds.size === 1 ? laterTracks.find((t) => selectedLaterIds.has(t.id)) : undefined;
+              const q = one ? compatibleQuery(one) : "";
+              if (!q) return null;
+              return (
+                <button
+                  type="button" onClick={() => setTrayQuery(q)}
+                  className="prep-btn-ghost prep-tap flex items-center gap-1 px-2 py-1 text-[11px]"
+                  title={`Garder les titres qui s'enchaînent avec « ${one!.name} » : ${q}`}
+                  aria-label={`Titres compatibles avec ${one!.name}`}
+                >
+                  <Icon name="disc" size={11} />
+                  Compatibles
+                </button>
+              );
+            })()}
             <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortOption)} className="prep-input prep-tap px-2 py-1 text-xs" aria-label="Trier le bac" title="Trier le bac">
               <option value="recent">Tri : récents</option>
               <option value="title">Tri : titre A-Z</option>
