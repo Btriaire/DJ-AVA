@@ -1662,6 +1662,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       swap: (a, b) => queueSwap(a, b),
       skipNow: () => {
         if (!relayRef.current) return;
+        if (relayFading.current) { flash("Un enchaînement est déjà en cours"); return; }
         skipNow.current = true;
         flash("Titre suivant : l'enchaînement démarre");
       },
@@ -1998,7 +1999,6 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       const otherDeck = other === "A" ? engine.deckA : engine.deckB;
       if (!deck.playing || deck.duration <= 0) return;
       let remain = deck.duration - deck.position();
-      if (skipNow.current) remain = Math.min(remain, FADE + 2.6); // "next song now": as if the end were near
 
       maybeAccent(side, deck, remain, FADE);
 
@@ -2016,6 +2016,9 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       // a beat-matched start waits for the next beat or bar: begin that much earlier so the blend keeps its length
       const lead = step?.sync && TYPE !== "cut" ? (dj?.phrase === false ? 0.8 : 2.6) : 0;
       const preFadeWindow = TYPE === "cut" ? Math.max(2, preload) : FADE + lead;
+      // "next song now": as if the end were at the start of the window (the window depends on the kind of change, so a fixed
+      // margin could stay out of reach, a cut for instance)
+      if (skipNow.current) remain = Math.min(remain, preFadeWindow);
       if (remain > preFadeWindow + 0.3) return;
       relayArmed.current = false;
       skipNow.current = false;
