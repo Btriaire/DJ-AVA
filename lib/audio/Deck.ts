@@ -1926,7 +1926,8 @@ export class Deck {
           this.stemNames.forEach((name, i) => {
             if (name === "drums" || !this.stemOut[i]) return;
             const g = this.stemOut[i].gain;
-            g.setValueAtTime(1 - depth, t);
+            g.setValueAtTime(1, t); // a 3 ms attack instead of a step: no click on each beat
+            g.linearRampToValueAtTime(1 - depth, t + 0.003);
             g.linearRampToValueAtTime(1, t + releaseBeats * spb);
           });
           this.pumpLast = t;
