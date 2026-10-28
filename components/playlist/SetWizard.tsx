@@ -1,4 +1,6 @@
 "use client";
+import ArtistSearch from "./ArtistSearch";
+import type { AudiusTrack } from "@/lib/audius";
 import { useMemo, useState, type ReactNode } from "react";
 import type { LibTrack, Playlist, TransitionType } from "@/lib/library";
 import type { SetArc } from "@/lib/setBuilder";
@@ -24,6 +26,7 @@ export interface SetWizardProps {
   analyzing: ReadonlySet<string>;
   onAnalyze: (ids: string[]) => void;
   onPrepareStems: (ids: string[]) => void;
+  onAddFound?: (t: AudiusTrack) => string; // files a track found outside the library and returns its id
   onSave: (draft: SetDraft) => string;
   onSend: (dest: WizardDest, playlistId: string) => void;
   canSend: boolean;
@@ -41,6 +44,7 @@ export function SetWizard({
   analyzing,
   onAnalyze,
   onPrepareStems,
+  onAddFound,
   onSave,
   onSend,
   canSend,
@@ -76,7 +80,13 @@ export function SetWizard({
   const [savedId, setSavedId] = useState<string | null>(null);
   const [savedKey, setSavedKey] = useState<string>("");
 
-  const sourceTracks = useMemo(() => resolveSource(source, listId, bac, allTracks, checkedIds, playlists), [source, listId, bac, allTracks, checkedIds, playlists]);
+  const [extraIds, setExtraIds] = useState<string[]>([]);
+  const sourceTracks = useMemo(() => {
+    const base = resolveSource(source, listId, bac, allTracks, checkedIds, playlists);
+    const have = new Set(base.map(t => t.id));
+    const extra = extraIds.filter(id => !have.has(id)).map(id => allTracks.find(t => t.id === id)).filter((t): t is LibTrack => !!t);
+    return [...base, ...extra];
+  }, [source, listId, bac, allTracks, checkedIds, playlists, extraIds]);
   const known = useMemo(() => sourceTracks.filter(t => t.bpm && t.bpm > 0), [sourceTracks]);
   const toAnalyze = useMemo(() => needsAnalysis(sourceTracks), [sourceTracks]);
   const analyzingNow = useMemo(() => toAnalyze.filter(t => analyzing.has(t.id)).length, [toAnalyze, analyzing]);
@@ -248,6 +258,15 @@ export function SetWizard({
                 </button>
               ))}
             </div>
+
+            {onAddFound && (
+              <details className="rounded-lg border border-[var(--prep-line)] p-3">
+                <summary className="cursor-pointer text-[12px] font-bold">Ajouter des titres hors bibliothèque (YouTube)</summary>
+                <div className="mt-3">
+                  <ArtistSearch setName="ce set" onAdd={(t) => { const id = onAddFound(t); setExtraIds(ids => ids.includes(id) ? ids : [...ids, id]); }} />
+                </div>
+              </details>
+            )}
 
             {source === "list" && (
               <select

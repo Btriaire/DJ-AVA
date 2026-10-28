@@ -20,7 +20,7 @@ const PRESETS: { label: string; route: Omit<RhythmRoute, "id" | "on"> }[] = [
   { label: "Batterie → Synthé sur la tonique", route: { source: "drums", kind: "synth", amount: 0.5 } },
   { label: "Basse → Séquenceur synthé", route: { source: "bass", kind: "seqrec", amount: 0.8 } },
   { label: "Synthé → Super sampler", route: { source: "synth", kind: "sampler", amount: 0.6 } },
-  { label: "Voix → Synthé DJ", route: { source: "voice", kind: "synth", amount: 0.5, transpose: -12 } },
+  { label: "Voix → Synthé DJ", route: { source: "voice", kind: "synth", amount: 0.9, transpose: -12 } },
   { label: "Temps → Pompe du volume", route: { source: "beat", kind: "duck", arg: "self", amount: 0.35 } },
   { label: "Batterie → Pompe de l'autre deck", route: { source: "drums", kind: "duck", arg: "other", amount: 0.4 } },
   { label: "Batterie → Filtre passe-bas", route: { source: "drums", kind: "filter", arg: "self:lp", amount: 0.5 } },

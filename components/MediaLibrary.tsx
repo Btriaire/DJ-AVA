@@ -492,12 +492,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     });
   }
   // a result found by artist in the Sets view: filed in the library (if new) and added to the open set
-  function addFoundToSet(t: AudiusTrack) {
-    const plId = activePl;
-    if (!plId) {
-      flash("Choisis d'abord un set");
-      return;
-    }
+  // files a found track in the library (once) and returns its id
+  function fileFound(t: AudiusTrack): string {
     const existing = dataRef.current.tracks.find((x) => x.url === t.id && x.source === "youtube");
     const id = existing?.id ?? uid();
     if (!existing) {
@@ -506,7 +502,15 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
         tracks: [{ id, name: t.title, source: "youtube", url: t.id, deck: null, art: t.artwork ?? undefined, durationSec: t.duration || undefined, bpm: t.bpm ?? undefined, later: true, addedAt: Date.now() } as LibTrack, ...d.tracks],
       }));
     }
-    addTracksAt(plId, [id]);
+    return id;
+  }
+  function addFoundToSet(t: AudiusTrack) {
+    const plId = activePl;
+    if (!plId) {
+      flash("Choisis d'abord un set");
+      return;
+    }
+    addTracksAt(plId, [fileFound(t)]);
   }
   async function importFiles(fileList: FileList) {
     // snapshot now: the input is cleared after this call, which empties a live FileList
@@ -3416,6 +3420,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                 const list = ids.map((id) => trackById(id)).filter((t): t is LibTrack => !!t);
                 if (list.length > 0) enqueuePrep(list);
               }}
+              onAddFound={fileFound}
               onSave={saveWizardSet}
               onSend={(dest, id) => {
                 if (dest === "open") {

@@ -58,7 +58,12 @@ export function buildEvents(n: StemNotes | null | undefined, d?: Deck): Ev[] {
     // the start of each sung note: the contour goes from silence (-1) or another pitch to a new one
     for (let i = 0, last = -1; i < v.length; i++) {
       const m = v[i] >= 0 ? Math.round(v[i]) : -1;
-      if (m >= 0 && m !== last) out.push({ t: i * step, source: "voice", vel: 0.8, dur: step * 3, midi: m });
+      if (m >= 0 && m !== last) {
+        // the note lasts as long as the voice holds that pitch (at least 0.25 s, so it can be heard)
+        let j = i + 1;
+        while (j < v.length && v[j] >= 0 && Math.round(v[j]) === m) j++;
+        out.push({ t: i * step, source: "voice", vel: 1, dur: Math.max(0.25, (j - i) * step), midi: m });
+      }
       last = m;
     }
   }

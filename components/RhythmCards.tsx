@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, type ReactNode } from "react";
-import type { RhythmRoute, RhythmSource } from "@/lib/audio/rhythmBus";
+import type { RouteKind, RhythmRoute, RhythmSource } from "@/lib/audio/rhythmBus";
 
 // full class names, so Tailwind can see them: border of the card and tint of the source chip
 const SOURCE_STYLE: Record<RhythmSource, { border: string; chip: string }> = {
@@ -34,6 +34,29 @@ export function ActivityDot({ read, on }: { read: () => number | undefined; on: 
   );
 }
 
+// the device a link drives: a name and a small drawing (keys, pads, knob, steps, speaker)
+const DEVICE: Record<RouteKind, { name: string; icon: "keys" | "pads" | "knob" | "steps" | "speaker" }> = {
+  synth: { name: "Synthé DJ", icon: "keys" }, synth2: { name: "Synthé (module Global)", icon: "keys" }, plugin: { name: "DX7", icon: "keys" },
+  sampler: { name: "Super Sampler", icon: "pads" }, pad: { name: "Sampler", icon: "pads" }, drum: { name: "Boîte à rythmes", icon: "pads" },
+  keypad: { name: "DJ-Keys", icon: "pads" }, keyfx: { name: "DJ-Keys", icon: "pads" },
+  seqrec: { name: "Séquenceur", icon: "steps" }, rack: { name: "Rack", icon: "knob" }, djknob: { name: "Synthé DJ", icon: "knob" },
+  filter: { name: "Filtre du deck", icon: "knob" }, duck: { name: "Volume du deck", icon: "knob" }, sfx: { name: "Effets sonores", icon: "speaker" },
+};
+function DeviceIcon({ kind }: { kind: RouteKind }) {
+  const c = { stroke: "currentColor", strokeWidth: 1.3, fill: "none" } as const;
+  const i = DEVICE[kind].icon;
+  return (
+    <svg width="28" height="20" viewBox="0 0 28 20" aria-hidden="true" className="shrink-0 text-neutral-300">
+      <rect x="1" y="1" width="26" height="18" rx="3" {...c} />
+      {i === "keys" && <><path d="M7 1v18M13 1v18M19 1v18" {...c} /><path d="M5 1h4v10H5zM11 1h4v10h-4zM17 1h4v10h-4z" fill="currentColor" /></>}
+      {i === "pads" && <><rect x="4" y="4" width="6" height="5" {...c} /><rect x="11" y="4" width="6" height="5" {...c} /><rect x="18" y="4" width="6" height="5" {...c} /><rect x="4" y="11" width="6" height="5" {...c} /><rect x="11" y="11" width="6" height="5" {...c} /><rect x="18" y="11" width="6" height="5" {...c} /></>}
+      {i === "knob" && <><circle cx="14" cy="10" r="6" {...c} /><path d="M14 10l3-4" {...c} /></>}
+      {i === "steps" && <><path d="M4 14h4v-4h4v4h4v-6h4v6h4" {...c} /></>}
+      {i === "speaker" && <><circle cx="14" cy="10" r="5" {...c} /><circle cx="14" cy="10" r="1.5" fill="currentColor" /></>}
+    </svg>
+  );
+}
+
 export function RouteCard(props: {
   r: RhythmRoute;
   sourceLabel: string;
@@ -63,8 +86,12 @@ export function RouteCard(props: {
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M4 8H12M12 8L8 4M12 8L8 12" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          <div className="rounded-full px-2.5 py-1 text-xs bg-neutral-800">
-            {targetLabel}
+          <div className="flex items-center gap-1.5 rounded-lg bg-neutral-800 px-2 py-1">
+            <DeviceIcon kind={r.kind} />
+            <div className="flex min-w-0 flex-col leading-tight">
+              <span className="truncate text-[10px] text-neutral-400">{DEVICE[r.kind].name}</span>
+              <span className="truncate text-xs">{targetLabel}</span>
+            </div>
           </div>
         </div>
 
