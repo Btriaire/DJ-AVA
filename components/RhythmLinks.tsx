@@ -95,7 +95,12 @@ const load = (): Record<Side, RhythmRoute[]> => {
     return { A: ok(j.A), B: ok(j.B) };
   } catch { return { A: [], B: [] }; }
 };
-const save = (r: Record<Side, RhythmRoute[]>) => { try { localStorage.setItem(KEY, JSON.stringify(r)); } catch { /* private window */ } };
+let saveTimer: number | undefined;
+// a fader drag calls this on every pointer move: write once, 250 ms after the last change
+const save = (r: Record<Side, RhythmRoute[]>) => {
+  window.clearTimeout(saveTimer);
+  saveTimer = window.setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(r)); } catch { /* private window */ } }, 250);
+};
 
 const MASTER_KEY = "djsynth.rhythm.master";
 const loadMaster = () => { try { return localStorage.getItem(MASTER_KEY) !== "0"; } catch { return true; } };
@@ -331,6 +336,18 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
             <div key={side} className="flex min-w-0 flex-col gap-2 rounded-lg border border-neutral-800 p-2.5">
               <div className="flex items-center justify-between gap-2 text-xs">
                 <b className="text-neutral-100">Deck {side}</b>
+                {routes[side].length > 0 && (
+                  <>
+                    <span className="shrink-0 rounded-full bg-neutral-800 px-2 py-0.5 text-[11px] text-neutral-300" title="Liaisons actives sur ce deck">{routes[side].filter((x) => x.on).length}/{routes[side].length}</span>
+                    <button
+                      type="button"
+                      className="min-h-9 shrink-0 rounded-md border border-neutral-700 px-2 text-[11px] text-neutral-300 hover:bg-neutral-800"
+                      onClick={() => { const allOn = routes[side].every((x) => x.on); apply(side, routes[side].map((x) => ({ ...x, on: !allOn }))); }}
+                    >
+                      {routes[side].every((x) => x.on) ? "Tout couper" : "Tout réactiver"}
+                    </button>
+                  </>
+                )}
                 <span className="truncate text-neutral-400">
                   {n ? `${n.drums?.length ?? 0} attaques · ${n.bass?.length ?? 0} basses · ${n.other?.length ?? 0} synthé` : d.stemReady ? "Notes en cours d'analyse…" : "Préparez les stems du morceau"}
                 </span>

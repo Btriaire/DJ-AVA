@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { useTick } from "./ticker";
 import type { RouteKind, RhythmRoute, RhythmSource } from "@/lib/audio/rhythmBus";
 
 // one colour per source (OKLCH, no pink): the scribble strip, the knob ring and the fader cap
@@ -17,15 +18,11 @@ const SOURCE_STYLE: Record<RhythmSource, { glow: string }> = {
 
 export function ActivityDot({ read, on }: { read: () => number | undefined; on: boolean }) {
   const [active, setActive] = useState(false);
-
-  useEffect(() => {
+  useTick(() => {
     if (!on) return;
-    const interval = setInterval(() => {
-      const last = read();
-      setActive(last !== undefined && performance.now() - last < 160);
-    }, 120);
-    return () => clearInterval(interval);
-  }, [on, read]);
+    const last = read();
+    setActive(last !== undefined && performance.now() - last < 160);
+  });
 
   return (
     <div
@@ -76,19 +73,16 @@ export function Knob({ label, value, min, max, step, onChange, color }: { label:
 
 // vertical VU meter: 12 segments, green then amber then red, lit from the bottom on every event
 export function Meter({ read, on }: { read: () => number | undefined; on: boolean }) {
-  const [lit, setLit] = useState(0);
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      const t = read();
-      setLit(on && t !== undefined ? Math.max(0, 1 - (performance.now() - t) / 600) : 0);
-    }, 60);
-    return () => window.clearInterval(id);
-  }, [read, on]);
+  const [lit, setLit] = useState(0); // lit segments, whole numbers: React skips the render when nothing changed
+  useTick(() => {
+    const t = read();
+    setLit(on && t !== undefined ? Math.ceil(Math.max(0, 1 - (performance.now() - t) / 600) * 12) : 0);
+  });
   return (
     <div className="flex h-[132px] w-3 flex-col-reverse gap-[2px] rounded-sm bg-black/60 p-[2px]" aria-hidden="true">
       {Array.from({ length: 12 }, (_, i) => {
         const c = i >= 10 ? "oklch(65% 0.24 25)" : i >= 8 ? "oklch(80% 0.17 80)" : "oklch(75% 0.2 145)";
-        const onSeg = lit > i / 12;
+        const onSeg = lit > i;
         return <span key={i} className="flex-1 rounded-[1px]" style={{ background: onSeg ? c : "oklch(25% 0.01 240)", boxShadow: onSeg ? `0 0 5px ${c}` : "none" }} />;
       })}
     </div>
@@ -211,7 +205,7 @@ export function RouteCard(props: {
 
   return (
     <article
-      className={`relative flex w-[176px] shrink-0 flex-col gap-2 rounded-lg border border-neutral-700 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] ${!r.on ? "opacity-70" : ""}`}
+      className={`relative flex w-[176px] shrink-0 flex-col gap-2 rounded-lg border border-neutral-700 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] ${!r.on ? "opacity-60 saturate-50" : ""}`}
       style={{ background: "linear-gradient(180deg, oklch(30% 0.012 240), oklch(22% 0.01 240))" }}
     >
       <div className="flex justify-between px-0.5">{screw}{screw}</div>

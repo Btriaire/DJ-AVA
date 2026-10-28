@@ -113,7 +113,7 @@ export class RhythmBus {
   get stale(): boolean { return this.notes !== this.deck.stemNotes || this.bpm !== this.deck.bpm || this.hash !== this.deck.stemHash; }
 
   start() {
-    this.stop();
+    if (this.timer) return; // already running: the routes and events are read live, a restart would fire the last 0.3 s twice
     if (!this.ready) return;
     this.timer = setInterval(() => this.pump(), TICK_MS);
   }
