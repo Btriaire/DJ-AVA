@@ -38,9 +38,26 @@ export function snapshotModule(rack: Rack, id: RackModuleId): ModulePreset {
   };
 }
 
-export function applyModule(rack: Rack, id: RackModuleId, p: ModulePreset) {
-  for (const [k, v] of Object.entries(p.params)) rack.setParam(id, k, v);
+const glides = new Map<Rack, Map<string, number>>();
+
+// the module goes to the preset; with `ms` the numbers glide there (a jump of a delay time or a cutoff clicks)
+export function applyModule(rack: Rack, id: RackModuleId, p: ModulePreset, ms = 0) {
+  const gens = glides.get(rack) ?? new Map<string, number>();
+  glides.set(rack, gens);
+  const gen = (gens.get(id) ?? 0) + 1;
+  gens.set(id, gen);
   for (const [k, v] of Object.entries(p.flags)) rack.setFlag(id, k, v);
-  rack.setMix(id, p.mix);
-  rack.setEnabled(id, p.on);
+  if (p.on) rack.setEnabled(id, true);
+  const from = snapshotModule(rack, id);
+  const set = (x: number) => {
+    for (const [k, v] of Object.entries(p.params)) rack.setParam(id, k, (from.params[k] ?? v) + (v - (from.params[k] ?? v)) * x);
+    rack.setMix(id, from.mix + (p.mix - from.mix) * x);
+  };
+  const steps = Math.round(ms / 16);
+  for (let i = 1; i <= steps; i++) setTimeout(() => { if (gens.get(id) === gen) set(i / steps); }, i * 16);
+  setTimeout(() => {
+    if (gens.get(id) !== gen) return;
+    set(1);
+    if (!p.on) rack.setEnabled(id, false);
+  }, steps * 16);
 }

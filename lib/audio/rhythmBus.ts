@@ -204,7 +204,7 @@ export class RhythmBus {
     const h = this.held.get(key);
     if (!h) return;
     this.held.delete(key);
-    applyModule(this.deck.rack, h.id, h.base);
+    applyModule(this.deck.rack, h.id, h.base, 200);
   }
   private presetHit(r: RhythmRoute, id: RackModuleId, p: ModulePreset, at: number) {
     const key = `m${id}`;
@@ -214,7 +214,7 @@ export class RhythmBus {
       if (!h) { h = { id, base: snapshotModule(this.deck.rack, id), route: r.id, gen: 0 }; this.held.set(key, h); }
       h.route = r.id;
       const gen = ++h.gen;
-      applyModule(this.deck.rack, id, p);
+      applyModule(this.deck.rack, id, p, 80);
       if (!r.hold) setTimeout(() => { if (this.held.get(key)?.gen === gen) this.release(key); }, (r.len ?? 1) * beat * 1000);
     }, Math.max(0, (at - this.engine.ctx.currentTime) * 1000));
   }

@@ -467,7 +467,7 @@ function RackModuleDetail({
             onChange={(e) => {
               const p = getModulePreset(id, e.target.value);
               if (!p) return;
-              applyModule(rack, id, p);
+              applyModule(rack, id, p, 80);
               flashLcd(`${def.label} · ${e.target.value}`);
               onChanged();
             }}
@@ -488,18 +488,20 @@ function RackModuleDetail({
           >
             ENREG.
           </button>
-          <button
-            className="mr-2 text-[10px] font-bold text-neutral-500 hover:text-neutral-100"
+          <select
+            aria-label="Supprimer un préréglage"
+            className="mr-2 max-w-[70px] rounded bg-neutral-900 text-[10px] text-neutral-500"
+            value=""
             title="Supprime un préréglage de ce module"
-            onClick={() => {
-              const name = window.prompt(`Préréglage à supprimer parmi : ${listModulePresets(id).join(", ") || "aucun"}`);
-              if (!name || !getModulePreset(id, name)) return;
-              deleteModulePreset(id, name);
+            onChange={(e) => {
+              if (!e.target.value || !window.confirm(`Supprimer « ${e.target.value} » ?`)) return;
+              deleteModulePreset(id, e.target.value);
               onChanged();
             }}
           >
-            SUPPR.
-          </button>
+            <option value="">Suppr…</option>
+            {listModulePresets(id).map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
           <button
             className="mr-2 text-[10px] font-bold text-neutral-400 hover:text-neutral-100"
             title="Remet les paramètres de ce module à leurs valeurs par défaut"
