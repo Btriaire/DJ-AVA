@@ -19,7 +19,7 @@ export interface RhythmRoute {
   kind: RouteKind; // plugin: a plug-in instrument by id ("dx7"), played with the detected notes; keypad: a key of the DJ keyboard ("0".."15"); keyfx: "impact" | "brake" | "scratch" | "drop"; filter: "self:lp" | "self:hp" | "other:lp" | "other:hp" (a pulse on a deck filter); duck: "self" | "other" (the fader dips: pumping); sfx: a sound-effect id; djknob: a DJ synth knob pulse; synth2: the classic synth; sampler: the super sampler (arg unused); pad: a sampler pad ("0".."n"); seqrec: writes the notes into the synth step sequencer when it is armed; synth: the DJ synth plays a note in harmony; drum: a drum voice; rack: a pulse on a rack parameter
   arg?: string; // drum: the voice; rack: "moduleId:paramKey"
   amount: number;
-  level?: number; // Vol: 0..2, the loudness of the link (1 = normal) // 0..1
+  level?: number; // Vol: gain 0..4 (-inf..+12 dB), 1 = unity // 0..1
   grid?: number; // snap each event to the beat grid: 1 = beat, 2 = eighth, 4 = sixteenth (off when absent)
   transpose?: number; // semitones added to the notes (synth, sampler, sequencer targets)
   gate?: number; // note length factor (1 = as detected)
@@ -223,7 +223,7 @@ export class RhythmBus {
       acc = Math.round((e.t - this.deck.beatGridOffset) / spb) % 4 === 0 ? 1.3 : 0.75;
     }
     const amt = r.amount * (r.level ?? 1); // Force x Vol: the strength of the link and its loudness
-    const loud = e.vel * amt * 1.8 * acc; // pads can go past 1; notes are velocities, capped
+    const loud = e.vel * amt * 2.4 * acc; // pads can go past 1; notes are velocities, capped
     const vel = Math.min(1, loud);
     if (vel >= 0.05) this.lastFire.set(r.id, performance.now());
     if (vel < 0.05) return;
@@ -257,7 +257,7 @@ export class RhythmBus {
       this.pulse(`k${r.id}`, () => eng.djSynth.knobs[k], (v) => eng.djSynth.setKnob(k, v), (base) => Math.min(1, base + 0.25 + amt * e.vel * 0.75), at, this.beatRel(1.2));
     } else if (r.kind === "voices") {
       const style = r.arg === "strings" || r.arg === "dream" ? r.arg : "choir";
-      eng.padVoices.play(style, this.noteFor(r, e), Math.min(2.5, loud), at, dur);
+      eng.padVoices.play(style, this.noteFor(r, e), Math.min(4, loud), at, dur);
     } else if (r.kind === "plugin" && r.arg) {
       const midi = this.noteFor(r, e);
       setTimeout(() => eng.plugins.get(r.arg!)?.play(midi, vel, Math.max(0.08, dur)), Math.max(0, (at - eng.ctx.currentTime) * 1000));

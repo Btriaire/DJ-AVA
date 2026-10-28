@@ -95,6 +95,81 @@ export function Meter({ read, on }: { read: () => number | undefined; on: boolea
   );
 }
 
+// console fader: groove, lit track, scale with a mark at the unity position, metal cap.
+// Drag the cap (hold Shift for fine moves), click the groove, use the wheel or the arrow keys; double-click resets.
+export function Fader({ label, p, onP, display, color, unity, reset, height = 116 }: { label: string; p: number; onP: (p: number) => void; display: string; color: string; unity?: number; reset: number; height?: number }) {
+  const set = (v: number) => onP(Math.min(1, Math.max(0, v)));
+  const pos = (e: { clientY: number }, el: HTMLElement) => {
+    const r = el.getBoundingClientRect();
+    return 1 - (e.clientY - r.top - 6) / (r.height - 12);
+  };
+  const ticks = Array.from({ length: 11 }, (_, i) => i / 10);
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <span className="text-[10px] uppercase tracking-wider text-neutral-400">{label}</span>
+      <div
+        role="slider" tabIndex={0} aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(p * 100)} aria-valuetext={display}
+        className="relative w-10 cursor-ns-resize touch-none select-none rounded outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+        style={{ height }}
+        onPointerDown={(e) => {
+          const el = e.currentTarget;
+          el.setPointerCapture(e.pointerId);
+          let last = e.clientY, cur = p;
+          // a click on the groove jumps there; a click on the cap only starts the drag
+          if (Math.abs(pos(e, el) - p) > 0.07) { cur = pos(e, el); set(cur); }
+          const move = (m: PointerEvent) => {
+            cur += ((last - m.clientY) / (height - 12)) * (m.shiftKey ? 0.15 : 1);
+            last = m.clientY;
+            set(cur);
+          };
+          const up = () => { el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); };
+          el.addEventListener("pointermove", move);
+          el.addEventListener("pointerup", up);
+        }}
+        onDoubleClick={() => onP(reset)}
+        onWheel={(e) => set(p - Math.sign(e.deltaY) * (e.shiftKey ? 0.01 : 0.04))}
+        onKeyDown={(e) => {
+          const st = e.shiftKey ? 0.01 : 0.04;
+          if (e.key === "ArrowUp" || e.key === "ArrowRight") { e.preventDefault(); set(p + st); }
+          if (e.key === "ArrowDown" || e.key === "ArrowLeft") { e.preventDefault(); set(p - st); }
+          if (e.key === "Home") onP(reset);
+        }}
+      >
+        {/* scale: both sides of the groove */}
+        {ticks.map((t) => {
+          const y = 6 + (1 - t) * (height - 12);
+          const major = t === 0 || t === 1 || t === 0.5;
+          return (
+            <span key={t}>
+              <span className="absolute left-0.5 h-px bg-neutral-500" style={{ top: y, width: major ? 8 : 5 }} />
+              <span className="absolute right-0.5 h-px bg-neutral-500" style={{ top: y, width: major ? 8 : 5 }} />
+            </span>
+          );
+        })}
+        {unity !== undefined && <span className="absolute left-0 right-0 h-px" style={{ top: 6 + (1 - unity) * (height - 12), background: color }} />}
+        {/* groove and lit part */}
+        <span className="absolute left-1/2 top-1.5 bottom-1.5 w-1.5 -translate-x-1/2 rounded-full bg-black shadow-[inset_0_0_2px_rgba(0,0,0,1)]" />
+        <span className="absolute bottom-1.5 left-1/2 w-1.5 -translate-x-1/2 rounded-full" style={{ height: p * (height - 12), background: color, opacity: 0.85 }} />
+        {/* cap */}
+        <span
+          className="absolute left-1/2 h-[18px] w-8 -translate-x-1/2 -translate-y-1/2 rounded-[3px] border border-neutral-500 shadow-[0_2px_4px_rgba(0,0,0,0.7)]"
+          style={{ top: 6 + (1 - p) * (height - 12), background: "linear-gradient(180deg, oklch(62% 0.01 240), oklch(38% 0.01 240) 48%, oklch(30% 0.01 240) 52%, oklch(46% 0.01 240))" }}
+        >
+          <span className="absolute left-1 right-1 top-1/2 h-0.5 -translate-y-1/2 rounded-full" style={{ background: color }} />
+        </span>
+      </div>
+      <span className="font-mono text-[10px] text-neutral-300">{display}</span>
+    </div>
+  );
+}
+
+// Vol: dB taper like a console, -60 dB to +12 dB, unity (0 dB) at 5/6 of the travel
+export const VOL_MAX_DB = 12;
+export const VOL_MIN_DB = -60;
+export const volToP = (g: number) => (g <= 0.001 ? 0 : Math.min(1, Math.max(0, (20 * Math.log10(g) - VOL_MIN_DB) / (VOL_MAX_DB - VOL_MIN_DB))));
+export const pToVol = (p: number) => (p <= 0.01 ? 0 : 10 ** ((VOL_MIN_DB + p * (VOL_MAX_DB - VOL_MIN_DB)) / 20));
+export const volLabel = (g: number) => (g <= 0.001 ? "-∞ dB" : `${20 * Math.log10(g) >= 0 ? "+" : ""}${(20 * Math.log10(g)).toFixed(1)} dB`);
+
 // the device a link drives: a name and a small drawing (keys, pads, knob, steps, speaker)
 const DEVICE: Record<RouteKind, { name: string; icon: "keys" | "pads" | "knob" | "steps" | "speaker" }> = {
   voices: { name: "Nappes (chœur, cordes…)", icon: "keys" },
@@ -154,27 +229,10 @@ export function RouteCard(props: {
       </div>
 
       {/* VU meter and the Force fader side by side */}
-      <div className="flex items-stretch justify-center gap-4 py-1">
+      <div className="flex items-stretch justify-center gap-2 py-1">
         <Meter read={readFire} on={r.on} />
-        <div className="flex flex-col items-center gap-1">
-          <span className="text-[10px] uppercase tracking-wider text-neutral-400">Force {Math.round(r.amount * 100)}</span>
-          <input
-            type="range" min={0.1} max={1} step={0.05} value={r.amount} aria-label="Force"
-            onChange={(e) => onAmount(parseFloat(e.target.value))}
-            className="h-[116px] w-6 cursor-ns-resize [writing-mode:vertical-lr] [direction:rtl]"
-            style={{ accentColor: color }}
-          />
-        </div>
-        <div className="flex flex-col items-center gap-1">
-          <span className="text-[10px] uppercase tracking-wider text-neutral-400">Vol {Math.round((r.level ?? 1) * 100)}</span>
-          <input
-            type="range" min={0} max={2} step={0.05} value={r.level ?? 1} aria-label="Volume de la liaison"
-            onChange={(e) => onLevel(parseFloat(e.target.value))}
-            onDoubleClick={() => onLevel(1)}
-            className="h-[116px] w-6 cursor-ns-resize [writing-mode:vertical-lr] [direction:rtl]"
-            style={{ accentColor: "oklch(80% 0.02 240)" }}
-          />
-        </div>
+        <Fader label="Force" p={(r.amount - 0.1) / 0.9} onP={(p) => onAmount(Math.round((0.1 + p * 0.9) * 100) / 100)} display={`${Math.round(r.amount * 100)} %`} color={color} reset={0.67} height={132} />
+        <Fader label="Vol" p={volToP(r.level ?? 1)} onP={(p) => onLevel(pToVol(p))} display={volLabel(r.level ?? 1)} color="oklch(82% 0.03 240)" unity={volToP(1)} reset={volToP(1)} height={132} />
       </div>
 
       {/* ON / MUTE with its LED, and delete */}
