@@ -29,6 +29,7 @@ export interface RhythmRoute {
   nudge?: number; // ms, fixed shift
   pattern?: string; // 'x' and '.' per grid step: only the 'x' steps play (needs a grid)
   avoidVoice?: boolean; // silent while the voice sings
+  onlyVoice?: boolean; // plays only while the voice sings
   snapKey?: boolean; // note targets: the note goes to the nearest note of the DJ synth key
   accent?: boolean; // louder on the first beat of a bar, softer elsewhere
   alt?: string; // rackpreset: name of a second preset of the same module; the hits alternate between arg's preset and this one
@@ -157,6 +158,7 @@ export class RhythmBus {
           if (r.density !== undefined && r.density < 1 && (e.t * 7.31) % 1 > r.density) continue;
           if (r.prob !== undefined && r.prob < 1 && Math.random() > r.prob) continue;
           if (r.avoidVoice && voiceStateAt(this.deck.stemMap, e.t) === "sung") continue;
+          if (r.onlyVoice && voiceStateAt(this.deck.stemMap, e.t) === "gap") continue;
           if (r.grid && r.pattern && this.deck.bpm > 0 && !patternAllows(r.pattern, e.t, this.deck.beatGridOffset, 60 / this.deck.bpm / r.grid)) continue;
           this.fire(r, e, this.snap(r, e, at, rate), (e.dur * (r.gate ?? 1)) / rate);
         }

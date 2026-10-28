@@ -4,6 +4,7 @@ import type { DJEngine } from "@/lib/audio/engine";
 import type { Deck } from "@/lib/audio/Deck";
 import { DRUM_VOICES } from "@/lib/audio/DrumMachine";
 import { RACK_MODULES } from "@/lib/audio/Rack";
+import { deleteScene, getScene, listScenes, saveScene } from "@/lib/rhythmScenes";
 import { GLOBAL_MODULES, listModulePresets } from "@/lib/modulePresets";
 import { RhythmBus, type RhythmRoute, type RhythmSource, type RouteKind } from "@/lib/audio/rhythmBus";
 import { SFX_LIST } from "@/lib/audio/SoundFX";
@@ -246,9 +247,19 @@ export function FineSettings({ r, patch }: { r: RhythmRoute; patch: (p: Partial<
               type="checkbox"
               checked={r.avoidVoice ?? false}
               className="accent-orange-400"
-              onChange={(e) => patch({ avoidVoice: e.target.checked })}
+              onChange={(e) => patch({ avoidVoice: e.target.checked, onlyVoice: e.target.checked ? false : r.onlyVoice })}
             />
             Se taire quand la voix chante
+          </label>
+
+          <label className="flex items-center gap-1 min-h-9">
+            <input
+              type="checkbox"
+              checked={r.onlyVoice ?? false}
+              className="accent-orange-400"
+              onChange={(e) => patch({ onlyVoice: e.target.checked, avoidVoice: e.target.checked ? false : r.avoidVoice })}
+            />
+            Jouer seulement quand la voix chante
           </label>
 
           <label className="flex items-center gap-1 min-h-9">
@@ -346,6 +357,33 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
             <div key={side} className="flex min-w-0 flex-col gap-2 rounded-lg border border-neutral-800 p-2.5">
               <div className="flex items-center justify-between gap-2 text-xs">
                 <b className="text-neutral-100">Deck {side}</b>
+                <span className="flex shrink-0 gap-1">
+                  <select
+                    aria-label={`Scènes du deck ${side}`}
+                    className="min-h-9 max-w-[110px] rounded-md border border-neutral-700 bg-neutral-900 px-2 text-[11px] text-neutral-200"
+                    value=""
+                    onChange={(e) => { const sc = e.target.value ? getScene(e.target.value, newId) : undefined; if (sc) apply(side, sc); }}
+                  >
+                    <option value="">Scènes…</option>
+                    {listScenes().map((name) => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                  <button
+                    type="button"
+                    className="min-h-9 rounded-md border border-neutral-700 px-2 text-[11px] text-neutral-300 hover:bg-neutral-800"
+                    onClick={() => { const name = window.prompt("Nom de la scène ?"); if (name) { saveScene(name, routes[side]); tick((n) => n + 1); } }}
+                  >
+                    Enregistrer
+                  </button>
+                  <select
+                    aria-label="Supprimer une scène"
+                    className="min-h-9 max-w-[80px] rounded-md border border-neutral-700 bg-neutral-900 px-2 text-[11px] text-neutral-500"
+                    value=""
+                    onChange={(e) => { if (e.target.value && window.confirm(`Supprimer la scène « ${e.target.value} » ?`)) { deleteScene(e.target.value); tick((n) => n + 1); } }}
+                  >
+                    <option value="">Suppr…</option>
+                    {listScenes().map((name) => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                </span>
                 {routes[side].length > 0 && (
                   <>
                     <span className="shrink-0 rounded-full bg-neutral-800 px-2 py-0.5 text-[11px] text-neutral-300" title="Liaisons actives sur ce deck">{routes[side].filter((x) => x.on).length}/{routes[side].length}</span>
