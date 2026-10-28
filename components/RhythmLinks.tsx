@@ -323,6 +323,7 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
                   readFire={() => busFor(engine, d).lastFire.get(r.id)}
                   onToggle={() => patch(side, r.id, { on: !r.on })}
                   onAmount={(v) => patch(side, r.id, { amount: v })}
+                  onLevel={(v) => patch(side, r.id, { level: v })}
                   onRemove={() => apply(side, routes[side].filter((x) => x.id !== r.id))}
                 >
                   <div className="flex flex-wrap items-center gap-2 text-xs">

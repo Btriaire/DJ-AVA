@@ -126,10 +126,11 @@ export function RouteCard(props: {
   readFire: () => number | undefined;
   onToggle: () => void;
   onAmount: (v: number) => void;
+  onLevel: (v: number) => void;
   onRemove: () => void;
   children?: ReactNode;
 }) {
-  const { r, sourceLabel, targetLabel, readFire, onToggle, onAmount, onRemove, children } = props;
+  const { r, sourceLabel, targetLabel, readFire, onToggle, onAmount, onLevel, onRemove, children } = props;
   const color = SOURCE_STYLE[r.source].glow;
   const screw = <span className="h-1.5 w-1.5 rounded-full bg-neutral-600 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.6)]" />;
 
@@ -162,6 +163,16 @@ export function RouteCard(props: {
             onChange={(e) => onAmount(parseFloat(e.target.value))}
             className="h-[116px] w-6 cursor-ns-resize [writing-mode:vertical-lr] [direction:rtl]"
             style={{ accentColor: color }}
+          />
+        </div>
+        <div className="flex flex-col items-center gap-1">
+          <span className="text-[10px] uppercase tracking-wider text-neutral-400">Vol {Math.round((r.level ?? 1) * 100)}</span>
+          <input
+            type="range" min={0} max={2} step={0.05} value={r.level ?? 1} aria-label="Volume de la liaison"
+            onChange={(e) => onLevel(parseFloat(e.target.value))}
+            onDoubleClick={() => onLevel(1)}
+            className="h-[116px] w-6 cursor-ns-resize [writing-mode:vertical-lr] [direction:rtl]"
+            style={{ accentColor: "oklch(80% 0.02 240)" }}
           />
         </div>
       </div>

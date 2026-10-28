@@ -26,7 +26,7 @@ export class PadVoices {
 
   constructor(private ctx: BaseAudioContext, dest: AudioNode) {
     this.out = ctx.createGain();
-    this.out.gain.value = 0.5;
+    this.out.gain.value = 0.9;
     this.send = ctx.createGain();
     this.send.gain.value = 0.55;
     const verb = ctx.createConvolver();
@@ -69,7 +69,7 @@ export class PadVoices {
     const atk = style === "strings" ? rnd(0.14, 0.24) : rnd(0.22, 0.4);
     const rel = style === "dream" ? 1.8 : 1.1;
     const end = t + hold + rel;
-    const level = Math.min(1, vel) * 0.5;
+    const level = Math.min(2.5, vel) * 0.6;
 
     const amp = ctx.createGain();
     amp.gain.setValueAtTime(0, t);

@@ -18,7 +18,8 @@ export interface RhythmRoute {
   source: RhythmSource;
   kind: RouteKind; // plugin: a plug-in instrument by id ("dx7"), played with the detected notes; keypad: a key of the DJ keyboard ("0".."15"); keyfx: "impact" | "brake" | "scratch" | "drop"; filter: "self:lp" | "self:hp" | "other:lp" | "other:hp" (a pulse on a deck filter); duck: "self" | "other" (the fader dips: pumping); sfx: a sound-effect id; djknob: a DJ synth knob pulse; synth2: the classic synth; sampler: the super sampler (arg unused); pad: a sampler pad ("0".."n"); seqrec: writes the notes into the synth step sequencer when it is armed; synth: the DJ synth plays a note in harmony; drum: a drum voice; rack: a pulse on a rack parameter
   arg?: string; // drum: the voice; rack: "moduleId:paramKey"
-  amount: number; // 0..1
+  amount: number;
+  level?: number; // Vol: 0..2, the loudness of the link (1 = normal) // 0..1
   grid?: number; // snap each event to the beat grid: 1 = beat, 2 = eighth, 4 = sixteenth (off when absent)
   transpose?: number; // semitones added to the notes (synth, sampler, sequencer targets)
   gate?: number; // note length factor (1 = as detected)
@@ -221,7 +222,9 @@ export class RhythmBus {
       const spb = 60 / this.deck.bpm;
       acc = Math.round((e.t - this.deck.beatGridOffset) / spb) % 4 === 0 ? 1.3 : 0.75;
     }
-    const vel = Math.min(1, e.vel * r.amount * 1.4 * acc);
+    const amt = r.amount * (r.level ?? 1); // Force x Vol: the strength of the link and its loudness
+    const loud = e.vel * amt * 1.8 * acc; // pads can go past 1; notes are velocities, capped
+    const vel = Math.min(1, loud);
     if (vel >= 0.05) this.lastFire.set(r.id, performance.now());
     if (vel < 0.05) return;
     const eng = this.engine;
@@ -241,32 +244,32 @@ export class RhythmBus {
       const d = r.arg === "other" ? this.other() : this.deck;
       const beat = this.deck.bpm > 0 ? 60 / this.deck.bpm : 0.5;
       // a real pump: deep, and as long as half a beat so the recovery is heard
-      d.duckAt(at, Math.min(0.95, 0.3 + r.amount * e.vel * 0.8), Math.max(0.15, Math.min(0.5, beat * 0.55)));
+      d.duckAt(at, Math.min(0.95, 0.3 + amt * e.vel * 0.8), Math.max(0.15, Math.min(0.5, beat * 0.55)));
     } else if (r.kind === "filter" && r.arg) {
       const [who, kind] = r.arg.split(":");
       const d = who === "other" ? this.other() : this.deck;
-      const mag = Math.min(1, 0.35 + r.amount * e.vel * 0.9);
+      const mag = Math.min(1, 0.35 + amt * e.vel * 0.9);
       this.pulse(`f${who}${r.id}`, () => d.filterX, (v) => d.setFilter(v), () => (kind === "lp" ? -mag : mag), at, this.beatRel(0.9));
     } else if (r.kind === "sfx" && r.arg) {
-      setTimeout(() => eng.soundFx.trigger(r.arg as SfxId, Math.min(1.5, 0.25 + r.amount * e.vel * 1.2)), Math.max(0, (at - eng.ctx.currentTime) * 1000));
+      setTimeout(() => eng.soundFx.trigger(r.arg as SfxId, Math.min(1.5, 0.25 + amt * e.vel * 1.2)), Math.max(0, (at - eng.ctx.currentTime) * 1000));
     } else if (r.kind === "djknob" && r.arg) {
       const k = r.arg as keyof DjKnobs;
-      this.pulse(`k${r.id}`, () => eng.djSynth.knobs[k], (v) => eng.djSynth.setKnob(k, v), (base) => Math.min(1, base + 0.25 + r.amount * e.vel * 0.75), at, this.beatRel(1.2));
+      this.pulse(`k${r.id}`, () => eng.djSynth.knobs[k], (v) => eng.djSynth.setKnob(k, v), (base) => Math.min(1, base + 0.25 + amt * e.vel * 0.75), at, this.beatRel(1.2));
     } else if (r.kind === "voices") {
       const style = r.arg === "strings" || r.arg === "dream" ? r.arg : "choir";
-      eng.padVoices.play(style, this.noteFor(r, e), vel, at, dur);
+      eng.padVoices.play(style, this.noteFor(r, e), Math.min(2.5, loud), at, dur);
     } else if (r.kind === "plugin" && r.arg) {
       const midi = this.noteFor(r, e);
       setTimeout(() => eng.plugins.get(r.arg!)?.play(midi, vel, Math.max(0.08, dur)), Math.max(0, (at - eng.ctx.currentTime) * 1000));
     } else if (r.kind === "keypad" && r.arg) {
       const i = Number(r.arg);
       const wait = Math.max(0, (at - eng.ctx.currentTime) * 1000);
-      const lv = Math.min(1.5, 0.25 + r.amount * e.vel * 1.2);
+      const lv = Math.min(1.5, 0.25 + amt * e.vel * 1.2);
       setTimeout(() => { eng.keyPad.levelFor(lv, dur + 0.6); eng.keyPad.trigger(i); }, wait);
       setTimeout(() => eng.keyPad.release(i), wait + Math.max(80, dur * 1000));
     } else if (r.kind === "keyfx" && r.arg) {
       const wait = Math.max(0, (at - eng.ctx.currentTime) * 1000);
-      const lv = Math.min(1.5, 0.25 + r.amount * e.vel * 1.2);
+      const lv = Math.min(1.5, 0.25 + amt * e.vel * 1.2);
       setTimeout(() => eng.keyPad.levelFor(lv, 1.2), wait);
       if (r.arg === "impact") eng.keyPad.impact(at);
       else if (r.arg === "brake") setTimeout(() => eng.keyPad.brake(1), wait);
@@ -281,7 +284,7 @@ export class RhythmBus {
       const def = RACK_DEF.get(id as RackModuleId)?.params.find((p) => p.key === key);
       if (!def) return;
       const rack = this.deck.rack;
-      this.pulse(`r${r.id}`, () => def.def, (v) => rack.setParam(id as RackModuleId, key, v), () => def.def + (def.max - def.def) * Math.min(1, 0.3 + r.amount * e.vel), at, this.beatRel(0.9));
+      this.pulse(`r${r.id}`, () => def.def, (v) => rack.setParam(id as RackModuleId, key, v), () => def.def + (def.max - def.def) * Math.min(1, 0.3 + amt * e.vel), at, this.beatRel(0.9));
     }
   }
 
