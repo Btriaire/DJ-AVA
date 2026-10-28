@@ -1,4 +1,5 @@
 "use client";
+import { ModulePresetBar } from "./ModulePresetBar";
 import { useEffect, useRef, useState } from "react";
 import { DJEngine } from "@/lib/audio/engine";
 import { DJ_PRESETS, ARP_DIVS } from "@/lib/audio/DjSynth";
@@ -168,6 +169,7 @@ export function DjSynthPanel({ engine }: { engine: DJEngine }) {
 
   return (
     <div className="hw-screwed hw-panel relative flex flex-col gap-3 p-3">
+      <ModulePresetBar engine={engine} id="djsynth" label="Synthé DJ" onApplied={force} />
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-neutral-500">SYNTHÉ DJ</span>
         <span className="text-[10px] font-bold text-neutral-300">

@@ -7,7 +7,7 @@ import { RACK_DEF, type RackModuleId } from "./Rack";
 import type { StemNotes } from "../stemNotes";
 import { voiceStateAt } from "../djForce";
 import { SCALES } from "./theory";
-import { applyModule, getModulePreset, snapshotModule, type ModulePreset } from "../modulePresets";
+import { applyAny, getModulePreset, snapshotAny, type ModulePreset, type PresetModuleId } from "../modulePresets";
 import { jitterMs, nextGridTime, patternAllows, quantizeTime, snapToScale } from "./rhythmMath";
 
 // The detected rhythm of a song (drum attacks, bass notes, synth notes) as a source of events. They are never
@@ -199,22 +199,22 @@ export class RhythmBus {
   private beatRel(k: number): number { return Math.max(0.18, Math.min(0.7, (this.deck.bpm > 0 ? 60 / this.deck.bpm : 0.5) * k)); }
   private bases = new Map<string, number>();
   // rack module presets in force: the module as it was before the first hit, and the link that holds it
-  private held = new Map<string, { id: RackModuleId; base: ModulePreset; route: string; gen: number }>();
+  private held = new Map<string, { id: PresetModuleId; base: ModulePreset; route: string; gen: number }>();
   private release(key: string) {
     const h = this.held.get(key);
     if (!h) return;
     this.held.delete(key);
-    applyModule(this.deck.rack, h.id, h.base, 200);
+    applyAny(this.engine, this.deck.rack, h.id, h.base, 200);
   }
-  private presetHit(r: RhythmRoute, id: RackModuleId, p: ModulePreset, at: number) {
+  private presetHit(r: RhythmRoute, id: PresetModuleId, p: ModulePreset, at: number) {
     const key = `m${id}`;
     const beat = this.deck.bpm > 0 ? 60 / this.deck.bpm : 0.5;
     setTimeout(() => {
       let h = this.held.get(key);
-      if (!h) { h = { id, base: snapshotModule(this.deck.rack, id), route: r.id, gen: 0 }; this.held.set(key, h); }
+      if (!h) { h = { id, base: snapshotAny(this.engine, this.deck.rack, id), route: r.id, gen: 0 }; this.held.set(key, h); }
       h.route = r.id;
       const gen = ++h.gen;
-      applyModule(this.deck.rack, id, p, 80);
+      applyAny(this.engine, this.deck.rack, id, p, 80);
       if (!r.hold) setTimeout(() => { if (this.held.get(key)?.gen === gen) this.release(key); }, (r.len ?? 1) * beat * 1000);
     }, Math.max(0, (at - this.engine.ctx.currentTime) * 1000));
   }
@@ -308,7 +308,7 @@ export class RhythmBus {
       const i = r.arg.indexOf(":");
       const id = r.arg.slice(0, i);
       const p = getModulePreset(id, r.arg.slice(i + 1));
-      if (p) this.presetHit(r, id as RackModuleId, p, at);
+      if (p) this.presetHit(r, id as PresetModuleId, p, at);
     } else if (r.kind === "rack" && r.arg) {
       const [id, key] = r.arg.split(":");
       const def = RACK_DEF.get(id as RackModuleId)?.params.find((p) => p.key === key);

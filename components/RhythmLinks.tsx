@@ -4,7 +4,7 @@ import type { DJEngine } from "@/lib/audio/engine";
 import type { Deck } from "@/lib/audio/Deck";
 import { DRUM_VOICES } from "@/lib/audio/DrumMachine";
 import { RACK_MODULES } from "@/lib/audio/Rack";
-import { listModulePresets } from "@/lib/modulePresets";
+import { GLOBAL_MODULES, listModulePresets } from "@/lib/modulePresets";
 import { RhythmBus, type RhythmRoute, type RhythmSource, type RouteKind } from "@/lib/audio/rhythmBus";
 import { SFX_LIST } from "@/lib/audio/SoundFX";
 import { PresetPicker, RouteCard } from "./RhythmCards";
@@ -427,6 +427,7 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
           {draft.kind === "rackpreset" && (
             <>
               <select aria-label="Module" className={sel} value={draft.arg?.split(":")[0]} onChange={(e) => setDraft({ ...draft, arg: presetArg(e.target.value) })}>
+                {GLOBAL_MODULES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
                 {RACK_MODULES.filter((m) => m.id !== "eq").map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
               </select>
               <select aria-label="Préréglage" className={sel} value={draft.arg?.slice((draft.arg?.indexOf(":") ?? 0) + 1)} onChange={(e) => setDraft({ ...draft, arg: `${draft.arg?.split(":")[0]}:${e.target.value}` })}>

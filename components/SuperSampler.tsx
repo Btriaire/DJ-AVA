@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import { ModulePresetBar } from "./ModulePresetBar"
 import type { DJEngine } from "@/lib/audio/engine"
 import { DEFAULT_SS_PARAMS, DELAY_LABELS, FILTER_NAMES, type SSParams } from "@/lib/audio/SuperSampler"
 
@@ -326,6 +327,7 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
           <span className="text-[9px] text-neutral-500">CARBONE</span>
         </div>
       </header>
+      <ModulePresetBar engine={engine} id="supersampler" label="Super-Sampler" onApplied={() => setP(engine.superSampler.getParams())} />
 
       <div className="flex flex-col @lg:flex-row gap-3">
         <div className="flex-1 flex flex-col">
