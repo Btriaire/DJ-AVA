@@ -296,7 +296,7 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
           onPick={(g, i, side) => add(side, PRESET_GROUPS[g].items[i].route)}
         />
       </div>
-      <div className="mt-3 grid gap-3 md:grid-cols-2">
+      <div className="mt-3 grid gap-3">
         {(["A", "B"] as const).map((side) => {
           const d = side === "A" ? engine.deckA : engine.deckB;
           const n = d.stemNotes;
@@ -308,6 +308,7 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
                   {n ? `${n.drums?.length ?? 0} attaques · ${n.bass?.length ?? 0} basses · ${n.other?.length ?? 0} synthé` : d.stemReady ? "Notes en cours d'analyse…" : "Préparez les stems du morceau"}
                 </span>
               </div>
+              <div className="flex gap-2 overflow-x-auto pb-2">
               {routes[side].map((r) => (
                 <RouteCard
                   key={r.id}
@@ -338,6 +339,7 @@ export function RhythmLinks({ engine }: { engine: DJEngine }) {
                   <FineSettings r={r} patch={(p) => patch(side, r.id, p)} />
                 </RouteCard>
               ))}
+              </div>
               {!routes[side].length && <p className="text-[11px] text-neutral-500">Aucune liaison. Utilisez « Nouvelle liaison » ci-dessus.</p>}
             </div>
           );

@@ -2,14 +2,14 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { RouteKind, RhythmRoute, RhythmSource } from "@/lib/audio/rhythmBus";
 
-// full class names, so Tailwind can see them: border of the card and tint of the source chip
-const SOURCE_STYLE: Record<RhythmSource, { glow: string; border: string; chip: string }> = {
-  drums: { glow: "#fb923c", border: "border-l-orange-400", chip: "bg-orange-400/15 text-orange-200" },
-  bass: { glow: "#c084fc", border: "border-l-purple-400", chip: "bg-purple-400/15 text-purple-200" },
-  synth: { glow: "#22d3ee", border: "border-l-cyan-400", chip: "bg-cyan-400/15 text-cyan-200" },
-  voice: { glow: "#e879f9", border: "border-l-fuchsia-400", chip: "bg-fuchsia-400/15 text-fuchsia-200" },
-  beat: { glow: "#34d399", border: "border-l-emerald-400", chip: "bg-emerald-400/15 text-emerald-200" },
-  bar: { glow: "#34d399", border: "border-l-emerald-400", chip: "bg-emerald-400/15 text-emerald-200" },
+// one colour per source (OKLCH, no pink): the scribble strip, the knob ring and the fader cap
+const SOURCE_STYLE: Record<RhythmSource, { glow: string }> = {
+  drums: { glow: "oklch(72% 0.17 45)" },
+  bass: { glow: "oklch(70% 0.15 285)" },
+  synth: { glow: "oklch(76% 0.12 205)" },
+  voice: { glow: "oklch(84% 0.16 95)" },
+  beat: { glow: "oklch(76% 0.17 150)" },
+  bar: { glow: "oklch(76% 0.17 150)" },
 };
 
 export function ActivityDot({ read, on }: { read: () => number | undefined; on: boolean }) {
@@ -71,21 +71,23 @@ export function Knob({ label, value, min, max, step, onChange, color }: { label:
   );
 }
 
-// row of LEDs that lights up and fades on every event the link plays
-export function Meter({ read, on, color }: { read: () => number | undefined; on: boolean; color: string }) {
+// vertical VU meter: 12 segments, green then amber then red, lit from the bottom on every event
+export function Meter({ read, on }: { read: () => number | undefined; on: boolean }) {
   const [lit, setLit] = useState(0);
   useEffect(() => {
     const id = window.setInterval(() => {
       const t = read();
-      setLit(on && t !== undefined ? Math.max(0, 1 - (performance.now() - t) / 700) : 0);
-    }, 70);
+      setLit(on && t !== undefined ? Math.max(0, 1 - (performance.now() - t) / 600) : 0);
+    }, 60);
     return () => window.clearInterval(id);
   }, [read, on]);
   return (
-    <div className="flex flex-1 items-center gap-1" aria-hidden="true">
-      {Array.from({ length: 10 }, (_, i) => (
-        <span key={i} className="h-3 flex-1 rounded-sm" style={{ background: lit > i / 10 ? color : "#262626", boxShadow: lit > i / 10 ? `0 0 6px ${color}` : "none" }} />
-      ))}
+    <div className="flex h-[132px] w-3 flex-col-reverse gap-[2px] rounded-sm bg-black/60 p-[2px]" aria-hidden="true">
+      {Array.from({ length: 12 }, (_, i) => {
+        const c = i >= 10 ? "oklch(65% 0.24 25)" : i >= 8 ? "oklch(80% 0.17 80)" : "oklch(75% 0.2 145)";
+        const onSeg = lit > i / 12;
+        return <span key={i} className="flex-1 rounded-[1px]" style={{ background: onSeg ? c : "oklch(25% 0.01 240)", boxShadow: onSeg ? `0 0 5px ${c}` : "none" }} />;
+      })}
     </div>
   );
 }
@@ -125,75 +127,65 @@ export function RouteCard(props: {
   children?: ReactNode;
 }) {
   const { r, sourceLabel, targetLabel, readFire, onToggle, onAmount, onRemove, children } = props;
-  const style = SOURCE_STYLE[r.source];
+  const color = SOURCE_STYLE[r.source].glow;
+  const screw = <span className="h-1.5 w-1.5 rounded-full bg-neutral-600 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.6)]" />;
 
   return (
     <article
-      className={`flex flex-col gap-2 rounded-xl border-l-4 bg-neutral-900 p-3 ${style.border} ${
-        !r.on ? "opacity-60" : ""
-      }`}
+      className={`relative flex w-[176px] shrink-0 flex-col gap-2 rounded-lg border border-neutral-700 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] ${!r.on ? "opacity-70" : ""}`}
+      style={{ background: "linear-gradient(180deg, oklch(30% 0.012 240), oklch(22% 0.01 240))" }}
     >
-      <div className="flex items-center gap-2">
-        <ActivityDot read={readFire} on={r.on} />
+      <div className="flex justify-between px-0.5">{screw}{screw}</div>
 
-        <div className="flex items-center gap-1 flex-1">
-          <div className={`rounded-full px-2.5 py-1 text-xs font-semibold ${style.chip}`}>
-            {sourceLabel}
-          </div>
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M4 8H12M12 8L8 4M12 8L8 12" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          <div className="flex items-center gap-1.5 rounded-lg bg-neutral-800 px-2 py-1">
-            <DeviceIcon kind={r.kind} />
-            <div className="flex min-w-0 flex-col leading-tight">
-              <span className="truncate text-[10px] text-neutral-400">{DEVICE[r.kind].name}</span>
-              <span className="truncate text-xs">{targetLabel}</span>
-            </div>
-          </div>
+      {/* scribble strip: the source, then the device it drives */}
+      <div className="rounded-md px-2 py-1 text-center text-[11px] font-black uppercase tracking-wider text-black" style={{ background: color }}>
+        {sourceLabel}
+      </div>
+      <div className="flex items-center gap-1.5 rounded-md bg-black/50 px-2 py-1.5">
+        <DeviceIcon kind={r.kind} />
+        <div className="flex min-w-0 flex-col leading-tight">
+          <span className="truncate text-[10px] text-neutral-400">{DEVICE[r.kind].name}</span>
+          <span className="truncate text-xs text-neutral-100">{targetLabel}</span>
         </div>
-
-        <button
-          type="button"
-          role="switch"
-          aria-label={r.on ? "Couper la liaison" : "Activer la liaison"}
-          aria-checked={r.on}
-          onClick={onToggle}
-          className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-            r.on ? "bg-emerald-500" : "bg-neutral-700"
-          }`}
-        >
-          <span
-            className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
-              r.on ? "translate-x-5" : ""
-            }`}
-          />
-        </button>
-
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label="Supprimer la liaison"
-          className="min-h-9 min-w-9 flex items-center justify-center"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M6 18L18 6M6 6L18 18" stroke="#9CA3AF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
       </div>
 
-      <div className="flex items-center gap-3">
-        <Knob label="Force" value={r.amount} min={0.1} max={1} step={0.05} onChange={onAmount} color={style.glow} />
-        <Meter read={readFire} on={r.on} color={style.glow} />
+      {/* VU meter and the Force fader side by side */}
+      <div className="flex items-stretch justify-center gap-4 py-1">
+        <Meter read={readFire} on={r.on} />
+        <div className="flex flex-col items-center gap-1">
+          <span className="text-[10px] uppercase tracking-wider text-neutral-400">Force {Math.round(r.amount * 100)}</span>
+          <input
+            type="range" min={0.1} max={1} step={0.05} value={r.amount} aria-label="Force"
+            onChange={(e) => onAmount(parseFloat(e.target.value))}
+            className="h-[116px] w-6 cursor-ns-resize [writing-mode:vertical-lr] [direction:rtl]"
+            style={{ accentColor: color }}
+          />
+        </div>
+      </div>
+
+      {/* ON / MUTE with its LED, and delete */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button" role="switch" aria-checked={r.on}
+          aria-label={r.on ? "Couper la liaison" : "Activer la liaison"}
+          onClick={onToggle}
+          className="flex min-h-9 flex-1 items-center justify-center gap-2 rounded-md border border-neutral-600 bg-neutral-800 text-[11px] font-bold tracking-wider text-neutral-200 hover:bg-neutral-700"
+        >
+          <span className="h-2.5 w-2.5 rounded-full" style={{ background: r.on ? "oklch(78% 0.22 145)" : "oklch(55% 0.2 25)", boxShadow: r.on ? "0 0 8px oklch(78% 0.22 145)" : "none" }} />
+          {r.on ? "ON" : "MUTE"}
+        </button>
+        <button type="button" onClick={onRemove} aria-label="Supprimer la liaison" className="flex min-h-9 w-9 items-center justify-center rounded-md border border-neutral-700 text-neutral-400 hover:text-neutral-100">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 18L18 6M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+        </button>
       </div>
 
       {children && (
-        <details className="mt-1">
-          <summary className="min-h-9 text-xs font-bold text-neutral-300 cursor-pointer">
-            Réglages
-          </summary>
+        <details>
+          <summary className="min-h-8 cursor-pointer text-[11px] font-bold uppercase tracking-wider text-neutral-400">Réglages</summary>
           <div className="mt-1">{children}</div>
         </details>
       )}
+      <div className="flex justify-between px-0.5">{screw}{screw}</div>
     </article>
   );
 }
@@ -212,7 +204,7 @@ export function PresetPicker(props: {
         type="button"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
-        className="min-h-10 bg-fuchsia-500 text-white rounded-lg flex items-center justify-center gap-2"
+        className="min-h-10 bg-sky-500 text-black font-bold rounded-lg flex items-center justify-center gap-2"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
