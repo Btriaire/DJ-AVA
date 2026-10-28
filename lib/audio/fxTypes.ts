@@ -554,6 +554,6 @@ export const FX_META = new Map<FxName, FxMeta>(FX_LIST.map((m) => [m.id, m]));
 export const DECK_FX: FxName[] = ["echo", "dub", "reverb", "flanger", "gate", "noise", "roll", "brake", "reverse"];
 export const STEM_FX: FxName[] = [
   "echo", "dub", "vowel", "gate", "mash", "roll", "flanger", "crush", "scatter",
-  "build", "freeze", "halftime", "wobble", "pump", "brake",
+  "build", "freeze", "halftime", "wobble", "pump", "brake", "reverse",
   "double", "rise", "echoout", "wash",
 ];
