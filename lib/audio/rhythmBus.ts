@@ -46,6 +46,8 @@ interface Ev { t: number; source: RhythmSource; vel: number; dur: number; midi?:
 const LOOKAHEAD = 0.3;
 const TICK_MS = 50;
 const PULSE_SEC = 0.14;
+// level of the one-shot effects (sfx, DJ Keys): a base so a weak hit still speaks, then Force x Vol x velocity; capped, the master has no limiter
+const fxLevel = (amt: number, vel: number) => Math.min(3, 0.6 + amt * vel * 2.2);
 
 export function buildEvents(n: StemNotes | null | undefined, d?: Deck): Ev[] {
   const out: Ev[] = [];
@@ -291,7 +293,7 @@ export class RhythmBus {
       const mag = Math.min(1, 0.35 + amt * e.vel * 0.9);
       this.pulse(`f${who}${r.id}`, () => d.filterX, (v) => d.setFilter(v), () => (kind === "lp" ? -mag : mag), at, this.beatRel(0.9));
     } else if (r.kind === "sfx" && r.arg) {
-      setTimeout(() => eng.soundFx.trigger(r.arg as SfxId, Math.min(1.5, 0.25 + amt * e.vel * 1.2)), Math.max(0, (at - eng.ctx.currentTime) * 1000));
+      setTimeout(() => eng.soundFx.trigger(r.arg as SfxId, fxLevel(amt, e.vel)), Math.max(0, (at - eng.ctx.currentTime) * 1000));
     } else if (r.kind === "djknob" && r.arg) {
       const k = r.arg as keyof DjKnobs;
       this.pulse(`k${r.id}`, () => eng.djSynth.knobs[k], (v) => eng.djSynth.setKnob(k, v), (base) => Math.min(1, base + 0.25 + amt * e.vel * 0.75), at, this.beatRel(1.2));
@@ -304,21 +306,21 @@ export class RhythmBus {
     } else if (r.kind === "keypad" && r.arg) {
       const i = Number(r.arg);
       const wait = Math.max(0, (at - eng.ctx.currentTime) * 1000);
-      const lv = Math.min(1.5, 0.25 + amt * e.vel * 1.2);
+      const lv = fxLevel(amt, e.vel);
       setTimeout(() => { eng.keyPad.levelFor(lv, dur + 0.6); eng.keyPad.trigger(i); }, wait);
       setTimeout(() => eng.keyPad.release(i), wait + Math.max(80, dur * 1000));
     } else if (r.kind === "keyfx" && r.arg) {
       const wait = Math.max(0, (at - eng.ctx.currentTime) * 1000);
-      const lv = Math.min(1.5, 0.25 + amt * e.vel * 1.2);
+      const lv = fxLevel(amt, e.vel);
       setTimeout(() => eng.keyPad.levelFor(lv, 1.2), wait);
       if (r.arg === "impact") eng.keyPad.impact(at);
       else if (r.arg === "brake") setTimeout(() => eng.keyPad.brake(1), wait);
       else if (r.arg === "scratch") setTimeout(() => eng.keyPad.scratch(), wait);
       else if (r.arg === "drop") setTimeout(() => eng.keyPad.dropHQ(), wait);
     } else if (r.kind === "pad" && r.arg) {
-      eng.sampler.playAt(Number(r.arg), at, vel);
+      eng.sampler.playAt(Number(r.arg), at, Math.min(3, loud)); // pads are not capped at full velocity: Force x Vol can push them past it
     } else if (r.kind === "drum" && r.arg) {
-      eng.drums.hit(r.arg as DrumVoice, vel, at);
+      eng.drums.hit(r.arg as DrumVoice, Math.min(2, loud), at); // the drum envelopes scale with the velocity: up to +6 dB
     } else if (r.kind === "rackpreset" && r.arg) {
       const i = r.arg.indexOf(":");
       const id = r.arg.slice(0, i);
