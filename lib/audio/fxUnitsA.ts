@@ -10,6 +10,7 @@ export function buildUnitA(name: "echo" | "reverb" | "flanger" | "phaser" | "gat
       const lp = c.createBiquadFilter();
       const hp = c.createBiquadFilter();
       const fb = c.createGain();
+      const gateIn = c.createGain(); // closed between presses: the repeats keep ringing after a release (an echo throw)
       const input = c.createGain();
       const output = lp;
 
@@ -17,7 +18,8 @@ export function buildUnitA(name: "echo" | "reverb" | "flanger" | "phaser" | "gat
       hp.type = "highpass";
       hp.frequency.value = 150;
 
-      input.connect(delay);
+      gateIn.gain.value = 0;
+      input.connect(gateIn).connect(delay);
       delay.connect(lp).connect(hp).connect(fb).connect(delay);
 
       let feedback = 0.5 * 0.92;
@@ -47,9 +49,19 @@ export function buildUnitA(name: "echo" | "reverb" | "flanger" | "phaser" | "gat
           beatIdx = idx;
           retune();
         },
-        engage() {},
+        engage() {
+          const now = c.currentTime;
+          gateIn.gain.cancelScheduledValues(now);
+          gateIn.gain.setValueAtTime(gateIn.gain.value, now);
+          gateIn.gain.linearRampToValueAtTime(1, now + 0.005);
+        },
         release() {
-          return 0;
+          const now = c.currentTime;
+          gateIn.gain.cancelScheduledValues(now);
+          gateIn.gain.setValueAtTime(gateIn.gain.value, now);
+          gateIn.gain.linearRampToValueAtTime(0, now + 0.005);
+          const d = Math.max(0.02, Math.min(3.9, divSeconds(env, beatIdx)));
+          return Math.min(8, d * Math.log(0.001) / Math.log(Math.max(0.05, feedback)));
         },
         retune,
       };
@@ -60,16 +72,33 @@ export function buildUnitA(name: "echo" | "reverb" | "flanger" | "phaser" | "gat
       const conv = c.createConvolver();
       const damp = c.createBiquadFilter();
       const boost = c.createGain();
+      const gateIn = c.createGain(); // closed between presses: the tail rings on after a release (a reverb throw)
       const input = c.createGain();
       const output = boost;
+      gateIn.gain.value = 0;
+      input.connect(gateIn).connect(pre).connect(conv).connect(damp).connect(boost);
 
-      // Generate impulse response once
-      const impulse = c.createBuffer(2, Math.floor(c.sampleRate * 3.2), c.sampleRate);
+      // a room: sparse early reflections, then a noise tail that darkens as it fades, one per ear.
+      // Scaled to the energy of the former plain impulse, so the level does not move
+      const SEC = 3.2;
+      const len = Math.floor(c.sampleRate * SEC);
+      const impulse = c.createBuffer(2, len, c.sampleRate);
+      const early = Math.floor(0.03 * c.sampleRate);
+      const target = Math.sqrt(len / 3 / 5.4); // energy of uniform noise with a (1-x)^2.2 envelope
       for (let ch = 0; ch < 2; ch++) {
-        const data = impulse.getChannelData(ch);
-        for (let i = 0; i < data.length; i++) {
-          data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 2.2);
+        const d = impulse.getChannelData(ch);
+        for (let k = 0; k < 9; k++) d[Math.floor(Math.random() * early)] += (Math.random() < 0.5 ? -1 : 1) * (0.4 + Math.random() * 0.5);
+        let lp = 0;
+        for (let i = early; i < len; i++) {
+          const x = (i - early) / (len - early);
+          const a = 0.15 + 0.8 * x; // the low-pass closes over time
+          lp += ((Math.random() * 2 - 1) - lp) * (1 - a);
+          d[i] = lp * Math.pow(1 - x, 2.2) * (i - early < 0.01 * c.sampleRate ? (i - early) / (0.01 * c.sampleRate) : 1);
         }
+        let e = 0;
+        for (let i = 0; i < len; i++) e += d[i] * d[i];
+        const k = e > 0 ? target / Math.sqrt(e) : 1;
+        for (let i = 0; i < len; i++) d[i] *= k;
       }
       conv.buffer = impulse;
 
@@ -78,11 +107,8 @@ export function buildUnitA(name: "echo" | "reverb" | "flanger" | "phaser" | "gat
 
       let predelay = 0.1 * 0.12;
       let dampFreq = 0.6 * 16000 * Math.pow(0.125, 0.6);
-
       pre.delayTime.value = predelay;
       damp.frequency.value = dampFreq;
-
-      input.connect(pre).connect(conv).connect(damp).connect(boost);
 
       return {
         input,
@@ -97,9 +123,18 @@ export function buildUnitA(name: "echo" | "reverb" | "flanger" | "phaser" | "gat
           }
         },
         setBeat() {},
-        engage() {},
+        engage() {
+          const now = c.currentTime;
+          gateIn.gain.cancelScheduledValues(now);
+          gateIn.gain.setValueAtTime(gateIn.gain.value, now);
+          gateIn.gain.linearRampToValueAtTime(1, now + 0.005);
+        },
         release() {
-          return 0;
+          const now = c.currentTime;
+          gateIn.gain.cancelScheduledValues(now);
+          gateIn.gain.setValueAtTime(gateIn.gain.value, now);
+          gateIn.gain.linearRampToValueAtTime(0, now + 0.005);
+          return SEC;
         },
         retune() {},
       };
