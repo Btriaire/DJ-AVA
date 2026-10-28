@@ -93,7 +93,7 @@ export class PadVoices {
     const voices = style === "dream" ? 3 : style === "strings" ? 5 : 4;
     const nodes: (OscillatorNode | AudioBufferSourceNode)[] = [];
     for (let v = 0; v < voices; v++) {
-      const spread = voices === 1 ? 0 : v / (voices - 1) * 2 - 1;
+      const spread = v / (voices - 1) * 2 - 1;
       const types: OscillatorType[] = style === "dream" ? ["sine", "triangle", "sine"] : style === "strings" ? ["sawtooth"] : ["sawtooth", "triangle"];
       const o = ctx.createOscillator();
       o.type = types[v % types.length];
