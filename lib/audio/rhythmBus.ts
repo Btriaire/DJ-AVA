@@ -31,6 +31,7 @@ export interface RhythmRoute {
   avoidVoice?: boolean; // silent while the voice sings
   snapKey?: boolean; // note targets: the note goes to the nearest note of the DJ synth key
   accent?: boolean; // louder on the first beat of a bar, softer elsewhere
+  alt?: string; // rackpreset: name of a second preset of the same module; the hits alternate between arg's preset and this one
   hold?: boolean; // rackpreset: the preset stays until the link is turned off (otherwise it goes back after `len` beats)
   len?: number; // rackpreset: beats before the module goes back (default 1)
   density?: number; // 0..1: share of the events kept (steady: the same events are always dropped)
@@ -198,6 +199,7 @@ export class RhythmBus {
 
   private beatRel(k: number): number { return Math.max(0.18, Math.min(0.7, (this.deck.bpm > 0 ? 60 / this.deck.bpm : 0.5) * k)); }
   private bases = new Map<string, number>();
+  private flips = new Map<string, boolean>(); // rackpreset links that alternate: which preset comes next
   // rack module presets in force: the module as it was before the first hit, and the link that holds it
   private held = new Map<string, { id: PresetModuleId; base: ModulePreset; route: string; gen: number }>();
   private release(key: string) {
@@ -308,7 +310,11 @@ export class RhythmBus {
       const i = r.arg.indexOf(":");
       const id = r.arg.slice(0, i);
       const p = getModulePreset(id, r.arg.slice(i + 1));
-      if (p) this.presetHit(r, id as PresetModuleId, p, at);
+      const b = p && r.alt ? getModulePreset(id, r.alt) : undefined;
+      const flip = this.flips.get(r.id) ?? false;
+      if (b) this.flips.set(r.id, !flip);
+      const pick = b && flip ? b : p;
+      if (pick) this.presetHit(r, id as PresetModuleId, pick, at);
     } else if (r.kind === "rack" && r.arg) {
       const [id, key] = r.arg.split(":");
       const def = RACK_DEF.get(id as RackModuleId)?.params.find((p) => p.key === key);

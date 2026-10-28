@@ -60,7 +60,7 @@ const targetLabel = (r: RhythmRoute) => {
   if (r.kind === "keyfx") return `DJ Keys · ${KEYFX.find((x) => x.id === r.arg)?.label ?? r.arg}`;
   if (r.kind === "pad") return `Pad ${Number(r.arg) + 1}`;
   if (r.kind === "drum") return `Voix ${r.arg}`;
-  if (r.kind === "rackpreset") return `${(r.arg ?? "").replace(":", " · ")}${r.hold ? " (hold)" : ""}`;
+  if (r.kind === "rackpreset") return `${(r.arg ?? "").replace(":", " · ")}${r.hold ? " (hold)" : ""}${r.alt ? ` / ${r.alt}` : ""}`;
   if (r.kind === "rack") return `Pulse ${r.arg?.replace(":", " · ")}`;
   if (r.kind === "sfx") return SFX_LIST.find((f) => f.id === r.arg)?.label ?? k;
   if (r.kind === "djknob") return `Synthé · ${KNOBS.find((x) => x.id === r.arg)?.label ?? r.arg}`;
@@ -173,6 +173,11 @@ export function FineSettings({ r, patch }: { r: RhythmRoute; patch: (p: Partial<
                 {[0.5, 1, 2, 4, 8].map((b) => <option key={b} value={b}>{b} temps</option>)}
               </select>
             )}
+            <label>Alterner avec</label>
+            <select aria-label="Alterner avec" className="min-h-8 rounded-md bg-neutral-800 px-2" value={r.alt ?? ""} onChange={(e) => patch({ alt: e.target.value || undefined })}>
+              <option value="">Pas d&apos;alternance</option>
+              {listModulePresets((r.arg ?? "").split(":")[0]).map((preset) => <option key={preset} value={preset}>{preset}</option>)}
+            </select>
           </div>
         )}
         {(r.grid ?? 0) >= 2 && (
