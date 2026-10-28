@@ -32,6 +32,7 @@ export function DeckTimers({ deckA, deckB, colorA, colorB }: Props) {
   const nameA = useRef(deckA.name); // last loaded track — change = new single = reset
   const nameB = useRef(deckB.name);
   const last = useRef(0);
+  const painted = useRef(0);
   const [, force] = useState(0);
 
   useEffect(() => {
@@ -55,7 +56,11 @@ export function DeckTimers({ deckA, deckB, colorA, colorB }: Props) {
       }
       if (deckA.playing) accA.current += dt;
       if (deckB.playing) accB.current += dt;
-      if (changed || deckA.playing || deckB.playing) force((n) => n + 1);
+      // the time is counted every frame, but shown 15 times a second (hundredths still move): a render per frame cost a lot
+      if (changed || ((deckA.playing || deckB.playing) && now - painted.current > 66)) {
+        painted.current = now;
+        force((n) => n + 1);
+      }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);

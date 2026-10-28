@@ -319,11 +319,19 @@ export function MixScope({ deckA, deckB, colorA, colorB, crossfade, onCrossfade 
       ctx.fillRect(w / 2 - 0.5, 0, 1, h);
     };
 
-    const draw = () => {
+    // 30 frames a second, and nothing while the scope is off screen or the window hidden (it was 60, always)
+    let visible = true;
+    const io = new IntersectionObserver((es) => { visible = es.some((e) => e.isIntersecting); }, { rootMargin: "100px" });
+    io.observe(canvas);
+    let lastDraw = 0;
+    const draw = (now: number) => {
+      raf = requestAnimationFrame(draw);
+      if (!visible || document.hidden || now - lastDraw < 32) return;
+      lastDraw = now;
       frame++;
       if (mode === "waterfall") {
-        // slide slowly on its own — but hand control to the drag while scrubbing
-        if (!frozenRef.current && !scrubbingRef.current && frame % 2 === 0) appendSpectrogramColumn();
+        // slide slowly on its own — but hand control to the drag while scrubbing (one column a frame at 30 a second = the former pace)
+        if (!frozenRef.current && !scrubbingRef.current) appendSpectrogramColumn();
         // forward scrub past the live edge pushes fresh columns in
         let adv = Math.min(8, Math.floor(advanceRef.current));
         while (adv-- > 0) {
@@ -336,10 +344,9 @@ export function MixScope({ deckA, deckB, colorA, colorB, crossfade, onCrossfade 
         else if (mode === "wave") drawWave();
         else drawArea();
       }
-      raf = requestAnimationFrame(draw);
     };
     raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
+    return () => { cancelAnimationFrame(raf); io.disconnect(); };
   }, [deckA, deckB, colorA, colorB, mode]);
 
   // --- pointer ---
