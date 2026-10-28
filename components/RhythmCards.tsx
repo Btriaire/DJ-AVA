@@ -153,7 +153,7 @@ export function PresetPicker(props: {
               onClick={() => setSide("A")}
               aria-pressed={side === "A"}
               className={`flex-1 min-h-9 rounded-lg ${
-                side === "A" ? "bg-neutral-700" : "bg-neutral-800"
+                side === "A" ? "bg-orange-400 font-bold text-neutral-950" : "bg-neutral-800"
               }`}
             >
               Deck A
@@ -163,7 +163,7 @@ export function PresetPicker(props: {
               onClick={() => setSide("B")}
               aria-pressed={side === "B"}
               className={`flex-1 min-h-9 rounded-lg ${
-                side === "B" ? "bg-neutral-700" : "bg-neutral-800"
+                side === "B" ? "bg-orange-400 font-bold text-neutral-950" : "bg-neutral-800"
               }`}
             >
               Deck B
