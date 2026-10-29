@@ -420,7 +420,7 @@ export function MiniKeyWheel({ camelot, size = 30, label = true }: { camelot?: s
         const ring = i % 2 === 0 ? 'A' : 'B';
         const angle = (n - 1) * 30;
         const isActive = camelot && camelot.toUpperCase() === `${n}${ring}`;
-        const fill = isActive ? activeColour : 'rgba(255,255,255,.1)';
+        const fill = isActive ? activeColour : 'rgba(255,255,255,.16)';
         const r0 = ring === 'A' ? 9 : 14;
         const r1 = ring === 'A' ? 14 : 19;
         return (
@@ -457,15 +457,15 @@ export function TempoRuler({ bpm, median }: { bpm?: number; median?: number }) {
 
   return (
     <svg viewBox="0 0 100 14" className="h-3.5 w-full" preserveAspectRatio="none" role="img" aria-label={bpm !== undefined && bpm > 0 ? `${Math.round(bpm)} BPM` : "Tempo inconnu"}>
-      <line x1={2} y1={7} x2={98} y2={7} stroke="rgba(255,255,255,.12)" strokeWidth={2} strokeLinecap="round" />
+      <line x1={2} y1={7} x2={98} y2={7} stroke="rgba(255,255,255,.22)" strokeWidth={3} strokeLinecap="round" />
       {Array.from({ length: 14 }, (_, i) => (
         <line key={i} x1={2 + i * (96 / 13)} y1={7} x2={2 + i * (96 / 13)} y2={10} stroke="rgba(255,255,255,.12)" strokeWidth={0.5} />
       ))}
       {median !== undefined && median > 0 && <line x1={medianX} y1={2} x2={medianX} y2={12} stroke="rgba(255,255,255,.35)" strokeWidth={0.8} />}
       {bpm !== undefined && bpm > 0 && (
         <>
-          <line x1={median !== undefined && median > 0 ? medianX : 2} y1={7} x2={bpmX} y2={7} stroke="#ffcc00" strokeOpacity={0.45} strokeWidth={2} />
-          <ellipse cx={bpmX} cy={7} rx={1.3} ry={2.6} fill="#ffcc00" />
+          <line x1={median !== undefined && median > 0 ? medianX : 2} y1={7} x2={bpmX} y2={7} stroke="#ffcc00" strokeOpacity={0.7} strokeWidth={3} />
+          <ellipse cx={bpmX} cy={7} rx={1.8} ry={3.6} fill="#ffcc00" stroke="#0b0b0d" strokeWidth={0.6} />
         </>
       )}
     </svg>

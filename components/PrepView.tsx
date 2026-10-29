@@ -88,6 +88,16 @@ const GRID_CLASS = {
 };
 
 // "Artist - Title (Official Video)" shown as a title and an artist line, without the video-title noise
+// the key as a filled chip in its Camelot colour (grey "?" when unknown)
+function KeyBadge({ camelot }: { camelot?: string }) {
+  const c = camelotColour(camelot);
+  return (
+    <span className="rounded-md px-1.5 py-px font-mono text-[12px] font-black" style={c ? { background: c, color: "#0b0b0d" } : { background: "rgba(255,255,255,.08)", color: "#8a8a8a" }}>
+      {camelot ?? "?"}
+    </span>
+  );
+}
+
 function displayName(name: string): { title: string; artist: string } {
   const clean = name.replace(/\s*[([][^)\]]*\b(official|lyrics?|audio|video|clip|visuali[sz]er|hd|hq|4k|remaster(ed)?)\b[^)\]]*[)\]]/gi, "").trim();
   const i = clean.indexOf(" - ");
@@ -779,7 +789,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
         <span className="text-right max-sm:hidden"><BpmChip bpm={track.bpm} estimated={track.bpmEstimated} /></span>
         <span className="flex items-center gap-1 max-sm:hidden">
           <MiniKeyWheel camelot={track.camelot} size={22} label={false} />
-          <span className="font-mono text-[11px] font-black" style={{ color: camelotColour(track.camelot) ?? "#737373" }}>{track.camelot ?? "?"}</span>
+          <KeyBadge camelot={track.camelot} />
         </span>
         <span className="flex justify-center"><StemPill info={stemOf(track.id)} onPrepare={() => queueStems([track])} /></span>
         <span className="prep-row-actions flex items-center justify-end gap-1 max-sm:hidden">
@@ -810,10 +820,10 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
       <div key={track.id} data-checked={checked} {...rowDrag(track)} className="prep-row flex cursor-grab flex-col gap-2 p-2 active:cursor-grabbing">
         <div className="relative">
           <div className="prep-sleeve"><Cover art={track.art} name={track.name} camelot={track.camelot} fill rounded={8} /></div>
+          {camelotColour(track.camelot) ? <span className="pointer-events-none absolute inset-x-0 bottom-0 h-1 rounded-b-[8px]" style={{ background: camelotColour(track.camelot)! }} /> : null}
           <label className="prep-check absolute left-0 top-0">
             <input type="checkbox" checked={checked} onChange={() => toggleLaterSelected(track.id)} className="accent-[var(--prep-accent)]" aria-label={`Sélectionner ${track.name}`} />
           </label>
-          {track.bpm ? <span className="absolute bottom-1.5 right-1.5 rounded bg-black/65 px-1"><BpmChip bpm={track.bpm} estimated={track.bpmEstimated} /></span> : null}
           <button onClick={() => removeLaterTrack(track.id)} className="prep-card-actions prep-tap absolute right-1 top-1 rounded-full bg-black/65 p-1 text-neutral-400 hover:text-red-400" title="Retirer du bac" aria-label={`Retirer ${track.name}`}>
             <Icon name="x" size={11} />
           </button>
@@ -835,10 +845,15 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
           <p className="truncate text-[13px] font-bold leading-snug text-neutral-50">{displayName(track.name).title}</p>
           <p className="truncate text-[11px] text-neutral-400">{displayName(track.name).artist || " "}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <MiniKeyWheel camelot={track.camelot} size={30} label={false} />
-          <span className="w-7 font-mono text-[12px] font-black" style={{ color: camelotColour(track.camelot) ?? "#737373" }}>{track.camelot ?? "?"}</span>
-          <div className="min-w-0 flex-1"><TempoRuler bpm={track.bpm} median={trayMedianBpm} /></div>
+        <div className="flex items-center gap-2 rounded-lg bg-black/30 p-1.5">
+          <MiniKeyWheel camelot={track.camelot} size={38} label={false} />
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <div className="flex items-center justify-between gap-1">
+              <KeyBadge camelot={track.camelot} />
+              <span className="font-mono text-[12px] font-black text-[#ffcc00]">{track.bpm ? `${Math.round(track.bpm)}` : "—"}<span className="ml-0.5 text-[9px] font-bold text-neutral-500">BPM</span></span>
+            </div>
+            <TempoRuler bpm={track.bpm} median={trayMedianBpm} />
+          </div>
         </div>
         <div className="flex items-center justify-between gap-1">
           <StemPill info={stemOf(track.id)} onPrepare={() => queueStems([track])} />
