@@ -23,6 +23,7 @@ import type { VideoLevel } from "@/lib/videoQuality";
 import type { Cue } from "@/lib/setPicker";
 import type { VideoMeta } from "@/lib/videoMeta";
 import { BpmChip, Cover, Icon, KeyChip, Mosaic, StemPill, fmtDur, stemInfoFrom } from "./prep/parts";
+import { AmbientHero, PlayDisc, QuickSets } from "./prep/AmbientHero";
 import { Section, SegFilter, StemsBar, StepBadge, useStored, useStoredOpen } from "./prep/Blocks";
 import "./prep/prep-view.css";
 
@@ -89,6 +90,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   const [lib, setLib] = useState(() => loadLibrary());
   const [newListName, setNewListName] = useState<string | null>(null); // null = formulaire fermé
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null); // première pression sur Supprimer
+  const [ambient, setAmbient] = useState<string | null>(null); // colour of the hovered set in the header
   const [openPlaylistId, setOpenPlaylistId] = useState<string | null>(null);
   const playlistStats = (trackIds: string[]) => {
     const tracks = trackIds.map(id => lib.tracks.find(t => t.id === id)).filter((t): t is LibTrack => !!t);
@@ -1068,6 +1070,8 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
     searchInputRef.current?.focus({ preventScroll: true });
   };
   const goToTray = () => trayRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const totalLaterSec = laterTracks.reduce((sum, t) => sum + (t.durationSec ?? 0), 0);
+  const laterBpms = laterTracks.map((t) => t.bpm).filter((b): b is number => !!b);
   const playFirstSet = () => {
     const set = lib.playlists.find((p) => p.trackIds.length >= 2);
     if (set) onLaunchSet?.("relay", set.id);
@@ -1083,15 +1087,24 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
 
   return (
     <div className="prep hw-screwed hw-panel flex min-w-0 max-w-full flex-1 flex-col gap-4 p-3 sm:p-5">
-      {/* en-tête : titre et chiffres clés */}
-      <header className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
-        <div className="min-w-0">
-          <h1 className="flex items-center gap-2 text-base font-black uppercase tracking-[0.25em] text-neutral-100">
-            <span className="prep-accent"><Icon name="crate" size={18} /></span>
-            Préparation
-          </h1>
-        </div>
-      </header>
+      {/* en-tête façon Spotify : la couleur suit le set survolé */}
+      <AmbientHero
+        level={1}
+        label="Préparation"
+        ambient={ambient ?? undefined}
+        overline="Ton bac"
+        title="Préparation"
+        cover={<Mosaic tracks={laterTracks.slice(-4).reverse()} size={112} accent="var(--prep-accent)" />}
+        subtitle={`${laterTracks.length} titre(s) mis de côté${totalLaterSec ? ` · ${formatDuration(totalLaterSec)}` : ""}${laterBpms.length ? ` · ${Math.round(Math.min(...laterBpms))}–${Math.round(Math.max(...laterBpms))} BPM` : ""}`}
+        actions={
+          <>
+            <PlayDisc label="Jouer le premier set" onClick={playFirstSet} disabled={!onLaunchSet || !lib.playlists.some((p) => p.trackIds.length >= 2)} />
+            <span className="text-[11px] text-neutral-400">Jouer le premier set</span>
+          </>
+        }
+      >
+        <QuickSets tracks={lib.tracks} playlists={lib.playlists} onLaunch={onLaunchSet ? (id) => onLaunchSet("relay", id) : undefined} onAmbient={setAmbient} title="Tes sets" />
+      </AmbientHero>
 
       {/* le parcours : chaque étape amène à sa zone */}
       <Journey

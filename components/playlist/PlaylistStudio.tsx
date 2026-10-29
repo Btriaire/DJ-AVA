@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Icon } from "../prep/parts";
+import { Icon, Mosaic } from "../prep/parts";
+import { AmbientHero, PlayDisc, QuickSets } from "../prep/AmbientHero";
 import { Journey, type JourneyStep } from "../prep/Journey";
 import { DeckStrip, type DeckStripProps } from "./DeckStrip";
 import { LibraryPane, type LibraryPaneProps } from "./LibraryPane";
@@ -43,6 +44,7 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
   // the titles of the open set (detail.tracks is the whole library)
   const setTracks = (detail.playlist?.trackIds ?? []).map((id) => detail.tracks.find((t) => t.id === id)).filter((t): t is NonNullable<typeof t> => !!t);
   const selectedSet = detail.playlist?.id ?? null; // the set that is open
+  const [ambient, setAmbient] = useState<string | null>(null); // colour of the hovered set in the header
 
   const handleSetSelect = (id: string) => {
     rail.onSelect(id);
@@ -160,10 +162,35 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
 
   return (
     <div className="prep hw-screwed hw-panel flex flex-1 flex-col gap-4 p-3 sm:p-5">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-base font-black uppercase tracking-[0.25em] text-neutral-100">Sets</h1>
-        <p className="text-[11px] text-neutral-400">Composez vos sets, réglez leurs enchaînements, lancez-les sur les platines.</p>
-      </header>
+      {/* Spotify-like header: the open set, its launch button, quick access to the others */}
+      <AmbientHero
+        level={1}
+        label="Sets"
+        ambient={ambient ?? undefined}
+        overline={detail.playlist ? "Set ouvert" : "Tes sets"}
+        title={detail.playlist?.name ?? "Sets"}
+        cover={<Mosaic tracks={setTracks} size={112} accent="var(--prep-accent)" />}
+        subtitle={detail.playlist ? `${setTracks.length} titre(s) · ${Math.round(totalSec / 60)} min · ${bpmRange} · stems ${readyCount}/${setTracks.length}` : "Composez vos sets, réglez leurs enchaînements, lancez-les sur les platines."}
+        actions={
+          selectedSet ? (
+            <>
+              <PlayDisc label={`Lancer ${detail.playlist?.name ?? "le set"}`} onClick={() => rail.onPlay("relay", selectedSet)} disabled={setTracks.length < 2} />
+              <span className="text-[11px] text-neutral-400">{setTracks.length >= 2 ? "Lancer en relais A et B" : "Il faut deux titres"}</span>
+            </>
+          ) : undefined
+        }
+      >
+        <QuickSets
+          tracks={rail.tracks}
+          playlists={rail.playlists.filter((p) => p.id !== selectedSet)}
+          onLaunch={(id) => {
+            rail.onSelect(id);
+            rail.onPlay("relay", id);
+          }}
+          onAmbient={setAmbient}
+          title="Tes autres sets"
+        />
+      </AmbientHero>
 
       <div className="flex flex-col gap-4">
         <nav aria-label="Étapes du set" className="flex items-stretch gap-1.5 overflow-x-auto pb-1">
