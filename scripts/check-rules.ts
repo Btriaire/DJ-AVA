@@ -93,3 +93,6 @@ import { selfTest as jamChorusTest } from "../lib/audio/jamChorus";
 jamFillTest();
 jamChorusTest();
 console.log("check-rules jam fills, chorus ok");
+import { selfTest as sampleFontTest } from "../lib/sampleFont";
+sampleFontTest();
+console.log("check-rules sample font ok");

@@ -11,6 +11,8 @@ import { arpNoteAt, arpSequence, type ArpShape as ArpOrder } from "./jamArp";
 import { progression, type ProgressionName } from "./jamProgressions";
 import { SyncedSweep } from "./jamSweep";
 import { StereoChorus } from "./jamChorus";
+import { SampledInstrument } from "./sampledInstrument";
+import { instrument } from "@/lib/sampleFont";
 import { fillNote, isFillBar, type FillEvery } from "./jamFill";
 import { degreeNames } from "./stemJam";
 import { chordAt, chordDegreeAt, degreeChord, heardShift, voiceLead, type ChordColor, jamDeck, jamScale, jamStem, nextGrid, onJamTick, snapToScale, songToCtx, spb, type JamDeckPref, type JamRole } from "./stemJam";
@@ -495,6 +497,8 @@ export class HarmoSynth extends JamModule {
   readonly sweep: SyncedSweep;
   readonly chorus: StereoChorus;
   readonly riser: Riser;
+  readonly sampled: SampledInstrument;
+  voice = "synth:pluck"; // "synth:<patch>" or "inst:<real instrument id>"
   width = 0; // stereo chorus 0..1
   riserBars: 2 | 4 | 8 = 4;
   rate: 0.5 | 0.25 = 0.25; // arp step in beats
@@ -520,6 +524,8 @@ export class HarmoSynth extends JamModule {
     this.pumpGain = new GainNode(ctx, { gain: 1 });
     this.sweep = new SyncedSweep(ctx);
     this.synth.out.connect(this.sweep.input);
+    this.sampled = new SampledInstrument(ctx);
+    this.sampled.out.connect(this.sweep.input); // real instruments share the sweep, chorus, pump and echo
     this.chorus = new StereoChorus(ctx);
     this.sweep.output.connect(this.chorus.input);
     this.chorus.output.connect(this.pumpGain).connect(this.bus);
@@ -542,6 +548,30 @@ export class HarmoSynth extends JamModule {
   setPatch(p: SynthPatch) { this.synth.patch = p; }
   setEcho(v: number) { this.echo = v; this.echoIn.gain.value = 0.55 * v; }
   setWidth(v: number) { this.width = v; this.chorus.setWidth(v); }
+  // the sound: one of the synth patches, or a real instrument (loaded on first use, cached on disk by the app)
+  setVoice(id: string) {
+    this.voice = id;
+    if (id.startsWith("synth:")) this.setPatch(id.slice(6) as SynthPatch);
+    else this.ensureVoice();
+    jamChanged();
+  }
+  private ensureVoice() {
+    if (!this.voice.startsWith("inst:")) return;
+    const id = this.voice.slice(5);
+    if (this.sampled.current !== id) void this.sampled.load(id).then(() => jamChanged());
+  }
+  // who plays the notes: the real instrument once loaded, the synth meanwhile (or when it could not load)
+  private player(): { note: PolySynth["note"]; chord: PolySynth["chord"] } {
+    return this.voice.startsWith("inst:") && this.sampled.ready() ? this.sampled : this.synth;
+  }
+  voiceStatus(): string | null {
+    if (!this.voice.startsWith("inst:")) return null;
+    const label = instrument(this.voice.slice(5))?.label ?? "Instrument";
+    if (this.sampled.ready()) return `${label} prêt`;
+    if (this.sampled.failed) return `${label} indisponible (réseau ?) : le synthé joue à sa place`;
+    if (this.sampled.current) return `Chargement : ${label} ${this.sampled.done}/${this.sampled.total}`;
+    return `${label} : se charge au premier accord`;
+  }
   // RISER: noise and a climbing saw from the next bar, landing on the bar after riserBars bars
   playRiser(on: boolean) {
     const d = this.deck();
@@ -583,9 +613,9 @@ export class HarmoSynth extends JamModule {
   pads(names: string[] = []): PadDef[] {
     return ["I", "II", "III", "IV", "V", "VI", "VII"].map((r, i) => ({ id: `deg${i}`, label: names[i] ?? r, sub: r, mode: "hold" as const, run: (on: boolean) => { if (on) this.hold(i); else if (this.degree === i) this.hold(null); } }));
   }
-  protected keep() { return ["shape", "rate", "octave", "color", "echo", "patchName", "arpOctaves", "gateLen", "sweepDiv", "width", "riserBars"]; }
+  protected keep() { return ["shape", "rate", "octave", "color", "echo", "patchName", "arpOctaves", "gateLen", "sweepDiv", "width", "riserBars", "voice"]; }
   protected sceneKeys() { return [...this.keep(), "mode", "pumpOn", "sweepDepth"]; }
-  protected afterScene() { this.setEcho(this.echo); this.setSweep(this.sweepDepth, this.sweepDiv); this.setWidth(this.width); }
+  protected afterScene() { this.setEcho(this.echo); this.setSweep(this.sweepDepth, this.sweepDiv); this.setWidth(this.width); this.ensureVoice(); }
   // the sound, kept between sessions through this field (the synth itself holds the live one)
   get patchName(): string { return this.synth.patch; }
   set patchName(v: string) { if (["pluck", "supersaw", "organ", "keys", "brass"].includes(v)) this.synth.patch = v as SynthPatch; }
@@ -614,12 +644,13 @@ export class HarmoSynth extends JamModule {
     this.degree = degree;
     const d = this.deck();
     if (degree === null || this.stem(d) < 0) return;
+    this.ensureVoice();
     if (this.loopState === "rec") this.loop[this.loopBar()] = degree;
     this.route(d);
     const at = d.ctx.currentTime + 0.01;
     const shift = 12 * this.octave;
     this.voicing = voiceLead(this.voicing ? this.voicing.map((m) => m - shift) : null, degreeChord(d, degree, 48, this.color)).map((m) => m + shift);
-    this.synth.chord(this.voicing, at, spb(d) * 0.5, 0.9, "stab", 0.008);
+    this.player().chord(this.voicing, at, spb(d) * 0.5, 0.9, "stab", 0.008);
     this.hit(at);
   }
   // the chord to play at t: the pad held, else the loop's bar, else the song's own chord; in the chosen colour
@@ -654,6 +685,7 @@ export class HarmoSynth extends JamModule {
     }
     if (this.mode === "off") return;
     this.route(deck);
+    this.ensureVoice();
     const beat = spb(deck);
     this.delay.delayTime.setTargetAtTime(Math.min(1.9, beat * 0.75), deck.ctx.currentTime, 0.05); // dotted eighth at the deck's tempo
     if (this.sweepDepth > 0) this.sweep.setRate(1 / (beat * this.sweepDiv)); // one sweep every sweepDiv beats, at the heard tempo
@@ -670,17 +702,17 @@ export class HarmoSynth extends JamModule {
     if (this.mode === "arp") {
       for (const { t, k } of this.steps(deck, this.shape === "gate" ? 0.25 : this.rate, from, to)) {
         const c = this.chord(deck, t), at = songToCtx(deck, t);
-        if (this.shape === "gate") { if (GATE[step16(k)]) { this.synth.chord(c, at, beat * 0.2, step16(k) % 4 === 0 ? 0.95 : 0.7, "pluck"); this.hit(at); } continue; }
-        this.synth.note(this.arpNote(c, k), at, beat * this.rate * this.gateLen, k % 4 === 0 ? 1 : 0.75, "pluck");
+        if (this.shape === "gate") { if (GATE[step16(k)]) { this.player().chord(c, at, beat * 0.2, step16(k) % 4 === 0 ? 0.95 : 0.7, "pluck"); this.hit(at); } continue; }
+        this.player().note(this.arpNote(c, k), at, beat * this.rate * this.gateLen, k % 4 === 0 ? 1 : 0.75, "pluck");
         this.hit(at);
       }
     } else if (this.mode === "stab") {
       for (const { t, k } of this.steps(deck, 0.5, from, to))
-        if (k % 2 !== 0) { const at = songToCtx(deck, t); this.synth.chord(this.voiced(deck, t).map((m) => m + 12), at, beat * 0.4, 0.9, "stab", 0.006); this.hit(at); } // offbeats
+        if (k % 2 !== 0) { const at = songToCtx(deck, t); this.player().chord(this.voiced(deck, t).map((m) => m + 12), at, beat * 0.4, 0.9, "stab", 0.006); this.hit(at); } // offbeats
     } else {
       for (const { t, k } of this.steps(deck, 1, from, to)) {
         const key = this.chord(deck, t).join();
-        if (k % 4 === 0 || key !== this.lastPad) { this.lastPad = key; const at = songToCtx(deck, t); this.synth.chord(this.voiced(deck, t), at, beat * 4, 0.8, "pad", 0.025); this.hit(at); }
+        if (k % 4 === 0 || key !== this.lastPad) { this.lastPad = key; const at = songToCtx(deck, t); this.player().chord(this.voiced(deck, t), at, beat * 4, 0.8, "pad", 0.025); this.hit(at); }
       }
     }
   }

@@ -61,3 +61,6 @@ __pycache__/
 
 .audio-cache/
 .voice-cache/
+
+# real instrument notes downloaded by /api/samples (FluidR3 GM, CC BY 3.0)
+/.samples-cache

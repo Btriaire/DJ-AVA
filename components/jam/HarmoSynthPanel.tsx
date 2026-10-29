@@ -3,12 +3,12 @@ import { useReducer, useState } from "react";
 import type { DJEngine } from "@/lib/audio/engine";
 import { jamModules, type ArpShape, type SynthMode } from "@/lib/audio/jamModules";
 import { degreeNames, type ChordColor } from "@/lib/audio/stemJam";
-import type { SynthPatch } from "@/lib/audio/jamVoices";
 import type { ProgressionName } from "@/lib/audio/jamProgressions";
 import { Knob } from "../Knob";
 import { JamPads, JamSeg, JamShell, useJamRefresh } from "./JamKit";
 import { KEY_ROWS } from "./jamKeys";
 import { ChordStrip } from "./ChordStrip";
+import { INSTRUMENTS } from "@/lib/sampleFont";
 import { JamSlots } from "./JamSlots";
 
 const C = "var(--jam-synth)";
@@ -29,9 +29,74 @@ export function HarmoSynthPanel({ engine }: { engine: DJEngine }) {
   </div>
   <JamSlots m={m} color={C} />
 </div>
+        <div className="flex flex-col gap-1.5">
+          <div className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--jam-text-2)]">SON</div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <select
+              aria-label="Son du synthé"
+              className="rounded-md px-2 py-1.5 text-[12px] font-bold"
+              style={{
+                background: "oklch(0.21 0.01 280)",
+                color: "var(--jam-text)",
+                border: "1px solid var(--jam-line)"
+              }}
+              value={m.voice}
+              onChange={(e) => { m.setVoice(e.target.value); bump(); }}
+            >
+              <optgroup label="Synthés">
+                <option value="synth:pluck">Pluck</option>
+                <option value="synth:supersaw">Supersaw</option>
+                <option value="synth:organ">Orgue (synthé)</option>
+                <option value="synth:keys">Keys FM</option>
+                <option value="synth:brass">Cuivres (synthé)</option>
+              </optgroup>
+              {["Claviers", "Percussions mélodiques", "Cordes", "Voix", "Vents", "Guitares", "Nappes"].map(family => (
+                <optgroup key={family} label={family}>
+                  {INSTRUMENTS.filter(i => i.family === family).map(i => (
+                    <option key={i.id} value={`inst:${i.id}`}>{i.label}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            {["acoustic_grand_piano", "electric_piano_1", "string_ensemble_1", "choir_aahs", "brass_section", "acoustic_guitar_nylon"].map(id => (
+              <button
+                key={id}
+                type="button"
+                className="rounded-md px-2 py-1 text-[11px] font-bold"
+                aria-pressed={m.voice === `inst:${id}`}
+                style={m.voice === `inst:${id}`
+                  ? {
+                      background: `color-mix(in srgb, ${C} 35%, #111)`,
+                      color: "#fff",
+                      boxShadow: `inset 0 0 0 1px ${C}`
+                    }
+                  : {
+                      background: "rgba(255,255,255,.06)",
+                      color: "var(--jam-text-2)"
+                    }
+                }
+                onClick={() => { m.setVoice(`inst:${id}`); bump(); }}
+              >
+                {id === "acoustic_grand_piano" ? "Piano" :
+                 id === "electric_piano_1" ? "Rhodes" :
+                 id === "string_ensemble_1" ? "Cordes" :
+                 id === "choir_aahs" ? "Chœur" :
+                 id === "brass_section" ? "Cuivres" :
+                 "Guitare"}
+              </button>
+            ))}
+          </div>
+          {m.voiceStatus() && (
+            <div className="text-[11px] text-[var(--jam-text-2)]" aria-live="polite">
+              {m.voiceStatus()}
+            </div>
+          )}
+          <div className="text-[10px] text-[var(--jam-text-3)]">
+            Instruments réels : soundfont FluidR3 GM de Frank Wen, licence CC BY 3.0. Chargés une fois, puis gardés sur le disque.
+          </div>
+        </div>
       <div className="flex flex-wrap items-end gap-4">
         <JamSeg label="Jeu" color={C} value={m.mode} options={[["off","Off"],["arp","Arpège"],["stab","Stabs"],["pad","Nappe"]] as const} onChange={(v: SynthMode) => { m.set("mode", v); bump(); }} />
-        <JamSeg label="Son" color={C} value={m.patch} options={[["pluck","Pluck"],["supersaw","Supersaw"],["organ","Orgue"],["keys","Keys"],["brass","Cuivres"]] as const} onChange={(v: SynthPatch) => { m.setPatch(v); bump(); }} />
         <JamSeg label="Couleur" color={C} value={m.color} options={[["triad","Triade"],["seventh","7e"],["ninth","9e"]] as const} onChange={(v: ChordColor) => { m.set("color", v); bump(); }} />
         <JamSeg label="Forme" color={C} value={m.shape} options={[["up","Montant"],["down","Descendant"],["updown","Aller-retour"],["converge","Convergent"],["pinky","Pinky"],["random","Hasard"],["gate","Gate trance"]] as const} onChange={(v: ArpShape) => { m.set("shape", v); bump(); }} />
         <JamSeg label="Étendue" color={C} value={String(m.arpOctaves)} options={[["1","1 octave"],["2","2 octaves"]] as const} onChange={(v) => { m.set("arpOctaves", v === "2" ? 2 : 1); bump(); }} />
