@@ -1,6 +1,8 @@
 "use client";
 import { ReactNode, useEffect, useRef, useState } from "react";
 import { ActivityLed } from "./ActivityLed";
+import { onJamChange, type PadDef } from "@/lib/audio/jamModules";
+import { keyLabel } from "./jamKeys";
 
 export function JamShell({
   title,
@@ -81,7 +83,9 @@ export function JamPad({
   mode,
   active,
   onChange,
+  hint,
 }: {
+  hint?: string; // the computer key that plays this pad
   label: string;
   sub?: string;
   color: string;
@@ -115,7 +119,7 @@ export function JamPad({
   return (
     <button
       ref={ref}
-      className={`h-14 w-full rounded-lg font-black text-[12px] tracking-wide transition-[transform,box-shadow] duration-80 motion-reduce:transition-none ${
+      className={`relative h-14 w-full rounded-lg font-black text-[12px] tracking-wide transition-[transform,box-shadow] duration-80 motion-reduce:transition-none ${
         active
           ? "translate-y-0.5 shadow-[0_0_14px_color-mix(in_srgb,_var(--tw-shadow-color)_55%,_transparent)]"
           : "translate-y-0"
@@ -124,7 +128,7 @@ export function JamPad({
         backgroundColor: active
           ? `color-mix(in srgb, ${color} 38%, #111)`
           : "#17171b",
-        boxShadow: active ? `inset 0 0 0 1px ${color}` : "inset 0 1px 0 rgba(255,255,255,.06), 0 2px 0 #0a0a0c",
+        boxShadow: active ? `inset 0 0 0 1px ${color}, 0 0 14px color-mix(in srgb, ${color} 55%, transparent)` : "inset 0 1px 0 rgba(255,255,255,.06), 0 2px 0 #0a0a0c",
         color: active ? "white" : "#d4d4d8",
       }}
       aria-pressed={active}
@@ -137,6 +141,7 @@ export function JamPad({
       onKeyDown={handleKeyDown}
       onKeyUp={handleKeyUp}
     >
+      {hint && <span className="absolute right-1 top-1 rounded bg-black/45 px-1 font-mono text-[8px] font-bold leading-[12px] text-neutral-400">{hint}</span>}
       <div className="flex flex-col items-center justify-center">
         {label}
         {sub && (
@@ -196,7 +201,19 @@ export function useJamRefresh(): number {
   const [n, setN] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setN((x) => x + 1), 250);
-    return () => clearInterval(id);
+    const off = onJamChange(() => setN((x) => x + 1)); // a pad pressed on the keyboard lights up at once
+    return () => { clearInterval(id); off(); };
   }, []);
   return n;
+}
+
+// the pads of a module, from its own definitions (the same ones the computer keyboard plays)
+export function JamPads({ m, list, color, className, keys }: { m: { press: (id: string, on: boolean, list?: PadDef[]) => void; padActive: (p: PadDef) => boolean }; list: PadDef[]; color: string; className: string; keys?: string[] }) {
+  return (
+    <div className={className}>
+      {list.map((p, i) => (
+        <JamPad key={p.id} label={p.label} sub={p.sub} color={color} mode={p.mode} active={m.padActive(p)} hint={keys?.[i] ? keyLabel(keys[i]) : undefined} onChange={(on) => m.press(p.id, on, list)} />
+      ))}
+    </div>
+  );
 }

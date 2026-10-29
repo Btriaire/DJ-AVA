@@ -12,7 +12,14 @@ import { chordAt, degreeChord, heardShift, jamDeck, jamScale, jamStem, nextGrid,
 export const beatIdx = (div: number) => Math.max(0, BEAT_DIVS.indexOf(div));
 // shared by the four modules: a pad or a throw starts on the next grid line of this many beats (0 = at once)
 export const jamSettings = { quant: 1 as 0 | 0.25 | 1 | 4 };
-export function setJamQuant(q: 0 | 0.25 | 1 | 4) { jamSettings.quant = q; }
+export function setJamQuant(q: 0 | 0.25 | 1 | 4) { jamSettings.quant = q; jamChanged(); }
+
+// a pad of a module, the same for the screen and the computer keyboard
+export interface PadDef { id: string; label: string; sub?: string; mode: "hold" | "toggle"; run: (on: boolean) => void; isOn?: () => boolean }
+// the panels re-render at once when a pad or a setting changes (keyboard included)
+const listeners = new Set<() => void>();
+export function onJamChange(fn: () => void): () => void { listeners.add(fn); return () => { listeners.delete(fn); }; }
+export function jamChanged() { listeners.forEach((f) => f()); }
 type Note = [number, number, number, number];
 
 // first index whose start is >= t (notes are sorted by start)
@@ -79,6 +86,25 @@ abstract class JamModule {
     this.routedTo = to;
     if (to) this.bus.connect(to);
   }
+  readonly pressed = new Set<string>();
+  abstract pads(): PadDef[];
+  padActive(p: PadDef): boolean { return p.isOn ? p.isOn() : this.pressed.has(p.id); }
+  // a pad pressed on screen or on the keyboard: hold pads run while pressed, toggle pads flip on each press
+  press(id: string, on: boolean, list: PadDef[] = this.pads()) {
+    const p = list.find((x) => x.id === id);
+    if (!p) return;
+    if (p.mode === "toggle") {
+      if (!on) return;
+      const next = !this.padActive(p);
+      if (!p.isOn) { if (next) this.pressed.add(id); else this.pressed.delete(id); }
+      p.run(next);
+    } else {
+      if (on === this.pressed.has(id)) return;
+      if (on) this.pressed.add(id); else this.pressed.delete(id);
+      p.run(on);
+    }
+    jamChanged();
+  }
   protected hit(at: number) { this.hitTimes.push(at); if (this.hitTimes.length > 24) this.hitTimes.shift(); }
   // true while a note this module played is sounding its attack (the panel lights its LED)
   lit(): boolean { const now = this.engine.ctx.currentTime; return this.hitTimes.some((t) => now >= t && now - t < 0.09); }
@@ -120,6 +146,8 @@ export class BassLab extends JamModule {
   lineLevel = 0.8;
   pump = false; // the bass ducks on every kick of the song
   muted = false;
+  wobble = 0; // 0..1 depth of the synced wobble
+  wobbleDiv = 0.25;
   private volBefore = 1;
   constructor(engine: DJEngine) {
     super(engine, "bass");
@@ -132,6 +160,17 @@ export class BassLab extends JamModule {
     onJamTick(engine, (deck, from, to) => this.tick(deck, from, to));
   }
   setSub(v: number) { this.subLevel = v; this.sub.out.gain.value = 0.9 * v; }
+  setWobble(v: number, div = this.wobbleDiv) { this.wobble = v; this.wobbleDiv = div; this.fx("wobble", v > 0.02, div, v, 0); }
+  pads(): PadDef[] {
+    return [
+      { id: "pump", label: "PUMP", sub: "sur les kicks", mode: "toggle", isOn: () => this.pump, run: (on) => { this.pump = on; } },
+      { id: "swap", label: "SWAP", sub: "basse coupée", mode: "toggle", isOn: () => this.muted, run: () => this.toggleMute() },
+      { id: "drop", label: "DROP", sub: "plongée", mode: "hold", run: (on) => this.drop(on) },
+      { id: "r8", label: "ROLL", sub: "1/8", mode: "hold", run: (on) => this.fx("roll", on, 0.125, 1) },
+      { id: "r16", label: "ROLL", sub: "1/16", mode: "hold", run: (on) => this.fx("roll", on, 0.0625, 1) },
+      { id: "wob", label: "WOB MAX", sub: "1/8", mode: "hold", run: (on) => (on ? this.fx("wobble", true, 0.125, 1) : this.setWobble(this.wobble)) },
+    ];
+  }
   setLineLevel(v: number) { this.lineLevel = v; this.lineSynth.out.gain.value = 0.5 * v; }
   get drive(): number { const d = this.deck(); return d.stemDriveAmt[this.stem(d)] ?? 0; }
   setDrive(v: number) { const d = this.deck(); d.setStemDrive(this.stem(d), v); }
@@ -189,6 +228,10 @@ export class VoxFx extends JamModule {
   readonly choir: ChoirVoice;
   harmony = false; // a sung third above the vocal melody, in key
   harmonyUp: 2 | 4 = 2; // scale steps above the voice: a third, or a fifth
+  doubled = false;
+  // CHOPS: a captured phrase of the vocal stem (song seconds), cut in 8 slices played on pads, in time
+  chop: { start: number; slice: number; beats: number } | null = null;
+  chopBeats: 2 | 4 | 8 = 4;
   constructor(engine: DJEngine) {
     super(engine, "vocals");
     this.choir = new ChoirVoice(engine.ctx);
@@ -197,6 +240,51 @@ export class VoxFx extends JamModule {
   }
   get level(): number { const d = this.deck(); return d.stemVol[this.stem(d)] ?? 1; }
   setLevel(v: number) { const d = this.deck(); d.setStemVol(this.stem(d), v); }
+  pads(): PadDef[] {
+    const t = (id: string, label: string, sub: string, fx: FxName, div: number | undefined, wet: number): PadDef => ({ id, label, sub, mode: "hold", run: (on) => this.fx(fx, on, div, wet) });
+    return [
+      t("echo", "ÉCHO", "1/4", "echo", 0.25, 1),
+      t("dub", "DUB", "1/2", "dub", 0.5, 1),
+      t("freeze", "FREEZE", "figé", "freeze", undefined, 0.9),
+      t("gate", "GATE", "1/16", "gate", 0.0625, 1),
+      t("vowel", "VOYELLE", "wah", "vowel", undefined, 0.9),
+      t("reverse", "REVERSE", "1 temps", "reverse", 1, 1),
+      { id: "double", label: "DOUBLE", sub: "voix large", mode: "toggle", isOn: () => this.doubled, run: (on) => { this.doubled = on; this.fx("double", on, undefined, 0.7, 0); } },
+      { id: "harmony", label: "HARMONIE", sub: this.harmonyUp === 4 ? "quinte" : "tierce", mode: "toggle", isOn: () => this.harmony, run: (on) => { this.harmony = on; } },
+    ];
+  }
+  // the bars just played of the vocal stem become the phrase (ends on the last bar line, so it is in time)
+  capture() {
+    const d = this.deck();
+    if (!d.bpm || this.stem(d) < 0) return;
+    const beat = 60 / d.bpm, bar = beat * 4;
+    const end = Math.max(this.chopBeats * beat, d.beatGridOffset + Math.floor((d.position() - d.beatGridOffset) / bar) * bar);
+    this.chop = { start: end - this.chopBeats * beat, slice: (this.chopBeats * beat) / 8, beats: this.chopBeats };
+    jamChanged();
+  }
+  chopPads(): PadDef[] {
+    return Array.from({ length: 8 }, (_, i) => ({ id: `chop${i}`, label: String(i + 1), sub: this.chop ? `${((i * this.chop.beats) / 8).toFixed(1).replace(".0", "")} t` : "vide", mode: "hold" as const, run: (on: boolean) => { if (on) this.playChop(i); } }));
+  }
+  // one slice of the phrase, at the deck's speed, on the next grid line; it goes through the voice's chain and effects
+  playChop(i: number) {
+    const d = this.deck(), si = this.stem(d), buf = si >= 0 ? d.getStemBuffer(si) : null;
+    if (!buf || !this.chop) return;
+    this.route(d);
+    const ctx = d.ctx, rate = Math.max(0.25, d.playbackRate);
+    const q = jamSettings.quant > 0 ? Math.min(jamSettings.quant, 0.25) : 0;
+    const at = q > 0 && d.playing ? nextGrid(d, q).at : ctx.currentTime + 0.005;
+    const len = this.chop.slice / rate;
+    const src = new AudioBufferSourceNode(ctx, { buffer: buf, playbackRate: rate });
+    const env = new GainNode(ctx, { gain: 0 });
+    env.gain.setValueAtTime(0, at);
+    env.gain.linearRampToValueAtTime(1, at + 0.004);
+    env.gain.setValueAtTime(1, at + len - 0.008);
+    env.gain.linearRampToValueAtTime(0, at + len);
+    src.connect(env).connect(this.bus);
+    src.start(at, this.chop.start + i * this.chop.slice, this.chop.slice + 0.01);
+    src.stop(at + len + 0.02);
+    this.hit(at);
+  }
   get space(): number { const d = this.deck(); return d.stemReverbSend[this.stem(d)] ?? 0; }
   setSpace(v: number) { const d = this.deck(), i = this.stem(d); if (i < 0) return; if (v > 0 && (d.stemFxVol[i] ?? 0) < 0.7) d.setStemFxVol(i, 0.7); d.setStemReverbSend(i, v); }
   get echo(): number { const d = this.deck(); return d.stemDelaySend[this.stem(d)] ?? 0; }
@@ -255,6 +343,9 @@ export class HarmoSynth extends JamModule {
   setTone(v: number) { this.synth.setTone(v); }
   get otherLevel(): number { const d = this.deck(); return d.stemVol[this.stem(d)] ?? 1; }
   setOtherLevel(v: number) { const d = this.deck(); d.setStemVol(this.stem(d), v); }
+  pads(names: string[] = []): PadDef[] {
+    return ["I", "II", "III", "IV", "V", "VI", "VII"].map((r, i) => ({ id: `deg${i}`, label: names[i] ?? r, sub: r, mode: "hold" as const, run: (on: boolean) => { if (on) this.hold(i); else if (this.degree === i) this.hold(null); } }));
+  }
   // REC (from the next bar), then PLAY; a press while playing clears the loop
   loopButton() {
     if (this.loopState === "off") { this.loop = [-1, -1, -1, -1]; this.loopState = "armed"; }
@@ -327,6 +418,16 @@ export class HarmoSynth extends JamModule {
 
 // ---------------- BEAT LAB ----------------
 export type HatMode = "off" | "8" | "16";
+export type SeqRow = "kick" | "clap" | "hat" | "open";
+export const SEQ_ROWS: SeqRow[] = ["kick", "clap", "hat", "open"];
+// starting patterns for the sequencer, as the sixteenths that play
+export const SEQ_PRESETS: Record<"four" | "house" | "break" | "trap" | "clear", Record<SeqRow, number[]>> = {
+  four: { kick: [0, 4, 8, 12], clap: [], hat: [], open: [] },
+  house: { kick: [0, 4, 8, 12], clap: [4, 12], hat: [0, 4, 8, 12], open: [2, 6, 10, 14] },
+  break: { kick: [0, 7, 10], clap: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14], open: [15] },
+  trap: { kick: [0, 11], clap: [8], hat: [0, 2, 4, 5, 6, 8, 10, 12, 13, 14, 15], open: [] },
+  clear: { kick: [], clap: [], hat: [], open: [] },
+};
 export class BeatLab extends JamModule {
   readonly kit: DrumKit;
   kick = 0; // 0..1 layer on the song's kicks
@@ -334,6 +435,10 @@ export class BeatLab extends JamModule {
   hats: HatMode = "off";
   hatLevel = 0.7;
   swing = 0; // 0..0.5 of a 16th, on the off 16ths
+  // the 16-step sequencer: its own kit pattern over the song, on the grid of the bar
+  seq = false;
+  pattern: Record<SeqRow, boolean[]> = { kick: Array(16).fill(false), clap: Array(16).fill(false), hat: Array(16).fill(false), open: Array(16).fill(false) };
+  seqLevel = 0.8;
   constructor(engine: DJEngine) {
     super(engine, "drums");
     this.kit = new DrumKit(engine.ctx);
@@ -342,6 +447,25 @@ export class BeatLab extends JamModule {
   }
   get level(): number { const d = this.deck(); return d.stemVol[this.stem(d)] ?? 1; }
   setLevel(v: number) { const d = this.deck(); d.setStemVol(this.stem(d), v); }
+  pads(): PadDef[] {
+    const f = (id: string, label: string, sub: string, fx: FxName, div: number): PadDef => ({ id, label, sub, mode: "hold", run: (on) => this.fx(fx, on, div, 1) });
+    return [
+      f("r4", "ROLL", "1/4", "roll", 0.25), f("r8", "ROLL", "1/8", "roll", 0.125), f("r16", "ROLL", "1/16", "roll", 0.0625), f("r32", "ROLL", "1/32", "roll", 0.03125),
+      f("half", "HALF", "demi-tempo", "halftime", 1), f("build", "BUILD", "montée", "build", 1), f("scatter", "SCATTER", "1/8", "scatter", 0.125), f("stop", "STOP", "frein", "brake", 1),
+    ];
+  }
+  toggleStep(row: SeqRow, i: number) { this.pattern[row][i] = !this.pattern[row][i]; jamChanged(); }
+  setPreset(name: keyof typeof SEQ_PRESETS) {
+    const p = SEQ_PRESETS[name];
+    for (const row of SEQ_ROWS) this.pattern[row] = Array.from({ length: 16 }, (_, i) => p[row].includes(i));
+    jamChanged();
+  }
+  // the sixteenth of the bar playing now, -1 when the deck is stopped
+  currentStep(): number {
+    const d = this.deck();
+    if (!d.playing || !d.bpm) return -1;
+    return step16(Math.floor((d.position() - d.beatGridOffset) / ((60 / d.bpm) * 0.25)));
+  }
   // an accent played right away on the next sixteenth (the macro's drop)
   impact() {
     const d = this.deck();
@@ -354,8 +478,21 @@ export class BeatLab extends JamModule {
     this.hit(at);
   }
   private tick(deck: Deck, from: number, to: number) {
-    if ((this.kick <= 0 && this.clap <= 0 && this.hats === "off") || deck !== this.deck() || this.stem(deck) < 0) return;
+    if ((this.kick <= 0 && this.clap <= 0 && this.hats === "off" && !this.seq) || deck !== this.deck() || this.stem(deck) < 0) return;
     this.route(deck);
+    if (this.seq) {
+      const sixteenth = spb(deck) * 0.25;
+      for (const { t, k } of this.steps(deck, 0.25, from, to)) {
+        const i = step16(k), acc = i % 4 === 0 ? 1 : 0.8, v = this.seqLevel * acc;
+        const at = songToCtx(deck, t) + (k % 2 !== 0 ? this.swing * sixteenth : 0);
+        let any = false;
+        if (this.pattern.kick[i]) { this.kit.kick(at, v); any = true; }
+        if (this.pattern.clap[i]) { this.kit.clap(at, v); any = true; }
+        if (this.pattern.hat[i]) { this.kit.hat(at, v * 0.8, false); any = true; }
+        if (this.pattern.open[i]) { this.kit.hat(at, v * 0.8, true); any = true; }
+        if (any) this.hit(at);
+      }
+    }
     if (this.kick > 0 || this.clap > 0) {
       const hits = deck.stemNotes?.drums ?? [];
       for (let k = lowerBound(hits, from); k < hits.length && hits[k][0] < to; k++) {

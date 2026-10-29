@@ -3,8 +3,13 @@ import { useReducer } from "react";
 import type { DJEngine } from "@/lib/audio/engine";
 import { jamModules, jamSettings, setJamQuant } from "@/lib/audio/jamModules";
 import { JamSeg, useJamRefresh } from "./JamKit";
+import { KEY_ROWS, keyLabel, useJamKeys, useJamKeysEnabled } from "./jamKeys";
+
+const row = (codes: string[]) => `${keyLabel(codes[0])}…${keyLabel(codes[codes.length - 1])}`;
 
 export function JamMacroBar({ engine }: { engine: DJEngine }) {
+  const [keysOn, setKeysOn] = useJamKeysEnabled();
+  useJamKeys(engine, keysOn);
   const [, bump] = useReducer((x) => x + 1, 0);
   const mac = jamModules(engine).macro;
   useJamRefresh();
@@ -65,6 +70,17 @@ export function JamMacroBar({ engine }: { engine: DJEngine }) {
         />
       </div>
 
+      <button
+        type="button"
+        aria-pressed={keysOn}
+        onClick={() => setKeysOn(!keysOn)}
+        className="rounded-md px-3 py-1.5 text-[10px] font-black tracking-[0.15em]"
+        style={keysOn ? { background: "color-mix(in srgb, #a3e635 25%, #111)", color: "#fff", boxShadow: "inset 0 0 0 1px #a3e635" } : { background: "rgba(255,255,255,.05)", color: "#a3a3a3" }}
+        title="Joue les pads au clavier de l'ordinateur"
+      >
+        CLAVIER {keysOn ? "ACTIF" : "COUPÉ"}
+      </button>
+      {keysOn && <span className="text-[10px] text-neutral-500">{`${row(KEY_ROWS.bass)} basse · ${row(KEY_ROWS.vox)} voix (+ Maj : morceaux) · ${row(KEY_ROWS.synth)} accords · ${row(KEY_ROWS.beat)} rythme`}</span>}
       <div className="w-full text-[10px] text-neutral-500">
         BUILD monte batterie, écho de voix, filtre de basse et arpège jusqu&apos;à la mesure du drop. BREAK sort batterie et basse, la reprise retombe sur la mesure.
       </div>

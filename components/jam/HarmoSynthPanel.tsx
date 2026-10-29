@@ -1,21 +1,20 @@
 "use client";
-import { useReducer, useState } from "react";
+import { useReducer } from "react";
 import type { DJEngine } from "@/lib/audio/engine";
 import { jamModules, type ArpShape, type SynthMode } from "@/lib/audio/jamModules";
 import { degreeNames } from "@/lib/audio/stemJam";
 import { Knob } from "../Knob";
-import { JamPad, JamSeg, JamShell, useJamRefresh } from "./JamKit";
+import { JamPads, JamSeg, JamShell, useJamRefresh } from "./JamKit";
+import { KEY_ROWS } from "./jamKeys";
 
 const C = "#38bdf8";
 const pct = (v: number) => `${Math.round(v * 100)} %`;
-const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII"];
 
 // SYNTH: an in-key synth on the "other" stem: arpeggio, offbeat stabs or pads on the song's chords, or the 7 chord pads
 export function HarmoSynthPanel({ engine }: { engine: DJEngine }) {
   const m = jamModules(engine).synth;
   useJamRefresh();
   const [, bump] = useReducer((x: number) => x + 1, 0);
-  const [held, setHeld] = useState<number | null>(null);
   const names = degreeNames(m.deck());
 
   return (
@@ -31,11 +30,7 @@ export function HarmoSynthPanel({ engine }: { engine: DJEngine }) {
         <Knob label="TIMBRE" value={m.tone} min={0} max={1} defaultValue={0.55} color={C} size={46} led format={pct} onChange={(v) => { m.setTone(v); bump(); }} />
         <Knob label="ORIGINAL" value={m.otherLevel} min={0} max={1.4} defaultValue={1} color={C} size={46} led format={pct} onChange={(v) => { m.setOtherLevel(v); bump(); }} />
       </div>
-      <div className="grid grid-cols-7 gap-1.5">
-        {names.map((name, i) => (
-          <JamPad key={ROMAN[i]} label={name} sub={ROMAN[i]} color={C} mode="hold" active={held === i} onChange={(on) => { setHeld(on ? i : null); m.hold(on ? i : null); }} />
-        ))}
-      </div>
+      <JamPads m={m} list={m.pads(names)} color={C} className="grid grid-cols-7 gap-1.5" keys={KEY_ROWS.synth} />
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
