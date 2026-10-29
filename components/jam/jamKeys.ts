@@ -19,6 +19,7 @@ if (typeof navigator !== "undefined") {
 }
 export function keyLabel(code: string): string {
   if (code.startsWith("maj ")) return `maj ${keyLabel(code.slice(4))}`; // the chops: Shift + the Vox row
+  if (code.startsWith("Digit")) return code.slice(5); // the number row reads as digits, whatever symbol the layout prints first
   const k = layout?.get(code);
   if (k) return k.toUpperCase();
   return code.replace(/^Key|^Digit/, "").replace("Comma", ",");
