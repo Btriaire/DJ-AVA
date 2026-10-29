@@ -52,15 +52,6 @@ export function StepBadge({ n }: { n: number }) {
 }
 
 // a figure of the header summary: value + label on one line
-export function Stat({ value, label, color }: { value: string; label: string; color: string }) {
-  return (
-    <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
-      <b className="font-mono text-[15px] font-black tabular-nums" style={{ color }}>{value}</b>
-      <span className="text-[11px] text-neutral-500">{label}</span>
-    </span>
-  );
-}
-
 // segmented filter with its label; keys are the stored values, labels what is shown
 export function SegFilter<T extends string>({ label, hint, value, options, onChange }: { label: string; hint?: string; value: T; options: readonly (readonly [T, string])[]; onChange: (v: T) => void }) {
   return (

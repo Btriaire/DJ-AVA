@@ -65,3 +65,20 @@
     transform: none;
   }
 }
+
+/* card actions: only on hover or keyboard focus, always while a job runs on the card */
+.prep .prep-card-actions { opacity: 0; pointer-events: none; transition: opacity 120ms; }
+.prep .prep-row:hover .prep-card-actions,
+.prep .prep-row:focus-within .prep-card-actions,
+.prep .prep-card-actions[data-busy="true"] { opacity: 1; pointer-events: auto; }
+@media (hover: none) { .prep .prep-card-actions { opacity: 1; pointer-events: auto; } }
+@media (prefers-reduced-motion: reduce) { .prep .prep-card-actions { transition: none; } }
+/* "Plus" menus on native <details> */
+.prep .prep-menu > summary { list-style: none; cursor: pointer; }
+.prep .prep-menu > summary::-webkit-details-marker { display: none; }
+.prep .prep-menu-panel {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 30;
+  display: flex; flex-direction: column; gap: 4px; min-width: 220px; padding: 6px;
+  background: #121216; border: 1px solid var(--prep-line); border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .6);
+}

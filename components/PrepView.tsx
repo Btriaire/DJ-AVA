@@ -23,7 +23,7 @@ import type { VideoLevel } from "@/lib/videoQuality";
 import type { Cue } from "@/lib/setPicker";
 import type { VideoMeta } from "@/lib/videoMeta";
 import { BpmChip, Cover, Icon, KeyChip, Mosaic, StemPill, fmtDur, stemInfoFrom } from "./prep/parts";
-import { Section, SegFilter, Stat, StemsBar, StepBadge, useStored, useStoredOpen } from "./prep/Blocks";
+import { Section, SegFilter, StemsBar, StepBadge, useStored, useStoredOpen } from "./prep/Blocks";
 import "./prep/prep-view.css";
 
 type SortOption = "recent" | "title" | "bpm" | "camelot" | "theme" | "group";
@@ -177,6 +177,17 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   const setSectionRef = useRef<HTMLElement>(null);
   const trayRef = useRef<HTMLElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // "Plus" menus (native <details>): a click outside, or on one of their actions, closes them
+  useEffect(() => {
+    const close = (e: PointerEvent) => {
+      document.querySelectorAll<HTMLDetailsElement>(".prep-menu[open]").forEach((d) => {
+        if (!d.contains(e.target as Node)) d.open = false;
+      });
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -776,7 +787,12 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   const renderTrayCard = (track: LibTrack) => {
     const checked = selectedLaterIds.has(track.id);
     const analyzing = analyzingIds.has(track.id);
+    const checking = checkingQualityIds.has(track.id);
     const hasMeta = !!track.meta && Object.keys(track.meta).length > 0;
+    // a card only offers what is still missing; the rest appears on hover
+    const showAnalyze = track.bpm === undefined || analyzing;
+    const showQuality = track.source !== "local" && (!track.quality || checking);
+    const showActions = gridSize !== "S" && (showAnalyze || showQuality || hasMeta);
     return (
       <div key={track.id} data-checked={checked} {...rowDrag(track)} className="prep-row flex cursor-grab flex-col gap-2 p-2 active:cursor-grabbing">
         <div className="relative">
@@ -784,28 +800,28 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
           <label className="prep-check absolute left-0 top-0">
             <input type="checkbox" checked={checked} onChange={() => toggleLaterSelected(track.id)} className="accent-[var(--prep-accent)]" aria-label={`Sélectionner ${track.name}`} />
           </label>
-          <span className="absolute bottom-1.5 left-1.5"><KeyChip camelot={track.camelot} /></span>
-          <span className="absolute bottom-1.5 right-1.5 rounded bg-black/65 px-1"><BpmChip bpm={track.bpm} estimated={track.bpmEstimated} /></span>
+          {track.camelot ? <span className="absolute bottom-1.5 left-1.5"><KeyChip camelot={track.camelot} /></span> : null}
+          {track.bpm ? <span className="absolute bottom-1.5 right-1.5 rounded bg-black/65 px-1"><BpmChip bpm={track.bpm} estimated={track.bpmEstimated} /></span> : null}
+          <button onClick={() => removeLaterTrack(track.id)} className="prep-card-actions prep-tap absolute right-1 top-1 rounded-full bg-black/65 p-1 text-neutral-400 hover:text-red-400" title="Retirer du bac" aria-label={`Retirer ${track.name}`}>
+            <Icon name="x" size={11} />
+          </button>
         </div>
         <p className="line-clamp-2 text-[12px] font-semibold leading-snug text-neutral-100" title={track.name}>{track.name}</p>
         <div className="flex items-center justify-between gap-1">
           <StemPill info={stemOf(track.id)} onPrepare={() => queueStems([track])} />
           <span className="font-mono text-[11px] text-neutral-500">{fmtDur(track.durationSec)}</span>
         </div>
-        {gridSize !== "S" && (
-          <div className="flex flex-wrap gap-1">
-            <button onClick={() => analyzeTrack(track)} disabled={analyzing} className="prep-btn-ghost prep-tap px-1.5 py-0.5 text-[11px]" title="Analyser le BPM et la tonalité">{analyzing ? "Analyse…" : "Analyser"}</button>
-            {track.source !== "local" && (
-              <button onClick={() => checkQuality(track)} disabled={checkingQualityIds.has(track.id)} className="prep-btn-ghost prep-tap px-1.5 py-0.5 text-[11px]" title="Vérifier la qualité audio et vidéo">
-                {checkingQualityIds.has(track.id) ? "Vérif…" : "Qualité"}
+        {showActions && (
+          <div className="prep-card-actions flex flex-wrap gap-1" data-busy={analyzing || checking}>
+            {showAnalyze && <button onClick={() => analyzeTrack(track)} disabled={analyzing} className="prep-btn-ghost prep-tap px-1.5 py-0.5 text-[11px]" title="Analyser le BPM et la tonalité">{analyzing ? "Analyse…" : "Analyser"}</button>}
+            {showQuality && (
+              <button onClick={() => checkQuality(track)} disabled={checking} className="prep-btn-ghost prep-tap px-1.5 py-0.5 text-[11px]" title="Vérifier la qualité audio et vidéo">
+                {checking ? "Vérif…" : "Qualité"}
               </button>
             )}
             {hasMeta && (
               <button onClick={() => toggleDetails(track.id)} aria-pressed={openDetailsIds.has(track.id)} className="prep-btn-ghost prep-tap px-1.5 py-0.5 text-[11px]">Détails</button>
             )}
-            <button onClick={() => removeLaterTrack(track.id)} className="prep-btn-ghost prep-tap ml-auto p-1 text-neutral-500 hover:text-red-400" title="Retirer du bac" aria-label={`Retirer ${track.name}`}>
-              <Icon name="x" size={11} />
-            </button>
           </div>
         )}
         {hasMeta && openDetailsIds.has(track.id) && renderMetaDetails(track.meta!)}
@@ -839,15 +855,17 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
           setDragOverList(null);
           addIdsToPlaylist(playlist.id, readDrag(e));
         }}
-        className="prep-drop prep-card overflow-hidden"
+        className="prep-drop prep-card"
         style={{ boxShadow: `inset 3px 0 0 ${accent}` }}
       >
         <div className="flex items-center gap-3 p-2.5 pl-3.5">
           <Mosaic tracks={tracks} accent={accent} />
           <button onClick={toggle} aria-expanded={isOpen} className="prep-tap min-w-0 flex-1 text-left">
             <p className="truncate text-[13px] font-bold text-neutral-100">{playlist.name}</p>
-            <p className="text-[11px] text-neutral-500">{stats.count} titre(s) · {formatDuration(stats.seconds)} · {stats.bpmRange} BPM</p>
-            <p className="text-[11px]" style={{ color: tracks.length > 0 && ready === tracks.length ? "#34d399" : "#7b8494" }}>stems prêts {ready}/{tracks.length}</p>
+            <p className="truncate text-[11px] text-neutral-500">
+              {stats.count} titre(s) · {formatDuration(stats.seconds)} · {stats.bpmRange} BPM ·{" "}
+              <span style={{ color: tracks.length > 0 && ready === tracks.length ? "#34d399" : "#7b8494" }}>stems {ready}/{tracks.length}</span>
+            </p>
           </button>
           <button onClick={toggle} className={`prep-tap flex items-center justify-center text-neutral-500 transition-transform ${isOpen ? "rotate-180" : ""}`} aria-label={isOpen ? "Fermer le set" : "Voir le contenu"}>
             <Icon name="chevron" size={16} />
@@ -863,28 +881,36 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
             <Icon name="play" size={11} />
             Jouer
           </button>
-          <button
-            onClick={() => openStudio({ source: "list", listId: playlist.id, autoBuild: true })}
-            disabled={tracks.length < 2}
-            className="prep-btn-ghost prep-tap flex items-center gap-1 px-2 py-1 text-[11px]"
-            title="Réordonner ce set (forme, durée, transitions)"
-          >
-            <Icon name="bolt" size={11} />
-            Ordonner
-          </button>
-          <button onClick={() => queueStems(tracks)} disabled={tracks.length === 0 || ready === tracks.length} className="prep-btn-ghost prep-tap flex items-center gap-1 px-2 py-1 text-[11px]" title="Préparer les stems de tout le set">
-            <Icon name="stems" size={11} />
-            Stems
-          </button>
-          <button
-            onClick={() => void prepareSet(playlist.id)}
-            disabled={tracks.length === 0 || prep?.state === "running"}
-            className="prep-btn-ghost prep-tap flex items-center gap-1 px-2 py-1 text-[11px]"
-            title="Télécharge les titres dans le cache de l'appli et fabrique les annonces de la voix du DJ : le set démarre sans attente, dans tous les onglets"
-          >
-            <Icon name="disc" size={11} />
-            {prep?.state === "running" ? `Audio ${prep.warmed}/${prep.total}${prep.voiceTotal ? ` · Voix ${prep.voiced}/${prep.voiceTotal}` : ""}` : prep?.state === "done" ? "Préchargé" : "Précharger"}
-          </button>
+          <details className="prep-menu relative">
+            <summary className="prep-btn-ghost prep-tap flex items-center px-1.5 py-1" aria-label="Plus d'actions pour ce set" title="Ordonner, stems, précharger">
+              <Icon name="more" size={13} />
+            </summary>
+            <div className="prep-menu-panel" onClick={(e) => { (e.currentTarget.parentElement as HTMLDetailsElement).open = false; }}>
+              <button
+                onClick={() => openStudio({ source: "list", listId: playlist.id, autoBuild: true })}
+                disabled={tracks.length < 2}
+                className="prep-btn-ghost prep-tap flex w-full items-center gap-1.5 px-2.5 py-1.5 text-[11px]"
+                title="Réordonner ce set (forme, durée, transitions)"
+              >
+                <Icon name="bolt" size={11} />
+                Ordonner
+              </button>
+              <button onClick={() => queueStems(tracks)} disabled={tracks.length === 0 || ready === tracks.length} className="prep-btn-ghost prep-tap flex w-full items-center gap-1.5 px-2.5 py-1.5 text-[11px]" title="Préparer les stems de tout le set">
+                <Icon name="stems" size={11} />
+                Stems
+              </button>
+              <button
+                onClick={() => void prepareSet(playlist.id)}
+                disabled={tracks.length === 0 || prep?.state === "running"}
+                className="prep-btn-ghost prep-tap flex w-full items-center gap-1.5 px-2.5 py-1.5 text-[11px]"
+                title="Télécharge les titres dans le cache de l'appli et fabrique les annonces de la voix du DJ : le set démarre sans attente, dans tous les onglets"
+              >
+                <Icon name="disc" size={11} />
+                {prep?.state === "running" ? `Audio ${prep.warmed}/${prep.total}${prep.voiceTotal ? ` · Voix ${prep.voiced}/${prep.voiceTotal}` : ""}` : prep?.state === "done" ? "Préchargé" : "Précharger"}
+              </button>
+            </div>
+          </details>
+          {prep?.state === "running" && <span className="font-mono text-[10px] text-neutral-400">Audio {prep.warmed}/{prep.total}{prep.voiceTotal ? ` · Voix ${prep.voiced}/${prep.voiceTotal}` : ""}</span>}
           {selectedLaterIds.size > 0 && (
             <button onClick={() => addCheckedToPlaylist(playlist.id)} className="prep-btn-ghost prep-tap flex items-center gap-1 px-2 py-1 text-[11px]" style={{ borderColor: "var(--prep-accent)", color: "var(--prep-accent)" }} title="Ajouter les titres cochés à ce set">
               <Icon name="plus" size={11} />
@@ -1016,9 +1042,6 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   const stemsMissing = laterTracks.filter((_, i) => stemStates[i] === "none" || stemStates[i] === "error");
   const analysisMissing = laterTracks.filter((t) => t.bpm === undefined && !analyzingIds.has(t.id) && !failedIds.has(t.id)).length;
   const qualityMissing = laterTracks.filter((t) => t.source !== "local" && !t.quality && !checkingQualityIds.has(t.id)).length;
-  const totalLaterSec = laterTracks.reduce((sum, t) => sum + (t.durationSec ?? 0), 0);
-  const laterBpms = laterTracks.map((t) => t.bpm).filter((b): b is number => !!b);
-  const classified = new Set(lib.playlists.flatMap((p) => p.trackIds)).size;
   const selectedTracks = laterTracks.filter((t) => selectedLaterIds.has(t.id));
   const selectedSec = selectedTracks.reduce((sum, t) => sum + (t.durationSec ?? 0), 0);
   const allShownChecked = filteredTracks.length > 0 && filteredTracks.every((t) => selectedLaterIds.has(t.id));
@@ -1069,12 +1092,6 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
           </h1>
           <p className="mt-0.5 text-[12px] text-neutral-500">De la recherche au set, en trois étapes.</p>
         </div>
-        <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1" aria-label="Chiffres clés">
-          <Stat value={String(laterTracks.length)} label={`mis de côté${totalLaterSec ? ` · ${formatDuration(totalLaterSec)}` : ""}`} color="var(--prep-accent)" />
-          <Stat value={`${stemsReady}/${laterTracks.length}`} label="stems prêts" color="#34d399" />
-          {laterBpms.length > 0 && <Stat value={`${Math.round(Math.min(...laterBpms))}–${Math.round(Math.max(...laterBpms))}`} label="BPM du bac" color="#ffcc00" />}
-          <Stat value={String(lib.playlists.length)} label={`set(s) · ${classified} titre(s) rangé(s)`} color="#a78bfa" />
-        </div>
       </header>
 
       {/* le parcours : chaque étape amène à sa zone */}
@@ -1104,7 +1121,6 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
         <div className="mb-2.5 flex items-center gap-2">
           <StepBadge n={1} />
           <h2 className="text-[12px] font-black uppercase tracking-[0.2em] text-neutral-100">Chercher</h2>
-          <span className="min-w-0 truncate text-[11px] text-neutral-500">sur YouTube, puis « De côté » pour garder un titre</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-[200px] flex-1">
@@ -1280,14 +1296,23 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
                   <Icon name="stems" size={13} />
                   Préparer les stems{stemsMissing.length > 0 ? ` (${stemsMissing.length})` : ""}
                 </button>
-                <button onClick={analyzeAllBPM} disabled={analysisMissing === 0} className="prep-btn-ghost prep-tap flex items-center gap-1.5 px-2.5 py-1.5 text-[11px]" title="Analyse le BPM et la tonalité des titres du bac qui n'en ont pas encore">
-                  <Icon name="disc" size={12} />
-                  Analyser BPM et tonalité{analysisMissing > 0 ? ` (${analysisMissing})` : ""}
-                </button>
-                <button onClick={checkAllQuality} disabled={qualityMissing === 0} className="prep-btn-ghost prep-tap flex items-center gap-1.5 px-2.5 py-1.5 text-[11px]" title="Vérifie la qualité audio et vidéo des titres YouTube du bac">
-                  <Icon name="bolt" size={12} />
-                  Vérifier la qualité{qualityMissing > 0 ? ` (${qualityMissing})` : ""}
-                </button>
+                <details className="prep-menu relative">
+                  <summary className="prep-btn-ghost prep-tap flex items-center gap-1.5 px-2.5 py-1.5 text-[11px]" title="Analyser le BPM et la tonalité, vérifier la qualité">
+                    <Icon name="more" size={13} />
+                    Plus
+                    {analysisMissing + qualityMissing > 0 && <span className="rounded bg-white/10 px-1 font-mono text-[10px] text-neutral-300">{analysisMissing + qualityMissing}</span>}
+                  </summary>
+                  <div className="prep-menu-panel" onClick={(e) => { (e.currentTarget.parentElement as HTMLDetailsElement).open = false; }}>
+                    <button onClick={analyzeAllBPM} disabled={analysisMissing === 0} className="prep-btn-ghost prep-tap flex w-full items-center gap-1.5 px-2.5 py-1.5 text-[11px]" title="Analyse le BPM et la tonalité des titres du bac qui n'en ont pas encore">
+                      <Icon name="disc" size={12} />
+                      Analyser BPM et tonalité{analysisMissing > 0 ? ` (${analysisMissing})` : ""}
+                    </button>
+                    <button onClick={checkAllQuality} disabled={qualityMissing === 0} className="prep-btn-ghost prep-tap flex w-full items-center gap-1.5 px-2.5 py-1.5 text-[11px]" title="Vérifie la qualité audio et vidéo des titres YouTube du bac">
+                      <Icon name="bolt" size={12} />
+                      Vérifier la qualité{qualityMissing > 0 ? ` (${qualityMissing})` : ""}
+                    </button>
+                  </div>
+                </details>
                 <div className="ml-auto w-full min-w-[180px] max-w-xs sm:w-auto sm:flex-1">
                   <StemsBar total={laterTracks.length} ready={stemsReady} busy={stemsBusy} waiting={stemsWaiting} failed={stemsFailed} />
                 </div>

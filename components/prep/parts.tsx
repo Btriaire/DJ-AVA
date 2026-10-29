@@ -223,6 +223,7 @@ const ICONS = {
   grip: "M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01",
   chevron: "M8 10l4 4l4-4",
   x: "M6 6l12 12M18 6L6 18",
+  more: "M5 12h.01M12 12h.01M19 12h.01",
   plus: "M12 5v14M5 12h14",
   stems: "M4 7h16M4 12h10M4 17h13",
   list: "M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01",
