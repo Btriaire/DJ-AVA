@@ -73,7 +73,8 @@ const VIDEO_COLORS: Record<VideoLevel | "unknown", string> = {
 
 // tray table columns: check, sleeve, title, BPM, key, length, stems, actions
 // (phone: check, sleeve, title, stems — BPM, key and length go under the title)
-const ROW_COLS = "[grid-template-columns:28px_36px_minmax(0,1fr)_auto] sm:[grid-template-columns:28px_36px_minmax(0,1fr)_56px_60px_112px_64px]";
+// list rows: compact in a narrow tray; from 56rem of tray width the tempo gets its own wide column, plus stems and length columns
+const ROW_COLS = "[grid-template-columns:28px_40px_minmax(0,1fr)_auto] sm:[grid-template-columns:28px_40px_minmax(0,1fr)_56px_66px_112px_64px] @4xl:[grid-template-columns:28px_44px_minmax(220px,1.2fr)_minmax(180px,1fr)_96px_172px_150px_64px]";
 const LIST_ACCENTS = ["#22d3ee", "#34d399", "#ffcc00", "#a78bfa", "#f97316", "#f472b6"];
 const DUR_OPTIONS = DUR_FILTERS.map((f) => [f.key, f.label] as const);
 const RESULT_AUDIO_OPTIONS = [["all", "Toutes"], ["HQ", "HQ et plus"], ["HR", "HiRes"]] as const;
@@ -756,19 +757,23 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
         key={track.id}
         data-checked={checked}
         {...rowDrag(track)}
-        className={`prep-row grid cursor-grab items-center gap-3 px-2 py-1.5 active:cursor-grabbing ${ROW_COLS}`}
+        className={`prep-row prep-keyed-row grid cursor-grab items-center gap-3 px-2 py-1.5 active:cursor-grabbing ${ROW_COLS}`}
+        style={{ ["--key" as string]: camelotColour(track.camelot) ?? "rgba(255,255,255,.12)" }}
+        title={[track.name, sub || SRC_BADGE[track.source]?.label || track.source].filter(Boolean).join("\n")}
       >
         <label className="prep-check">
           <input type="checkbox" checked={checked} onChange={() => toggleLaterSelected(track.id)} className="accent-[var(--prep-accent)]" aria-label={`Sélectionner ${track.name}`} />
         </label>
-        <Cover art={track.art} name={track.name} camelot={track.camelot} size={36} />
+        <Cover art={track.art} name={track.name} camelot={track.camelot} size={40} />
         <div className="min-w-0">
-          <p className="truncate text-[13px] font-bold text-neutral-50" title={track.name}>{nice.title}</p>
-          <p className="truncate text-[11px] text-neutral-400">
-            {nice.artist && <span className="font-semibold text-neutral-200">{nice.artist} · </span>}
-            {[nice.extra, fmtDur(track.durationSec), sub || SRC_BADGE[track.source]?.label || track.source].filter(Boolean).join(" · ")}
+          <p className="truncate text-[14px] font-extrabold tracking-[-0.01em] text-neutral-50">{nice.title}</p>
+          <p className="truncate text-[12px] text-neutral-400">
+            {nice.artist && <span className="font-semibold text-neutral-200">{nice.artist}</span>}
+            {nice.extra && <span className="italic text-neutral-500">{nice.artist ? " · " : ""}{nice.extra}</span>}
+            {/* narrow tray only: the wide one has its own columns, the source is in the tooltip */}
+            <span className="@4xl:hidden">{[nice.artist || nice.extra ? "" : null, fmtDur(track.durationSec), sub || SRC_BADGE[track.source]?.label || track.source].filter((x) => x !== null).join(" · ")}</span>
           </p>
-          <div className="mt-0.5 max-w-[180px] max-sm:hidden"><TempoRuler bpm={track.bpm} median={trayMedianBpm} /></div>
+          <div className="mt-0.5 max-w-[180px] max-sm:hidden @4xl:hidden"><TempoRuler bpm={track.bpm} median={trayMedianBpm} /></div>
           <div className="mt-1 flex items-center gap-2 sm:hidden">
             <BpmChip bpm={track.bpm} estimated={track.bpmEstimated} />
             <KeyChip camelot={track.camelot} />
@@ -785,12 +790,24 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
             </span>
           </div>
         </div>
-        <span className="text-right max-sm:hidden"><BpmChip bpm={track.bpm} estimated={track.bpmEstimated} /></span>
+        <span className="flex items-center justify-end gap-3 max-sm:hidden">
+          <span className="hidden min-w-0 flex-1 @4xl:block"><TempoRuler bpm={track.bpm} median={trayMedianBpm} /></span>
+          <span className="@4xl:hidden"><BpmChip bpm={track.bpm} estimated={track.bpmEstimated} /></span>
+          <span className="hidden w-12 text-right font-mono text-[15px] font-black text-[#ffcc00] @4xl:inline">{track.bpm ? Math.round(track.bpm) : "—"}</span>
+        </span>
         <span className="flex items-center gap-1 max-sm:hidden">
-          <MiniKeyWheel camelot={track.camelot} size={22} label={false} />
+          <MiniKeyWheel camelot={track.camelot} size={30} label={false} />
           <KeyBadge camelot={track.camelot} />
         </span>
-        <span className="flex justify-center"><StemPill info={stemOf(track.id)} onPrepare={() => queueStems([track])} /></span>
+        <span className="flex items-center justify-center gap-2 @4xl:justify-start">
+          <span className="hidden @4xl:inline-flex"><StemQuad state={stemOf(track.id).state} pct={stemOf(track.id).pct} /></span>
+          <StemPill info={stemOf(track.id)} onPrepare={() => queueStems([track])} />
+        </span>
+        <span className="hidden items-center gap-2 @4xl:flex">
+          <QualityBars level={track.quality} />
+          <span className="min-w-0 flex-1"><DurationBar sec={track.durationSec} /></span>
+          <span className="font-mono text-[11px] text-neutral-400">{fmtDur(track.durationSec)}</span>
+        </span>
         <span className="prep-row-actions flex items-center justify-end gap-1 max-sm:hidden">
           {needsAnalysis && (
             <button onClick={() => analyzeTrack(track)} disabled={analyzing} className="prep-btn-ghost px-1.5 py-0.5 text-[10px]" title="Analyser le BPM et la tonalité" aria-label={`Analyser le BPM et la tonalité de ${track.name}`}>
@@ -1379,14 +1396,18 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
                 <KeyWheel keys={laterTracks.flatMap((t) => (t.camelot ? [t.camelot] : []))} query={trayQuery} onFilter={setTrayQuery} />
               </div>
               {viewMode === "list" ? (
-                <div className="flex flex-col p-2">
+                <div className="@container flex flex-col p-2">
                   <div className={`grid items-center gap-3 px-2 pb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-neutral-600 max-sm:hidden ${ROW_COLS}`}>
                     <span />
                     <span />
                     <span>Titre</span>
-                    <span className="text-right">BPM</span>
+                    <span className="text-right @4xl:text-left">
+                      <span className="@4xl:hidden">BPM</span>
+                      <span className="hidden @4xl:inline">Tempo · médiane {trayMedianBpm ? Math.round(trayMedianBpm) : "—"}</span>
+                    </span>
                     <span>Ton.</span>
-                    <span className="text-center">Stems</span>
+                    <span className="text-center @4xl:text-left">Stems</span>
+                    <span className="hidden @4xl:block">Qualité · durée</span>
                     <span />
                   </div>
                   <div className="flex max-h-[62vh] flex-col gap-0.5 overflow-y-auto pr-1">

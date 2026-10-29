@@ -92,3 +92,9 @@
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--key) 70%, transparent), 0 10px 26px color-mix(in srgb, var(--key) 22%, transparent);
 }
 @media (prefers-reduced-motion: reduce) { .prep .prep-row.prep-keyed { transition: none; } }
+
+/* list row: the key colour runs along the left edge and fades into the row */
+.prep .prep-row.prep-keyed-row {
+  background-image: linear-gradient(90deg, color-mix(in srgb, var(--key) 14%, transparent), transparent 35%);
+  box-shadow: inset 3px 0 0 var(--key);
+}
