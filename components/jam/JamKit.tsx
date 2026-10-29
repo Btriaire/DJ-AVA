@@ -1,5 +1,6 @@
 "use client";
 import { ReactNode, useEffect, useRef, useState } from "react";
+import { ActivityLed } from "./ActivityLed";
 
 export function JamShell({
   title,
@@ -9,6 +10,7 @@ export function JamShell({
   deckName,
   pref,
   onPref,
+  lit,
   children,
 }: {
   title: string;
@@ -18,6 +20,7 @@ export function JamShell({
   deckName: "A" | "B";
   pref: "auto" | "A" | "B";
   onPref: (p: "auto" | "A" | "B") => void;
+  lit?: () => boolean; // flashes the activity LED on each note the module plays
   children: ReactNode;
 }) {
   const statusText =
@@ -48,6 +51,7 @@ export function JamShell({
           {title}
         </h3>
         <span className="text-[10px] text-neutral-500">{tag}</span>
+        {lit && <ActivityLed lit={lit} color={color} />}
         <div className="ml-auto flex items-center gap-1.5 rounded-full bg-neutral-800/50 px-2 py-0.5 text-[10px] font-bold">
           {/* a status dot instead of glyphs (no emoji-like characters in the UI) */}
           <span className="my-auto h-1.5 w-1.5 rounded-full" style={{ background: status === "ok" ? "#34d399" : status === "nostems" ? "#fbbf24" : "#737373" }} />

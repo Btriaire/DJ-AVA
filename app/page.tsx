@@ -50,6 +50,7 @@ import { BassLabPanel } from "@/components/jam/BassLabPanel";
 import { VoxFxPanel } from "@/components/jam/VoxFxPanel";
 import { HarmoSynthPanel } from "@/components/jam/HarmoSynthPanel";
 import { BeatLabPanel } from "@/components/jam/BeatLabPanel";
+import { JamMacroBar } from "@/components/jam/JamMacroBar";
 import { SuperSampler } from "@/components/SuperSampler";
 import { HoldButton } from "@/components/HoldButton";
 import { DisplayTemplate, TemplateView, loadTemplates, saveTemplates, newTemplate } from "@/lib/displayTemplates";
@@ -1595,6 +1596,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
             {/* instrument rack: optional modules side by side, aligned and the same height per row */}
             {(modules.jambass || modules.jamvox || modules.jamsynth || modules.jambeat || modules.djkbd || modules.dance || modules.supersampler || modules.drums || modules.djsynth || modules.rhythm || modules.slicer || modules.harmony || modules.synth || modules.sampler || modules.soundfx || modules.dx7 || modules.solar42) && (
               <div className={`hw-rack @container flex flex-col gap-4 ${deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}`}>
+                {(modules.jambass || modules.jamvox || modules.jamsynth || modules.jambeat) && <JamMacroBar engine={engine} />}
                 <RackRow onClose={closeRackModule} left={[["jambass", modules.jambass && <BassLabPanel engine={engine} />]]} right={[["jamvox", modules.jamvox && <VoxFxPanel engine={engine} />]]} />
                 <RackRow onClose={closeRackModule} left={[["jamsynth", modules.jamsynth && <HarmoSynthPanel engine={engine} />]]} right={[["jambeat", modules.jambeat && <BeatLabPanel engine={engine} />]]} />
                 <RackRow onClose={closeRackModule} left={[["rhythm", modules.rhythm && <RhythmLinks engine={engine} />]]} right={[]} />
