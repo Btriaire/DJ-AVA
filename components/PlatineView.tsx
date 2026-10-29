@@ -457,7 +457,7 @@ function DeckColumn({
               // eslint-disable-next-line @next/next/no-img-element
               <img loading="lazy" decoding="async" src={deck.coverArt} alt="" className="h-full w-full object-cover rounded-full" />
             ) : (
-              <div className="flex h-full w-full flex-col items-center justify-center gap-[6%] bg-[#e9e3d6]">
+              <div className="flex h-full w-full flex-col items-center justify-end gap-[6%] bg-[#e9e3d6] pb-[22%]">
                 <span className="h-[3%] w-[46%] rounded-full bg-[#8a857a]" />
                 <span className="h-[3%] w-[30%] rounded-full bg-[#a9a397]" />
               </div>
