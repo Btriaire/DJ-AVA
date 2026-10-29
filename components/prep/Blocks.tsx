@@ -51,7 +51,6 @@ export function StepBadge({ n }: { n: number }) {
   );
 }
 
-// a figure of the header summary: value + label on one line
 // segmented filter with its label; keys are the stored values, labels what is shown
 export function SegFilter<T extends string>({ label, hint, value, options, onChange }: { label: string; hint?: string; value: T; options: readonly (readonly [T, string])[]; onChange: (v: T) => void }) {
   return (

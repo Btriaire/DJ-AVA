@@ -805,25 +805,25 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
           <button onClick={() => removeLaterTrack(track.id)} className="prep-card-actions prep-tap absolute right-1 top-1 rounded-full bg-black/65 p-1 text-neutral-400 hover:text-red-400" title="Retirer du bac" aria-label={`Retirer ${track.name}`}>
             <Icon name="x" size={11} />
           </button>
+          {showActions && (
+            <div className="prep-card-actions absolute inset-x-1 top-1/2 flex -translate-y-1/2 flex-wrap justify-center gap-1" data-busy={analyzing || checking}>
+              {showAnalyze && <button onClick={() => analyzeTrack(track)} disabled={analyzing} className="prep-btn-ghost prep-tap bg-black/70 px-1.5 py-0.5 text-[11px]" title="Analyser le BPM et la tonalité">{analyzing ? "Analyse…" : "Analyser"}</button>}
+              {showQuality && (
+                <button onClick={() => checkQuality(track)} disabled={checking} className="prep-btn-ghost prep-tap bg-black/70 px-1.5 py-0.5 text-[11px]" title="Vérifier la qualité audio et vidéo">
+                  {checking ? "Vérif…" : "Qualité"}
+                </button>
+              )}
+              {hasMeta && (
+                <button onClick={() => toggleDetails(track.id)} aria-pressed={openDetailsIds.has(track.id)} className="prep-btn-ghost prep-tap bg-black/70 px-1.5 py-0.5 text-[11px]">Détails</button>
+              )}
+            </div>
+          )}
         </div>
         <p className="line-clamp-2 text-[12px] font-semibold leading-snug text-neutral-100" title={track.name}>{track.name}</p>
         <div className="flex items-center justify-between gap-1">
           <StemPill info={stemOf(track.id)} onPrepare={() => queueStems([track])} />
           <span className="font-mono text-[11px] text-neutral-500">{fmtDur(track.durationSec)}</span>
         </div>
-        {showActions && (
-          <div className="prep-card-actions flex flex-wrap gap-1" data-busy={analyzing || checking}>
-            {showAnalyze && <button onClick={() => analyzeTrack(track)} disabled={analyzing} className="prep-btn-ghost prep-tap px-1.5 py-0.5 text-[11px]" title="Analyser le BPM et la tonalité">{analyzing ? "Analyse…" : "Analyser"}</button>}
-            {showQuality && (
-              <button onClick={() => checkQuality(track)} disabled={checking} className="prep-btn-ghost prep-tap px-1.5 py-0.5 text-[11px]" title="Vérifier la qualité audio et vidéo">
-                {checking ? "Vérif…" : "Qualité"}
-              </button>
-            )}
-            {hasMeta && (
-              <button onClick={() => toggleDetails(track.id)} aria-pressed={openDetailsIds.has(track.id)} className="prep-btn-ghost prep-tap px-1.5 py-0.5 text-[11px]">Détails</button>
-            )}
-          </div>
-        )}
         {hasMeta && openDetailsIds.has(track.id) && renderMetaDetails(track.meta!)}
       </div>
     );
@@ -862,7 +862,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
           <Mosaic tracks={tracks} accent={accent} />
           <button onClick={toggle} aria-expanded={isOpen} className="prep-tap min-w-0 flex-1 text-left">
             <p className="truncate text-[13px] font-bold text-neutral-100">{playlist.name}</p>
-            <p className="truncate text-[11px] text-neutral-500">
+            <p className="text-[11px] text-neutral-500">
               {stats.count} titre(s) · {formatDuration(stats.seconds)} · {stats.bpmRange} BPM ·{" "}
               <span style={{ color: tracks.length > 0 && ready === tracks.length ? "#34d399" : "#7b8494" }}>stems {ready}/{tracks.length}</span>
             </p>
@@ -1090,7 +1090,6 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
             <span className="prep-accent"><Icon name="crate" size={18} /></span>
             Préparation
           </h1>
-          <p className="mt-0.5 text-[12px] text-neutral-500">De la recherche au set, en trois étapes.</p>
         </div>
       </header>
 
