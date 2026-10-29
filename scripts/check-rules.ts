@@ -72,3 +72,6 @@ console.log("check-rules track rank ok");
 import { selfTest as recipesTest } from "../lib/rhythmRecipes";
 recipesTest();
 console.log("check-rules recipes ok");
+import { selfTest as oneClickTest } from "../lib/oneClick";
+oneClickTest();
+console.log("check-rules one click ok");
