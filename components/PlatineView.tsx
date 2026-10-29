@@ -447,47 +447,53 @@ function DeckColumn({
 
       {/* the vinyl — neutral graphite, no theme colour */}
       <div className="relative aspect-square w-full max-w-[460px] select-none">
-        <div
-          className="absolute inset-0 rounded-full"
-          style={{
-            background: "radial-gradient(circle at 50% 50%, #1c1c1f 0%, #0c0c0e 60%, #050506 100%)",
-            boxShadow:
-              "0 0 0 2px rgba(255,255,255,0.05), 0 0 0 6px #0a0a0b, 0 18px 44px rgba(0,0,0,0.7), inset 0 0 30px rgba(0,0,0,0.85)",
-          }}
-        />
-        <div
-          ref={discRef}
-          className="absolute inset-[5%] rounded-full will-change-transform"
-          style={{
-            background:
-              "repeating-radial-gradient(circle at 50% 50%, #0a0a0a 0px, #151515 2px, #0a0a0a 4px)",
-            boxShadow: "inset 0 0 26px rgba(0,0,0,0.9)",
-          }}
-        >
-          <div
-            className="absolute left-1/2 top-1/2 h-1/2 w-[2px] -translate-x-1/2 -translate-y-full rounded-full"
-            style={{ background: "linear-gradient(rgba(255,255,255,0.5), transparent)" }}
-          />
-          <div className="absolute left-1/2 top-1/2 aspect-square w-[40%] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-full ring-2 ring-black/60">
+        <div className="tt-platter" />
+        <div className="tt-strobe" />
+        <div className="tt-strobe-light" />
+        <div className="tt-slipmat" />
+        <div ref={discRef} className="tt-vinyl absolute inset-[5%] rounded-full will-change-transform">
+          <div className="tt-label absolute left-1/2 top-1/2 aspect-square w-[38%] -translate-x-1/2 -translate-y-1/2 rounded-full overflow-hidden">
             {deck.coverArt ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img loading="lazy" decoding="async" src={deck.coverArt} alt="" className="h-full w-full object-cover" />
+              <img loading="lazy" decoding="async" src={deck.coverArt} alt="" className="h-full w-full object-cover rounded-full" />
             ) : (
-              <div className="flex h-full w-full items-center justify-center bg-neutral-800 text-3xl text-neutral-600">
-                ♪
+              <div className="flex h-full w-full flex-col items-center justify-center gap-[6%] bg-[#e9e3d6]">
+                <span className="h-[3%] w-[46%] rounded-full bg-[#8a857a]" />
+                <span className="h-[3%] w-[30%] rounded-full bg-[#a9a397]" />
               </div>
             )}
-            <div className="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-neutral-950 ring-1 ring-white/20" />
           </div>
+          <div className="tt-spindle absolute left-1/2 top-1/2 h-[3.2%] w-[3.2%] -translate-x-1/2 -translate-y-1/2 rounded-full" />
         </div>
-        <div
-          className="absolute right-[6%] top-[8%] h-[44%] w-1.5 origin-top rounded-full"
-          style={{
-            background: "linear-gradient(#3a3a3e,#1c1c20)",
-            transform: deck.playing ? "rotate(18deg)" : "rotate(2deg)",
-            transition: "transform 0.5s ease",
-          }}
-        />
+        <div className="tt-sheen" />
+        <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100">
+          <defs>
+            <linearGradient id="tt-chrome" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#6b6e75" />
+              <stop offset="45%" stopColor="#f2f3f5" />
+              <stop offset="60%" stopColor="#9a9da4" />
+              <stop offset="100%" stopColor="#55585e" />
+            </linearGradient>
+            <radialGradient id="tt-base" cx="50%" cy="50%" r="50%" fx="30%" fy="30%">
+              <stop offset="0%" stopColor="#3a3a3f" />
+              <stop offset="100%" stopColor="#1b1b1e" />
+            </radialGradient>
+          </defs>
+          <g style={{ transform: `rotate(${deck.playing ? 17 : 0}deg)`, transformOrigin: "88px 14px", transformBox: "view-box", transition: "transform 0.5s ease" }}>
+            <path d="M88 10 L88 58 C88 62 87 66 86.5 68" stroke="rgba(0,0,0,.45)" strokeWidth="2.2" strokeLinecap="round" fill="none" />
+            <path d="M88 10 L88 58 C88 62 87 66 86.5 68" stroke="url(#tt-chrome)" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+            <rect x="84.5" y="2" width="7" height="8" rx="1.5" fill="url(#tt-chrome)" />
+            <rect x="84.8" y="5" width="6.4" height="1" rx="0.5" fill="#2a2a2e" />
+            <polygon points="86.5,68 87.5,75 85.5,75" fill="#1d1d20" />
+            <line x1="87" y1="68" x2="87" y2="75.5" stroke="#4a4a4e" strokeWidth="0.4" />
+            <rect x="85.5" y="73" width="2" height="1.2" rx="0.2" fill="#2a2a2e" />
+            <circle cx="87" cy="75.5" r="0.3" fill="#1d1d20" />
+          </g>
+          <circle cx="88" cy="14" r="6.5" fill="#1b1b1e" />
+          <circle cx="88" cy="14" r="6.5" fill="none" stroke="#3a3a3f" strokeWidth="1" />
+          <circle cx="88" cy="14" r="3" fill="url(#tt-chrome)" />
+          <circle cx="95" cy="62" r="1.6" fill="#2a2a2e" />
+        </svg>
       </div>
 
       {/* track meta + seek */}

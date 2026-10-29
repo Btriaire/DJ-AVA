@@ -1242,7 +1242,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
         </div>
       </header>
 
-      {ready && engine && (view === "console" || view === "platine") && <><NextUpBar /><DeckMaps engine={engine} /></>}
+      {ready && engine && (view === "console" || view === "platine") && <><NextUpBar />{view === "console" && <DeckMaps engine={engine} />}</>}
 
       {ready && engine && showLibrary && view !== "platine" && (
         <LibraryPanel
