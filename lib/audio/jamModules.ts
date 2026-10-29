@@ -6,7 +6,11 @@ import type { Deck } from "./Deck";
 import type { FXRack } from "./FXRack";
 import type { FxName } from "./fxTypes";
 import { BEAT_DIVS } from "./fxTypes";
-import { BassVoice, ChoirVoice, DrumKit, PolySynth, SubVoice, type SynthPatch } from "./jamVoices";
+import { BassVoice, ChoirVoice, DrumKit, PolySynth, SubVoice, type BassCharacter, type SynthPatch } from "./jamVoices";
+import { arpNoteAt, arpSequence, type ArpShape as ArpOrder } from "./jamArp";
+import { progression, type ProgressionName } from "./jamProgressions";
+import { SyncedSweep } from "./jamSweep";
+import { degreeNames } from "./stemJam";
 import { chordAt, chordDegreeAt, degreeChord, heardShift, voiceLead, type ChordColor, jamDeck, jamScale, jamStem, nextGrid, onJamTick, snapToScale, songToCtx, spb, type JamDeckPref, type JamRole } from "./stemJam";
 
 export const beatIdx = (div: number) => Math.max(0, BEAT_DIVS.indexOf(div));
@@ -182,6 +186,7 @@ export class BassLab extends JamModule {
   lineLevel = 0.8;
   lineTone = 0.3;
   lineEnv = 0.5;
+  private played: { start: number; end: number; midi: number }[] = []; // the line notes scheduled, in song seconds, for the lane
   pump = false; // the bass ducks on every kick of the song (on every beat when its kicks were never analysed)
   pumpDepth = 0.8;
   muted = false;
@@ -198,7 +203,7 @@ export class BassLab extends JamModule {
     onJamTick(engine, (deck, from, to) => this.tick(deck, from, to));
   }
   setSub(v: number) { this.subLevel = v; this.sub.out.gain.value = 0.9 * v; }
-  protected keep() { return ["subOctave", "lineLevel", "lineTone", "lineEnv", "pumpDepth", "wobbleDiv"]; }
+  protected keep() { return ["subOctave", "lineLevel", "lineTone", "lineEnv", "pumpDepth", "wobbleDiv", "characterName"]; }
   protected resetFields() {
     this.setSub(0); this.setWobble(0); this.subOctave = -12; this.line = "off"; this.setLineLevel(0.8); this.pump = false;
     if (this.muted) this.toggleMute();
@@ -223,6 +228,24 @@ export class BassLab extends JamModule {
   }
   setLineLevel(v: number) { this.lineLevel = v; this.lineSynth.out.gain.value = 0.6 * v; }
   setLineTone(v: number) { this.lineTone = v; this.lineSynth.setTone(v); }
+  get character(): BassCharacter { return this.lineSynth.character; }
+  setCharacter(c: BassCharacter) { this.lineSynth.setCharacter(c); }
+  // kept between sessions through this field
+  get characterName(): string { return this.lineSynth.character; }
+  set characterName(v: string) { if (["acid", "reese", "808", "funk", "moog"].includes(v)) this.lineSynth.setCharacter(v as BassCharacter); }
+  // the lane above the pads: the song's bass notes and the line notes played, around the playhead
+  laneData(): { pos: number; beat: number; notes: { start: number; end: number; midi: number; kind: "song" | "line" }[] } | null {
+    const d = this.deck();
+    if (this.stem(d) < 0) return null;
+    const pos = d.position(), beat = d.bpm ? 60 / d.bpm : 0.5;
+    const from = pos - beat, to = pos + 3 * beat, shift = heardShift(d);
+    const out: { start: number; end: number; midi: number; kind: "song" | "line" }[] = [];
+    const bass = d.stemNotes?.bass ?? [];
+    for (let k = Math.max(0, lowerBound(bass, from - 4)); k < bass.length && bass[k][0] < to; k++) if (bass[k][1] > from) out.push({ start: bass[k][0], end: bass[k][1], midi: bass[k][2] + shift, kind: "song" });
+    this.played = this.played.filter((n) => n.end > pos - 2 * beat);
+    for (const n of this.played) if (n.start < to && n.end > from) out.push({ ...n, kind: "line" });
+    return { pos, beat: d.bpm ? beat : 0, notes: out };
+  }
   setLineEnv(v: number) { this.lineEnv = v; this.lineSynth.setEnv(v); }
   get drive(): number { const d = this.deck(); return d.stemDriveAmt[this.stem(d)] ?? 0; }
   setDrive(v: number) { const d = this.deck(); d.setStemDrive(this.stem(d), v); }
@@ -263,6 +286,7 @@ export class BassLab extends JamModule {
         while (midi < 28) midi += 12;
         const at = songToCtx(deck, s0);
         this.lineSynth.note(midi, at, Math.max(0.08, (e0 - s0) / rate), Math.min(1, 0.55 + v));
+        this.played.push({ start: s0, end: e0, midi });
         this.hit(at);
       }
     } else if (this.line !== "off") {
@@ -277,6 +301,7 @@ export class BassLab extends JamModule {
         const at = songToCtx(deck, t);
         const len = this.line === "acid" ? beat * 0.24 : this.line === "gallop" ? beat * 0.2 : beat * (this.line === "octaves" ? 0.4 : 0.6);
         this.lineSynth.note(midi, at, len, i16 % 4 === 0 ? 1 : 0.85, acid ? { slide: acid[1].includes("s"), accent: acid[1].includes("a") } : {});
+        this.played.push({ start: t, end: t + len * Math.max(0.25, deck.playbackRate), midi });
         this.hit(at);
       }
     }
@@ -393,12 +418,17 @@ export class VoxFx extends JamModule {
 
 // ---------------- SYNTH (on the "other" stem) ----------------
 export type SynthMode = "off" | "arp" | "stab" | "pad";
-export type ArpShape = "up" | "down" | "updown" | "random" | "gate";
+export type ArpShape = ArpOrder;
 const GATE = [1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1]; // the trance gate, per sixteenth
 export class HarmoSynth extends JamModule {
   readonly synth: PolySynth;
   mode: SynthMode = "off";
   shape: ArpShape = "up";
+  arpOctaves: 1 | 2 = 1;
+  gateLen = 0.9; // 0.2..1 of the step, how long each arp note sounds
+  sweepDepth = 0; // the synced filter sweep on the synth
+  sweepDiv = 1; // one sweep every this many beats
+  readonly sweep: SyncedSweep;
   rate: 0.5 | 0.25 = 0.25; // arp step in beats
   octave = 0; // -1, 0, +1
   color: ChordColor = "triad";
@@ -418,9 +448,11 @@ export class HarmoSynth extends JamModule {
     super(engine, "other");
     const ctx = engine.ctx;
     this.synth = new PolySynth(ctx);
-    // synth -> pump -> bus, and a dotted-eighth echo (filtered feedback) beside it
+    // synth -> synced sweep -> pump -> bus, and a dotted-eighth echo (filtered feedback) beside it
     this.pumpGain = new GainNode(ctx, { gain: 1 });
-    this.synth.out.connect(this.pumpGain).connect(this.bus);
+    this.sweep = new SyncedSweep(ctx);
+    this.synth.out.connect(this.sweep.input);
+    this.sweep.output.connect(this.pumpGain).connect(this.bus);
     this.echoIn = new GainNode(ctx, { gain: 0 });
     this.delay = new DelayNode(ctx, { maxDelayTime: 2, delayTime: 0.375 });
     const fb = new GainNode(ctx, { gain: 0.38 }), tone = new BiquadFilterNode(ctx, { type: "lowpass", frequency: 3200 });
@@ -437,10 +469,38 @@ export class HarmoSynth extends JamModule {
   get patch(): SynthPatch { return this.synth.patch; }
   setPatch(p: SynthPatch) { this.synth.patch = p; }
   setEcho(v: number) { this.echo = v; this.echoIn.gain.value = 0.55 * v; }
+  setSweep(depth: number, div = this.sweepDiv) { this.sweepDepth = depth; this.sweepDiv = div; this.sweep.setDepth(depth); this.sweep.setRate(SyncedSweep.rateFor(this.deck().bpm, div)); }
+  // a ready-made progression goes into the chord loop and plays at once, from the next bar
+  loadProgression(name: ProgressionName) {
+    this.loop = progression(name, jamScale(this.deck()).minor);
+    this.loopStart = barOf(this.deck(), this.deck().position()) + 1;
+    this.loopState = "play";
+    jamChanged();
+  }
+  // what the chord strip shows: the chord now, the next three (one per beat... per bar), the notes sounding, the key
+  chordView(): { now: string; next: string[]; pcs: number[]; key: string } | null {
+    const d = this.deck();
+    if (this.stem(d) < 0) return null;
+    const names = degreeNames(d), pos = d.position(), beat = d.bpm ? 60 / d.bpm : 0.5;
+    const suffix = this.color === "seventh" ? "7" : this.color === "ninth" ? "9" : "";
+    const nameAt = (t: number) => names[this.degreeAt(d, t)] + suffix;
+    const next: string[] = [];
+    for (let k = 1; next.length < 3 && k <= 32; k++) { const n = nameAt(pos + k * beat); if (n !== (next[next.length - 1] ?? nameAt(pos))) next.push(n); }
+    const k = d.effectiveKey;
+    return { now: nameAt(pos), next, pcs: this.chord(d, pos).map((m) => ((m % 12) + 12) % 12), key: k ? `${["Do", "Do#", "Ré", "Mib", "Mi", "Fa", "Fa#", "Sol", "Lab", "La", "Sib", "Si"][k.pitchClass]} ${k.mode === "minor" ? "mineur" : "majeur"}` : "tonalité inconnue" };
+  }
+  private degreeAt(d: Deck, t: number): number {
+    if (this.degree !== null) return this.degree;
+    if (this.loopState === "play") {
+      const bar = ((barOf(d, t) - this.loopStart) % 4 + 4) % 4;
+      for (let b = 0; b < 4; b++) { const deg = this.loop[(bar - b + 4) % 4]; if (deg >= 0) return deg; }
+    }
+    return chordDegreeAt(d, t);
+  }
   pads(names: string[] = []): PadDef[] {
     return ["I", "II", "III", "IV", "V", "VI", "VII"].map((r, i) => ({ id: `deg${i}`, label: names[i] ?? r, sub: r, mode: "hold" as const, run: (on: boolean) => { if (on) this.hold(i); else if (this.degree === i) this.hold(null); } }));
   }
-  protected keep() { return ["shape", "rate", "octave", "color", "echo", "patchName"]; }
+  protected keep() { return ["shape", "rate", "octave", "color", "echo", "patchName", "arpOctaves", "gateLen", "sweepDiv"]; }
   // the sound, kept between sessions through this field (the synth itself holds the live one)
   get patchName(): string { return this.synth.patch; }
   set patchName(v: string) { if (["pluck", "supersaw", "organ", "keys", "brass"].includes(v)) this.synth.patch = v as SynthPatch; }
@@ -448,6 +508,7 @@ export class HarmoSynth extends JamModule {
     this.mode = "off"; this.shape = "up"; this.rate = 0.25; this.octave = 0; this.degree = null;
     this.loop = [-1, -1, -1, -1]; this.loopState = "off"; this.setLevel(1); this.setTone(0.55); this.setOtherLevel(1);
     this.color = "triad"; this.setEcho(0); this.pumpOn = false; this.setPatch("pluck");
+    this.arpOctaves = 1; this.gateLen = 0.9; this.setSweep(0, 1);
   }
   warning(): string | null {
     return this.mode !== "off" && !this.deck().stemNotes?.other?.length ? "Accords du morceau non analysés : le synthé reste sur l'accord de la tonique (les pads marchent)." : null;
@@ -492,11 +553,9 @@ export class HarmoSynth extends JamModule {
     this.voicing = v;
     return v;
   }
-  private arpNote(c: number[], k: number): number | null {
-    const up = [c[0], c[1], c[2], c[0] + 12];
-    const seq = this.shape === "down" ? [...up].reverse() : this.shape === "updown" ? [...up, c[2], c[1]] : up;
-    if (this.shape === "random") return up[(Math.imul(k + 7, 2654435761) >>> 0) % up.length];
-    return seq[((k % seq.length) + seq.length) % seq.length];
+  private arpNote(c: number[], k: number): number {
+    const order = this.shape === "gate" ? "up" : this.shape;
+    return arpNoteAt(arpSequence([...c].sort((x, y) => x - y), order, this.arpOctaves), k, this.shape === "random");
   }
   private tick(deck: Deck, from: number, to: number) {
     if (deck !== this.deck() || this.stem(deck) < 0) return;
@@ -510,6 +569,7 @@ export class HarmoSynth extends JamModule {
     this.route(deck);
     const beat = spb(deck);
     this.delay.delayTime.setTargetAtTime(Math.min(1.9, beat * 0.75), deck.ctx.currentTime, 0.05); // dotted eighth at the deck's tempo
+    if (this.sweepDepth > 0) this.sweep.setRate(1 / (beat * this.sweepDiv)); // one sweep every sweepDiv beats, at the heard tempo
     if (this.pumpOn) {
       const hits = deck.stemNotes?.drums ?? [];
       const kicks = hits.length ? this.notes(deck, hits as unknown as Note[], from, to).filter((h) => (h[2] ?? 0) === 0).map((h) => h[0]) : this.steps(deck, 1, from, to).map((x) => x.t);
@@ -524,9 +584,7 @@ export class HarmoSynth extends JamModule {
       for (const { t, k } of this.steps(deck, this.shape === "gate" ? 0.25 : this.rate, from, to)) {
         const c = this.chord(deck, t), at = songToCtx(deck, t);
         if (this.shape === "gate") { if (GATE[step16(k)]) { this.synth.chord(c, at, beat * 0.2, step16(k) % 4 === 0 ? 0.95 : 0.7, "pluck"); this.hit(at); } continue; }
-        const n = this.arpNote(c, k);
-        if (n === null) continue;
-        this.synth.note(n, at, beat * this.rate * 0.9, k % 4 === 0 ? 1 : 0.75, "pluck");
+        this.synth.note(this.arpNote(c, k), at, beat * this.rate * this.gateLen, k % 4 === 0 ? 1 : 0.75, "pluck");
         this.hit(at);
       }
     } else if (this.mode === "stab") {

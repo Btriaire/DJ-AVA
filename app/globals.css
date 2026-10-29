@@ -1479,3 +1479,19 @@ body.has-zoom::before {
   mix-blend-mode: screen;
   pointer-events: none;
 }
+
+/* stem modules (Bass Lab, Synth): text and colours from MaRuche/Pol, WCAG AAA (7:1) on the dark panels */
+:root {
+  --jam-text: oklch(0.93 0.01 280);   /* titles, values */
+  --jam-text-2: oklch(0.83 0.01 280); /* labels, captions */
+  --jam-text-3: oklch(0.75 0.01 280); /* hints, still 7:1 on the panel */
+  --jam-line: oklch(0.30 0.01 280);
+  --jam-bass: oklch(0.74 0.15 300);   /* Bass Lab accent: LEDs, lit pads, glows */
+  --jam-bass-fill: oklch(0.30 0.10 300);
+  --jam-bass-ink: oklch(0.95 0.05 300); /* text on the violet fill */
+  --jam-synth: oklch(0.80 0.12 180);  /* Synth accent */
+  --jam-synth-fill: oklch(0.30 0.10 180);
+  --jam-synth-ink: oklch(0.95 0.05 180);
+  --jam-warn: oklch(0.86 0.13 75);    /* warning text */
+  --jam-ok: oklch(0.86 0.14 145);     /* status text */
+}
