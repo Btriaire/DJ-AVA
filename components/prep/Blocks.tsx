@@ -99,26 +99,3 @@ export function Section({ title, step, hint, count, summary, open, onToggle, sec
 
 // ---- stems progress -------------------------------------------------------------------------
 
-export function StemsBar({ total, ready, busy, waiting, failed }: { total: number; ready: number; busy: number; waiting: number; failed: number }) {
-  if (total === 0) return null;
-  const pct = (n: number) => `${(n / total) * 100}%`;
-  const parts = [
-    busy ? { t: `${busy} en cours`, c: "#ffcc00" } : null,
-    waiting ? { t: `${waiting} en attente`, c: "#a3a3a3" } : null,
-    failed ? { t: `${failed} en erreur`, c: "#f87171" } : null,
-  ].filter((p): p is { t: string; c: string } => !!p);
-  return (
-    <div className="min-w-0">
-      <div role="progressbar" aria-label="Stems prêts" aria-valuemin={0} aria-valuemax={total} aria-valuenow={ready} className="flex h-1.5 overflow-hidden rounded-full bg-white/5">
-        <span className="h-full bg-[#34d399] transition-[width] duration-500" style={{ width: pct(ready) }} />
-        <span className="h-full bg-[#ffcc00] transition-[width] duration-500" style={{ width: pct(busy) }} />
-        <span className="h-full bg-[#a3a3a3]/60 transition-[width] duration-500" style={{ width: pct(waiting) }} />
-        <span className="h-full bg-[#f87171] transition-[width] duration-500" style={{ width: pct(failed) }} />
-      </div>
-      <p className="mt-1 truncate text-[11px] text-neutral-500">
-        <span className="font-semibold" style={{ color: ready === total ? "#34d399" : "#d4d4d8" }}>{ready}/{total} stems prêts</span>
-        {parts.map((p) => <span key={p.t}> · <span style={{ color: p.c }}>{p.t}</span></span>)}
-      </p>
-    </div>
-  );
-}

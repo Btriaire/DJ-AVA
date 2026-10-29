@@ -24,7 +24,8 @@ import type { Cue } from "@/lib/setPicker";
 import type { VideoMeta } from "@/lib/videoMeta";
 import { BpmChip, Cover, Icon, KeyChip, Mosaic, StemPill, fmtDur, stemInfoFrom } from "./prep/parts";
 import { AmbientHero, PlayDisc, QuickSets } from "./prep/AmbientHero";
-import { Section, SegFilter, StemsBar, StepBadge, useStored, useStoredOpen } from "./prep/Blocks";
+import { KeyWheel, StemsDonut, TempoHistogram } from "./prep/TrayOverview";
+import { Section, SegFilter, StepBadge, useStored, useStoredOpen } from "./prep/Blocks";
 import "./prep/prep-view.css";
 
 type SortOption = "recent" | "title" | "bpm" | "camelot" | "theme" | "group";
@@ -85,6 +86,13 @@ const GRID_CLASS = {
   M: "grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-5 flex-1 overflow-y-auto",
   L: "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 flex-1 overflow-y-auto"
 };
+
+// "Artist - Title (Official Video)" shown as a title and an artist line, without the video-title noise
+function displayName(name: string): { title: string; artist: string } {
+  const clean = name.replace(/\s*[([][^)\]]*\b(official|lyrics?|audio|video|clip|visuali[sz]er|hd|hq|4k|remaster(ed)?)\b[^)\]]*[)\]]/gi, "").trim();
+  const i = clean.indexOf(" - ");
+  return i > 0 ? { artist: clean.slice(0, i).trim(), title: clean.slice(i + 3).trim() } : { artist: "", title: clean };
+}
 
 export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDest, playlistId: string) => void } = {}) {
   const [lib, setLib] = useState(() => loadLibrary());
@@ -821,7 +829,10 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
             </div>
           )}
         </div>
-        <p className="line-clamp-2 text-[12px] font-semibold leading-snug text-neutral-100" title={track.name}>{track.name}</p>
+        <div className="min-w-0" title={track.name}>
+          <p className="truncate text-[13px] font-bold leading-snug text-neutral-50">{displayName(track.name).title}</p>
+          <p className="truncate text-[11px] text-neutral-400">{displayName(track.name).artist || " "}</p>
+        </div>
         <div className="flex items-center justify-between gap-1">
           <StemPill info={stemOf(track.id)} onPrepare={() => queueStems([track])} />
           <span className="font-mono text-[11px] text-neutral-500">{fmtDur(track.durationSec)}</span>
@@ -1325,9 +1336,12 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
                     </button>
                   </div>
                 </details>
-                <div className="ml-auto w-full min-w-[180px] max-w-xs sm:w-auto sm:flex-1">
-                  <StemsBar total={laterTracks.length} ready={stemsReady} busy={stemsBusy} waiting={stemsWaiting} failed={stemsFailed} />
-                </div>
+              </div>
+              {/* the tray at a glance: a bar or a key filters the cards */}
+              <div className="grid gap-3 border-b border-[var(--prep-line)] p-3 sm:grid-cols-3">
+                <StemsDonut done={stemsReady} running={stemsBusy} queued={stemsWaiting} error={stemsFailed} total={laterTracks.length} />
+                <TempoHistogram bpms={laterBpms} query={trayQuery} onFilter={setTrayQuery} />
+                <KeyWheel keys={laterTracks.flatMap((t) => (t.camelot ? [t.camelot] : []))} query={trayQuery} onFilter={setTrayQuery} />
               </div>
               {viewMode === "list" ? (
                 <div className="flex flex-col p-2">
