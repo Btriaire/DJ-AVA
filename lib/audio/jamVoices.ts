@@ -179,82 +179,175 @@ export class PolySynth {
 }
 
 
-export class DrumKit {
+export class BassVoice {
+  private ctx: BaseAudioContext;
   readonly out: GainNode;
+  private prevAmp: GainNode | null = null;
+  private prevEnd = 0;
+  private prevOscs: OscillatorNode[] = [];
 
   constructor(ctx: BaseAudioContext) {
-    this.out = new GainNode(ctx, { gain: 0.8 });
+    this.ctx = ctx;
+    this.out = new GainNode(this.ctx, { gain: 0.6 });
   }
 
-  kick(when: number, vel: number): void {
-    when = clampWhen(this.out.context, when);
-    const ctx = this.out.context;
-    const osc = new OscillatorNode(ctx, { type: 'sine', frequency: 150 });
-    const env = new GainNode(ctx);
-    osc.connect(env).connect(this.out);
+  tone = 0.3;
+  setTone(v: number) { this.tone = Math.max(0, Math.min(1, v)); }
 
-    osc.frequency.setValueAtTime(150, when);
-    osc.frequency.exponentialRampToValueAtTime(45, when + 0.12);
-    env.gain.setValueAtTime(vel, when);
-    env.gain.exponentialRampToValueAtTime(0.001, when + 0.35);
+  note(midi: number, when: number, dur: number, vel: number) {
+    when = clampWhen(this.ctx, when);
+    const freq = mtof(midi);
+    const end = when + Math.max(dur, 0.06);
 
-    const click = new GainNode(ctx);
-    const noise = getNoiseBuffer(ctx);
-    const src = new AudioBufferSourceNode(ctx, { buffer: noise });
-    const hp = new BiquadFilterNode(ctx, { type: 'highpass', frequency: 3000 });
-    src.connect(hp).connect(click).connect(this.out);
-    click.gain.setValueAtTime(vel * 0.3, when);
-    click.gain.linearRampToValueAtTime(0, when + 0.004);
-
-    osc.start(when);
-    src.start(when, Math.random() * 0.5);
-    osc.stop(when + 0.35);
-    src.stop(when + 0.004);
-  }
-
-  clap(when: number, vel: number): void {
-    when = clampWhen(this.out.context, when);
-    const ctx = this.out.context;
-    const bp = new BiquadFilterNode(ctx, { type: 'bandpass', frequency: 1200, Q: 1.2 });
-    const env = new GainNode(ctx);
-    env.gain.setValueAtTime(vel * 0.7, when);
-    env.gain.exponentialRampToValueAtTime(0.001, when + 0.21);
-    const noise = getNoiseBuffer(ctx);
-
-    bp.connect(env).connect(this.out);
-    for (let i = 0; i < 3; i++) {
-      const src = new AudioBufferSourceNode(ctx, { buffer: noise });
-      const burstEnv = new GainNode(ctx);
-      src.connect(burstEnv).connect(bp);
-      burstEnv.gain.setValueAtTime(1, when + i * 0.01);
-      burstEnv.gain.linearRampToValueAtTime(0.2, when + i * 0.01 + 0.008);
-      src.start(when + i * 0.01);
-      src.stop(when + i * 0.01 + 0.005);
+    // Monophonic legato
+    if (this.prevAmp && when < this.prevEnd) {
+      this.prevAmp.gain.cancelScheduledValues(when);
+      this.prevAmp.gain.setTargetAtTime(0, when, 0.008);
+      this.prevOscs.forEach(osc => osc.stop(when + 0.03));
     }
 
-    const tail = new AudioBufferSourceNode(ctx, { buffer: noise });
-    tail.connect(bp);
-    tail.start(when + 0.03);
-    tail.stop(when + 0.21);
-  }
+    // Oscillators
+    const saw = new OscillatorNode(this.ctx, { type: 'sawtooth', frequency: freq });
+    const sine = new OscillatorNode(this.ctx, { type: 'sine', frequency: freq });
+    const oscGain = new GainNode(this.ctx, { gain: 0.6 });
 
-  hat(when: number, vel: number, open = false): void {
-    when = clampWhen(this.out.context, when);
-    const ctx = this.out.context;
-    const hp = new BiquadFilterNode(ctx, { type: 'highpass', frequency: 7500 });
-    const bp = new BiquadFilterNode(ctx, { type: 'bandpass', frequency: 10000, Q: 0.8 });
-    const env = new GainNode(ctx);
-    env.gain.setValueAtTime(vel * 0.45, when);
-    env.gain.exponentialRampToValueAtTime(0.001, when + (open ? 0.32 : 0.045));
-    const noise = getNoiseBuffer(ctx);
-    const src = new AudioBufferSourceNode(ctx, { buffer: noise });
+    // Filter
+    const filter = new BiquadFilterNode(this.ctx, {
+      type: 'lowpass',
+      Q: 7,
+      frequency: 200 + this.tone * 2600 + 1400 * vel,
+    });
+    filter.frequency.setValueAtTime(200 + this.tone * 2600 + 1400 * vel, when);
+    filter.frequency.exponentialRampToValueAtTime(120 + this.tone * 900, when + 0.18);
 
-    src.connect(hp).connect(bp).connect(env).connect(this.out);
-    src.start(when);
-    src.stop(when + (open ? 0.32 : 0.045) + 0.01);
+    // Amp envelope
+    const amp = new GainNode(this.ctx);
+    amp.gain.setValueAtTime(0, when);
+    amp.gain.linearRampToValueAtTime(vel * 0.7, when + 0.004);
+    amp.gain.exponentialRampToValueAtTime(vel * 0.45, when + 0.12);
+    if (end - 0.05 > when + 0.12) {
+      amp.gain.setValueAtTime(vel * 0.45, end - 0.05);
+    }
+    amp.gain.linearRampToValueAtTime(0, end);
+
+    // Routing
+    saw.connect(oscGain).connect(filter).connect(amp).connect(this.out);
+    sine.connect(oscGain).connect(filter).connect(amp).connect(this.out);
+
+    // Start/stop
+    saw.start(when);
+    sine.start(when);
+    saw.stop(end + 0.01);
+    sine.stop(end + 0.01);
+
+    // Store for legato
+    this.prevAmp = amp;
+    this.prevEnd = end;
+    this.prevOscs = [saw, sine];
   }
 }
 
+export class DrumKit {
+  private ctx: BaseAudioContext;
+  readonly out: GainNode;
+  private static curveCache = new WeakMap<BaseAudioContext, Float32Array>();
+
+  constructor(ctx: BaseAudioContext) {
+    this.ctx = ctx;
+    this.out = new GainNode(this.ctx, { gain: 0.8 });
+  }
+
+  kick(when: number, vel: number, tuneHz = 50) {
+    when = clampWhen(this.ctx, when);
+
+    // Body
+    const body = new OscillatorNode(this.ctx, { type: 'sine', frequency: tuneHz * 3.2 });
+    body.frequency.setValueAtTime(tuneHz * 3.2, when);
+    body.frequency.exponentialRampToValueAtTime(tuneHz, when + 0.09);
+    const bodyGain = new GainNode(this.ctx);
+    bodyGain.gain.setValueAtTime(0, when);
+    bodyGain.gain.linearRampToValueAtTime(vel, when + 0.002);
+    bodyGain.gain.exponentialRampToValueAtTime(0.001, when + 0.45);
+
+    // Clip
+    let curve = DrumKit.curveCache.get(this.ctx);
+    if (!curve) {
+      curve = new Float32Array(256);
+      for (let i = 0; i < 256; i++) {
+        const x = (i - 128) / 128;
+        curve[i] = Math.tanh(x * 2.5);
+      }
+      DrumKit.curveCache.set(this.ctx, curve);
+    }
+    const clip = new WaveShaperNode(this.ctx, { curve });
+
+    // Click
+    const click = new AudioBufferSourceNode(this.ctx, { buffer: getNoiseBuffer(this.ctx) });
+    const clickFilter = new BiquadFilterNode(this.ctx, { type: 'bandpass', frequency: 4000, Q: 1 });
+    const clickGain = new GainNode(this.ctx);
+    clickGain.gain.setValueAtTime(vel * 0.35, when);
+    clickGain.gain.linearRampToValueAtTime(0, when + 0.006);
+
+    // Routing
+    body.connect(bodyGain).connect(clip).connect(new GainNode(this.ctx, { gain: 0.8 })).connect(this.out);
+    click.connect(clickFilter).connect(clickGain).connect(this.out);
+
+    // Start/stop
+    body.start(when);
+    body.stop(when + 0.45);
+    click.start(when);
+    click.stop(when + 0.006);
+  }
+
+  clap(when: number, vel: number) {
+    when = clampWhen(this.ctx, when);
+    const filter = new BiquadFilterNode(this.ctx, { type: 'bandpass', frequency: 1200, Q: 1.2 });
+    const env = new GainNode(this.ctx);
+    env.gain.setValueAtTime(vel * 0.7, when);
+    env.gain.exponentialRampToValueAtTime(0.001, when + 0.22);
+
+    // Three bursts
+    for (let i = 0; i < 3; i++) {
+      const burst = new AudioBufferSourceNode(this.ctx, { buffer: getNoiseBuffer(this.ctx) });
+      const burstGain = new GainNode(this.ctx);
+      burstGain.gain.setValueAtTime(1, when + i * 0.01);
+      burstGain.gain.linearRampToValueAtTime(0.2, when + i * 0.01 + 0.008);
+      burst.connect(burstGain).connect(filter).connect(env).connect(this.out);
+      burst.start(when + i * 0.01);
+      burst.stop(when + i * 0.01 + 0.008);
+    }
+
+    // Tail
+    const tail = new AudioBufferSourceNode(this.ctx, { buffer: getNoiseBuffer(this.ctx) });
+    tail.connect(filter).connect(env).connect(this.out);
+    tail.start(when + 0.03);
+    tail.stop(when + 0.22);
+  }
+
+  hat(when: number, vel: number, open = false) {
+    when = clampWhen(this.ctx, when);
+    const end = when + (open ? 0.35 : 0.05);
+    const freqs = [80, 120, 167.2, 218.4, 271.2, 336.8];
+    const oscGain = new GainNode(this.ctx, { gain: 1 / 6 });
+    const filter = new BiquadFilterNode(this.ctx, { type: 'bandpass', frequency: 10000, Q: 1 });
+    const highpass = new BiquadFilterNode(this.ctx, { type: 'highpass', frequency: 7000 });
+    const env = new GainNode(this.ctx);
+    env.gain.setValueAtTime(vel * 0.5, when);
+    env.gain.exponentialRampToValueAtTime(0.001, end);
+
+    // Oscillators
+    const oscs: OscillatorNode[] = [];
+    for (const freq of freqs) {
+      const osc = new OscillatorNode(this.ctx, { type: 'square', frequency: freq });
+      oscs.push(osc);
+    }
+    oscs.forEach(osc => {
+      osc.connect(oscGain).connect(filter).connect(highpass).connect(env).connect(this.out);
+      osc.start(when);
+      osc.stop(end + 0.01);
+    });
+  }
+}
 
 export class ChoirVoice {
   readonly out: GainNode;

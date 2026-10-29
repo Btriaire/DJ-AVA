@@ -90,22 +90,37 @@ export function degreeNames(deck: Deck): string[] {
   });
 }
 
-// the song's own chord at song time t, from the notes of the "other" stem sounding then, snapped to the key;
-// none sounding -> the tonic triad. Notes are moved by the heard shift.
+// the song's own chord around song time t: the notes of the "other" stem are weighed by how long they sound in that
+// beat, every triad of the key gets a score (root counts double), the best one wins; a beat with nothing clear keeps
+// the chord before it, so the synth does not flicker. One answer per beat, cached.
+const chordCache = new WeakMap<Deck, { beat: number; chord: number[]; prev: number[] }>();
 export function chordAt(deck: Deck, t: number): number[] {
   const { pcs } = jamScale(deck);
+  const beatLen = deck.bpm > 0 ? 60 / deck.bpm : 0.5;
+  const beat = Math.floor((t - deck.beatGridOffset) / beatLen);
+  const cached = chordCache.get(deck);
+  if (cached && cached.beat === beat) return cached.chord;
+  const from = deck.beatGridOffset + beat * beatLen, to = from + beatLen;
   const shift = heardShift(deck);
-  const pcsOn = new Set<number>();
-  for (const [s, e, m] of deck.stemNotes?.other ?? []) {
-    if (s <= t + 0.05 && e > t) pcsOn.add((((m + shift) % 12) + 12) % 12);
-    if (s > t + 0.05) break;
+  const w = new Array<number>(12).fill(0);
+  const notes = deck.stemNotes?.other ?? [];
+  // notes are sorted by start: find the last one starting before the end of the beat, then look back a little
+  let hi = notes.length;
+  for (let lo = 0; lo < hi; ) { const mid = (lo + hi) >> 1; if (notes[mid][0] < to) lo = mid + 1; else hi = mid; }
+  for (let k = hi - 1; k >= 0 && k >= hi - 96; k--) {
+    const [s0, e0, m] = notes[k];
+    const overlap = Math.min(e0, to) - Math.max(s0, from);
+    if (overlap > 0) w[(((m + shift) % 12) + 12) % 12] += overlap;
   }
-  // root = the lowest scale degree that has its third or fifth sounding too, else the tonic
+  let best = -1, bestScore = 0;
   for (let deg = 0; deg < 7; deg++) {
-    const r = pcs[deg];
-    if (pcsOn.has(r) && (pcsOn.has(pcs[(deg + 2) % 7]) || pcsOn.has(pcs[(deg + 4) % 7]))) return degreeChord(deck, deg);
+    const score = 2 * w[pcs[deg]] + w[pcs[(deg + 2) % 7]] + w[pcs[(deg + 4) % 7]];
+    if (score > bestScore) { bestScore = score; best = deg; }
   }
-  return degreeChord(deck, 0);
+  const prev = cached?.chord ?? degreeChord(deck, 0);
+  const chord = best >= 0 && bestScore > beatLen * 0.25 ? degreeChord(deck, best) : prev;
+  chordCache.set(deck, { beat, chord, prev });
+  return chord;
 }
 
 // ---- one scheduler for every stem module: 30 ms tick, 0.15 s lookahead, song-time windows per deck ----
@@ -151,4 +166,9 @@ export function selfTest(): void {
   assert(degreeNames(fake).join() === "Am,Bdim,C,Dm,Em,F,G", "A minor chord names");
   const aMajor = { effectiveKey: { pitchClass: 9, mode: "major" } } as unknown as Deck;
   assert(degreeNames(aMajor).join() === "A,Bm,C#m,D,E,F#m,G#dim", "A major chord names use sharps");
+  // the song's chord: weighed over the beat, kept when a beat has nothing clear
+  const song = { bpm: 120, beatGridOffset: 0, key: { pitchClass: 9, mode: "minor" }, effectiveKey: { pitchClass: 9, mode: "minor" }, stemNotes: { other: [[0, 0.5, 60, 1], [0, 0.5, 64, 1], [0, 0.5, 67, 1], [0.5, 1, 62, 1], [0.5, 1, 65, 1], [0.5, 1, 69, 1], [1, 1.05, 71, 1]] } } as unknown as Deck;
+  assert(chordAt(song, 0.1).join() === "48,52,55", "C major on beat 1");
+  assert(chordAt(song, 0.7).join() === "50,53,57", "D minor on beat 2");
+  assert(chordAt(song, 1.2).join() === "50,53,57", "a stray note keeps D minor");
 }

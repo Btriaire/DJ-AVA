@@ -13,8 +13,16 @@ export function JamShell({
   pref,
   onPref,
   lit,
+  warning,
+  onReset,
+  stemsOff,
+  onEnableStems,
   children,
 }: {
+  warning?: string | null; // something asked for cannot work on this song
+  onReset?: () => void;
+  stemsOff?: boolean; // stems prepared but not playing: a button switches them on
+  onEnableStems?: () => void;
   title: string;
   tag: string;
   color: string;
@@ -54,12 +62,30 @@ export function JamShell({
         </h3>
         <span className="text-[10px] text-neutral-500">{tag}</span>
         {lit && <ActivityLed lit={lit} color={color} />}
-        <div className="ml-auto flex items-center gap-1.5 rounded-full bg-neutral-800/50 px-2 py-0.5 text-[10px] font-bold">
+        {onReset && (
+          <button type="button" onClick={onReset} className="ml-auto rounded px-1.5 py-0.5 text-[9px] font-black tracking-[0.15em] text-neutral-500 hover:bg-white/5 hover:text-neutral-200" title="Remet le module à zéro : effets coupés, réglages par défaut">
+            RÀZ
+          </button>
+        )}
+        <div className={`${onReset ? "" : "ml-auto "}flex items-center gap-1.5 rounded-full bg-neutral-800/50 px-2 py-0.5 text-[10px] font-bold`}>
           {/* a status dot instead of glyphs (no emoji-like characters in the UI) */}
           <span className="my-auto h-1.5 w-1.5 rounded-full" style={{ background: status === "ok" ? "#34d399" : status === "nostems" ? "#fbbf24" : "#737373" }} />
           {statusText}
         </div>
       </div>
+      {status === "nostems" && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md bg-[#fbbf24]/10 px-2 py-1.5 text-[11px] text-[#fbbf24]">
+          {stemsOff && onEnableStems ? (
+            <>
+              Les stems de ce deck sont prêts mais coupés.
+              <button type="button" onClick={onEnableStems} className="rounded bg-[#fbbf24] px-2 py-0.5 text-[10px] font-black tracking-wide text-[#1a1203]">ACTIVER LES STEMS</button>
+            </>
+          ) : (
+            <>Stems non préparés pour le morceau de ce deck : prépare-les dans Préparation ou dans le panneau des stems.</>
+          )}
+        </div>
+      )}
+      {warning && <div className="rounded-md bg-white/5 px-2 py-1 text-[10px] text-[#fbbf24]">{warning}</div>}
       <JamSeg
         label="Sur quel deck jouer"
         options={[
@@ -200,7 +226,7 @@ export function JamSeg<T extends string>({
 export function useJamRefresh(): number {
   const [n, setN] = useState(0);
   useEffect(() => {
-    const id = setInterval(() => setN((x) => x + 1), 250);
+    const id = setInterval(() => setN((x) => x + 1), 1000); // deck status; every change of a module also refreshes at once
     const off = onJamChange(() => setN((x) => x + 1)); // a pad pressed on the keyboard lights up at once
     return () => { clearInterval(id); off(); };
   }, []);

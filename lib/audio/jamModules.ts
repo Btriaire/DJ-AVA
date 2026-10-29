@@ -6,7 +6,7 @@ import type { Deck } from "./Deck";
 import type { FXRack } from "./FXRack";
 import type { FxName } from "./fxTypes";
 import { BEAT_DIVS } from "./fxTypes";
-import { ChoirVoice, DrumKit, PolySynth, SubVoice } from "./jamVoices";
+import { BassVoice, ChoirVoice, DrumKit, PolySynth, SubVoice } from "./jamVoices";
 import { chordAt, degreeChord, heardShift, jamDeck, jamScale, jamStem, nextGrid, onJamTick, snapToScale, songToCtx, spb, type JamDeckPref, type JamRole } from "./stemJam";
 
 export const beatIdx = (div: number) => Math.max(0, BEAT_DIVS.indexOf(div));
@@ -88,6 +88,30 @@ abstract class JamModule {
   }
   readonly pressed = new Set<string>();
   abstract pads(): PadDef[];
+  // stems prepared but not playing: the module can switch them on itself
+  canEnableStems(): boolean { const d = this.deck(); return d.stemReady && !d.stemsActive; }
+  enableStems() { const d = this.deck(); if (d.stemReady && !d.stemsActive) { d.setStemsActive(true); jamChanged(); } }
+  // a line under the title when something asked for cannot work on this song (its notes were never analysed)
+  warning(): string | null { return null; }
+  // the settings kept between sessions (what is playing right now is not: nothing starts by itself at the next launch)
+  protected abstract keep(): string[];
+  snapshot(): Record<string, unknown> {
+    const o: Record<string, unknown> = { pref: this.pref };
+    for (const k of this.keep()) o[k] = (this as unknown as Record<string, unknown>)[k];
+    return o;
+  }
+  restore(o: Record<string, unknown> | undefined) {
+    if (!o) return;
+    for (const k of ["pref", ...this.keep()]) if (k in o && typeof o[k] === typeof (this as unknown as Record<string, unknown>)[k]) (this as unknown as Record<string, unknown>)[k] = o[k];
+  }
+  // RÀZ: every held effect off, every setting back to its default
+  reset() {
+    for (const id of [...this.pressed]) this.press(id, false);
+    this.pressed.clear();
+    this.resetFields();
+    jamChanged();
+  }
+  protected abstract resetFields(): void;
   padActive(p: PadDef): boolean { return p.isOn ? p.isOn() : this.pressed.has(p.id); }
   // a pad pressed on screen or on the keyboard: hold pads run while pressed, toggle pads flip on each press
   press(id: string, on: boolean, list: PadDef[] = this.pads()) {
@@ -139,7 +163,7 @@ const LINES: Record<Exclude<BassLine, "off">, Record<number, "R" | "O" | "5" | "
 };
 export class BassLab extends JamModule {
   readonly sub: SubVoice;
-  readonly lineSynth: PolySynth;
+  readonly lineSynth: BassVoice;
   subLevel = 0; // 0..1, the sub doubles the song's own bass notes
   subOctave: -12 | 0 = -12;
   line: BassLine = "off"; // a bass line made from the song's chords, in key (with SWAP it replaces the bass)
@@ -154,12 +178,23 @@ export class BassLab extends JamModule {
     this.sub = new SubVoice(engine.ctx);
     this.sub.out.gain.value = 0;
     this.sub.out.connect(this.bus);
-    this.lineSynth = new PolySynth(engine.ctx);
-    this.lineSynth.setTone(0.22);
+    this.lineSynth = new BassVoice(engine.ctx);
     this.lineSynth.out.connect(this.bus);
     onJamTick(engine, (deck, from, to) => this.tick(deck, from, to));
   }
   setSub(v: number) { this.subLevel = v; this.sub.out.gain.value = 0.9 * v; }
+  protected keep() { return ["subOctave", "lineLevel", "wobbleDiv"]; }
+  protected resetFields() {
+    this.setSub(0); this.setWobble(0); this.subOctave = -12; this.line = "off"; this.setLineLevel(0.8); this.pump = false;
+    if (this.muted) this.toggleMute();
+    this.setDrive(0); this.setTone(0);
+  }
+  warning(): string | null {
+    const n = this.deck().stemNotes;
+    if (this.subLevel > 0 && !n?.bass?.length) return "Notes de basse non analysées : le SUB reste muet sur ce morceau.";
+    if (this.pump && !n?.drums?.length) return "Coups de batterie non analysés : PUMP ne trouve pas les kicks.";
+    return null;
+  }
   setWobble(v: number, div = this.wobbleDiv) { this.wobble = v; this.wobbleDiv = div; this.fx("wobble", v > 0.02, div, v, 0); }
   pads(): PadDef[] {
     return [
@@ -171,7 +206,7 @@ export class BassLab extends JamModule {
       { id: "wob", label: "WOB MAX", sub: "1/8", mode: "hold", run: (on) => (on ? this.fx("wobble", true, 0.125, 1) : this.setWobble(this.wobble)) },
     ];
   }
-  setLineLevel(v: number) { this.lineLevel = v; this.lineSynth.out.gain.value = 0.5 * v; }
+  setLineLevel(v: number) { this.lineLevel = v; this.lineSynth.out.gain.value = 0.6 * v; }
   get drive(): number { const d = this.deck(); return d.stemDriveAmt[this.stem(d)] ?? 0; }
   setDrive(v: number) { const d = this.deck(); d.setStemDrive(this.stem(d), v); }
   get tone(): number { const d = this.deck(); return d.stemFilterX[this.stem(d)] ?? 0; }
@@ -211,7 +246,7 @@ export class BassLab extends JamModule {
         const root = 36 + (((c[0] % 12) + 12) % 12); // C2..B2
         const midi = tone === "O" ? root + 12 : tone === "5" ? root + (c[2] - c[0]) : tone === "3" ? root + (c[1] - c[0]) : root;
         const at = songToCtx(deck, t);
-        this.lineSynth.note(midi, at, beat * (this.line === "octaves" ? 0.4 : 0.6), step16(k) % 4 === 0 ? 1 : 0.85, "pluck");
+        this.lineSynth.note(midi, at, beat * (this.line === "octaves" ? 0.4 : 0.6), step16(k) % 4 === 0 ? 1 : 0.85);
         this.hit(at);
       }
     }
@@ -252,6 +287,15 @@ export class VoxFx extends JamModule {
       { id: "double", label: "DOUBLE", sub: "voix large", mode: "toggle", isOn: () => this.doubled, run: (on) => { this.doubled = on; this.fx("double", on, undefined, 0.7, 0); } },
       { id: "harmony", label: "HARMONIE", sub: this.harmonyUp === 4 ? "quinte" : "tierce", mode: "toggle", isOn: () => this.harmony, run: (on) => { this.harmony = on; } },
     ];
+  }
+  protected keep() { return ["harmonyUp", "chopBeats"]; }
+  protected resetFields() {
+    this.harmony = false; this.harmonyUp = 2; this.chop = null; this.chopBeats = 4;
+    if (this.doubled) { this.doubled = false; this.fx("double", false, undefined, 0, 0); }
+    this.setLevel(1); this.setSpace(0); this.setEcho(0); this.setRadio(0);
+  }
+  warning(): string | null {
+    return this.harmony && !this.deck().stemMap?.voice?.length ? "Mélodie de la voix non analysée : HARMONIE reste muette sur ce morceau." : null;
   }
   // the bars just played of the vocal stem become the phrase (ends on the last bar line, so it is in time)
   capture() {
@@ -345,6 +389,14 @@ export class HarmoSynth extends JamModule {
   setOtherLevel(v: number) { const d = this.deck(); d.setStemVol(this.stem(d), v); }
   pads(names: string[] = []): PadDef[] {
     return ["I", "II", "III", "IV", "V", "VI", "VII"].map((r, i) => ({ id: `deg${i}`, label: names[i] ?? r, sub: r, mode: "hold" as const, run: (on: boolean) => { if (on) this.hold(i); else if (this.degree === i) this.hold(null); } }));
+  }
+  protected keep() { return ["shape", "rate", "octave"]; }
+  protected resetFields() {
+    this.mode = "off"; this.shape = "up"; this.rate = 0.25; this.octave = 0; this.degree = null;
+    this.loop = [-1, -1, -1, -1]; this.loopState = "off"; this.setLevel(1); this.setTone(0.55); this.setOtherLevel(1);
+  }
+  warning(): string | null {
+    return this.mode !== "off" && !this.deck().stemNotes?.other?.length ? "Accords du morceau non analysés : le synthé reste sur l'accord de la tonique (les pads marchent)." : null;
   }
   // REC (from the next bar), then PLAY; a press while playing clears the loop
   loopButton() {
@@ -454,6 +506,14 @@ export class BeatLab extends JamModule {
       f("half", "HALF", "demi-tempo", "halftime", 1), f("build", "BUILD", "montée", "build", 1), f("scatter", "SCATTER", "1/8", "scatter", 0.125), f("stop", "STOP", "frein", "brake", 1),
     ];
   }
+  protected keep() { return ["hatLevel", "swing", "seqLevel", "pattern"]; }
+  protected resetFields() {
+    this.kick = 0; this.clap = 0; this.hats = "off"; this.hatLevel = 0.7; this.swing = 0; this.seq = false; this.seqLevel = 0.8;
+    this.setPreset("clear"); this.setLevel(1);
+  }
+  warning(): string | null {
+    return (this.kick > 0 || this.clap > 0) && !this.deck().stemNotes?.drums?.length ? "Coups de batterie non analysés : KICK+ et CLAP+ restent muets (le séquenceur marche)." : null;
+  }
   toggleStep(row: SeqRow, i: number) { this.pattern[row][i] = !this.pattern[row][i]; jamChanged(); }
   setPreset(name: keyof typeof SEQ_PRESETS) {
     const p = SEQ_PRESETS[name];
@@ -472,21 +532,24 @@ export class BeatLab extends JamModule {
     if (this.stem(d) < 0) return;
     this.route(d);
     const at = d.playing ? nextGrid(d, 0.25).at : d.ctx.currentTime + 0.01;
-    this.kit.kick(at, 1);
+    this.kit.kick(at, 1, this.kickHz(d));
     this.kit.clap(at, 0.8);
     this.kit.hat(at, 0.9, true);
     this.hit(at);
   }
+  // the kick sings the key's root, between E1 and D#2 (41 to 78 Hz)
+  private kickHz(deck: Deck): number { const r = jamScale(deck).root; return 440 * Math.pow(2, (28 + ((r - 4 + 12) % 12) - 69) / 12); }
   private tick(deck: Deck, from: number, to: number) {
     if ((this.kick <= 0 && this.clap <= 0 && this.hats === "off" && !this.seq) || deck !== this.deck() || this.stem(deck) < 0) return;
     this.route(deck);
+    const hz = this.kickHz(deck);
     if (this.seq) {
       const sixteenth = spb(deck) * 0.25;
       for (const { t, k } of this.steps(deck, 0.25, from, to)) {
         const i = step16(k), acc = i % 4 === 0 ? 1 : 0.8, v = this.seqLevel * acc;
         const at = songToCtx(deck, t) + (k % 2 !== 0 ? this.swing * sixteenth : 0);
         let any = false;
-        if (this.pattern.kick[i]) { this.kit.kick(at, v); any = true; }
+        if (this.pattern.kick[i]) { this.kit.kick(at, v, hz); any = true; }
         if (this.pattern.clap[i]) { this.kit.clap(at, v); any = true; }
         if (this.pattern.hat[i]) { this.kit.hat(at, v * 0.8, false); any = true; }
         if (this.pattern.open[i]) { this.kit.hat(at, v * 0.8, true); any = true; }
@@ -498,7 +561,7 @@ export class BeatLab extends JamModule {
       for (let k = lowerBound(hits, from); k < hits.length && hits[k][0] < to; k++) {
         const [t, v, c] = hits[k];
         const at = songToCtx(deck, t);
-        if (c === 0 && this.kick > 0) { this.kit.kick(at, Math.min(1, (0.6 + v) * this.kick)); this.hit(at); }
+        if (c === 0 && this.kick > 0) { this.kit.kick(at, Math.min(1, (0.6 + v) * this.kick), hz); this.hit(at); }
         else if (c === 1 && this.clap > 0) { this.kit.clap(at, Math.min(1, (0.6 + v) * this.clap)); this.hit(at); }
       }
     }
@@ -617,12 +680,30 @@ export class JamMacro {
 }
 
 const cache = new WeakMap<DJEngine, { bass: BassLab; vox: VoxFx; synth: HarmoSynth; beat: BeatLab; macro: JamMacro }>();
+const STORE = "djsynth.jam.v1";
 export function jamModules(engine: DJEngine) {
   let m = cache.get(engine);
   if (!m) {
     const four = { bass: new BassLab(engine), vox: new VoxFx(engine), synth: new HarmoSynth(engine), beat: new BeatLab(engine) };
     m = { ...four, macro: new JamMacro(engine, four) };
     cache.set(engine, m);
+    // the settings of the last session come back; saved again every 2 s when they changed
+    let saved = "";
+    try {
+      const o = JSON.parse(localStorage.getItem(STORE) ?? "{}") as Record<string, Record<string, unknown>> & { quant?: number; bars?: number };
+      four.bass.restore(o.bass); four.vox.restore(o.vox); four.synth.restore(o.synth); four.beat.restore(o.beat);
+      four.bass.setLineLevel(four.bass.lineLevel);
+      if (o.quant === 0 || o.quant === 0.25 || o.quant === 1 || o.quant === 4) jamSettings.quant = o.quant;
+      if (o.bars === 2 || o.bars === 4 || o.bars === 8) m.macro.setBars(o.bars);
+      saved = localStorage.getItem(STORE) ?? "";
+    } catch { /* first launch or storage blocked: the defaults stay */ }
+    const mm = m;
+    setInterval(() => {
+      const now = JSON.stringify({ bass: four.bass.snapshot(), vox: four.vox.snapshot(), synth: four.synth.snapshot(), beat: four.beat.snapshot(), quant: jamSettings.quant, bars: mm.macro.bars });
+      if (now === saved) return;
+      saved = now;
+      try { localStorage.setItem(STORE, now); } catch { /* storage full or blocked: the settings last the session */ }
+    }, 2000);
   }
   return m;
 }

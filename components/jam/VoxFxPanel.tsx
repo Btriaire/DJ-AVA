@@ -16,7 +16,7 @@ export function VoxFxPanel({ engine }: { engine: DJEngine }) {
   const [, bump] = useReducer((x: number) => x + 1, 0);
 
   return (
-    <JamShell title="Vox FX" tag="sur le stem voix" color={C} status={m.status()} deckName={m.deck() === engine.deckA ? "A" : "B"} pref={m.pref} onPref={(p) => { m.set("pref", p); bump(); }} lit={() => m.lit()}>
+    <JamShell title="Vox FX" tag="sur le stem voix" color={C} status={m.status()} deckName={m.deck() === engine.deckA ? "A" : "B"} pref={m.pref} onPref={(p) => { m.set("pref", p); bump(); }} lit={() => m.lit()} warning={m.warning()} onReset={() => { m.reset(); bump(); }} stemsOff={m.canEnableStems()} onEnableStems={() => { m.enableStems(); bump(); }}>
       <div className="flex flex-wrap justify-around gap-2">
         <Knob label="VOIX" value={m.level} min={0} max={1.4} defaultValue={1} color={C} size={46} led format={pct} onChange={(v) => { m.setLevel(v); bump(); }} />
         <Knob label="ESPACE" value={m.space} min={0} max={1} defaultValue={0} color={C} size={46} led format={pct} onChange={(v) => { m.setSpace(v); bump(); }} />
