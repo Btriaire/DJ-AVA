@@ -3,13 +3,17 @@ import { loadLibrary, saveLibrary, uid, type LibTrack, type Playlist } from "@/l
 import { pickNext, type Cue } from "@/lib/setPicker";
 import { planMix, DEFAULT_DJ } from "@/lib/mixPlan";
 
+// one key per song whatever the order "artist - title" / "title by artist" and the filler words of video titles
+const FILLER = new Set(["by", "feat", "ft", "featuring", "official", "video", "audio", "lyrics", "lyric", "with", "hd", "hq", "remastered", "remaster", "clip", "version"]);
 function normalizeName(name: string): string {
-  return name
+  const words = name
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[([][^)\]]*[)\]]/g, " ")
-    .replace(/[^a-zA-Z0-9]/g, "")
-    .toLowerCase();
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w && !FILLER.has(w));
+  return [...new Set(words)].sort().join(" ");
 }
 
 function toCue(t: LibTrack): Cue {
@@ -104,6 +108,9 @@ export function saveOneClick(ids: string[], now: Date = new Date()): string | nu
 }
 
 export function selfTest(): void {
+  assert(normalizeName("WE ARE FAMILY by Sister Sledge (With Lyrics)") === normalizeName("Sister Sledge - We Are Family"), "artist and title in any order");
+  assert(normalizeName("Daft Punk - One More Time") === normalizeName("One More Time - Daft Punk (Official Audio)"), "filler words ignored");
+  assert(normalizeName("Song (Live)") !== normalizeName("Song Live"), "a live take stays another song");
   const fake: LibTrack[] = [
     { id: "1", name: "Song", bpm: 120, camelot: "8A", durationSec: 180, addedAt: 0, source: "local", deck: null },
     { id: "2", name: "Song (Official Video)", bpm: 122, camelot: "8A", durationSec: 200, addedAt: 1, source: "local", deck: null },

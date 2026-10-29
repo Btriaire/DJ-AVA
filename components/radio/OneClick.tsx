@@ -65,10 +65,10 @@ export function OneClick({ tracks, onLaunch }: { tracks: LibTrack[]; onLaunch?: 
           </h2>
 
           <p className="text-xs text-neutral-400">
-            {count} titres qui s&apos;enchaînent (tempo et tonalité), lancés tout de suite sur les platines
+            {`${count} titres qui s'enchaînent (tempo et tonalité), lancés tout de suite sur les platines`}
           </p>
 
-          <div className="flex flex-col sm:flex-row gap-3 items-center mt-2 flex-wrap">
+          <div className="mt-2 flex flex-wrap items-center gap-3">
             <button
               type="button"
               onClick={handleClick}
@@ -108,9 +108,8 @@ export function OneClick({ tracks, onLaunch }: { tracks: LibTrack[]; onLaunch?: 
                 </button>
               ))}
             </div>
+            <span className="text-[10px] uppercase tracking-[0.2em] text-neutral-500">titres</span>
           </div>
-
-          <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-500">titres</div>
 
           {last && (
             <div className="text-xs text-neutral-400 mt-1">
