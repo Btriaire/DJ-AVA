@@ -65,16 +65,16 @@ export function StationBar({ stations, currentId, locked, onSelect, onCreate, on
             <div key={id} className="shrink-0 snap-start">
               {editing === id ? (
                 <div
-                  className={`w-36 rounded-lg p-2.5 bg-[color-mix(in_srgb,_var(--prep-surface)_70%,_#000)] hover:bg-[color-mix(in_srgb,_var(--prep-surface-2)_70%,_#000)] transition-colors ${current ? 'ring-2 ring-[var(--prep-accent)]' : ''}`}
+                  className={`w-28 rounded-lg p-2.5 bg-[color-mix(in_srgb,_var(--prep-surface)_70%,_#000)] hover:bg-[color-mix(in_srgb,_var(--prep-surface-2)_70%,_#000)] transition-colors ${current ? 'ring-2 ring-[var(--prep-accent)]' : ''}`}
                 >
                   <div className="relative mb-2">
                     <div
                       className="aspect-square w-full rounded-md shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]"
-                      style={{ background: `color-mix(in srgb, ${tileColor} 70%, #000)` }}
+                      style={{ background: `color-mix(in srgb, ${tileColor} 26%, #0b0b0f)` }}
                     >
                       <div
-                        className="flex h-full items-center justify-center text-3xl font-black"
-                        style={{ color: `color-mix(in srgb, ${tileColor} 35%, #fff)` }}
+                        className="flex h-full items-center justify-center text-2xl font-black"
+                        style={{ color: `${tileColor}` }}
                       >
                         {initials}
                       </div>
@@ -109,7 +109,7 @@ export function StationBar({ stations, currentId, locked, onSelect, onCreate, on
                 <button
                   type="button"
                   aria-pressed={current}
-                  className={`w-36 rounded-lg p-2.5 bg-[color-mix(in_srgb,_var(--prep-surface)_70%,_#000)] hover:bg-[color-mix(in_srgb,_var(--prep-surface-2)_70%,_#000)] transition-colors ${current ? 'ring-2 ring-[var(--prep-accent)]' : ''}`}
+                  className={`w-28 rounded-lg p-2.5 bg-[color-mix(in_srgb,_var(--prep-surface)_70%,_#000)] hover:bg-[color-mix(in_srgb,_var(--prep-surface-2)_70%,_#000)] transition-colors ${current ? 'ring-2 ring-[var(--prep-accent)]' : ''}`}
                   onClick={() => {
                     handleCancelDelete();
                     if (!current) onSelect(id);
@@ -120,11 +120,11 @@ export function StationBar({ stations, currentId, locked, onSelect, onCreate, on
                   <div className="relative mb-2">
                     <div
                       className="aspect-square w-full rounded-md shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]"
-                      style={{ background: `color-mix(in srgb, ${tileColor} 70%, #000)` }}
+                      style={{ background: `color-mix(in srgb, ${tileColor} 26%, #0b0b0f)` }}
                     >
                       <div
-                        className="flex h-full items-center justify-center text-3xl font-black"
-                        style={{ color: `color-mix(in srgb, ${tileColor} 35%, #fff)` }}
+                        className="flex h-full items-center justify-center text-2xl font-black"
+                        style={{ color: `${tileColor}` }}
                       >
                         {initials}
                       </div>
@@ -194,7 +194,7 @@ export function StationBar({ stations, currentId, locked, onSelect, onCreate, on
 
         <button
           type="button"
-          className="flex shrink-0 snap-start self-stretch min-h-[176px] w-36 items-center justify-center rounded-lg border border-dashed border-[var(--prep-line)] bg-[color-mix(in_srgb,_var(--prep-surface)_70%,_#000)] hover:bg-[color-mix(in_srgb,_var(--prep-surface-2)_70%,_#000)] transition-colors disabled:opacity-30"
+          className="flex shrink-0 snap-start self-stretch min-h-[148px] w-28 items-center justify-center rounded-lg border border-dashed border-[var(--prep-line)] bg-[color-mix(in_srgb,_var(--prep-surface)_70%,_#000)] hover:bg-[color-mix(in_srgb,_var(--prep-surface-2)_70%,_#000)] transition-colors disabled:opacity-30"
           onClick={() => {
             onCreate();
             handleCancelDelete();

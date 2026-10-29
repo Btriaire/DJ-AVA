@@ -1271,9 +1271,9 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     // next tick: the decks and the library are settled once the view has mounted
     // (no cleanup: the second dev run finds the key gone and must not cancel this one)
     window.setTimeout(() => {
+      setActivePl(p.id); // the studio shows the set that was sent, not the first one
       if (p.side === "relay") playPlaylistRelay(p.id);
       else if (p.side === "A" || p.side === "B") playPlaylistLive(p.side, p.id);
-      else if (p.side === "open") setActivePl(p.id);
     }, 0);
   }
   // at mount (the page was opened on this view) ...
