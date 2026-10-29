@@ -68,12 +68,37 @@ export function snapToScale(midi: number, pcs: number[]): number {
 }
 
 // the diatonic triad on degree 0..6 of the scale, around the given octave (midi of its root)
-export function degreeChord(deck: Deck, degree: number, octaveMidi = 48): number[] {
+export type ChordColor = "triad" | "seventh" | "ninth";
+// the chord on degree 0..6 of the scale around the given octave: a triad, plus its 7th, plus its 9th (all in the key)
+export function degreeChord(deck: Deck, degree: number, octaveMidi = 48, color: ChordColor = "triad"): number[] {
   const { pcs } = jamScale(deck);
   const pc = pcs[((degree % 7) + 7) % 7];
   const root = octaveMidi - (octaveMidi % 12) + pc;
   const up = (n: number) => (pcs[(degree + n) % 7] - pc + 12) % 12;
-  return [root, root + up(2), root + up(4)];
+  const c = [root, root + up(2), root + up(4)];
+  if (color !== "triad") c.push(root + up(6));
+  if (color === "ninth") c.push(root + 12 + up(1));
+  return c;
+}
+
+// the same chord, voiced as close as possible to the one before (each voice moves the least): it glides instead of jumping.
+// Tries every inversion, an octave up or down, and keeps the notes between 45 and 84.
+export function voiceLead(prev: number[] | null, next: number[]): number[] {
+  if (!prev?.length) return next;
+  const sorted = (a: number[]) => [...a].sort((x, y) => x - y);
+  const p = sorted(prev);
+  let best = next, bestCost = Infinity;
+  for (let inv = 0; inv < next.length; inv++) {
+    const v = sorted(next.map((m, i) => (i < inv ? m + 12 : m)));
+    for (const shift of [-12, 0, 12]) {
+      const c = v.map((m) => m + shift);
+      if (c[0] < 45 || c[c.length - 1] > 84) continue;
+      let cost = 0;
+      for (let i = 0; i < c.length; i++) cost += Math.abs(c[i] - p[Math.min(i, p.length - 1)]);
+      if (cost < bestCost) { bestCost = cost; best = c; }
+    }
+  }
+  return best;
 }
 
 // chord names of the 7 degrees, for the pads ("Am", "C", "Bdim")
@@ -93,13 +118,17 @@ export function degreeNames(deck: Deck): string[] {
 // the song's own chord around song time t: the notes of the "other" stem are weighed by how long they sound in that
 // beat, every triad of the key gets a score (root counts double), the best one wins; a beat with nothing clear keeps
 // the chord before it, so the synth does not flicker. One answer per beat, cached.
-const chordCache = new WeakMap<Deck, { beat: number; chord: number[]; prev: number[] }>();
-export function chordAt(deck: Deck, t: number): number[] {
+const chordCache = new WeakMap<Deck, { beat: number; degree: number }>();
+export function chordAt(deck: Deck, t: number, color: ChordColor = "triad"): number[] {
+  return degreeChord(deck, chordDegreeAt(deck, t), 48, color);
+}
+// which degree of the key the song is on around t (see chordAt)
+export function chordDegreeAt(deck: Deck, t: number): number {
   const { pcs } = jamScale(deck);
   const beatLen = deck.bpm > 0 ? 60 / deck.bpm : 0.5;
   const beat = Math.floor((t - deck.beatGridOffset) / beatLen);
   const cached = chordCache.get(deck);
-  if (cached && cached.beat === beat) return cached.chord;
+  if (cached && cached.beat === beat) return cached.degree;
   const from = deck.beatGridOffset + beat * beatLen, to = from + beatLen;
   const shift = heardShift(deck);
   const w = new Array<number>(12).fill(0);
@@ -117,10 +146,9 @@ export function chordAt(deck: Deck, t: number): number[] {
     const score = 2 * w[pcs[deg]] + w[pcs[(deg + 2) % 7]] + w[pcs[(deg + 4) % 7]];
     if (score > bestScore) { bestScore = score; best = deg; }
   }
-  const prev = cached?.chord ?? degreeChord(deck, 0);
-  const chord = best >= 0 && bestScore > beatLen * 0.25 ? degreeChord(deck, best) : prev;
-  chordCache.set(deck, { beat, chord, prev });
-  return chord;
+  const degree = best >= 0 && bestScore > beatLen * 0.25 ? best : cached?.degree ?? 0;
+  chordCache.set(deck, { beat, degree });
+  return degree;
 }
 
 // ---- one scheduler for every stem module: 30 ms tick, 0.15 s lookahead, song-time windows per deck ----
@@ -171,4 +199,7 @@ export function selfTest(): void {
   assert(chordAt(song, 0.1).join() === "48,52,55", "C major on beat 1");
   assert(chordAt(song, 0.7).join() === "50,53,57", "D minor on beat 2");
   assert(chordAt(song, 1.2).join() === "50,53,57", "a stray note keeps D minor");
+  assert(degreeChord(fake, 0, 48, "seventh").join() === "57,60,64,67", "Am7");
+  assert(degreeChord(fake, 0, 48, "ninth").join() === "57,60,64,67,71", "Am9");
+  assert(voiceLead([60, 64, 67], [65, 69, 72]).join() === "60,65,69", "C to F moves to its second inversion");
 }

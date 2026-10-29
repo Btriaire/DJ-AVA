@@ -2,7 +2,8 @@
 import { useReducer } from "react";
 import type { DJEngine } from "@/lib/audio/engine";
 import { jamModules, type ArpShape, type SynthMode } from "@/lib/audio/jamModules";
-import { degreeNames } from "@/lib/audio/stemJam";
+import { degreeNames, type ChordColor } from "@/lib/audio/stemJam";
+import type { SynthPatch } from "@/lib/audio/jamVoices";
 import { Knob } from "../Knob";
 import { JamPads, JamSeg, JamShell, useJamRefresh } from "./JamKit";
 import { KEY_ROWS } from "./jamKeys";
@@ -21,13 +22,17 @@ export function HarmoSynthPanel({ engine }: { engine: DJEngine }) {
     <JamShell title="Synth" tag="dans la tonalité · stem autre" color={C} status={m.status()} deckName={m.deck() === engine.deckA ? "A" : "B"} pref={m.pref} onPref={(p) => { m.set("pref", p); bump(); }} lit={() => m.lit()} warning={m.warning()} onReset={() => { m.reset(); bump(); }} stemsOff={m.canEnableStems()} stemsLoading={m.stemsLoading()} onEnableStems={() => { void m.enableStems(); bump(); }}>
       <div className="flex flex-wrap items-end gap-4">
         <JamSeg label="Jeu" color={C} value={m.mode} options={[["off", "Off"], ["arp", "Arpège"], ["stab", "Stabs"], ["pad", "Nappe"]] as const} onChange={(v: SynthMode) => { m.set("mode", v); bump(); }} />
+        <JamSeg label="Son" color={C} value={m.patch} options={[["pluck", "Pluck"], ["supersaw", "Supersaw"], ["organ", "Orgue"], ["keys", "Keys"], ["brass", "Cuivres"]] as const} onChange={(v: SynthPatch) => { m.setPatch(v); bump(); }} />
+        <JamSeg label="Couleur" color={C} value={m.color} options={[["triad", "Triade"], ["seventh", "7e"], ["ninth", "9e"]] as const} onChange={(v: ChordColor) => { m.set("color", v); bump(); }} />
         <JamSeg label="Forme" color={C} value={m.shape} options={[["up", "Montant"], ["down", "Descendant"], ["updown", "Aller-retour"], ["random", "Hasard"], ["gate", "Gate trance"]] as const} onChange={(v: ArpShape) => { m.set("shape", v); bump(); }} />
         <JamSeg label="Pas" color={C} value={String(m.rate)} options={[["0.5", "1/8"], ["0.25", "1/16"]] as const} onChange={(v) => { m.set("rate", v === "0.5" ? 0.5 : 0.25); bump(); }} />
         <JamSeg label="Octave" color={C} value={String(m.octave)} options={[["-1", "-1"], ["0", "0"], ["1", "+1"]] as const} onChange={(v) => { m.set("octave", Number(v)); bump(); }} />
+        <JamSeg label="Pompe" color={C} value={m.pumpOn ? "on" : "off"} options={[["off", "Off"], ["on", "Sur les kicks"]] as const} onChange={(v) => { m.set("pumpOn", v === "on"); bump(); }} />
       </div>
       <div className="flex flex-wrap justify-around gap-2">
         <Knob label="NIVEAU" value={m.level} min={0} max={1.5} defaultValue={1} color={C} size={46} led format={pct} onChange={(v) => { m.setLevel(v); bump(); }} />
         <Knob label="TIMBRE" value={m.tone} min={0} max={1} defaultValue={0.55} color={C} size={46} led format={pct} onChange={(v) => { m.setTone(v); bump(); }} />
+        <Knob label="ÉCHO" value={m.echo} min={0} max={1} defaultValue={0} color={C} size={46} led format={pct} onChange={(v) => { m.setEcho(v); bump(); }} />
         <Knob label="ORIGINAL" value={m.otherLevel} min={0} max={1.4} defaultValue={1} color={C} size={46} led format={pct} onChange={(v) => { m.setOtherLevel(v); bump(); }} />
       </div>
       <JamPads m={m} list={m.pads(names)} color={C} className="grid grid-cols-7 gap-1.5" keys={KEY_ROWS.synth} />
@@ -51,7 +56,7 @@ export function HarmoSynthPanel({ engine }: { engine: DJEngine }) {
           ))}
         </span>
       </div>
-      <p className="text-[10px] text-neutral-500">Les accords de la tonalité du morceau : impossible de jouer faux. Sans accord tenu, le synthé suit les accords du morceau.</p>
+      <p className="text-[10px] text-neutral-500">Les accords de la tonalité du morceau : impossible de jouer faux. Sans accord tenu, le synthé suit les accords du morceau, chaque accord placé au plus près du précédent. 7e et 9e ajoutent de la couleur, ÉCHO une répétition à la croche pointée.</p>
     </JamShell>
   );
 }
