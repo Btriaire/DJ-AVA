@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import * as Tone from 'tone';
 import type { DJEngine } from '@/lib/audio/engine';
 import type { Recorder } from '@/lib/audio/Recorder';
+import { useFrameLoop } from './frameLoop';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    SOLAR 42F — Drone Ambient Machine.
@@ -223,30 +224,24 @@ export default function Solar42F({ engine, embedded = false }: Props) {
   }, [voices, detune]);
 
   /* ── oscilloscope ── */
-  useEffect(() => {
-    let raf = 0;
-    const draw = () => {
-      const cv = canvasRef.current, an = analyserRef.current;
-      if (cv && an) {
-        const ctx = cv.getContext('2d')!;
-        const w = cv.width, h = cv.height;
-        const data = an.getValue() as Float32Array;
-        ctx.fillStyle = '#120a04'; ctx.fillRect(0, 0, w, h);
-        ctx.strokeStyle = '#ff9d2e'; ctx.lineWidth = 1.5;
-        ctx.shadowColor = '#ff9d2e'; ctx.shadowBlur = 6;
-        ctx.beginPath();
-        for (let i = 0; i < data.length; i++) {
-          const x = (i / data.length) * w;
-          const y = h / 2 + Math.max(-0.48, Math.min(0.48, (data[i] as number) * 2.2)) * h;
-          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-        }
-        ctx.stroke(); ctx.shadowBlur = 0;
-      }
-      raf = requestAnimationFrame(draw);
-    };
-    raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
-  }, []);
+  useFrameLoop(canvasRef, () => {
+    const cv = canvasRef.current, an = analyserRef.current;
+    if (!cv || !an) return;
+    const ctx = cv.getContext('2d')!;
+    const w = cv.width, h = cv.height;
+    const data = an.getValue() as Float32Array;
+    ctx.fillStyle = '#120a04'; ctx.fillRect(0, 0, w, h);
+    const path = new Path2D();
+    for (let i = 0; i < data.length; i++) {
+      const x = (i / data.length) * w;
+      const y = h / 2 + Math.max(-0.48, Math.min(0.48, data[i] * 2.2)) * h;
+      if (i === 0) path.moveTo(x, y); else path.lineTo(x, y);
+    }
+    // glow as a wide faint stroke under the trace (shadowBlur costs a blur pass every frame)
+    ctx.strokeStyle = '#ff9d2e';
+    ctx.globalAlpha = 0.25; ctx.lineWidth = 4.5; ctx.stroke(path);
+    ctx.globalAlpha = 1; ctx.lineWidth = 1.5; ctx.stroke(path);
+  });
 
   /* ── chord / preset helpers ── */
   const applyChord = useCallback((r: number, o: number, c: keyof typeof CHORDS) => {

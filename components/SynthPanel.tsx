@@ -5,6 +5,7 @@ import { Wave } from "@/lib/audio/Synth";
 import { DJEngine, encodeWav } from "@/lib/audio/engine";
 import { idbPutBlob, idbGetBlob, idbDelBlob } from "@/lib/library";
 import { Knob } from "./Knob";
+import { useFrameLoop } from "./frameLoop";
 import { WaveTrimmer } from "./WaveTrimmer";
 import { MidiButton } from "./MidiButton";
 
@@ -70,48 +71,42 @@ const NOTE_NAME = (m: number) => KEYS.find((k) => k.midi === m)?.name ?? "?";
 // clearly even while idle (it just flat-lines on the centre when silent).
 function SynthScope({ analyser, color = "#ffcc00" }: { analyser: AnalyserNode; color?: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
+  const bufRef = useRef<Float32Array<ArrayBuffer> | null>(null);
+  useFrameLoop(ref, () => {
     const cv = ref.current;
     const ctx = cv?.getContext("2d");
     if (!cv || !ctx) return;
-    const buf = new Float32Array(analyser.fftSize);
-    let raf = 0;
-    const draw = () => {
-      raf = requestAnimationFrame(draw);
-      analyser.getFloatTimeDomainData(buf);
-      const w = cv.width;
-      const h = cv.height;
-      ctx.fillStyle = "#06120d";
-      ctx.fillRect(0, 0, w, h);
-      ctx.strokeStyle = "rgba(52,211,153,0.16)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(0, h / 2);
-      ctx.lineTo(w, h / 2);
-      ctx.stroke();
-      // trigger on the first rising zero-crossing to stabilise the trace
-      let start = 0;
-      for (let i = 1; i < buf.length / 2; i++) {
-        if (buf[i - 1] < 0 && buf[i] >= 0) { start = i; break; }
-      }
-      const span = Math.min(buf.length - start, Math.floor(buf.length / 2));
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1.6;
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 4;
-      ctx.beginPath();
-      for (let i = 0; i < span; i++) {
-        const x = (i / span) * w;
-        const y = h / 2 - buf[start + i] * (h / 2) * 0.9;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-    };
-    draw();
-    return () => cancelAnimationFrame(raf);
-  }, [analyser, color]);
+    if (bufRef.current?.length !== analyser.fftSize) bufRef.current = new Float32Array(analyser.fftSize);
+    const buf = bufRef.current;
+    analyser.getFloatTimeDomainData(buf);
+    const w = cv.width;
+    const h = cv.height;
+    ctx.fillStyle = "#06120d";
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = "rgba(52,211,153,0.16)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, h / 2);
+    ctx.lineTo(w, h / 2);
+    ctx.stroke();
+    // trigger on the first rising zero-crossing to stabilise the trace
+    let start = 0;
+    for (let i = 1; i < buf.length / 2; i++) {
+      if (buf[i - 1] < 0 && buf[i] >= 0) { start = i; break; }
+    }
+    const span = Math.min(buf.length - start, Math.floor(buf.length / 2));
+    const path = new Path2D();
+    for (let i = 0; i < span; i++) {
+      const x = (i / span) * w;
+      const y = h / 2 - buf[start + i] * (h / 2) * 0.9;
+      if (i === 0) path.moveTo(x, y);
+      else path.lineTo(x, y);
+    }
+    // glow as a wide faint stroke under the trace (shadowBlur costs a blur pass every frame)
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.25; ctx.lineWidth = 4.8; ctx.stroke(path);
+    ctx.globalAlpha = 1; ctx.lineWidth = 1.6; ctx.stroke(path);
+  });
   return <canvas ref={ref} width={150} height={58} className="h-full w-full" />;
 }
 

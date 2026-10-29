@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef } from "react";
+import { useFrameLoop } from "./frameLoop";
 
 interface Props {
   buffer: AudioBuffer;
@@ -57,38 +58,32 @@ export function WaveTrimmer({ buffer, start, end, onChange, color = "#ffcc00", h
 
   // live playhead overlay — animated on its own rAF so it doesn't redraw the
   // (expensive) waveform every frame. Draws one moving cursor per sounding voice.
-  useEffect(() => {
-    if (!playheads) return;
+  // the waveform canvas is the visibility target: the overlay mounts only with playheads
+  useFrameLoop(canvasRef, () => {
     const cv = playRef.current;
-    if (!cv) return;
+    if (!playheads || !cv) return;
     const ctx = cv.getContext("2d")!;
-    let raf = 0;
-    const draw = () => {
-      raf = requestAnimationFrame(draw);
-      const w = cv.clientWidth || 1;
-      const h = height;
-      const dpr = window.devicePixelRatio || 1;
-      if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
-        cv.width = w * dpr;
-        cv.height = h * dpr;
-      }
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, w, h);
-      const ps = playheads();
-      for (const p of ps) {
-        const x = p * w;
-        ctx.shadowColor = color;
-        ctx.shadowBlur = 7;
-        ctx.fillStyle = color;
-        ctx.fillRect(x - 1, 0, 2, h);
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = "rgba(255,255,255,0.9)";
-        ctx.fillRect(x - 0.4, 0, 0.9, h);
-      }
-    };
-    draw();
-    return () => cancelAnimationFrame(raf);
-  }, [playheads, color, height]);
+    const w = cv.clientWidth || 1;
+    const h = height;
+    const dpr = window.devicePixelRatio || 1;
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+      cv.width = w * dpr;
+      cv.height = h * dpr;
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const ps = playheads();
+    ctx.fillStyle = color;
+    for (const p of ps) {
+      const x = p * w;
+      ctx.globalAlpha = 0.3;
+      ctx.fillRect(x - 3, 0, 6, h);
+      ctx.globalAlpha = 1;
+      ctx.fillRect(x - 1, 0, 2, h);
+    }
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    for (const p of ps) ctx.fillRect(p * w - 0.4, 0, 0.9, h);
+  });
 
   const posFromEvent = (clientX: number) => {
     const r = wrapRef.current!.getBoundingClientRect();

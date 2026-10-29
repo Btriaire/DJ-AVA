@@ -4,6 +4,7 @@ import { useIsClient } from "@/lib/useIsClient";
 import { DJEngine } from "@/lib/audio/engine";
 import { loadPadPresets, savePadPresets, type Sampler } from "@/lib/audio/Sampler";
 import { Knob } from "./Knob";
+import { useFrameLoop } from "./frameLoop";
 
 interface Props {
   engine: DJEngine;
@@ -315,17 +316,19 @@ export function SamplerPanel({ engine }: Props) {
     localStorage.setItem("djsynth.sampler.vol", String(sampler.getVolume()));
   };
 
-  // animate the playhead while the sequencer runs
-  useEffect(() => {
-    if (!seqOn) return;
-    let raf = 0;
-    const loop = () => {
+  // re-render on each new step while the sequencer runs, not every frame
+  const rootRef = useRef<HTMLDivElement>(null);
+  const seqOnRef = useRef(seqOn);
+  const lastStep = useRef(-1);
+  useEffect(() => { seqOnRef.current = seqOn; }, [seqOn]);
+  useFrameLoop(rootRef, () => {
+    if (!seqOnRef.current) return;
+    const s = sampler.currentStep();
+    if (s !== lastStep.current) {
+      lastStep.current = s;
       rerender();
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [seqOn]);
+    }
+  });
 
   const trigger = (i: number) => {
     sampler.play(i);
@@ -379,7 +382,7 @@ export function SamplerPanel({ engine }: Props) {
   };
 
   return (
-    <div className="zoom-zone hw-screwed spd-chassis flex flex-col gap-3 p-4">
+    <div ref={rootRef} className="zoom-zone hw-screwed spd-chassis flex flex-col gap-3 p-4">
       {/* ===== tools strip (moved up: LCD + per-pad FX knobs + REV/LOOP/GRAB) ===== */}
       <div className="spd-strip order-1 flex items-stretch gap-3 p-2">
         {/* LCD */}
