@@ -72,7 +72,7 @@ const VIDEO_COLORS: Record<VideoLevel | "unknown", string> = {
 
 // tray table columns: check, sleeve, title, BPM, key, length, stems, actions
 // (phone: check, sleeve, title, stems — BPM, key and length go under the title)
-const ROW_COLS = "[grid-template-columns:28px_36px_minmax(0,1fr)_auto] sm:[grid-template-columns:28px_36px_minmax(0,1fr)_140px_64px_44px_112px_64px]";
+const ROW_COLS = "[grid-template-columns:28px_36px_minmax(0,1fr)_auto] sm:[grid-template-columns:28px_36px_minmax(0,1fr)_56px_60px_112px_64px]";
 const LIST_ACCENTS = ["#22d3ee", "#34d399", "#ffcc00", "#a78bfa", "#f97316", "#f472b6"];
 const DUR_OPTIONS = DUR_FILTERS.map((f) => [f.key, f.label] as const);
 const RESULT_AUDIO_OPTIONS = [["all", "Toutes"], ["HQ", "HQ et plus"], ["HR", "HiRes"]] as const;
@@ -758,7 +758,8 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
         <Cover art={track.art} name={track.name} camelot={track.camelot} size={36} />
         <div className="min-w-0">
           <p className="truncate text-[13px] font-bold text-neutral-50" title={track.name}>{displayName(track.name).title}</p>
-          <p className="truncate text-[11px] text-neutral-400">{[displayName(track.name).artist, sub || SRC_BADGE[track.source]?.label || track.source].filter(Boolean).join(" · ")}</p>
+          <p className="truncate text-[11px] text-neutral-400">{[displayName(track.name).artist, fmtDur(track.durationSec), sub || SRC_BADGE[track.source]?.label || track.source].filter(Boolean).join(" · ")}</p>
+          <div className="mt-0.5 max-w-[180px] max-sm:hidden"><TempoRuler bpm={track.bpm} median={trayMedianBpm} /></div>
           <div className="mt-1 flex items-center gap-2 sm:hidden">
             <BpmChip bpm={track.bpm} estimated={track.bpmEstimated} />
             <KeyChip camelot={track.camelot} />
@@ -775,15 +776,11 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
             </span>
           </div>
         </div>
-        <span className="flex items-center gap-2 max-sm:hidden">
-          <span className="min-w-0 flex-1"><TempoRuler bpm={track.bpm} median={trayMedianBpm} /></span>
-          <BpmChip bpm={track.bpm} estimated={track.bpmEstimated} />
-        </span>
+        <span className="text-right max-sm:hidden"><BpmChip bpm={track.bpm} estimated={track.bpmEstimated} /></span>
         <span className="flex items-center gap-1 max-sm:hidden">
-          <MiniKeyWheel camelot={track.camelot} size={24} label={false} />
+          <MiniKeyWheel camelot={track.camelot} size={22} label={false} />
           <span className="font-mono text-[11px] font-black" style={{ color: camelotColour(track.camelot) ?? "#737373" }}>{track.camelot ?? "?"}</span>
         </span>
-        <span className="text-right font-mono text-[11px] tabular-nums text-neutral-400 max-sm:hidden">{fmtDur(track.durationSec)}</span>
         <span className="flex justify-center"><StemPill info={stemOf(track.id)} onPrepare={() => queueStems([track])} /></span>
         <span className="prep-row-actions flex items-center justify-end gap-1 max-sm:hidden">
           {needsAnalysis && (
@@ -1360,9 +1357,8 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
                     <span />
                     <span />
                     <span>Titre</span>
-                    <span>Tempo</span>
+                    <span className="text-right">BPM</span>
                     <span>Ton.</span>
-                    <span className="text-right">Durée</span>
                     <span className="text-center">Stems</span>
                     <span />
                   </div>
