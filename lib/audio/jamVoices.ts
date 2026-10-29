@@ -562,3 +562,96 @@ export class ChoirVoice {
   }
 }
 
+// a build-up: rising noise and a climbing saw that land exactly on a bar (MaRuche/Falken)
+export class Riser {
+  readonly out: GainNode;
+  private ctx: BaseAudioContext;
+  private noiseGain: GainNode | null = null;
+  private sawGain: GainNode | null = null;
+  private noiseSource: AudioBufferSourceNode | null = null;
+  private sawSource: OscillatorNode | null = null;
+
+  constructor(ctx: BaseAudioContext) {
+    this.ctx = ctx;
+    this.out = new GainNode(ctx);
+    this.out.gain.value = 0.5;
+  }
+
+  play(when: number, seconds: number, rootMidi: number): void {
+    if (this.noiseGain || this.sawGain) this.stop(when);
+
+    const end = when + seconds;
+    const fadeEnd = end + 0.02;
+    const peak = 0.5;
+
+    // Noise setup
+    const noise = new AudioBufferSourceNode(this.ctx, { buffer: getNoiseBuffer(this.ctx), loop: true });
+    const noiseFilter = new BiquadFilterNode(this.ctx, { type: 'bandpass' });
+    this.noiseGain = new GainNode(this.ctx);
+    noise.connect(noiseFilter).connect(this.noiseGain).connect(this.out);
+
+    // Noise automation
+    noise.start(when);
+    noise.stop(fadeEnd);
+    this.noiseGain.gain.setValueAtTime(0, when);
+    this.noiseGain.gain.linearRampToValueAtTime(0.5, end);
+    this.noiseGain.gain.setValueAtTime(peak, end);
+    this.noiseGain.gain.linearRampToValueAtTime(0, fadeEnd);
+
+    // Noise filter automation
+    noiseFilter.frequency.setValueAtTime(400, when);
+    noiseFilter.frequency.exponentialRampToValueAtTime(9000, end);
+    noiseFilter.Q.setValueAtTime(2, when);
+    noiseFilter.Q.linearRampToValueAtTime(8, end);
+
+    // Sawtooth setup
+    const saw = new OscillatorNode(this.ctx, { type: 'sawtooth' });
+    const sawFilter = new BiquadFilterNode(this.ctx, { type: 'lowpass' });
+    this.sawGain = new GainNode(this.ctx);
+    saw.connect(sawFilter).connect(this.sawGain).connect(this.out);
+
+    // Sawtooth automation
+    saw.start(when);
+    saw.stop(fadeEnd);
+    this.sawGain.gain.setValueAtTime(0, when);
+    this.sawGain.gain.linearRampToValueAtTime(0.18, end);
+    this.sawGain.gain.setValueAtTime(0.18, end);
+    this.sawGain.gain.linearRampToValueAtTime(0, fadeEnd);
+
+    // Sawtooth pitch automation
+    const startFreq = mtof(rootMidi);
+    const endFreq = mtof(rootMidi + 24);
+    saw.frequency.setValueAtTime(startFreq, when);
+    saw.frequency.exponentialRampToValueAtTime(endFreq, end);
+
+    // Sawtooth filter automation
+    sawFilter.frequency.setValueAtTime(600, when);
+    sawFilter.frequency.linearRampToValueAtTime(8000, end);
+
+    // Store references
+    this.noiseSource = noise;
+    this.sawSource = saw;
+  }
+
+  stop(at: number): void {
+    const fadeEnd = at + 0.03;
+    const stopTime = at + 0.04;
+
+    if (this.noiseGain) {
+      this.noiseGain.gain.cancelScheduledValues(at);
+      this.noiseGain.gain.setValueAtTime(this.noiseGain.gain.value, at);
+      this.noiseGain.gain.linearRampToValueAtTime(0, fadeEnd);
+    }
+
+    if (this.sawGain) {
+      this.sawGain.gain.cancelScheduledValues(at);
+      this.sawGain.gain.setValueAtTime(this.sawGain.gain.value, at);
+      this.sawGain.gain.linearRampToValueAtTime(0, fadeEnd);
+    }
+
+    if (this.noiseSource) this.noiseSource.stop(stopTime);
+    if (this.sawSource) this.sawSource.stop(stopTime);
+
+    this.noiseGain = this.sawGain = this.noiseSource = this.sawSource = null;
+  }
+}

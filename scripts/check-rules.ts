@@ -88,3 +88,8 @@ jamArpTest();
 jamProgTest();
 jamSweepTest();
 console.log("check-rules jam arp, progressions, sweep ok");
+import { selfTest as jamFillTest } from "../lib/audio/jamFill";
+import { selfTest as jamChorusTest } from "../lib/audio/jamChorus";
+jamFillTest();
+jamChorusTest();
+console.log("check-rules jam fills, chorus ok");

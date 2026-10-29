@@ -6,10 +6,12 @@ import type { Deck } from "./Deck";
 import type { FXRack } from "./FXRack";
 import type { FxName } from "./fxTypes";
 import { BEAT_DIVS } from "./fxTypes";
-import { BassVoice, ChoirVoice, DrumKit, PolySynth, SubVoice, type BassCharacter, type SynthPatch } from "./jamVoices";
+import { BassVoice, ChoirVoice, DrumKit, PolySynth, Riser, SubVoice, type BassCharacter, type SynthPatch } from "./jamVoices";
 import { arpNoteAt, arpSequence, type ArpShape as ArpOrder } from "./jamArp";
 import { progression, type ProgressionName } from "./jamProgressions";
 import { SyncedSweep } from "./jamSweep";
+import { StereoChorus } from "./jamChorus";
+import { fillNote, isFillBar, type FillEvery } from "./jamFill";
 import { degreeNames } from "./stemJam";
 import { chordAt, chordDegreeAt, degreeChord, heardShift, voiceLead, type ChordColor, jamDeck, jamScale, jamStem, nextGrid, onJamTick, snapToScale, songToCtx, spb, type JamDeckPref, type JamRole } from "./stemJam";
 
@@ -31,6 +33,15 @@ function lowerBound<T extends number[]>(arr: T[], t: number): number {
   let lo = 0, hi = arr.length;
   while (lo < hi) { const mid = (lo + hi) >> 1; if (arr[mid][0] < t) lo = mid + 1; else hi = mid; }
   return lo;
+}
+
+const SLOTS = "djsynth.jam.slots.v1";
+function loadSlots(role: string): (Record<string, unknown> | null)[] {
+  try { const all = JSON.parse(localStorage.getItem(SLOTS) ?? "{}") as Record<string, (Record<string, unknown> | null)[]>; const l = all[role]; if (Array.isArray(l) && l.length === 4) return l; } catch { /* no scenes yet */ }
+  return [null, null, null, null];
+}
+function saveSlots(role: string, slots: (Record<string, unknown> | null)[]) {
+  try { const all = JSON.parse(localStorage.getItem(SLOTS) ?? "{}") as Record<string, unknown>; all[role] = slots; localStorage.setItem(SLOTS, JSON.stringify(all)); } catch { /* storage blocked: scenes last the session */ }
 }
 
 abstract class JamModule {
@@ -123,6 +134,38 @@ abstract class JamModule {
     jamChanged();
   }
   protected abstract resetFields(): void;
+  // SCENES A-D: the whole module (sound and what plays) saved in one click, recalled on the next bar
+  protected sceneKeys(): string[] { return this.keep(); }
+  protected afterScene(): void {}
+  private slotList: (Record<string, unknown> | null)[] | null = null;
+  private get slots(): (Record<string, unknown> | null)[] { return (this.slotList ??= loadSlots(this.role)); } // read once, after the constructor set role
+  private armed: number | null = null;
+  slotNames(): (string | null)[] { return this.slots.map((o, i) => (o ? "ABCD"[i] : null)); }
+  armedSlot(): number | null { return this.armed; }
+  saveSlot(i: number) {
+    const o: Record<string, unknown> = {};
+    for (const k of this.sceneKeys()) o[k] = JSON.parse(JSON.stringify((this as unknown as Record<string, unknown>)[k] ?? null));
+    this.slots[i] = o;
+    saveSlots(this.role, this.slots);
+    jamChanged();
+  }
+  clearSlot(i: number) { this.slots[i] = null; saveSlots(this.role, this.slots); jamChanged(); }
+  loadSlot(i: number) {
+    const o = this.slots[i];
+    if (!o) return;
+    const apply = () => {
+      for (const k of this.sceneKeys()) if (k in o && o[k] !== null) (this as unknown as Record<string, unknown>)[k] = o[k];
+      this.afterScene();
+      this.armed = null;
+      jamChanged();
+    };
+    const d = this.deck();
+    if (!d.playing || !d.bpm) return apply();
+    this.armed = i;
+    jamChanged();
+    const wait = (nextGrid(d, 4).at - d.ctx.currentTime) * 1000; // on the next bar
+    setTimeout(apply, Math.max(0, wait - 15));
+  }
   padActive(p: PadDef): boolean { return p.isOn ? p.isOn() : this.pressed.has(p.id); }
   // a pad pressed on screen or on the keyboard: hold pads run while pressed, toggle pads flip on each press
   press(id: string, on: boolean, list: PadDef[] = this.pads()) {
@@ -186,6 +229,8 @@ export class BassLab extends JamModule {
   lineLevel = 0.8;
   lineTone = 0.3;
   lineEnv = 0.5;
+  fillEvery: FillEvery = 0; // a turnaround on the last beat of every 4th or 8th bar
+  private linePump: GainNode;
   private played: { start: number; end: number; midi: number }[] = []; // the line notes scheduled, in song seconds, for the lane
   pump = false; // the bass ducks on every kick of the song (on every beat when its kicks were never analysed)
   pumpDepth = 0.8;
@@ -199,11 +244,14 @@ export class BassLab extends JamModule {
     this.sub.out.gain.value = 0;
     this.sub.out.connect(this.bus);
     this.lineSynth = new BassVoice(engine.ctx);
-    this.lineSynth.out.connect(this.bus);
+    this.linePump = new GainNode(engine.ctx, { gain: 1 }); // the line breathes with PUMP like the stem
+    this.lineSynth.out.connect(this.linePump).connect(this.bus);
     onJamTick(engine, (deck, from, to) => this.tick(deck, from, to));
   }
   setSub(v: number) { this.subLevel = v; this.sub.out.gain.value = 0.9 * v; }
-  protected keep() { return ["subOctave", "lineLevel", "lineTone", "lineEnv", "pumpDepth", "wobbleDiv", "characterName"]; }
+  protected keep() { return ["subOctave", "lineLevel", "lineTone", "lineEnv", "pumpDepth", "wobbleDiv", "characterName", "fillEvery"]; }
+  protected sceneKeys() { return [...this.keep(), "subLevel", "line", "pump", "wobble"]; }
+  protected afterScene() { this.setSub(this.subLevel); this.setLineLevel(this.lineLevel); this.setLineTone(this.lineTone); this.setLineEnv(this.lineEnv); this.setWobble(this.wobble, this.wobbleDiv); }
   protected resetFields() {
     this.setSub(0); this.setWobble(0); this.subOctave = -12; this.line = "off"; this.setLineLevel(0.8); this.pump = false;
     if (this.muted) this.toggleMute();
@@ -259,6 +307,14 @@ export class BassLab extends JamModule {
     if (this.muted) { this.volBefore = d.stemVol[i] || 1; d.rampStemVol(i, 0, spb(d)); }
     else d.rampStemVol(i, this.volBefore, spb(d));
   }
+  // the stem and the generated line duck together on a kick
+  private duck(deck: Deck, i: number, at: number, beat: number) {
+    deck.duckStemAt(i, at, this.pumpDepth, beat * 0.45);
+    const g = this.linePump.gain;
+    g.setValueAtTime(1, Math.max(deck.ctx.currentTime, at - 0.002));
+    g.linearRampToValueAtTime(1 - this.pumpDepth, at + 0.005);
+    g.setTargetAtTime(1, at + 0.006, beat * 0.15);
+  }
   // DROP: the sub dives an octave while the bass brakes
   drop(on: boolean) {
     const d = this.deck();
@@ -293,9 +349,17 @@ export class BassLab extends JamModule {
       for (const { t, k } of this.steps(deck, 0.25, from, to)) {
         const i16 = step16(k);
         const acid = this.line === "acid" ? ACID[i16] : undefined;
+        const c = chordAt(deck, t);
+        const fill = isFillBar(barOf(deck, t), this.fillEvery) ? fillNote(c.map((m) => 36 + (((m - c[0]) + 120) % 120) + (((c[0] % 12) + 12) % 12)), i16) : null;
+        if (fill) {
+          const at = songToCtx(deck, t);
+          this.lineSynth.note(fill.midi, at, beat * 0.22, fill.accent ? 1 : 0.85, { accent: fill.accent });
+          this.played.push({ start: t, end: t + beat * 0.22 * Math.max(0.25, deck.playbackRate), midi: fill.midi });
+          this.hit(at);
+          continue;
+        }
         const tone = acid ? acid[0] : this.line === "acid" ? undefined : LINES[this.line][i16];
         if (!tone) continue;
-        const c = chordAt(deck, t);
         const root = 36 + (((c[0] % 12) + 12) % 12); // C2..B2
         const midi = tone === "O" ? root + 12 : tone === "5" ? root + (c[2] - c[0]) : tone === "3" ? root + (c[1] - c[0]) : root;
         const at = songToCtx(deck, t);
@@ -309,8 +373,8 @@ export class BassLab extends JamModule {
       const hits = deck.stemNotes?.drums ?? [];
       if (hits.length) {
         for (let k = lowerBound(hits, from); k < hits.length && hits[k][0] < to; k++)
-          if ((hits[k][2] ?? 0) === 0) deck.duckStemAt(i, songToCtx(deck, hits[k][0]), this.pumpDepth, beat * 0.45);
-      } else for (const { t } of this.steps(deck, 1, from, to)) deck.duckStemAt(i, songToCtx(deck, t), this.pumpDepth, beat * 0.45); // no kicks known: every beat
+          if ((hits[k][2] ?? 0) === 0) this.duck(deck, i, songToCtx(deck, hits[k][0]), beat);
+      } else for (const { t } of this.steps(deck, 1, from, to)) this.duck(deck, i, songToCtx(deck, t), beat); // no kicks known: every beat
     }
   }
 }
@@ -429,6 +493,10 @@ export class HarmoSynth extends JamModule {
   sweepDepth = 0; // the synced filter sweep on the synth
   sweepDiv = 1; // one sweep every this many beats
   readonly sweep: SyncedSweep;
+  readonly chorus: StereoChorus;
+  readonly riser: Riser;
+  width = 0; // stereo chorus 0..1
+  riserBars: 2 | 4 | 8 = 4;
   rate: 0.5 | 0.25 = 0.25; // arp step in beats
   octave = 0; // -1, 0, +1
   color: ChordColor = "triad";
@@ -452,7 +520,11 @@ export class HarmoSynth extends JamModule {
     this.pumpGain = new GainNode(ctx, { gain: 1 });
     this.sweep = new SyncedSweep(ctx);
     this.synth.out.connect(this.sweep.input);
-    this.sweep.output.connect(this.pumpGain).connect(this.bus);
+    this.chorus = new StereoChorus(ctx);
+    this.sweep.output.connect(this.chorus.input);
+    this.chorus.output.connect(this.pumpGain).connect(this.bus);
+    this.riser = new Riser(ctx);
+    this.riser.out.connect(this.bus);
     this.echoIn = new GainNode(ctx, { gain: 0 });
     this.delay = new DelayNode(ctx, { maxDelayTime: 2, delayTime: 0.375 });
     const fb = new GainNode(ctx, { gain: 0.38 }), tone = new BiquadFilterNode(ctx, { type: "lowpass", frequency: 3200 });
@@ -469,6 +541,17 @@ export class HarmoSynth extends JamModule {
   get patch(): SynthPatch { return this.synth.patch; }
   setPatch(p: SynthPatch) { this.synth.patch = p; }
   setEcho(v: number) { this.echo = v; this.echoIn.gain.value = 0.55 * v; }
+  setWidth(v: number) { this.width = v; this.chorus.setWidth(v); }
+  // RISER: noise and a climbing saw from the next bar, landing on the bar after riserBars bars
+  playRiser(on: boolean) {
+    const d = this.deck();
+    if (!on) { this.riser.stop(d.ctx.currentTime); return; }
+    if (this.stem(d) < 0 || !d.bpm) return;
+    this.route(d);
+    const at = d.playing ? nextGrid(d, 4).at : d.ctx.currentTime + 0.02;
+    this.riser.play(at, this.riserBars * 4 * spb(d), 48 + jamScale(d).root);
+    this.hit(at);
+  }
   setSweep(depth: number, div = this.sweepDiv) { this.sweepDepth = depth; this.sweepDiv = div; this.sweep.setDepth(depth); this.sweep.setRate(SyncedSweep.rateFor(this.deck().bpm, div)); }
   // a ready-made progression goes into the chord loop and plays at once, from the next bar
   loadProgression(name: ProgressionName) {
@@ -500,7 +583,9 @@ export class HarmoSynth extends JamModule {
   pads(names: string[] = []): PadDef[] {
     return ["I", "II", "III", "IV", "V", "VI", "VII"].map((r, i) => ({ id: `deg${i}`, label: names[i] ?? r, sub: r, mode: "hold" as const, run: (on: boolean) => { if (on) this.hold(i); else if (this.degree === i) this.hold(null); } }));
   }
-  protected keep() { return ["shape", "rate", "octave", "color", "echo", "patchName", "arpOctaves", "gateLen", "sweepDiv"]; }
+  protected keep() { return ["shape", "rate", "octave", "color", "echo", "patchName", "arpOctaves", "gateLen", "sweepDiv", "width", "riserBars"]; }
+  protected sceneKeys() { return [...this.keep(), "mode", "pumpOn", "sweepDepth"]; }
+  protected afterScene() { this.setEcho(this.echo); this.setSweep(this.sweepDepth, this.sweepDiv); this.setWidth(this.width); }
   // the sound, kept between sessions through this field (the synth itself holds the live one)
   get patchName(): string { return this.synth.patch; }
   set patchName(v: string) { if (["pluck", "supersaw", "organ", "keys", "brass"].includes(v)) this.synth.patch = v as SynthPatch; }
@@ -508,7 +593,7 @@ export class HarmoSynth extends JamModule {
     this.mode = "off"; this.shape = "up"; this.rate = 0.25; this.octave = 0; this.degree = null;
     this.loop = [-1, -1, -1, -1]; this.loopState = "off"; this.setLevel(1); this.setTone(0.55); this.setOtherLevel(1);
     this.color = "triad"; this.setEcho(0); this.pumpOn = false; this.setPatch("pluck");
-    this.arpOctaves = 1; this.gateLen = 0.9; this.setSweep(0, 1);
+    this.arpOctaves = 1; this.gateLen = 0.9; this.setSweep(0, 1); this.setWidth(0); this.riserBars = 4;
   }
   warning(): string | null {
     return this.mode !== "off" && !this.deck().stemNotes?.other?.length ? "Accords du morceau non analysés : le synthé reste sur l'accord de la tonique (les pads marchent)." : null;
@@ -532,7 +617,9 @@ export class HarmoSynth extends JamModule {
     if (this.loopState === "rec") this.loop[this.loopBar()] = degree;
     this.route(d);
     const at = d.ctx.currentTime + 0.01;
-    this.synth.chord(degreeChord(d, degree, 48 + 12 * this.octave, this.color), at, spb(d) * 0.5, 0.9, "stab", 0.008);
+    const shift = 12 * this.octave;
+    this.voicing = voiceLead(this.voicing ? this.voicing.map((m) => m - shift) : null, degreeChord(d, degree, 48, this.color)).map((m) => m + shift);
+    this.synth.chord(this.voicing, at, spb(d) * 0.5, 0.9, "stab", 0.008);
     this.hit(at);
   }
   // the chord to play at t: the pad held, else the loop's bar, else the song's own chord; in the chosen colour
@@ -824,7 +911,7 @@ export function jamModules(engine: DJEngine) {
       const o = JSON.parse(localStorage.getItem(STORE) ?? "{}") as Record<string, Record<string, unknown>> & { quant?: number; bars?: number };
       four.bass.restore(o.bass); four.vox.restore(o.vox); four.synth.restore(o.synth); four.beat.restore(o.beat);
       four.bass.setLineLevel(four.bass.lineLevel); four.bass.setLineTone(four.bass.lineTone); four.bass.setLineEnv(four.bass.lineEnv);
-      four.synth.setEcho(four.synth.echo);
+      four.synth.setEcho(four.synth.echo); four.synth.setWidth(four.synth.width);
       if (o.quant === 0 || o.quant === 0.25 || o.quant === 1 || o.quant === 4) jamSettings.quant = o.quant;
       if (o.bars === 2 || o.bars === 4 || o.bars === 8) m.macro.setBars(o.bars);
       saved = localStorage.getItem(STORE) ?? "";

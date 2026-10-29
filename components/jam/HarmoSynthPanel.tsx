@@ -1,5 +1,5 @@
 "use client";
-import { useReducer } from "react";
+import { useReducer, useState } from "react";
 import type { DJEngine } from "@/lib/audio/engine";
 import { jamModules, type ArpShape, type SynthMode } from "@/lib/audio/jamModules";
 import { degreeNames, type ChordColor } from "@/lib/audio/stemJam";
@@ -9,6 +9,7 @@ import { Knob } from "../Knob";
 import { JamPads, JamSeg, JamShell, useJamRefresh } from "./JamKit";
 import { KEY_ROWS } from "./jamKeys";
 import { ChordStrip } from "./ChordStrip";
+import { JamSlots } from "./JamSlots";
 
 const C = "var(--jam-synth)";
 const pct = (v: number) => `${Math.round(v * 100)} %`;
@@ -17,11 +18,17 @@ export function HarmoSynthPanel({ engine }: { engine: DJEngine }) {
   const m = jamModules(engine).synth;
   useJamRefresh();
   const [, bump] = useReducer((x: number) => x + 1, 0);
+  const [riser, setRiser] = useState(false);
   const names = degreeNames(m.deck());
 
   return (
     <JamShell title="Synth" tag="dans la tonalité · stem autre" color={C} status={m.status()} deckName={m.deck() === engine.deckA ? "A" : "B"} pref={m.pref} onPref={(p) => { m.set("pref", p); bump(); }} lit={() => m.lit()} warning={m.warning()} onReset={() => { m.reset(); bump(); }} stemsOff={m.canEnableStems()} stemsLoading={m.stemsLoading()} onEnableStems={() => { void m.enableStems(); bump(); }}>
-      <ChordStrip data={() => m.chordView()} color="oklch(0.80 0.12 180)" />
+      <div className="flex items-start gap-3">
+  <div className="flex-1">
+    <ChordStrip data={() => m.chordView()} color="oklch(0.80 0.12 180)" />
+  </div>
+  <JamSlots m={m} color={C} />
+</div>
       <div className="flex flex-wrap items-end gap-4">
         <JamSeg label="Jeu" color={C} value={m.mode} options={[["off","Off"],["arp","Arpège"],["stab","Stabs"],["pad","Nappe"]] as const} onChange={(v: SynthMode) => { m.set("mode", v); bump(); }} />
         <JamSeg label="Son" color={C} value={m.patch} options={[["pluck","Pluck"],["supersaw","Supersaw"],["organ","Orgue"],["keys","Keys"],["brass","Cuivres"]] as const} onChange={(v: SynthPatch) => { m.setPatch(v); bump(); }} />
@@ -39,6 +46,21 @@ export function HarmoSynthPanel({ engine }: { engine: DJEngine }) {
           <Knob label="TIMBRE" value={m.tone} min={0} max={1} defaultValue={0.55} color={C} size={46} led format={pct} onChange={(v) => { m.setTone(v); bump(); }} />
           <Knob label="ÉCHO" value={m.echo} min={0} max={1} defaultValue={0} color={C} size={46} led format={pct} onChange={(v) => { m.setEcho(v); bump(); }} />
           <Knob label="BALAYAGE" value={m.sweepDepth} min={0} max={1} defaultValue={0} color={C} size={46} led format={pct} onChange={(v) => { m.setSweep(v); bump(); }} />
+          <Knob
+  label="LARGEUR"
+  value={m.width}
+  min={0}
+  max={1}
+  defaultValue={0}
+  color={C}
+  size={46}
+  led
+  format={pct}
+  onChange={(v) => {
+    m.setWidth(v);
+    bump();
+  }}
+/>
         </div>
         <div className="flex flex-wrap justify-around gap-2">
           <p className="w-full text-center text-[9px] font-black uppercase tracking-[0.2em] text-[var(--jam-text-2)]">JEU</p>
@@ -58,7 +80,49 @@ export function HarmoSynthPanel({ engine }: { engine: DJEngine }) {
         <p className="w-full text-center text-[9px] font-black uppercase tracking-[0.2em] text-[var(--jam-text-2)]">PROGRESSIONS</p>
         {(["pop","dark","house","jazz","epic","dream"] as ProgressionName[]).map(id => <button key={id} type="button" onClick={() => { m.loadProgression(id); bump(); }} className="rounded-md px-2.5 py-1 text-[11px] font-bold" style={{ background: "color-mix(in srgb, var(--jam-synth) 18%, transparent)", color: "var(--jam-text)" }}>{["Pop","Sombre","House","Jazz","Épique","Rêve"][["pop","dark","house","jazz","epic","dream"].indexOf(id)]}</button>)}
       </div>
-      <p className="text-[10px] text-[var(--jam-text-3)]">Les accords de la tonalité du morceau : impossible de jouer faux. Sans accord tenu, le synthé suit les accords du morceau, chaque accord placé au plus près du précédent. 7e et 9e ajoutent de la couleur, ÉCHO une répétition à la croche pointée.</p>
+      <div className="flex flex-wrap items-center gap-3">
+  <button
+    type="button"
+    className="rounded-md h-10 px-4 text-[12px] font-black tracking-[0.15em]"
+    style={{
+      background: riser ? `color-mix(in srgb, ${C} 45%, #111)` : `color-mix(in srgb, ${C} 18%, transparent)`,
+      color: riser ? "#fff" : "var(--jam-text)",
+      boxShadow: riser ? `0 0 12px ${C}` : undefined,
+    }}
+    aria-pressed={riser}
+    onPointerDown={(e) => {
+      e.currentTarget.setPointerCapture(e.pointerId);
+      setRiser(true);
+      m.playRiser(true);
+      bump();
+    }}
+    onPointerUp={() => setRiser(false)}
+    onPointerCancel={() => setRiser(false)}
+  >
+    RISER
+  </button>
+  <button
+    className="rounded-md px-2.5 py-1 text-[11px] font-bold"
+    style={{ background: "rgba(255,255,255,.06)", color: "var(--jam-text-2)" }}
+    onClick={() => {
+      m.playRiser(false);
+      bump();
+    }}
+  >
+    COUPER
+  </button>
+  <JamSeg
+    label="Durée du riser"
+    color={C}
+    value={String(m.riserBars)}
+    options={[["2","2 mes."],["4","4 mes."],["8","8 mes."]] as const}
+    onChange={(v) => {
+      m.set("riserBars", v === "2" ? 2 : v === "8" ? 8 : 4);
+      bump();
+    }}
+  />
+</div>
+      <p className="text-[10px] text-[var(--jam-text-3)]">Les accords de la tonalité du morceau : impossible de jouer faux. Sans accord tenu, le synthé suit les accords du morceau, chaque accord placé au plus près du précédent. 7e et 9e ajoutent de la couleur, ÉCHO une répétition à la croche pointée. RISER monte depuis la mesure suivante et retombe pile sur la mesure choisie. LARGEUR élargit le synthé en stéréo.</p>
     </JamShell>
   );
 }
