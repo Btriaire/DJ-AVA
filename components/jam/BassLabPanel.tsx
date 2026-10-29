@@ -23,6 +23,40 @@ export function BassLabPanel({ engine }: { engine: DJEngine }) {
         <div className="min-w-0 flex-1"><NoteLane data={() => m.laneData()} color="oklch(0.74 0.15 300)" accent="oklch(0.88 0.12 85)" label="Notes de basse autour de la tête de lecture" /></div>
         <JamSlots m={m} color={C} />
       </div>
+      <div className="flex flex-col gap-1.5">
+        <div className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--jam-text-2)]">
+          BASSE JOUÉE
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {["", "acoustic_bass", "electric_bass_finger", "electric_bass_pick", "fretless_bass", "slap_bass_1", "synth_bass_1", "synth_bass_2"].map((id) => (
+            <button
+              key={id}
+              type="button"
+              className="rounded-md px-2 py-1 text-[11px] font-bold"
+              aria-pressed={m.lineVoice === id}
+              style={m.lineVoice === id
+                ? { background: `color-mix(in srgb, ${C} 35%, #111)`, color: "#fff", boxShadow: `inset 0 0 0 1px ${C}` }
+                : { background: "rgba(255,255,255,.06)", color: "var(--jam-text-2)" }
+              }
+              onClick={() => { m.setLineVoice(id); bump(); }}
+            >
+              {id === "" ? "Synthé (caractère)" :
+               id === "acoustic_bass" ? "Contrebasse" :
+               id === "electric_bass_finger" ? "Doigts" :
+               id === "electric_bass_pick" ? "Médiator" :
+               id === "fretless_bass" ? "Fretless" :
+               id === "slap_bass_1" ? "Slap" :
+               id === "synth_bass_1" ? "Synth 1" :
+               "Synth 2"}
+            </button>
+          ))}
+        </div>
+        {m.lineVoiceStatus() && (
+          <div className="text-[11px] text-[var(--jam-text-2)]" aria-live="polite">
+            {m.lineVoiceStatus()}
+          </div>
+        )}
+      </div>
       <div className="flex flex-wrap items-end gap-4">
         <JamSeg label="Caractère" color={C} value={m.character} options={[["acid","Acid"],["reese","Reese"],["808","808"],["funk","Funk"],["moog","Moog"]]} onChange={(v: BassCharacter) => { m.setCharacter(v); bump(); }} />
         <JamSeg label="Wobble" color={C} value={String(m.wobbleDiv)} options={[["0.5", "1/2"], ["0.25", "1/4"], ["0.125", "1/8"], ["0.0625", "1/16"]] as const} onChange={(v) => { m.setWobble(m.wobble, Number(v)); bump(); }} />

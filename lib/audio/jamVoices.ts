@@ -235,8 +235,9 @@ export class PolySynth {
   }
 
   // a chord, its notes spread by `strum` seconds from the lowest up, like a hand on a keyboard
-  chord(midis: number[], when: number, dur: number, vel: number, kind: "pluck" | "stab" | "pad", strum = 0) {
-    midis.forEach((m, i) => this.note(m, when + i * strum, dur, vel, kind));
+  chord(midis: number[], when: number, dur: number, vel: number, kind: "pluck" | "stab" | "pad", strum = 0, dir: "down" | "up" = "down") {
+    const order = [...midis].sort((a, b) => (dir === "down" ? a - b : b - a));
+    order.forEach((m, i) => this.note(m, when + i * strum, dur, vel, kind));
   }
 }
 

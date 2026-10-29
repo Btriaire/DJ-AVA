@@ -12,6 +12,8 @@ import { progression, type ProgressionName } from "./jamProgressions";
 import { SyncedSweep } from "./jamSweep";
 import { StereoChorus } from "./jamChorus";
 import { SampledInstrument } from "./sampledInstrument";
+import { compHit, voiceFor, type CompName } from "./jamComp";
+import { humanize } from "./jamHuman";
 import { instrument } from "@/lib/sampleFont";
 import { fillNote, isFillBar, type FillEvery } from "./jamFill";
 import { degreeNames } from "./stemJam";
@@ -233,6 +235,8 @@ export class BassLab extends JamModule {
   lineEnv = 0.5;
   fillEvery: FillEvery = 0; // a turnaround on the last beat of every 4th or 8th bar
   private linePump: GainNode;
+  readonly sampledBass: SampledInstrument;
+  lineVoice = ""; // "" = the synth bass (its character), else a real bass id ("electric_bass_finger"...)
   private played: { start: number; end: number; midi: number }[] = []; // the line notes scheduled, in song seconds, for the lane
   pump = false; // the bass ducks on every kick of the song (on every beat when its kicks were never analysed)
   pumpDepth = 0.8;
@@ -248,10 +252,12 @@ export class BassLab extends JamModule {
     this.lineSynth = new BassVoice(engine.ctx);
     this.linePump = new GainNode(engine.ctx, { gain: 1 }); // the line breathes with PUMP like the stem
     this.lineSynth.out.connect(this.linePump).connect(this.bus);
+    this.sampledBass = new SampledInstrument(engine.ctx);
+    this.sampledBass.out.connect(this.linePump);
     onJamTick(engine, (deck, from, to) => this.tick(deck, from, to));
   }
   setSub(v: number) { this.subLevel = v; this.sub.out.gain.value = 0.9 * v; }
-  protected keep() { return ["subOctave", "lineLevel", "lineTone", "lineEnv", "pumpDepth", "wobbleDiv", "characterName", "fillEvery"]; }
+  protected keep() { return ["subOctave", "lineLevel", "lineTone", "lineEnv", "pumpDepth", "wobbleDiv", "characterName", "fillEvery", "lineVoice"]; }
   protected sceneKeys() { return [...this.keep(), "subLevel", "line", "pump", "wobble"]; }
   protected afterScene() { this.setSub(this.subLevel); this.setLineLevel(this.lineLevel); this.setLineTone(this.lineTone); this.setLineEnv(this.lineEnv); this.setWobble(this.wobble, this.wobbleDiv); }
   protected resetFields() {
@@ -278,6 +284,21 @@ export class BassLab extends JamModule {
   }
   setLineLevel(v: number) { this.lineLevel = v; this.lineSynth.out.gain.value = 0.6 * v; }
   setLineTone(v: number) { this.lineTone = v; this.lineSynth.setTone(v); }
+  // a real bass for the line (loaded on first use; the synth bass plays meanwhile or offline), "" for the synth bass
+  setLineVoice(id: string) { this.lineVoice = id; if (id) void this.sampledBass.load(id).then(() => jamChanged()); jamChanged(); }
+  lineVoiceStatus(): string | null {
+    if (!this.lineVoice) return null;
+    const label = instrument(this.lineVoice)?.label ?? "Basse";
+    if (this.sampledBass.ready()) return `${label} prête`;
+    if (this.sampledBass.failed) return `${label} indisponible (réseau ?) : la basse synthé joue à sa place`;
+    return this.sampledBass.current ? `Chargement : ${label} ${this.sampledBass.done}/${this.sampledBass.total}` : `${label} : se charge à la première note`;
+  }
+  // every line note goes through here: the real bass when chosen and loaded, else the synth bass
+  private lineNote(midi: number, at: number, len: number, vel: number, opts: { slide?: boolean; accent?: boolean } = {}) {
+    if (this.lineVoice && this.sampledBass.current !== this.lineVoice) void this.sampledBass.load(this.lineVoice).then(() => jamChanged());
+    if (this.lineVoice && this.sampledBass.ready()) this.sampledBass.note(midi, at, len, Math.min(1, vel * (opts.accent ? 1.1 : 0.95)), "pluck");
+    else this.lineSynth.note(midi, at, len, vel, opts);
+  }
   get character(): BassCharacter { return this.lineSynth.character; }
   setCharacter(c: BassCharacter) { this.lineSynth.setCharacter(c); }
   // kept between sessions through this field
@@ -343,7 +364,7 @@ export class BassLab extends JamModule {
         while (midi > 55) midi -= 12;
         while (midi < 28) midi += 12;
         const at = songToCtx(deck, s0);
-        this.lineSynth.note(midi, at, Math.max(0.08, (e0 - s0) / rate), Math.min(1, 0.55 + v));
+        this.lineNote(midi, at, Math.max(0.08, (e0 - s0) / rate), Math.min(1, 0.55 + v));
         this.played.push({ start: s0, end: e0, midi });
         this.hit(at);
       }
@@ -355,7 +376,7 @@ export class BassLab extends JamModule {
         const fill = isFillBar(barOf(deck, t), this.fillEvery) ? fillNote(c.map((m) => 36 + (((m - c[0]) + 120) % 120) + (((c[0] % 12) + 12) % 12)), i16) : null;
         if (fill) {
           const at = songToCtx(deck, t);
-          this.lineSynth.note(fill.midi, at, beat * 0.22, fill.accent ? 1 : 0.85, { accent: fill.accent });
+          this.lineNote(fill.midi, at, beat * 0.22, fill.accent ? 1 : 0.85, { accent: fill.accent });
           this.played.push({ start: t, end: t + beat * 0.22 * Math.max(0.25, deck.playbackRate), midi: fill.midi });
           this.hit(at);
           continue;
@@ -366,7 +387,7 @@ export class BassLab extends JamModule {
         const midi = tone === "O" ? root + 12 : tone === "5" ? root + (c[2] - c[0]) : tone === "3" ? root + (c[1] - c[0]) : root;
         const at = songToCtx(deck, t);
         const len = this.line === "acid" ? beat * 0.24 : this.line === "gallop" ? beat * 0.2 : beat * (this.line === "octaves" ? 0.4 : 0.6);
-        this.lineSynth.note(midi, at, len, i16 % 4 === 0 ? 1 : 0.85, acid ? { slide: acid[1].includes("s"), accent: acid[1].includes("a") } : {});
+        this.lineNote(midi, at, len, i16 % 4 === 0 ? 1 : 0.85, acid ? { slide: acid[1].includes("s"), accent: acid[1].includes("a") } : {});
         this.played.push({ start: t, end: t + len * Math.max(0.25, deck.playbackRate), midi });
         this.hit(at);
       }
@@ -483,7 +504,7 @@ export class VoxFx extends JamModule {
 }
 
 // ---------------- SYNTH (on the "other" stem) ----------------
-export type SynthMode = "off" | "arp" | "stab" | "pad";
+export type SynthMode = "off" | "arp" | "stab" | "pad" | "comp";
 export type ArpShape = ArpOrder;
 const GATE = [1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1]; // the trance gate, per sixteenth
 export class HarmoSynth extends JamModule {
@@ -499,6 +520,8 @@ export class HarmoSynth extends JamModule {
   readonly riser: Riser;
   readonly sampled: SampledInstrument;
   voice = "synth:pluck"; // "synth:<patch>" or "inst:<real instrument id>"
+  comp: CompName = "charleston"; // the accompaniment rhythm of the "comp" mode
+  human = 0.35; // 0..1 timing and velocity looseness
   width = 0; // stereo chorus 0..1
   riserBars: 2 | 4 | 8 = 4;
   rate: 0.5 | 0.25 = 0.25; // arp step in beats
@@ -613,7 +636,7 @@ export class HarmoSynth extends JamModule {
   pads(names: string[] = []): PadDef[] {
     return ["I", "II", "III", "IV", "V", "VI", "VII"].map((r, i) => ({ id: `deg${i}`, label: names[i] ?? r, sub: r, mode: "hold" as const, run: (on: boolean) => { if (on) this.hold(i); else if (this.degree === i) this.hold(null); } }));
   }
-  protected keep() { return ["shape", "rate", "octave", "color", "echo", "patchName", "arpOctaves", "gateLen", "sweepDiv", "width", "riserBars", "voice"]; }
+  protected keep() { return ["shape", "rate", "octave", "color", "echo", "patchName", "arpOctaves", "gateLen", "sweepDiv", "width", "riserBars", "voice", "comp", "human"]; }
   protected sceneKeys() { return [...this.keep(), "mode", "pumpOn", "sweepDepth"]; }
   protected afterScene() { this.setEcho(this.echo); this.setSweep(this.sweepDepth, this.sweepDiv); this.setWidth(this.width); this.ensureVoice(); }
   // the sound, kept between sessions through this field (the synth itself holds the live one)
@@ -703,12 +726,23 @@ export class HarmoSynth extends JamModule {
       for (const { t, k } of this.steps(deck, this.shape === "gate" ? 0.25 : this.rate, from, to)) {
         const c = this.chord(deck, t), at = songToCtx(deck, t);
         if (this.shape === "gate") { if (GATE[step16(k)]) { this.player().chord(c, at, beat * 0.2, step16(k) % 4 === 0 ? 0.95 : 0.7, "pluck"); this.hit(at); } continue; }
-        this.player().note(this.arpNote(c, k), at, beat * this.rate * this.gateLen, k % 4 === 0 ? 1 : 0.75, "pluck");
+        const h = humanize(k, 0, this.human);
+        this.player().note(this.arpNote(c, k), at + Math.max(0, h.dt), beat * this.rate * this.gateLen, (k % 4 === 0 ? 1 : 0.75) * h.vel, "pluck");
         this.hit(at);
       }
     } else if (this.mode === "stab") {
       for (const { t, k } of this.steps(deck, 0.5, from, to))
-        if (k % 2 !== 0) { const at = songToCtx(deck, t); this.player().chord(this.voiced(deck, t).map((m) => m + 12), at, beat * 0.4, 0.9, "stab", 0.006); this.hit(at); } // offbeats
+        if (k % 2 !== 0) { const h = humanize(k, 1, this.human), at = songToCtx(deck, t) + Math.max(0, h.dt); this.player().chord(this.voiced(deck, t).map((m) => m + 12), at, beat * 0.4, 0.9 * h.vel, "stab", 0.006); this.hit(at); } // offbeats
+    } else if (this.mode === "comp") {
+      // COMP: an accompaniment rhythm, its hits voiced from the chord (full, upper notes, or the bass), strummed up or down
+      for (const { t, k } of this.steps(deck, 0.25, from, to)) {
+        const hit = compHit(this.comp, k);
+        if (!hit) continue;
+        const h = humanize(k, 2, this.human), at = songToCtx(deck, t) + Math.max(0, h.dt);
+        const notes = voiceFor(this.voiced(deck, t), hit.voicing);
+        this.player().chord(notes, at, (hit.len * beat) / 4, hit.vel * h.vel, hit.len >= 4 ? "pad" : "pluck", 0.012, hit.dir);
+        this.hit(at);
+      }
     } else {
       for (const { t, k } of this.steps(deck, 1, from, to)) {
         const key = this.chord(deck, t).join();

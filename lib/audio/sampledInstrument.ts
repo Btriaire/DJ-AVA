@@ -1,4 +1,4 @@
-// A real instrument played from per-note samples (MaRuche/Falken)
+// A real instrument played from per-note samples, long notes kept alive by crossfaded restarts (MaRuche/Falken)
 import { instrument, nearestZone, noteName, zonesFor } from "@/lib/sampleFont";
 
 export class SampledInstrument {
@@ -59,7 +59,7 @@ export class SampledInstrument {
     return !!this.current && this.buffers.size >= Math.ceil(this.total / 2);
   }
 
-  note(midi: number, when: number, dur: number, vel: number, kind: "pluck" | "stab" | "pad"): void {
+  note(midi: number, when: number, dur: number, vel: number, kind: "pluck" | "stab" | "pad", detune = 0): void {
     if (!this.ready()) return;
     this.ends = this.ends.filter(e => e > this.ctx.currentTime);
     if (this.ends.length >= 24) return;
@@ -71,34 +71,69 @@ export class SampledInstrument {
     const buffer = this.buffers.get(zone);
     if (!buffer) return;
 
-    const source = new AudioBufferSourceNode(this.ctx, { buffer, playbackRate: rate });
-    const filter = new BiquadFilterNode(this.ctx, {
-      type: "lowpass",
-      frequency: 1500 + vel * 9000,
-    });
-    const env = new GainNode(this.ctx);
-
-    source.connect(filter).connect(env).connect(this.out);
-
     const attack = kind === "pad" ? 0.12 : 0.003;
     const release = kind === "pad" ? 0.6 : 0.25;
     const d = kind === "stab" ? Math.min(dur, 0.25) : dur;
     const end = when + d;
     const bufferEndAt = when + buffer.duration / rate;
-    const releaseStart = Math.max(when + attack + 0.01, Math.min(end, bufferEndAt - 0.05));
+    const holdEnd = Math.max(when + attack + 0.01, end);
 
-    env.gain.setValueAtTime(0, when);
-    env.gain.linearRampToValueAtTime(vel * 0.9, when + attack);
-    env.gain.setValueAtTime(vel * 0.9, releaseStart);
-    env.gain.linearRampToValueAtTime(0, releaseStart + release);
+    if (kind === "pad" && holdEnd > bufferEndAt - 0.35) {
+      // long sustain: segment 0 from the start with its attack; segment k >= 1 starts at when + k*seg - fade, skips the
+      // attack (offset 0.4 s) and fades in while the one before fades out over the same 0.25 s; the last one releases
+      const fade = 0.25, seg = buffer.duration / rate - 0.6, starts: number[] = [];
+      for (let k = 0; k < 8; k++) { const t = k === 0 ? when : when + k * seg - fade; if (k > 0 && t >= holdEnd) break; starts.push(t); }
+      starts.forEach((t, k) => {
+        const source = new AudioBufferSourceNode(this.ctx, { buffer, playbackRate: rate });
+        source.detune.value = detune;
+        const filter = new BiquadFilterNode(this.ctx, { type: "lowpass", frequency: 1500 + vel * 9000 });
+        const env = new GainNode(this.ctx);
+        source.connect(filter).connect(env).connect(this.out);
+        const g = env.gain;
+        g.setValueAtTime(0, t);
+        g.linearRampToValueAtTime(vel * 0.9, t + (k === 0 ? attack : fade));
+        const next = starts[k + 1];
+        if (next !== undefined) {
+          g.setValueAtTime(vel * 0.9, next);
+          g.linearRampToValueAtTime(0, next + fade);
+          source.start(t, k === 0 ? 0 : 0.4);
+          source.stop(next + fade + 0.02);
+        } else {
+          g.setValueAtTime(vel * 0.9, holdEnd);
+          g.linearRampToValueAtTime(0, holdEnd + release);
+          source.start(t, k === 0 ? 0 : 0.4);
+          source.stop(holdEnd + release + 0.02);
+        }
+      });
+      this.ends.push(holdEnd + release);
+    } else {
+      // Original single-source path
+      const releaseStart = Math.max(when + attack + 0.01, Math.min(end, bufferEndAt - 0.05));
 
-    source.start(when);
-    source.stop(releaseStart + release + 0.02);
+      const source = new AudioBufferSourceNode(this.ctx, { buffer, playbackRate: rate });
+      const filter = new BiquadFilterNode(this.ctx, {
+        type: "lowpass",
+        frequency: 1500 + vel * 9000,
+      });
+      const env = new GainNode(this.ctx);
 
-    this.ends.push(releaseStart + release);
+      source.detune.value = detune;
+      source.connect(filter).connect(env).connect(this.out);
+
+      env.gain.setValueAtTime(0, when);
+      env.gain.linearRampToValueAtTime(vel * 0.9, when + attack);
+      env.gain.setValueAtTime(vel * 0.9, releaseStart);
+      env.gain.linearRampToValueAtTime(0, releaseStart + release);
+
+      source.start(when);
+      source.stop(releaseStart + release + 0.02);
+
+      this.ends.push(releaseStart + release);
+    }
   }
 
-  chord(midis: number[], when: number, dur: number, vel: number, kind: "pluck" | "stab" | "pad", strum = 0): void {
-    midis.forEach((midi, i) => this.note(midi, when + i * strum, dur, vel, kind));
+  chord(midis: number[], when: number, dur: number, vel: number, kind: "pluck" | "stab" | "pad", strum = 0, dir: "down" | "up" = "down"): void {
+    const sorted = [...midis].sort((a, b) => dir === "down" ? a - b : b - a);
+    sorted.forEach((midi, i) => this.note(midi, when + i * strum, dur, vel, kind));
   }
 }

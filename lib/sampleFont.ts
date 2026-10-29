@@ -1,5 +1,5 @@
 // Real instruments of the Synth: FluidR3 GM soundfont (Frank Wen, CC BY 3.0), one mp3 per note (MaRuche/Codestral)
-export type InstrumentFamily = "Claviers" | "Percussions mélodiques" | "Cordes" | "Voix" | "Vents" | "Guitares" | "Nappes";
+export type InstrumentFamily = "Claviers" | "Percussions mélodiques" | "Cordes" | "Voix" | "Vents" | "Guitares" | "Nappes" | "Basses";
 export interface Instrument { id: string; label: string; family: InstrumentFamily; lo: number; hi: number; pad: boolean }
 
 export const INSTRUMENTS: Instrument[] = [
@@ -29,11 +29,22 @@ export const INSTRUMENTS: Instrument[] = [
   { id: "acoustic_guitar_nylon", label: "Guitare classique", family: "Guitares", lo: 40, hi: 84, pad: false },
   { id: "electric_guitar_clean", label: "Guitare électrique", family: "Guitares", lo: 40, hi: 86, pad: false },
   { id: "pad_2_warm", label: "Nappe chaude", family: "Nappes", lo: 36, hi: 96, pad: true },
-  { id: "pad_1_new_age", label: "Nappe new age", family: "Nappes", lo: 36, hi: 96, pad: true }
+  { id: "pad_1_new_age", label: "Nappe new age", family: "Nappes", lo: 36, hi: 96, pad: true },
+  { id: "acoustic_bass", label: "Contrebasse", family: "Basses", lo: 28, hi: 60, pad: false },
+  { id: "electric_bass_finger", label: "Basse aux doigts", family: "Basses", lo: 28, hi: 67, pad: false },
+  { id: "electric_bass_pick", label: "Basse au médiator", family: "Basses", lo: 28, hi: 67, pad: false },
+  { id: "fretless_bass", label: "Basse fretless", family: "Basses", lo: 28, hi: 67, pad: false },
+  { id: "slap_bass_1", label: "Basse slap", family: "Basses", lo: 28, hi: 67, pad: false },
+  { id: "synth_bass_1", label: "Basse synthé 1", family: "Basses", lo: 28, hi: 72, pad: false },
+  { id: "synth_bass_2", label: "Basse synthé 2", family: "Basses", lo: 28, hi: 72, pad: false }
 ];
 
 export function instrument(id: string): Instrument | undefined {
   return INSTRUMENTS.find(i => i.id === id);
+}
+
+export function instrumentsOf(family: InstrumentFamily): Instrument[] {
+  return INSTRUMENTS.filter(i => i.family === family);
 }
 
 export function noteName(midi: number): string {
@@ -76,4 +87,6 @@ export function selfTest(): void {
   const ids = new Set(INSTRUMENTS.map(i => i.id));
   assert(ids.size === INSTRUMENTS.length, "duplicate instrument ids");
   INSTRUMENTS.forEach(i => assert(i.lo < i.hi, `invalid range for ${i.id}`));
+  assert(instrumentsOf("Basses").length === 7, "instrumentsOf(Basses) incorrect");
+  assert(instrument("slap_bass_1")?.lo === 28, "slap_bass_1 lo incorrect");
 }

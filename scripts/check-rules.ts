@@ -96,3 +96,8 @@ console.log("check-rules jam fills, chorus ok");
 import { selfTest as sampleFontTest } from "../lib/sampleFont";
 sampleFontTest();
 console.log("check-rules sample font ok");
+import { selfTest as jamCompTest } from "../lib/audio/jamComp";
+import { selfTest as jamHumanTest } from "../lib/audio/jamHuman";
+jamCompTest();
+jamHumanTest();
+console.log("check-rules jam comp, humanize ok");
