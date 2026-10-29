@@ -2,6 +2,8 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { Mosaic } from "./parts";
+import type { LibTrack, Playlist } from "@/lib/library";
 
 export const AMBIENTS = ["#22d3ee", "#a78bfa", "#34d399", "#ffcc00", "#f97316", "#60a5fa"] as const;
 
@@ -92,7 +94,10 @@ export function QuickSets({
                 <div className="text-[13px] font-bold text-white truncate">{p.name}</div>
                 <div className="text-[11px] text-neutral-400">{pTracks.length} titres</div>
               </div>
-              <PlayDisc size={36} onClick={() => onLaunch?.(p.id)} disabled={pTracks.length < 2 || !onLaunch} label={`Jouer ${p.name}`} />
+              {/* slides in on hover or keyboard focus */}
+              <span className="translate-x-1 opacity-0 transition-[opacity,transform] duration-150 focus-within:translate-x-0 focus-within:opacity-100 group-hover:translate-x-0 group-hover:opacity-100 motion-reduce:transition-none">
+                <PlayDisc size={36} onClick={() => onLaunch?.(p.id)} disabled={pTracks.length < 2 || !onLaunch} label={`Jouer ${p.name}`} />
+              </span>
             </div>
           );
         })}
@@ -119,5 +124,3 @@ export function PlayDisc({ size = 56, onClick, disabled, label }: { size?: 56 | 
   );
 }
 
-import { Mosaic } from "./parts";
-import type { LibTrack, Playlist } from "@/lib/library";

@@ -82,7 +82,7 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
   const readyCount = setTracks.filter((track) => detail.stemOf(track.id).state === "done").length;
   const totalSec = setTracks.reduce((sum, track) => sum + (track.durationSec || 0), 0);
   const bpmValues = setTracks.map(track => track.bpm).filter((bpm): bpm is number => bpm !== undefined && bpm !== null);
-  const bpmRange = bpmValues.length > 0 ? `${Math.min(...bpmValues)}–${Math.max(...bpmValues)} BPM` : "0–0 BPM";
+  const bpmRange = bpmValues.length > 0 ? `${Math.round(Math.min(...bpmValues))}–${Math.round(Math.max(...bpmValues))} BPM` : "0–0 BPM";
 
   // why "Suivant" is off, said in words under the buttons
   const nextBlocked: string | null =
