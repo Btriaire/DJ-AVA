@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useFrameLoop } from "./frameLoop";
 import { createPortal } from "react-dom";
 import type { Deck } from "../lib/audio/Deck";
 import { Knob } from "./Knob";
@@ -25,25 +26,19 @@ export function StemLoopPanel({ deck, labels, initial, color, rerender, onExport
     return () => clearTimeout(t0);
   }, []);
 
-  useEffect(() => {
-    let rafId: number;
-    let lastUpdate = 0;
-    const updateStatus = () => {
-      const now = performance.now();
-      if (now - lastUpdate < 33) {
-        rafId = requestAnimationFrame(updateStatus);
-        return;
-      }
-      lastUpdate = now;
-      setStatus(Array.from({ length: labels.length }, (_, i) => {
-        const s = deck.stemLoopStatus(i);
-        return s ? { phase: s.phase, wraps: s.wraps } : null;
-      }));
-      rafId = requestAnimationFrame(updateStatus);
-    };
-    rafId = requestAnimationFrame(updateStatus);
-    return () => cancelAnimationFrame(rafId);
-  }, [deck, labels.length]);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const lastStatus = useRef("");
+  useFrameLoop(panelRef, () => {
+    const next = Array.from({ length: labels.length }, (_, i) => {
+      const s = deck.stemLoopStatus(i);
+      return s ? { phase: s.phase, wraps: s.wraps } : null;
+    });
+    const key = JSON.stringify(next);
+    if (key !== lastStatus.current) {
+      lastStatus.current = key;
+      setStatus(next);
+    }
+  });
 
   const startForLoop = (): number | undefined => {
     if (!deck.bpm) return undefined;
@@ -72,7 +67,7 @@ export function StemLoopPanel({ deck, labels, initial, color, rerender, onExport
   if (typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="hw-panel fixed bottom-3 left-1/2 z-[100] flex max-h-[90vh] w-[min(640px,calc(100vw-1rem))] -translate-x-1/2 flex-col gap-2.5 overflow-y-auto p-3"
+    <div ref={panelRef} className="hw-panel fixed bottom-3 left-1/2 z-[100] flex max-h-[90vh] w-[min(640px,calc(100vw-1rem))] -translate-x-1/2 flex-col gap-2.5 overflow-y-auto p-3"
       style={{ borderColor: `${color}66`, boxShadow: `0 14px 34px rgba(0,0,0,0.8), 0 0 22px ${color}33, inset 0 1px 0 rgba(255,255,255,0.07)` }}>
       <div className="flex items-center justify-between">
         <span className="text-sm font-black uppercase tracking-[0.2em]" style={{ color, textShadow: `0 0 8px ${color}88` }}>BOUCLES DE STEMS</span>

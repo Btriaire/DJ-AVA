@@ -2,6 +2,7 @@
 
 import { useRef, useState, useEffect, useSyncExternalStore } from "react";
 import { Knob } from "./Knob";
+import { useFrameLoop } from "./frameLoop";
 import { FxXyPad } from "./FxXyPad";
 import { FXRack, FX_META, BEAT_DIVS, BEAT_LABELS, type FxName } from "@/lib/audio/FXRack";
 import { subscribeAutomation, getAutomationVersion } from "@/lib/audio/deckAutomation";
@@ -80,20 +81,13 @@ export function FxUnit({ rack, ids, color, storageKey }: { rack: FXRack; ids: Fx
   const beatIdx = rack.getBeat(selected);
   const active = ids.filter((id) => rack.getWet(id) > 0).length;
 
-  useEffect(() => {
-    let raf = 0;
-    const tick = () => {
-      const el = led.current;
-      if (el) {
-        const b = rack.beatInfo();
-        const lit = !!b && b.toNext > 0 && b.period - b.toNext < 0.09;
-        el.style.opacity = lit ? "1" : "0.18";
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [rack]);
+  useFrameLoop(led, () => {
+    const el = led.current;
+    if (!el) return;
+    const b = rack.beatInfo();
+    const lit = !!b && b.toNext > 0 && b.period - b.toNext < 0.09;
+    el.style.opacity = lit ? "1" : "0.18";
+  });
 
   return (
     <div className="hw-panel flex flex-col gap-2.5 p-2.5">

@@ -1,8 +1,9 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Deck } from "../lib/audio/Deck";
 import { Knob } from "./Knob";
+import { useFrameLoop } from "./frameLoop";
 import { FxUnit } from "./FxUnit";
 import { STEM_FX } from "@/lib/audio/FXRack";
 
@@ -37,18 +38,20 @@ function filterGain(x: number, f: number): number {
 // Horizontal live level meter (LED segments), driven by the stem's own analyser.
 function LevelBar({ deck, i, color }: { deck: Deck; i: number; color: string }) {
   const [lvl, setLvl] = useState(0);
-  useEffect(() => {
-    let raf = 0;
-    const tick = () => {
-      setLvl(deck.stemLevel(i));
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [deck, i]);
+  // re-render only when the number of lit segments changes, not every frame
+  const barRef = useRef<HTMLDivElement>(null);
+  const lastLit = useRef(0);
+  useFrameLoop(barRef, () => {
+    const level = deck.stemLevel(i);
+    const n = Math.round(Math.min(1, level * 1.6) * 20);
+    if (n !== lastLit.current) {
+      lastLit.current = n;
+      setLvl(level);
+    }
+  });
   const lit = Math.round(Math.min(1, lvl * 1.6) * 20);
   return (
-    <div className="flex flex-1 items-center gap-[2px]" aria-hidden>
+    <div ref={barRef} className="flex flex-1 items-center gap-[2px]" aria-hidden>
       {Array.from({ length: 20 }, (_, k) => (
         <span
           key={k}

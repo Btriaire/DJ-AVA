@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { useFrameLoop } from "./frameLoop";
 
 // Top-of-rack LCD: live wall-clock time on the left, a performance stopwatch
 // (minutes:seconds.milliseconds) on the right with start/stop + RAZ (reset).
@@ -21,17 +22,13 @@ export function LcdClock() {
     return () => clearInterval(id);
   }, []);
 
-  // stopwatch — rAF for millisecond resolution while running
-  useEffect(() => {
-    if (!running) return;
-    let raf = 0;
-    const loop = () => {
-      setElapsed(accRef.current + (performance.now() - startRef.current));
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [running]);
+  // stopwatch, at the shared 30 fps loop while running
+  const clockRef = useRef<HTMLDivElement>(null);
+  const runningRef = useRef(running);
+  useEffect(() => { runningRef.current = running; }, [running]);
+  useFrameLoop(clockRef, () => {
+    if (runningRef.current) setElapsed(accRef.current + (performance.now() - startRef.current));
+  });
 
   const toggle = () => {
     if (running) {
@@ -58,7 +55,7 @@ export function LcdClock() {
   const cms = (totalMs % 1000).toString().padStart(3, "0");
 
   return (
-    <div className="hw-screen flex items-center gap-3 px-3 py-1.5">
+    <div ref={clockRef} className="hw-screen flex items-center gap-3 px-3 py-1.5">
       {/* wall clock */}
       <div className="flex flex-col items-center leading-none">
         <span className="text-[7px] font-bold uppercase tracking-[0.25em] text-neutral-600">

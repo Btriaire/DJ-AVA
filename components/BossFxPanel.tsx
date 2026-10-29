@@ -1,8 +1,9 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { DJEngine } from "@/lib/audio/engine";
 import { FX_LIST, FxName } from "@/lib/audio/FXRack";
 import { Knob } from "./Knob";
+import { useFrameLoop } from "./frameLoop";
 
 interface Props {
   engine: DJEngine;
@@ -90,26 +91,20 @@ export function BossFxPanel({ engine, tick }: Props) {
     rerender();
   };
 
-  useEffect(() => {
-    let raf = 0;
-    let last = 0;
-    const loop = (now: number) => {
-      const interval = engine.anyPlaying ? 33 : 250;
-      if (now - last >= interval) {
-        rerender();
-        last = now;
-      }
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [engine]);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const last = useRef(0);
+  useFrameLoop(rootRef, (now) => {
+    if (now - last.current >= (engine.anyPlaying ? 33 : 250)) {
+      last.current = now;
+      rerender();
+    }
+  });
 
   // eslint-disable-next-line react-hooks/refs -- valeur d'animation ou d'horloge lue au rendu ; en faire un état re-rendrait à chaque frame
   const { date, time } = fmtClock(clockRef.current);
 
   return (
-    <div className="zoom-zone hw-screwed boss-panel boss-panel-v flex w-full flex-col items-stretch gap-2 p-2.5">
+    <div ref={rootRef} className="zoom-zone hw-screwed boss-panel boss-panel-v flex w-full flex-col items-stretch gap-2 p-2.5">
       <div className="flex flex-col items-start gap-1.5 pt-3">
         <div className="boss-logo">BOSS</div>
         <div className="flex flex-wrap items-center gap-1">
