@@ -386,3 +386,86 @@ export function KeyWheel({
   )
 }
 
+// the same reading on each title: its key on a small Camelot wheel, its tempo on a 60-190 ruler against the tray median
+export function camelotColour(key: string | undefined): string | null {
+  if (!key) return null;
+  const match = key.match(/^(\d{1,2})([abAB])$/);
+  if (!match) return null;
+  const n = parseInt(match[1], 10);
+  if (n < 1 || n > 12) return null;
+  const hue = (n - 1) * 30;
+  const lightness = match[2].toUpperCase() === 'A' ? 0.62 : 0.74;
+  return `oklch(${lightness} 0.14 ${hue})`;
+}
+
+const polarToCartesian = (cx: number, cy: number, radius: number, angle: number) => {
+  const rad = (angle - 90) * Math.PI / 180;
+  return { x: cx + radius * Math.cos(rad), y: cy + radius * Math.sin(rad) };
+};
+
+export function MiniKeyWheel({ camelot, size = 30 }: { camelot?: string; size?: number }) {
+  const sector = (r0: number, r1: number, a0: number, a1: number) => {
+    const start = polarToCartesian(20, 20, r0, a0);
+    const end = polarToCartesian(20, 20, r0, a1);
+    const largeArc = a1 - a0 <= 180 ? 0 : 1;
+    return `M ${start.x} ${start.y} A ${r0} ${r0} 0 ${largeArc} 1 ${end.x} ${end.y} L ${polarToCartesian(20, 20, r1, a1).x} ${polarToCartesian(20, 20, r1, a1).y} A ${r1} ${r1} 0 ${largeArc} 0 ${polarToCartesian(20, 20, r1, a0).x} ${polarToCartesian(20, 20, r1, a0).y} Z`;
+  };
+
+  const activeColour = camelot ? camelotColour(camelot) : null;
+
+  return (
+    <svg width={size} height={size} viewBox="0 0 40 40" role="img" aria-label={camelot ? `Tonalité ${camelot}` : "Tonalité inconnue"}>
+      {Array.from({ length: 24 }, (_, i) => {
+        const n = Math.floor(i / 2) + 1;
+        const ring = i % 2 === 0 ? 'A' : 'B';
+        const angle = (n - 1) * 30;
+        const isActive = camelot && camelot.toUpperCase() === `${n}${ring}`;
+        const fill = isActive ? activeColour : 'rgba(255,255,255,.07)';
+        const r0 = ring === 'A' ? 9 : 14;
+        const r1 = ring === 'A' ? 14 : 19;
+        return (
+          <path
+            key={`${n}${ring}`}
+            d={sector(r0, r1, angle - 15, angle + 15)}
+            fill={fill || 'none'}
+            stroke="#0b0b0d"
+            strokeWidth={0.6}
+          />
+        );
+      })}
+      <text
+        x={20}
+        y={20}
+        fontSize={7}
+        fontWeight={800}
+        fill={camelot ? "#e5e5e5" : "#737373"}
+        textAnchor="middle"
+        dominantBaseline="central"
+      >
+        {camelot || '?'}
+      </text>
+    </svg>
+  );
+}
+
+export function TempoRuler({ bpm, median }: { bpm?: number; median?: number }) {
+  const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max);
+  const bpmX = bpm !== undefined && bpm > 0 ? clamp((bpm - 60) / 130 * 96 + 2, 2, 98) : 0;
+  const medianX = median !== undefined && median > 0 ? clamp((median - 60) / 130 * 96 + 2, 2, 98) : 0;
+
+  return (
+    <svg viewBox="0 0 100 14" className="h-3.5 w-full" preserveAspectRatio="none" role="img" aria-label={bpm !== undefined && bpm > 0 ? `${Math.round(bpm)} BPM` : "Tempo inconnu"}>
+      <line x1={2} y1={7} x2={98} y2={7} stroke="rgba(255,255,255,.12)" strokeWidth={2} strokeLinecap="round" />
+      {Array.from({ length: 14 }, (_, i) => (
+        <line key={i} x1={2 + i * (96 / 13)} y1={7} x2={2 + i * (96 / 13)} y2={10} stroke="rgba(255,255,255,.12)" strokeWidth={0.5} />
+      ))}
+      {median !== undefined && median > 0 && <line x1={medianX} y1={2} x2={medianX} y2={12} stroke="rgba(255,255,255,.35)" strokeWidth={0.8} />}
+      {bpm !== undefined && bpm > 0 && (
+        <>
+          <line x1={median !== undefined && median > 0 ? medianX : 2} y1={7} x2={bpmX} y2={7} stroke="#ffcc00" strokeOpacity={0.45} strokeWidth={2} />
+          <ellipse cx={bpmX} cy={7} rx={1.3} ry={2.6} fill="#ffcc00" />
+        </>
+      )}
+    </svg>
+  );
+}

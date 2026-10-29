@@ -24,7 +24,7 @@ import type { Cue } from "@/lib/setPicker";
 import type { VideoMeta } from "@/lib/videoMeta";
 import { BpmChip, Cover, Icon, KeyChip, Mosaic, StemPill, fmtDur, stemInfoFrom } from "./prep/parts";
 import { AmbientHero, PlayDisc, QuickSets } from "./prep/AmbientHero";
-import { KeyWheel, StemsDonut, TempoHistogram } from "./prep/TrayOverview";
+import { KeyWheel, MiniKeyWheel, StemsDonut, TempoHistogram, TempoRuler } from "./prep/TrayOverview";
 import { Section, SegFilter, StepBadge, useStored, useStoredOpen } from "./prep/Blocks";
 import "./prep/prep-view.css";
 
@@ -810,7 +810,6 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
           <label className="prep-check absolute left-0 top-0">
             <input type="checkbox" checked={checked} onChange={() => toggleLaterSelected(track.id)} className="accent-[var(--prep-accent)]" aria-label={`Sélectionner ${track.name}`} />
           </label>
-          {track.camelot ? <span className="absolute bottom-1.5 left-1.5"><KeyChip camelot={track.camelot} /></span> : null}
           {track.bpm ? <span className="absolute bottom-1.5 right-1.5 rounded bg-black/65 px-1"><BpmChip bpm={track.bpm} estimated={track.bpmEstimated} /></span> : null}
           <button onClick={() => removeLaterTrack(track.id)} className="prep-card-actions prep-tap absolute right-1 top-1 rounded-full bg-black/65 p-1 text-neutral-400 hover:text-red-400" title="Retirer du bac" aria-label={`Retirer ${track.name}`}>
             <Icon name="x" size={11} />
@@ -832,6 +831,10 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
         <div className="min-w-0" title={track.name}>
           <p className="truncate text-[13px] font-bold leading-snug text-neutral-50">{displayName(track.name).title}</p>
           <p className="truncate text-[11px] text-neutral-400">{displayName(track.name).artist || " "}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <MiniKeyWheel camelot={track.camelot} size={28} />
+          <div className="min-w-0 flex-1"><TempoRuler bpm={track.bpm} median={trayMedianBpm} /></div>
         </div>
         <div className="flex items-center justify-between gap-1">
           <StemPill info={stemOf(track.id)} onPrepare={() => queueStems([track])} />
@@ -1083,6 +1086,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   const goToTray = () => trayRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   const totalLaterSec = laterTracks.reduce((sum, t) => sum + (t.durationSec ?? 0), 0);
   const laterBpms = laterTracks.map((t) => t.bpm).filter((b): b is number => !!b);
+  const trayMedianBpm = laterBpms.length ? [...laterBpms].sort((a, b) => a - b)[Math.floor(laterBpms.length / 2)] : undefined;
   const playFirstSet = () => {
     const set = lib.playlists.find((p) => p.trackIds.length >= 2);
     if (set) onLaunchSet?.("relay", set.id);
