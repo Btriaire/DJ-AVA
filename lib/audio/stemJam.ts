@@ -78,8 +78,11 @@ export function degreeChord(deck: Deck, degree: number, octaveMidi = 48): number
 
 // chord names of the 7 degrees, for the pads ("Am", "C", "Bdim")
 export function degreeNames(deck: Deck): string[] {
-  const NAMES = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
-  const { pcs } = jamScale(deck);
+  const SHARP = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  const FLAT = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
+  const { pcs, root, minor } = jamScale(deck);
+  // keys written with flats: F Bb Eb Ab Db Gb major, D G C F Bb Eb minor; the others with sharps
+  const NAMES = (minor ? [2, 7, 0, 5, 10, 3] : [5, 10, 3, 8, 1, 6]).includes(root) ? FLAT : SHARP;
   return pcs.map((pc, i) => {
     const third = (pcs[(i + 2) % 7] - pc + 12) % 12;
     const fifth = (pcs[(i + 4) % 7] - pc + 12) % 12;
@@ -146,4 +149,6 @@ export function selfTest(): void {
   assert(degreeChord(fake, 0).join() === "57,60,64", "A minor tonic is A C E");
   assert(degreeChord(fake, 2).join() === "48,52,55", "degree III of A minor is C E G");
   assert(degreeNames(fake).join() === "Am,Bdim,C,Dm,Em,F,G", "A minor chord names");
+  const aMajor = { effectiveKey: { pitchClass: 9, mode: "major" } } as unknown as Deck;
+  assert(degreeNames(aMajor).join() === "A,Bm,C#m,D,E,F#m,G#dim", "A major chord names use sharps");
 }
