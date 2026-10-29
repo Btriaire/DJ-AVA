@@ -43,7 +43,7 @@ export function StemsDonut({
       <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500">
         Stems
       </span>
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-3">
         {/* Donut SVG */}
         <svg width={88} height={88} className="flex-shrink-0">
           {/* Track */}
@@ -145,7 +145,7 @@ export function TempoHistogram({
           const mid = Math.floor(sorted.length / 2);
           return sorted.length % 2 === 0
             ? Math.round((sorted[mid - 1] + sorted[mid]) / 2)
-            : sorted[mid];
+            : Math.round(sorted[mid]);
         })();
 
   // Helper to build filter string for a bin
@@ -298,8 +298,8 @@ export function KeyWheel({
       <div className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500">
         Tonalités
       </div>
-      <div className="flex items-center gap-4">
-        <svg width={120} height={120} viewBox="0 0 120 120">
+      <div className="flex flex-wrap items-center gap-3">
+        <svg width={104} height={104} viewBox="0 0 120 120" className="shrink-0">
           {[...Array(12)].map((_, i) => {
             const n = i + 1
             const a0 = (n - 1) * 30 - 15
@@ -365,12 +365,12 @@ export function KeyWheel({
             })
           })}
         </svg>
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-wrap gap-1">
           {topKeys.length ? (
             topKeys.map(([k, c]) => (
               <div
                 key={k}
-                className="rounded-full bg-white/5 px-2 py-0.5 font-mono text-[11px] text-neutral-300"
+                className="whitespace-nowrap rounded-full bg-white/5 px-2 py-0.5 font-mono text-[11px] text-neutral-300"
               >
                 {k} · {c}
               </div>
