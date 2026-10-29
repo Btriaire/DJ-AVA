@@ -46,6 +46,10 @@ import { StemPrepPanel } from "@/components/StemPrepPanel";
 import { DancePanel } from "@/components/DancePanel";
 import { AtelierView } from "@/components/atelier/AtelierView";
 import { DJKeyboard } from "@/components/DJKeyboard";
+import { BassLabPanel } from "@/components/jam/BassLabPanel";
+import { VoxFxPanel } from "@/components/jam/VoxFxPanel";
+import { HarmoSynthPanel } from "@/components/jam/HarmoSynthPanel";
+import { BeatLabPanel } from "@/components/jam/BeatLabPanel";
 import { SuperSampler } from "@/components/SuperSampler";
 import { HoldButton } from "@/components/HoldButton";
 import { DisplayTemplate, TemplateView, loadTemplates, saveTemplates, newTemplate } from "@/lib/displayTemplates";
@@ -290,6 +294,10 @@ export default function Home() {
     dance: boolean;
     djkbd: boolean;
     supersampler: boolean;
+    jambass: boolean;
+    jamvox: boolean;
+    jamsynth: boolean;
+    jambeat: boolean;
     drums: boolean;
     slicer: boolean;
     harmony: boolean;
@@ -329,9 +337,13 @@ export default function Home() {
     stemprep: true,
     djsynth: false,
     rhythm: true,
-    dance: true,
-    djkbd: true,
-    supersampler: true,
+    dance: false,
+    djkbd: false,
+    supersampler: false,
+    jambass: true,
+    jamvox: true,
+    jamsynth: true,
+    jambeat: true,
     drums: false,
     slicer: false,
     harmony: false,
@@ -362,6 +374,14 @@ export default function Home() {
     try {
       const raw = localStorage.getItem("djsynth.modules.v1");
       const disposition = raw ? { ...DEFAULT_MODULES, ...JSON.parse(raw) } : DEFAULT_MODULES;
+      // the Global section becomes the four stem modules once; the old instruments stay in the Modules picker
+      if (localStorage.getItem("djsynth.stemjam.v1") !== "1") {
+        localStorage.setItem("djsynth.stemjam.v1", "1");
+        const off = { djkbd: false, dance: false, supersampler: false, drums: false, djsynth: false, slicer: false, harmony: false, synth: false, sampler: false, soundfx: false, dx7: false, solar42: false };
+        const next = { ...disposition, ...off, jambass: true, jamvox: true, jamsynth: true, jambeat: true };
+        localStorage.setItem("djsynth.modules.v1", JSON.stringify(next));
+        return next;
+      }
       if (localStorage.getItem("djsynth.djfx.v1") !== "1") {
         localStorage.setItem("djsynth.djfx.v1", "1");
         return { ...disposition, fxpad: true }; // Show DJ FX panel once even for old saved layouts
@@ -421,7 +441,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
       return next;
     });
   }
-  const MODULE_DEFS: { key: keyof Modules; label: string; scope: string; category: "Instruments & Sources" | "Performance DJ" | "Mixer & EQ" | "Dynamique & Filtrage" | "Distorsion & Caractère" | "Espace & Modulation" }[] = [
+  const MODULE_DEFS: { key: keyof Modules; label: string; scope: string; category: "Stems en live" | "Instruments & Sources" | "Performance DJ" | "Mixer & EQ" | "Dynamique & Filtrage" | "Distorsion & Caractère" | "Espace & Modulation" }[] = [
     // Instruments & Sources
     { key: "stemprep", label: "Préparation des stems · Bibliothèque", scope: "global", category: "Instruments & Sources" },
     { key: "synth", label: "Synthé", scope: "global", category: "Instruments & Sources" },
@@ -433,6 +453,10 @@ const [showModulePicker, setShowModulePicker] = useState(false);
     { key: "djsynth", label: "Synthé DJ · Basse & Stab", scope: "global", category: "Instruments & Sources" },
     { key: "drums", label: "Boîte à rythmes", scope: "global", category: "Instruments & Sources" },
     { key: "dance", label: "Montée & Drop · Build-up sur 4, 8 ou 16 temps, drop sur le temps, pompe des stems", scope: "global", category: "Performance DJ" },
+    { key: "jambass", label: "Bass Lab · Sub sur les notes de basse, pompe sur les kicks, wobble, drop", scope: "global", category: "Stems en live" },
+    { key: "jamvox", label: "Vox FX · Jets en rythme sur la voix, harmonie à la tierce", scope: "global", category: "Stems en live" },
+    { key: "jamsynth", label: "Synth · Arpèges, stabs et nappes dans la tonalité du morceau", scope: "global", category: "Stems en live" },
+    { key: "jambeat", label: "Beat Lab · Kick et clap sur les coups du morceau, charleston, rolls", scope: "global", category: "Stems en live" },
     { key: "djkbd", label: "Clavier DJ · Tranches du morceau, effets, drops", scope: "global", category: "Instruments & Sources" },
     { key: "supersampler", label: "Super Sampler · Carbone, LCD, stems, YouTube, WAV 24 bits", scope: "global", category: "Instruments & Sources" },
     // Mixer & EQ
@@ -1089,6 +1113,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
 
                   {(
                     [
+                      "Stems en live",
                       "Instruments & Sources",
                       "Performance DJ",
                       "Mixer & EQ",
@@ -1568,8 +1593,10 @@ const [showModulePicker, setShowModulePicker] = useState(false);
             )}
 
             {/* instrument rack: optional modules side by side, aligned and the same height per row */}
-            {(modules.djkbd || modules.dance || modules.supersampler || modules.drums || modules.djsynth || modules.rhythm || modules.slicer || modules.harmony || modules.synth || modules.sampler || modules.soundfx || modules.dx7 || modules.solar42) && (
+            {(modules.jambass || modules.jamvox || modules.jamsynth || modules.jambeat || modules.djkbd || modules.dance || modules.supersampler || modules.drums || modules.djsynth || modules.rhythm || modules.slicer || modules.harmony || modules.synth || modules.sampler || modules.soundfx || modules.dx7 || modules.solar42) && (
               <div className={`hw-rack @container flex flex-col gap-4 ${deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}`}>
+                <RackRow onClose={closeRackModule} left={[["jambass", modules.jambass && <BassLabPanel engine={engine} />]]} right={[["jamvox", modules.jamvox && <VoxFxPanel engine={engine} />]]} />
+                <RackRow onClose={closeRackModule} left={[["jamsynth", modules.jamsynth && <HarmoSynthPanel engine={engine} />]]} right={[["jambeat", modules.jambeat && <BeatLabPanel engine={engine} />]]} />
                 <RackRow onClose={closeRackModule} left={[["rhythm", modules.rhythm && <RhythmLinks engine={engine} />]]} right={[]} />
                 <RackRow
                   onClose={closeRackModule}

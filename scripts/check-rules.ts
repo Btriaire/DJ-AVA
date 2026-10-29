@@ -78,3 +78,6 @@ console.log("check-rules one click ok");
 import { selfTest as trackTitleTest } from "../lib/trackTitle";
 trackTitleTest();
 console.log("check-rules track title ok");
+import { selfTest as stemJamTest } from "../lib/audio/stemJam";
+stemJamTest();
+console.log("check-rules stem jam ok");

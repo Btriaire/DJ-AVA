@@ -1556,6 +1556,10 @@ export class Deck {
     this.synthRoute = { src, dst };
   }
 
+  // input of stem i's chain (filter, drive, FX, fader): the stem modules play their sounds here, so the deck fader,
+  // the crossfader and the stem's effects apply to them too; several sources can share it
+  stemInput(i: number): AudioNode | null { return this.stemSynthIn[i] ?? null; }
+
   get stemSynthIndex(): number | null {
     return this.synthStem;
   }
