@@ -1,6 +1,7 @@
 "use client";
 
 import { compatibleQuery, searchTracks } from "@/lib/trackSearch";
+import { splitTitle } from "@/lib/trackTitle";
 import { dedupeOnline, rankOnline } from "@/lib/trackRank";
 import { useState, useRef, useMemo, useSyncExternalStore, useEffect } from "react";
 import { loadLibrary, saveLibrary, uid, idbGetBlob } from "@/lib/library";
@@ -87,7 +88,7 @@ const GRID_CLASS = {
   L: "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 flex-1 overflow-y-auto"
 };
 
-// "Artist - Title (Official Video)" shown as a title and an artist line, without the video-title noise
+
 // the key as a filled chip in its Camelot colour (grey "?" when unknown)
 function KeyBadge({ camelot }: { camelot?: string }) {
   const c = camelotColour(camelot);
@@ -96,12 +97,6 @@ function KeyBadge({ camelot }: { camelot?: string }) {
       {camelot ?? "?"}
     </span>
   );
-}
-
-function displayName(name: string): { title: string; artist: string } {
-  const clean = name.replace(/\s*[([][^)\]]*\b(official|lyrics?|audio|video|clip|visuali[sz]er|hd|hq|4k|remaster(ed)?)\b[^)\]]*[)\]]/gi, "").trim();
-  const i = clean.indexOf(" - ");
-  return i > 0 ? { artist: clean.slice(0, i).trim(), title: clean.slice(i + 3).trim() } : { artist: "", title: clean };
 }
 
 export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDest, playlistId: string) => void } = {}) {
@@ -751,6 +746,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
 
   // tray row: checkbox, sleeve, title, BPM, key, length, stems, actions on hover
   const renderTrayRow = (track: LibTrack) => {
+    const nice = splitTitle(track.name);
     const checked = selectedLaterIds.has(track.id);
     const analyzing = analyzingIds.has(track.id);
     const needsAnalysis = !track.bpm || !track.camelot;
@@ -767,8 +763,11 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
         </label>
         <Cover art={track.art} name={track.name} camelot={track.camelot} size={36} />
         <div className="min-w-0">
-          <p className="truncate text-[13px] font-bold text-neutral-50" title={track.name}>{displayName(track.name).title}</p>
-          <p className="truncate text-[11px] text-neutral-400">{[displayName(track.name).artist, fmtDur(track.durationSec), sub || SRC_BADGE[track.source]?.label || track.source].filter(Boolean).join(" · ")}</p>
+          <p className="truncate text-[13px] font-bold text-neutral-50" title={track.name}>{nice.title}</p>
+          <p className="truncate text-[11px] text-neutral-400">
+            {nice.artist && <span className="font-semibold text-neutral-200">{nice.artist} · </span>}
+            {[nice.extra, fmtDur(track.durationSec), sub || SRC_BADGE[track.source]?.label || track.source].filter(Boolean).join(" · ")}
+          </p>
           <div className="mt-0.5 max-w-[180px] max-sm:hidden"><TempoRuler bpm={track.bpm} median={trayMedianBpm} /></div>
           <div className="mt-1 flex items-center gap-2 sm:hidden">
             <BpmChip bpm={track.bpm} estimated={track.bpmEstimated} />
@@ -808,6 +807,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
 
   // tray card (grid view): big sleeve with key and BPM on it
   const renderTrayCard = (track: LibTrack) => {
+    const nice = splitTitle(track.name);
     const checked = selectedLaterIds.has(track.id);
     const analyzing = analyzingIds.has(track.id);
     const checking = checkingQualityIds.has(track.id);
@@ -848,8 +848,9 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
           )}
         </div>
         <div className="min-w-0" title={track.name}>
-          <p className="truncate text-[13px] font-bold leading-snug text-neutral-50">{displayName(track.name).title}</p>
-          <p className="truncate text-[11px] text-neutral-400">{displayName(track.name).artist || " "}</p>
+          <p className="line-clamp-2 min-h-[2.5em] text-[14px] font-extrabold leading-[1.25] tracking-[-0.01em] text-neutral-50">{nice.title}</p>
+          <p className="mt-0.5 truncate text-[12px] font-semibold text-neutral-300">{nice.artist || " "}</p>
+          <p className="truncate text-[10px] italic text-neutral-500">{nice.extra || " "}</p>
         </div>
         <div className="flex items-center gap-2 rounded-lg bg-black/30 p-1.5">
           <MiniKeyWheel camelot={track.camelot} size={38} label={false} />

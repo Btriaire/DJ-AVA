@@ -75,3 +75,6 @@ console.log("check-rules recipes ok");
 import { selfTest as oneClickTest } from "../lib/oneClick";
 oneClickTest();
 console.log("check-rules one click ok");
+import { selfTest as trackTitleTest } from "../lib/trackTitle";
+trackTitleTest();
+console.log("check-rules track title ok");
