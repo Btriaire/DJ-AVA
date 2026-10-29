@@ -24,7 +24,7 @@ import type { Cue } from "@/lib/setPicker";
 import type { VideoMeta } from "@/lib/videoMeta";
 import { BpmChip, Cover, Icon, KeyChip, Mosaic, StemPill, fmtDur, stemInfoFrom } from "./prep/parts";
 import { AmbientHero, PlayDisc, QuickSets } from "./prep/AmbientHero";
-import { KeyWheel, MiniKeyWheel, StemsDonut, TempoHistogram, TempoRuler } from "./prep/TrayOverview";
+import { KeyWheel, MiniKeyWheel, camelotColour, StemsDonut, TempoHistogram, TempoRuler } from "./prep/TrayOverview";
 import { Section, SegFilter, StepBadge, useStored, useStoredOpen } from "./prep/Blocks";
 import "./prep/prep-view.css";
 
@@ -833,7 +833,8 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
           <p className="truncate text-[11px] text-neutral-400">{displayName(track.name).artist || " "}</p>
         </div>
         <div className="flex items-center gap-2">
-          <MiniKeyWheel camelot={track.camelot} size={28} />
+          <MiniKeyWheel camelot={track.camelot} size={30} label={false} />
+          <span className="w-7 font-mono text-[12px] font-black" style={{ color: camelotColour(track.camelot) ?? "#737373" }}>{track.camelot ?? "?"}</span>
           <div className="min-w-0 flex-1"><TempoRuler bpm={track.bpm} median={trayMedianBpm} /></div>
         </div>
         <div className="flex items-center justify-between gap-1">

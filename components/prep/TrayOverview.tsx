@@ -403,7 +403,7 @@ const polarToCartesian = (cx: number, cy: number, radius: number, angle: number)
   return { x: cx + radius * Math.cos(rad), y: cy + radius * Math.sin(rad) };
 };
 
-export function MiniKeyWheel({ camelot, size = 30 }: { camelot?: string; size?: number }) {
+export function MiniKeyWheel({ camelot, size = 30, label = true }: { camelot?: string; size?: number; label?: boolean }) {
   const sector = (r0: number, r1: number, a0: number, a1: number) => {
     const start = polarToCartesian(20, 20, r0, a0);
     const end = polarToCartesian(20, 20, r0, a1);
@@ -420,7 +420,7 @@ export function MiniKeyWheel({ camelot, size = 30 }: { camelot?: string; size?: 
         const ring = i % 2 === 0 ? 'A' : 'B';
         const angle = (n - 1) * 30;
         const isActive = camelot && camelot.toUpperCase() === `${n}${ring}`;
-        const fill = isActive ? activeColour : 'rgba(255,255,255,.07)';
+        const fill = isActive ? activeColour : 'rgba(255,255,255,.1)';
         const r0 = ring === 'A' ? 9 : 14;
         const r1 = ring === 'A' ? 14 : 19;
         return (
@@ -433,17 +433,19 @@ export function MiniKeyWheel({ camelot, size = 30 }: { camelot?: string; size?: 
           />
         );
       })}
-      <text
-        x={20}
-        y={20}
-        fontSize={7}
-        fontWeight={800}
-        fill={camelot ? "#e5e5e5" : "#737373"}
-        textAnchor="middle"
-        dominantBaseline="central"
-      >
-        {camelot || '?'}
-      </text>
+      {label && (
+        <text
+          x={20}
+          y={20}
+          fontSize={7}
+          fontWeight={800}
+          fill={camelot ? "#e5e5e5" : "#737373"}
+          textAnchor="middle"
+          dominantBaseline="central"
+        >
+          {camelot || '?'}
+        </text>
+      )}
     </svg>
   );
 }
