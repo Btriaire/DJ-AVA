@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { loadLibrary, uid, type LibTrack } from "@/lib/library";
-import { OneClick } from "./OneClick";
+import { RadioHero } from "./RadioHero";
 import {
   cancelPrep,
   enqueuePrep,
@@ -621,7 +621,7 @@ export default function RadioView({
         </div>
       </header>
 
-      <OneClick tracks={lib.tracks} onLaunch={onLaunchSet ? (id) => onLaunchSet("relay", id) : undefined} />
+      <RadioHero tracks={lib.tracks} playlists={lib.playlists} onLaunch={onLaunchSet ? (id) => onLaunchSet("relay", id) : undefined} />
 
       <StationBar
         stations={book.stations.map((st) => ({

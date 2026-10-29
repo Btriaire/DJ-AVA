@@ -11,13 +11,15 @@ export interface StationInfo {
 export interface StationBarProps {
   stations: StationInfo[];
   currentId: string;
-  locked: boolean; // the radio is running: nothing changes
+  locked: boolean;
   onSelect: (id: string) => void;
-  onCreate: () => void; // a new empty station (the parent names it)
+  onCreate: () => void;
   onRename: (id: string, name: string) => void;
   onDuplicate: (id: string) => void;
-  onDelete: (id: string) => void; // the parent never deletes the last station
+  onDelete: (id: string) => void;
 }
+
+const TILE = ["#22d3ee", "#a78bfa", "#34d399", "#ffcc00", "#f97316", "#60a5fa"];
 
 export function StationBar({ stations, currentId, locked, onSelect, onCreate, onRename, onDuplicate, onDelete }: StationBarProps) {
   const [editing, setEditing] = useState<string | null>(null);
@@ -47,108 +49,165 @@ export function StationBar({ stations, currentId, locked, onSelect, onCreate, on
   };
 
   return (
-    <nav aria-label="Mes radios" className="prep-card flex flex-wrap items-center gap-2 p-2">
-      <span className="px-1 text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500">Mes radios</span>
-      {stations.map(({ id, name, artistCount }) => {
-        const current = id === currentId;
-        if (editing === id) {
+    <nav aria-label="Mes radios" className="prep-card p-3">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500">Mes radios</span>
+        <span className="text-[10px] font-mono text-neutral-500">{stations.length}</span>
+      </div>
+
+      <div className="flex gap-3 overflow-x-auto p-1 -m-1 pb-1 snap-x">
+        {stations.map(({ id, name, artistCount }, index) => {
+          const current = id === currentId;
+          const tileColor = TILE[index % 6];
+          const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]?.toUpperCase() || '').join('');
+
           return (
-            <input
-              key={id}
-              className="prep-input w-44 px-2.5 py-1.5 text-xs font-bold"
-              aria-label="Nom de la radio"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleRename(id);
-                if (e.key === "Escape") {
-                  setEditing(null);
-                  setDraft("");
-                }
-              }}
-              onBlur={() => handleRename(id)}
-              autoFocus
-            />
+            <div key={id} className="shrink-0 snap-start">
+              {editing === id ? (
+                <div
+                  className={`w-36 rounded-lg p-2.5 bg-[color-mix(in_srgb,_var(--prep-surface)_70%,_#000)] hover:bg-[color-mix(in_srgb,_var(--prep-surface-2)_70%,_#000)] transition-colors ${current ? 'ring-2 ring-[var(--prep-accent)]' : ''}`}
+                >
+                  <div className="relative mb-2">
+                    <div
+                      className="aspect-square w-full rounded-md shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]"
+                      style={{ background: `color-mix(in srgb, ${tileColor} 70%, #000)` }}
+                    >
+                      <div
+                        className="flex h-full items-center justify-center text-3xl font-black"
+                        style={{ color: `color-mix(in srgb, ${tileColor} 35%, #fff)` }}
+                      >
+                        {initials}
+                      </div>
+                    </div>
+                    {current && (
+                      <div className="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full bg-[var(--prep-accent)]">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M5 12l5 5L20 7" stroke="#050505" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-left">
+                    <input
+                      className="prep-input w-full px-1.5 py-1 text-xs font-bold"
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleRename(id);
+                        if (e.key === "Escape") {
+                          setEditing(null);
+                          setDraft("");
+                        }
+                      }}
+                      onBlur={() => handleRename(id)}
+                      autoFocus
+                      aria-label="Nom de la radio"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  aria-pressed={current}
+                  className={`w-36 rounded-lg p-2.5 bg-[color-mix(in_srgb,_var(--prep-surface)_70%,_#000)] hover:bg-[color-mix(in_srgb,_var(--prep-surface-2)_70%,_#000)] transition-colors ${current ? 'ring-2 ring-[var(--prep-accent)]' : ''}`}
+                  onClick={() => {
+                    handleCancelDelete();
+                    if (!current) onSelect(id);
+                  }}
+                  disabled={locked && !current}
+                  aria-label={`${name} : ${artistCount} artiste(s)`}
+                >
+                  <div className="relative mb-2">
+                    <div
+                      className="aspect-square w-full rounded-md shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]"
+                      style={{ background: `color-mix(in srgb, ${tileColor} 70%, #000)` }}
+                    >
+                      <div
+                        className="flex h-full items-center justify-center text-3xl font-black"
+                        style={{ color: `color-mix(in srgb, ${tileColor} 35%, #fff)` }}
+                      >
+                        {initials}
+                      </div>
+                    </div>
+                    {current && (
+                      <div className="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full bg-[var(--prep-accent)]">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M5 12l5 5L20 7" stroke="#050505" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-left">
+                    <div className="text-xs font-bold truncate">{name}</div>
+                    <div className="text-[11px] text-neutral-500">{artistCount} artiste(s)</div>
+                  </div>
+                </button>
+              )}
+
+              {current && (
+                <div className="mt-2 flex gap-1">
+                  <button
+                    type="button"
+                    className="p-1.5 text-neutral-500 hover:text-white disabled:opacity-30"
+                    onClick={() => {
+                      setEditing(id);
+                      setDraft(name);
+                      handleCancelDelete();
+                    }}
+                    disabled={locked}
+                    aria-label="Renommer la radio"
+                  >
+                    <Icon name="edit" size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    className="p-1.5 text-neutral-500 hover:text-white disabled:opacity-30"
+                    onClick={() => {
+                      if (stations.length > 1) handleDelete(id);
+                    }}
+                    disabled={locked || stations.length < 2}
+                    aria-label={confirmDelete === id ? "Confirmer la suppression" : "Supprimer la radio"}
+                  >
+                    {confirmDelete === id ? (
+                      <span className="text-[11px] font-bold text-red-400">Supprimer ?</span>
+                    ) : (
+                      <Icon name="trash" size={14} />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className="p-1.5 text-neutral-500 hover:text-white disabled:opacity-30"
+                    onClick={() => {
+                      onDuplicate(id);
+                      handleCancelDelete();
+                    }}
+                    disabled={locked}
+                    aria-label="Dupliquer la radio"
+                  >
+                    <Icon name="copy" size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
           );
-        }
-        return (
-          <div key={id} className="flex items-center gap-1">
-            <button
-              type="button"
-              aria-pressed={current}
-              className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-bold ${current
-                ? "border-[var(--prep-accent)] bg-[color-mix(in_srgb,_var(--prep-accent)_14%,_transparent)] text-white"
-                : "border-[var(--prep-line)] text-neutral-300"}`}
-              onClick={() => {
-                handleCancelDelete();
-                if (!current) onSelect(id);
-              }}
-              disabled={locked && !current}
-              title={`${name} : ${artistCount} artiste(s)`}
-            >
-              <span className="max-w-[160px] truncate">{name}</span>
-              <span className="rounded-full bg-white/5 px-1.5 text-[10px] font-mono">{artistCount}</span>
-            </button>
-            {current && (
-              <>
-                <button
-                  type="button"
-                  className="p-1.5 text-neutral-500 hover:text-white disabled:opacity-30"
-                  onClick={() => {
-                    setEditing(id);
-                    setDraft(name);
-                    handleCancelDelete();
-                  }}
-                  disabled={locked}
-                  aria-label="Renommer la radio"
-                >
-                  <Icon name="edit" size={14} />
-                </button>
-                <button
-                  type="button"
-                  className="p-1.5 text-neutral-500 hover:text-white disabled:opacity-30"
-                  onClick={() => {
-                    if (stations.length > 1) handleDelete(id);
-                  }}
-                  disabled={locked || stations.length < 2}
-                  aria-label={confirmDelete === id ? "Confirmer la suppression" : "Supprimer la radio"}
-                >
-                  {confirmDelete === id ? (
-                    <span className="text-[11px] font-bold text-red-400">Supprimer ?</span>
-                  ) : (
-                    <Icon name="trash" size={14} />
-                  )}
-                </button>
-                <button
-                  type="button"
-                  className="p-1.5 text-neutral-500 hover:text-white disabled:opacity-30"
-                  onClick={() => {
-                    onDuplicate(id);
-                    handleCancelDelete();
-                  }}
-                  disabled={locked}
-                  aria-label="Dupliquer la radio"
-                >
-                  <Icon name="copy" size={14} />
-                </button>
-              </>
-            )}
+        })}
+
+        <button
+          type="button"
+          className="flex shrink-0 snap-start self-stretch min-h-[176px] w-36 items-center justify-center rounded-lg border border-dashed border-[var(--prep-line)] bg-[color-mix(in_srgb,_var(--prep-surface)_70%,_#000)] hover:bg-[color-mix(in_srgb,_var(--prep-surface-2)_70%,_#000)] transition-colors disabled:opacity-30"
+          onClick={() => {
+            onCreate();
+            handleCancelDelete();
+          }}
+          disabled={locked}
+          aria-label="Nouvelle radio"
+        >
+          <div className="flex flex-col items-center gap-1">
+            <Icon name="plus" size={22} />
+            <span className="text-xs">Nouvelle radio</span>
           </div>
-        );
-      })}
-      <button
-        type="button"
-        className="prep-btn-ghost flex items-center gap-1.5 px-3 py-1.5 text-xs"
-        onClick={() => {
-          onCreate();
-          handleCancelDelete();
-        }}
-        disabled={locked}
-        title="Une autre liste d'artistes avec ses propres réglages"
-      >
-        <Icon name="plus" size={14} />
-        Nouvelle radio
-      </button>
+        </button>
+      </div>
     </nav>
   );
 }
