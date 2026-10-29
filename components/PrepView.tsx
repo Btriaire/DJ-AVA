@@ -861,15 +861,15 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
             <TempoRuler bpm={track.bpm} median={trayMedianBpm} />
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <StemQuad state={stemOf(track.id).state} pct={stemOf(track.id).pct} />
           <StemPill info={stemOf(track.id)} onPrepare={() => queueStems([track])} />
-          <span className="ml-auto flex items-center gap-1.5">
-            <QualityBars level={track.quality} />
-            <span className="font-mono text-[11px] text-neutral-400">{fmtDur(track.durationSec)}</span>
-          </span>
         </div>
-        <DurationBar sec={track.durationSec} />
+        <div className="flex min-w-0 items-center gap-1.5">
+          <QualityBars level={track.quality} />
+          <div className="min-w-0 flex-1"><DurationBar sec={track.durationSec} /></div>
+          <span className="font-mono text-[10px] text-neutral-400">{fmtDur(track.durationSec)}</span>
+        </div>
         {hasMeta && openDetailsIds.has(track.id) && renderMetaDetails(track.meta!)}
       </div>
     );
