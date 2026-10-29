@@ -16,9 +16,11 @@ export function JamShell({
   warning,
   onReset,
   stemsOff,
+  stemsLoading,
   onEnableStems,
   children,
 }: {
+  stemsLoading?: boolean;
   warning?: string | null; // something asked for cannot work on this song
   onReset?: () => void;
   stemsOff?: boolean; // stems prepared but not playing: a button switches them on
@@ -75,9 +77,11 @@ export function JamShell({
       </div>
       {status === "nostems" && (
         <div className="flex flex-wrap items-center gap-2 rounded-md bg-[#fbbf24]/10 px-2 py-1.5 text-[11px] text-[#fbbf24]">
-          {stemsOff && onEnableStems ? (
+          {stemsLoading ? (
+            <>Chargement des stems du morceau…</>
+          ) : stemsOff && onEnableStems ? (
             <>
-              Les stems de ce deck sont prêts mais coupés.
+              Les stems de ce morceau sont prêts mais coupés.
               <button type="button" onClick={onEnableStems} className="rounded bg-[#fbbf24] px-2 py-0.5 text-[10px] font-black tracking-wide text-[#1a1203]">ACTIVER LES STEMS</button>
             </>
           ) : (

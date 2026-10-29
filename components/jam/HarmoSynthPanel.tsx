@@ -18,7 +18,7 @@ export function HarmoSynthPanel({ engine }: { engine: DJEngine }) {
   const names = degreeNames(m.deck());
 
   return (
-    <JamShell title="Synth" tag="dans la tonalité · stem autre" color={C} status={m.status()} deckName={m.deck() === engine.deckA ? "A" : "B"} pref={m.pref} onPref={(p) => { m.set("pref", p); bump(); }} lit={() => m.lit()} warning={m.warning()} onReset={() => { m.reset(); bump(); }} stemsOff={m.canEnableStems()} onEnableStems={() => { m.enableStems(); bump(); }}>
+    <JamShell title="Synth" tag="dans la tonalité · stem autre" color={C} status={m.status()} deckName={m.deck() === engine.deckA ? "A" : "B"} pref={m.pref} onPref={(p) => { m.set("pref", p); bump(); }} lit={() => m.lit()} warning={m.warning()} onReset={() => { m.reset(); bump(); }} stemsOff={m.canEnableStems()} stemsLoading={m.stemsLoading()} onEnableStems={() => { void m.enableStems(); bump(); }}>
       <div className="flex flex-wrap items-end gap-4">
         <JamSeg label="Jeu" color={C} value={m.mode} options={[["off", "Off"], ["arp", "Arpège"], ["stab", "Stabs"], ["pad", "Nappe"]] as const} onChange={(v: SynthMode) => { m.set("mode", v); bump(); }} />
         <JamSeg label="Forme" color={C} value={m.shape} options={[["up", "Montant"], ["down", "Descendant"], ["updown", "Aller-retour"], ["random", "Hasard"], ["gate", "Gate trance"]] as const} onChange={(v: ArpShape) => { m.set("shape", v); bump(); }} />

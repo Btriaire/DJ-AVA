@@ -89,8 +89,15 @@ abstract class JamModule {
   readonly pressed = new Set<string>();
   abstract pads(): PadDef[];
   // stems prepared but not playing: the module can switch them on itself
-  canEnableStems(): boolean { const d = this.deck(); return d.stemReady && !d.stemsActive; }
-  enableStems() { const d = this.deck(); if (d.stemReady && !d.stemsActive) { d.setStemsActive(true); jamChanged(); } }
+  // stems loaded but off, or ready on disk for this song (prepared earlier): one click plays them, like the deck's STEMS button
+  canEnableStems(): boolean { const d = this.deck(); return (d.stemReady && !d.stemsActive) || (!d.stemReady && d.stemCached && d.stemStatus !== "working"); }
+  stemsLoading(): boolean { return this.deck().stemStatus === "working"; }
+  async enableStems() {
+    const d = this.deck();
+    if (!d.stemReady) { jamChanged(); await d.ensureStems(); }
+    if (d.stemReady && !d.stemsActive) d.setStemsActive(true);
+    jamChanged();
+  }
   // a line under the title when something asked for cannot work on this song (its notes were never analysed)
   warning(): string | null { return null; }
   // the settings kept between sessions (what is playing right now is not: nothing starts by itself at the next launch)
