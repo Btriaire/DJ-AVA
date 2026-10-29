@@ -24,7 +24,7 @@ import type { Cue } from "@/lib/setPicker";
 import type { VideoMeta } from "@/lib/videoMeta";
 import { BpmChip, Cover, Icon, KeyChip, Mosaic, StemPill, fmtDur, stemInfoFrom } from "./prep/parts";
 import { AmbientHero, PlayDisc, QuickSets } from "./prep/AmbientHero";
-import { KeyWheel, MiniKeyWheel, camelotColour, StemsDonut, TempoHistogram, TempoRuler } from "./prep/TrayOverview";
+import { DurationBar, KeyWheel, MiniKeyWheel, QualityBars, StemQuad, camelotColour, StemsDonut, TempoHistogram, TempoRuler } from "./prep/TrayOverview";
 import { Section, SegFilter, StepBadge, useStored, useStoredOpen } from "./prep/Blocks";
 import "./prep/prep-view.css";
 
@@ -817,7 +817,13 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
     const showQuality = track.source !== "local" && (!track.quality || checking);
     const showActions = gridSize !== "S" && (showAnalyze || showQuality || hasMeta);
     return (
-      <div key={track.id} data-checked={checked} {...rowDrag(track)} className="prep-row flex cursor-grab flex-col gap-2 p-2 active:cursor-grabbing">
+      <div
+        key={track.id}
+        data-checked={checked}
+        {...rowDrag(track)}
+        className="prep-row prep-keyed flex cursor-grab flex-col gap-2 p-2 active:cursor-grabbing"
+        style={{ ["--key" as string]: camelotColour(track.camelot) ?? "rgba(255,255,255,.18)" }}
+      >
         <div className="relative">
           <div className="prep-sleeve"><Cover art={track.art} name={track.name} camelot={track.camelot} fill rounded={8} /></div>
           {camelotColour(track.camelot) ? <span className="pointer-events-none absolute inset-x-0 bottom-0 h-1 rounded-b-[8px]" style={{ background: camelotColour(track.camelot)! }} /> : null}
@@ -855,10 +861,15 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
             <TempoRuler bpm={track.bpm} median={trayMedianBpm} />
           </div>
         </div>
-        <div className="flex items-center justify-between gap-1">
+        <div className="flex items-center gap-2">
+          <StemQuad state={stemOf(track.id).state} pct={stemOf(track.id).pct} />
           <StemPill info={stemOf(track.id)} onPrepare={() => queueStems([track])} />
-          <span className="font-mono text-[11px] text-neutral-500">{fmtDur(track.durationSec)}</span>
+          <span className="ml-auto flex items-center gap-1.5">
+            <QualityBars level={track.quality} />
+            <span className="font-mono text-[11px] text-neutral-400">{fmtDur(track.durationSec)}</span>
+          </span>
         </div>
+        <DurationBar sec={track.durationSec} />
         {hasMeta && openDetailsIds.has(track.id) && renderMetaDetails(track.meta!)}
       </div>
     );

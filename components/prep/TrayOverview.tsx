@@ -471,3 +471,84 @@ export function TempoRuler({ bpm, median }: { bpm?: number; median?: number }) {
     </svg>
   );
 }
+
+// the rest of a title's card: its stems as four lit bars, its audio quality as signal bars, its length on a 10 min scale
+export function StemQuad({ state, pct }: { state: "none" | "queued" | "download" | "run" | "done" | "error"; pct: number | null }) {
+  const stems = [
+    { name: "voix", color: "#f472b6" },
+    { name: "batterie", color: "#fb923c" },
+    { name: "basse", color: "#a78bfa" },
+    { name: "autres", color: "#38bdf8" },
+  ];
+
+  const getAriaLabel = () => {
+    switch (state) {
+      case "done": return "Stems prêts";
+      case "run": return `Séparation ${pct} %`;
+      case "queued": case "download": return "Stems en attente";
+      case "error": return "Erreur de stems";
+      default: return "Pas de stems";
+    }
+  };
+
+  return (
+    <div role="img" aria-label={getAriaLabel()} className="flex gap-0.5">
+      {stems.map(({ name, color }) => (
+        <div key={name} title={name} className="w-1.5 h-4 rounded-sm bg-[rgba(255,255,255,.08)] relative overflow-hidden">
+          {state === "done" && <div className="w-full h-full" style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}` }} />}
+          {state === "run" && pct !== null && (
+            <div className="absolute bottom-0 w-full" style={{ height: `${pct}%`, backgroundColor: color }} />
+          )}
+          {(state === "queued" || state === "download") && (
+            <div className="w-full h-full opacity-35" style={{ backgroundColor: color }} />
+          )}
+          {state === "error" && <div className="w-full h-full border border-[#f87171] border-solid" />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function QualityBars({ level }: { level?: "HR" | "HQ" | "STD" | "LQ" }) {
+  const bars = Array(4).fill(0);
+  const getColor = (i: number) => {
+    if (!level || i >= (level === "HR" ? 4 : level === "HQ" ? 3 : level === "STD" ? 2 : level === "LQ" ? 1 : 0)) {
+      return "rgba(255,255,255,.15)";
+    }
+    return level === "HR" || level === "HQ" ? "#34d399" : level === "STD" ? "#facc15" : "#f87171";
+  };
+
+  const getLabel = () => {
+    switch (level) {
+      case "HR": return "HiRes";
+      case "HQ": return "HQ";
+      case "STD": return "Standard";
+      case "LQ": return "Basse";
+      default: return "inconnue";
+    }
+  };
+
+  return (
+    <svg role="img" aria-label={`Qualité ${getLabel()}`} viewBox="0 0 16 12" className="w-4 h-3">
+      {bars.map((_, i) => (
+        <rect key={i} x={i * 4} y={12 - 3 * (i + 1)} width="3" height={3 * (i + 1)} rx=".6" fill={getColor(i)} />
+      ))}
+    </svg>
+  );
+}
+
+export function DurationBar({ sec }: { sec?: number }) {
+  const m = sec ? Math.floor(sec / 60) : 0;
+  const s = sec ? Math.round(sec % 60) : 0;
+  const width = sec ? Math.min(sec / 600, 1) * 100 : 0;
+
+  return (
+    <div role="img" aria-label={sec ? `Durée ${m} min ${s} s` : "Durée inconnue"} className="relative h-1 w-full overflow-hidden rounded-full">
+      <div className="absolute h-full w-full bg-[rgba(255,255,255,.08)]" />
+      <div className="absolute h-full bg-gradient-to-r from-[rgba(255,255,255,.25)] to-[rgba(255,255,255,.6)]" style={{ width: `${width}%` }} />
+      {Array(9).fill(0).map((_, i) => (
+        <div key={i} className="absolute h-full w-px bg-[#0b0b0d]" style={{ left: `${10 + i * 10}%` }} />
+      ))}
+    </div>
+  );
+}
