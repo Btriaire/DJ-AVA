@@ -25,7 +25,7 @@ import { nextSungAt } from "./jamVoiceNext";
 import { Vocoder } from "./jamVocoder";
 import { harmonyNotes, type HarmonyMode } from "./jamHarmony";
 import { voiceNotes, type VoiceNote } from "./jamVoiceNotes";
-import { chordHits, cleanNotes } from "./jamReplay";
+import { chordHits, cleanNotes, monoBass } from "./jamReplay";
 import { envelope, levelAt, percentile } from "./jamPrecision";
 import { chordAt, chordDegreeAt, degreeChord, heardShift, voiceLead, type ChordColor, jamDeck, jamScale, jamStem, nextGrid, onJamTick, snapToScale, songToCtx, spb, type JamDeckPref, type JamRole } from "./stemJam";
 
@@ -292,10 +292,10 @@ export class BassLab extends JamModule {
   private played: { start: number; end: number; midi: number }[] = []; // the line notes scheduled, in song seconds, for the lane
   pump = false; // the bass ducks on every kick of the song (on every beat when its kicks were never analysed)
   pumpDepth = 0.8;
-  muted = false;
   wobble = 0; // 0..1 depth of the synced wobble
   wobbleDiv = 0.25;
-  private volBefore = 1;
+  private swapLine = false; // REMPLACER turned the REPRISE on, so it turns it off again
+  private monoCache: WeakMap<object, Note[]> = new WeakMap();
   constructor(engine: DJEngine) {
     super(engine, "bass");
     this.sub = new SubVoice(engine.ctx);
@@ -314,7 +314,6 @@ export class BassLab extends JamModule {
   protected afterScene() { this.setSub(this.subLevel); this.setLineLevel(this.lineLevel); this.setLineTone(this.lineTone); this.setLineEnv(this.lineEnv); this.setWobble(this.wobble, this.wobbleDiv); }
   protected resetFields() {
     this.setSub(0); this.setWobble(0); this.subOctave = -12; this.line = "off"; this.setLineLevel(0.8); this.pump = false;
-    if (this.muted) this.toggleMute();
     this.setDrive(0); this.setTone(0);
   }
   warning(): string | null {
@@ -328,7 +327,7 @@ export class BassLab extends JamModule {
   pads(): PadDef[] {
     return [
       { id: "pump", label: "PUMP", sub: "sur les kicks", mode: "toggle", isOn: () => this.pump, run: (on) => { this.pump = on; } },
-      { id: "swap", label: "SWAP", sub: "basse coupée", mode: "toggle", isOn: () => this.muted, run: () => this.toggleMute() },
+      { id: "swap", label: "SWAP", sub: "basse remplacée", mode: "toggle", isOn: () => this.swapped, run: () => this.toggleSwap() },
       { id: "drop", label: "DROP", sub: "plongée", mode: "hold", run: (on) => this.drop(on) },
       { id: "r8", label: "ROLL", sub: "1/8", mode: "hold", run: (on) => this.fx("roll", on, 0.125, 1) },
       { id: "r16", label: "ROLL", sub: "1/16", mode: "hold", run: (on) => this.fx("roll", on, 0.0625, 1) },
@@ -356,7 +355,7 @@ export class BassLab extends JamModule {
   setCharacter(c: BassCharacter) { this.lineSynth.setCharacter(c); }
   // kept between sessions through this field
   get characterName(): string { return this.lineSynth.character; }
-  set characterName(v: string) { if (["acid", "reese", "808", "funk", "moog"].includes(v)) this.lineSynth.setCharacter(v as BassCharacter); }
+  set characterName(v: string) { if (["acid", "reese", "808", "funk", "moog", "fm", "hoover", "donk", "berlin"].includes(v)) this.lineSynth.setCharacter(v as BassCharacter); }
   // the lane above the pads: the song's bass notes and the line notes played, around the playhead
   laneData(): { pos: number; beat: number; notes: { start: number; end: number; midi: number; kind: "song" | "line" }[] } | null {
     const d = this.deck();
@@ -375,13 +374,10 @@ export class BassLab extends JamModule {
   setDrive(v: number) { const d = this.deck(); d.setStemDrive(this.stem(d), v); }
   get tone(): number { const d = this.deck(); return d.stemFilterX[this.stem(d)] ?? 0; }
   setTone(x: number) { const d = this.deck(); d.setStemFilter(this.stem(d), x); }
-  // bass swap: the stem fades out (or back) over one beat
-  toggleMute() {
-    const d = this.deck(), i = this.stem(d);
-    if (i < 0) return;
-    this.muted = !this.muted;
-    if (this.muted) { this.volBefore = d.stemVol[i] || 1; d.rampStemVol(i, 0, spb(d)); }
-    else d.rampStemVol(i, this.volBefore, spb(d));
+  // REMPLACER: the bass stem fades out while the REPRISE replays its part (or the chosen line takes over)
+  protected onSwap(on: boolean): void {
+    if (on && this.line === "off") { this.line = "follow"; this.swapLine = true; }
+    else if (!on && this.swapLine) { if (this.line === "follow") this.line = "off"; this.swapLine = false; }
   }
   // the stem and the generated line duck together on a kick
   private duck(deck: Deck, i: number, at: number, beat: number) {
@@ -412,7 +408,10 @@ export class BassLab extends JamModule {
       }
     if (this.line === "follow") {
       // REPRISE: the song's own bass part, same notes and rhythm, on the synth bass (with SWAP it changes the bass sound)
-      for (const [s0, e0, m, v] of this.notes(deck, deck.stemNotes?.bass, from, to)) {
+      const key = deck.stemNotes;
+      let mono = key ? this.monoCache.get(key) : undefined;
+      if (!mono) { mono = monoBass(key?.bass ?? []); if (key) this.monoCache.set(key, mono); }
+      for (const [s0, e0, m, v] of this.notes(deck, mono, from, to)) {
         let midi = m + shift;
         while (midi > 55) midi -= 12;
         while (midi < 28) midi += 12;

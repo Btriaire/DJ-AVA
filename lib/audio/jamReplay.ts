@@ -38,6 +38,26 @@ export function chordHits(notes: Note[], window = 0.04, minNotes = 2): Hit[] {
   });
 }
 
+// a bass part as a bass player plays it: one note at a time
+export function monoBass(notes: Note[], minLen = 0.06, minVel = 0.2, merge = 0.03): Note[] {
+    const kept: Note[] = [];
+    for (const [s, e, m, v] of notes) {
+        if (e - s < minLen || v < minVel) continue;
+        const prev = kept[kept.length - 1];
+        if (prev && s - prev[0] <= merge) {
+            if (v > prev[3] || (v === prev[3] && m < prev[2])) {
+                kept[kept.length - 1] = [prev[0], e, m, v];
+            }
+        } else {
+            if (prev && prev[1] > s) {
+                kept[kept.length - 1] = [prev[0], s, prev[2], prev[3]];
+            }
+            kept.push([s, e, m, v]);
+        }
+    }
+    return kept;
+}
+
 export function selfTest(): void {
     const notes: Note[] = [[0, 0.05, 60, 0.9], [0, 1, 62, 0.1], [0, 1, 64, 0.8]];
     const cleaned = cleanNotes(notes);
@@ -59,6 +79,12 @@ export function selfTest(): void {
     assert(hits[1].t === 2 && hits[1].dur === 1, "chordHits should calculate correct t and dur for second hit");
 
     assert(chordHits([]).length === 0, "chordHits should return empty array for empty input");
+  assert(monoBass([[0,1,40,0.5],[0.5,1.5,43,0.5]]).length === 2 && monoBass([[0,1,40,0.5],[0.5,1.5,43,0.5]])[0][1] === 0.5 && monoBass([[0,1,40,0.5],[0.5,1.5,43,0.5]])[1][2] === 43, "monoBass case 1 failed");
+  assert(monoBass([[0,1,40,0.5],[0.01,1,52,0.8]]).length === 1 && monoBass([[0,1,40,0.5],[0.01,1,52,0.8]])[0][2] === 52, "monoBass case 2 failed");
+  assert(monoBass([[0,1,52,0.5],[0.02,1,40,0.5]]).length === 1 && monoBass([[0,1,52,0.5],[0.02,1,40,0.5]])[0][2] === 40 && monoBass([[0,1,52,0.5],[0.02,1,40,0.5]])[0][0] === 0, "monoBass case 3 failed");
+  assert(monoBass([[0,1,40,0.8],[0.01,1,52,0.3]]).length === 1 && monoBass([[0,1,40,0.8],[0.01,1,52,0.3]])[0][2] === 40, "monoBass case 4 failed");
+  assert(monoBass([[0,0.03,40,0.8],[0.1,0.5,41,0.1],[1,2,43,0.6]]).length === 1 && monoBass([[0,0.03,40,0.8],[0.1,0.5,41,0.1],[1,2,43,0.6]])[0][2] === 43, "monoBass case 5 failed");
+  const inp: Note[] = [[0,1,40,0.5],[0.5,1.5,43,0.5]]; monoBass(inp); assert(inp[0][1] === 1, "monoBass case 6 failed");
 }
 
 function assert(cond: boolean, msg: string): void {

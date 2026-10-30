@@ -4,7 +4,7 @@ import type { DJEngine } from "@/lib/audio/engine";
 import { jamModules, type BassLine } from "@/lib/audio/jamModules";
 import type { BassCharacter } from "@/lib/audio/jamVoices";
 import { Knob } from "../Knob";
-import { JamPads, JamSeg, JamShell, useJamRefresh } from "./JamKit";
+import { JamPads, JamSeg, JamShell, useJamRefresh, JamSwap } from "./JamKit";
 import { NoteLane } from "./NoteLane";
 import { KEY_ROWS } from "./jamKeys";
 import { JamSlots } from "./JamSlots";
@@ -59,6 +59,10 @@ export function BassLabPanel({ engine }: { engine: DJEngine }) {
           </div>
         )}
       </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <JamSwap m={m} color={C} what="la basse" onChange={bump} />
+        <span className="text-[10px] text-[var(--jam-text-3)]">La basse du morceau rejouée note par note, une seule à la fois, sur le son choisi</span>
+      </div>
       <div className="flex flex-wrap items-end gap-4">
         <JamSeg label="Caractère" color={C} value={m.character} options={[["acid", "Acid"], ["reese", "Reese"], ["808", "808"], ["funk", "Funk"], ["moog", "Moog"], ["fm", "FM pop"], ["hoover", "Hoover"], ["donk", "Donk"], ["berlin", "Berlin"]]} onChange={(v: BassCharacter) => { m.setCharacter(v); bump(); }} />
         <JamSeg label="Wobble" color={C} value={String(m.wobbleDiv)} options={[["0.5", "1/2"], ["0.25", "1/4"], ["0.125", "1/8"], ["0.0625", "1/16"]] as const} onChange={(v) => { m.setWobble(m.wobble, Number(v)); bump(); }} />
@@ -85,7 +89,7 @@ export function BassLabPanel({ engine }: { engine: DJEngine }) {
         </div>
       </div>
       <JamPads m={m} list={m.pads()} color={C} className="grid grid-cols-3 gap-2 sm:grid-cols-6" keys={KEY_ROWS.bass} />
-      <p className="text-[10px] text-[var(--jam-text-3)]">SUB double les vraies notes de basse du morceau. REPRISE rejoue sa partie de basse sur le synthé de basse ; les autres lignes sont tirées de ses accords (Acid glisse et accentue comme une 303). Avec SWAP, la ligne remplace la basse d&apos;origine. PUMP fait respirer la basse sur chaque kick. RELANCE joue un petit motif sur le dernier temps de la 4e ou 8e mesure. SCÈNES garde tout le module en un clic.</p>
+      <p className="text-[10px] text-[var(--jam-text-3)]">SUB double les vraies notes de basse du morceau. REPRISE rejoue sa partie de basse sur le synthé de basse ; les autres lignes sont tirées de ses accords (Acid glisse et accentue comme une 303). REMPLACER (ou SWAP) coupe la basse d&apos;origine en une mesure et lance la REPRISE, ou la ligne choisie. PUMP fait respirer la basse sur chaque kick. RELANCE joue un petit motif sur le dernier temps de la 4e ou 8e mesure. SCÈNES garde tout le module en un clic.</p>
     </JamShell>
   );
 }
