@@ -414,7 +414,7 @@ export class VoxFx extends JamModule {
   readonly sampledChoir: SampledInstrument;
   harmony = false;
   doubled = false;
-  harmonyVoice: "" | "choir_aahs" | "voice_oohs" = "choir_aahs";
+  harmonyVoice = "choir_aahs"; // an instrument id of the "Voix" family, "" for the synthetic choir
   chop: { start: number; slice: number; beats: number } | null = null;
   chopBeats: 2 | 4 | 8 = 4;
   chopMode: "slices" | "melody" = "slices";
@@ -424,7 +424,7 @@ export class VoxFx extends JamModule {
   get level(): number { const d = this.deck(); return d.stemVol[this.stem(d)] ?? 1; }
   setLevel(v: number) { const d = this.deck(); d.setStemVol(this.stem(d), v); }
 
-  setHarmonyVoice(id: "" | "choir_aahs" | "voice_oohs") {
+  setHarmonyVoice(id: string) {
     this.harmonyVoice = id;
     if (id) void this.sampledChoir.load(id).then(jamChanged);
     jamChanged();

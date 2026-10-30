@@ -6,6 +6,7 @@ import { Knob } from "../Knob";
 import { JamPads, JamSeg, JamShell, useJamRefresh } from "./JamKit";
 import { KEY_ROWS } from "./jamKeys";
 import { NoteLane } from "./NoteLane";
+import { instrumentsOf } from "@/lib/sampleFont";
 
 const C = "var(--jam-vox)";
 const pct = (v: number) => `${Math.round(v * 100)} %`;
@@ -48,13 +49,35 @@ export function VoxFxPanel({ engine }: { engine: DJEngine }) {
         }}
       />
       <div className="flex flex-wrap items-end gap-3">
-        <JamSeg
-          label="Voix de l'harmonie"
-          color={C}
-          value={m.harmonyVoice}
-          options={[["choir_aahs", "Chœur"], ["voice_oohs", "Voix douces"], ["", "Synthèse"]] as const}
-          onChange={(v) => { m.setHarmonyVoice(v); bump(); }}
-        />
+        <div className="flex w-full flex-col gap-1.5">
+          <div className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--jam-text-2)]">
+            VOIX DE L&apos;HARMONIE
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {[...instrumentsOf("Voix"), { id: "", label: "Synthèse" }].map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                className="rounded-md px-2 py-1 text-[11px] font-bold"
+                aria-pressed={m.harmonyVoice === id}
+                style={m.harmonyVoice === id
+                  ? {
+                      background: `color-mix(in srgb, var(--jam-vox) 35%, #111)`,
+                      color: "#fff",
+                      boxShadow: `inset 0 0 0 1px var(--jam-vox)`
+                    }
+                  : {
+                      background: "rgba(255,255,255,.06)",
+                      color: "var(--jam-text-2)"
+                    }
+                }
+                onClick={() => { m.setHarmonyVoice(id); bump(); }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
         {m.harmonyStatus() && <span className="text-[11px] text-[var(--jam-text-2)]" aria-live="polite">{m.harmonyStatus()}</span>}
         {m.nextPhrase() && <span className="text-[11px] text-[var(--jam-text-2)]" aria-live="polite">{m.nextPhrase()}</span>}
       </div>

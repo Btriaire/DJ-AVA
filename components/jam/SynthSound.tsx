@@ -6,6 +6,16 @@ import type { HarmoSynth } from "@/lib/audio/jamModules";
 
 const pct = (v: number) => `${Math.round(v * 100)} %`;
 
+const QUICK_LABELS: Record<string, string> = {
+  acoustic_grand_piano: "Piano",
+  electric_piano_1: "Rhodes",
+  mk_string_ensemble_1: "Orchestre",
+  mk_brass_section: "Cuivres",
+  synth_brass_1: "Cuivres 80s",
+  mk_choir_aahs: "Chœur",
+  acoustic_guitar_nylon: "Guitare"
+};
+
 export function SynthSound({ m, C, bump }: { m: HarmoSynth; C: string; bump: () => void }) {
   return (
     <section className="flex flex-col gap-2" aria-label="Paramètres sonores du synthé">
@@ -29,7 +39,7 @@ export function SynthSound({ m, C, bump }: { m: HarmoSynth; C: string; bump: () 
             <option value="synth:keys">Keys FM</option>
             <option value="synth:brass">Cuivres (synthé)</option>
           </optgroup>
-          {["Claviers", "Percussions mélodiques", "Cordes", "Voix", "Vents", "Guitares", "Nappes"].map(family => (
+          {["Claviers", "Percussions mélodiques", "Cordes", "Cuivres", "Orchestre", "Voix", "Vents", "Guitares", "Nappes"].map(family => (
             <optgroup key={family} label={family}>
               {INSTRUMENTS.filter(i => i.family === family).map(i => (
                 <option key={i.id} value={`inst:${i.id}`}>{i.label}</option>
@@ -37,7 +47,7 @@ export function SynthSound({ m, C, bump }: { m: HarmoSynth; C: string; bump: () 
             </optgroup>
           ))}
         </select>
-        {["acoustic_grand_piano", "electric_piano_1", "string_ensemble_1", "choir_aahs", "brass_section", "acoustic_guitar_nylon"].map(id => (
+        {["acoustic_grand_piano", "electric_piano_1", "mk_string_ensemble_1", "mk_choir_aahs", "mk_brass_section", "synth_brass_1", "acoustic_guitar_nylon"].map(id => (
           <button
             key={id}
             type="button"
@@ -56,12 +66,7 @@ export function SynthSound({ m, C, bump }: { m: HarmoSynth; C: string; bump: () 
             }
             onClick={() => { m.setVoice(`inst:${id}`); bump(); }}
           >
-            {id === "acoustic_grand_piano" ? "Piano" :
-             id === "electric_piano_1" ? "Rhodes" :
-             id === "string_ensemble_1" ? "Cordes" :
-             id === "choir_aahs" ? "Chœur" :
-             id === "brass_section" ? "Cuivres" :
-             "Guitare"}
+            {QUICK_LABELS[id]}
           </button>
         ))}
       </div>
@@ -71,7 +76,7 @@ export function SynthSound({ m, C, bump }: { m: HarmoSynth; C: string; bump: () 
         </div>
       )}
       <div className="text-[10px] text-[var(--jam-text-3)]">
-        Instruments réels : soundfont FluidR3 GM de Frank Wen, licence CC BY 3.0. Chargés une fois, puis gardés sur le disque.
+        Instruments réels : soundfonts FluidR3 GM (Frank Wen, CC BY 3.0), Musyng Kite et FatBoy (CC BY-SA 3.0). Chargés une fois, puis gardés sur le disque.
       </div>
       <div className="flex flex-wrap gap-3">
         <Knob label="NIVEAU" value={m.level} min={0} max={1.5} defaultValue={1} color={C} size={46} led format={pct} onChange={(v) => { m.setLevel(v); bump(); }} />

@@ -242,7 +242,7 @@ export class PolySynth {
 }
 
 // the bass of the generated lines: five characters, monophonic, 303-style slides and accents (MaRuche/Falken)
-export type BassCharacter = "acid" | "reese" | "808" | "funk" | "moog";
+export type BassCharacter = "acid" | "reese" | "808" | "funk" | "moog" | "fm" | "hoover" | "donk" | "berlin";
 
 const wsCache = new WeakMap<BaseAudioContext, Float32Array>();
 
@@ -381,6 +381,94 @@ export class BassVoice {
       if (end <= holdAt + 0.005) end = holdAt + 0.02;
       amp.gain.setValueAtTime(vel * 0.7 * 0.8, holdAt);
       amp.gain.linearRampToValueAtTime(0, end);
+
+    } else if (c === "fm") {
+      const carrier = new OscillatorNode(ctx, { type: "sine", frequency: freq });
+      const modulator = new OscillatorNode(ctx, { type: "sine", frequency: freq });
+      const bark = new OscillatorNode(ctx, { type: "sine", frequency: freq * 2 });
+      const modDepth = new GainNode(ctx, { gain: freq * (2 + 4 * this.env) });
+      const barkDepth = new GainNode(ctx, { gain: freq * 0.5 });
+      modulator.connect(modDepth).connect(carrier.frequency);
+      bark.connect(barkDepth).connect(carrier.frequency);
+      carrier.connect(amp);
+      oscs.push(carrier, modulator, bark);
+
+      modDepth.gain.setValueAtTime(freq * (2 + 4 * this.env), when);
+      modDepth.gain.exponentialRampToValueAtTime(freq * (0.3 + this.tone), when + 0.25);
+
+      amp.gain.setValueAtTime(0, when);
+      amp.gain.linearRampToValueAtTime(vel * 0.7, when + 0.003);
+      amp.gain.exponentialRampToValueAtTime(vel * 0.7 * 0.6, when + 0.3);
+      const holdAt = Math.max(when + 0.01, end - 0.05);
+      if (end <= holdAt + 0.005) end = holdAt + 0.02;
+      amp.gain.setValueAtTime(vel * 0.7 * 0.6, holdAt);
+      amp.gain.linearRampToValueAtTime(0, end);
+    } else if (c === "hoover") {
+      const saw1 = new OscillatorNode(ctx, { type: "sawtooth", frequency: freq * Math.pow(2, -25/1200) });
+      const saw2 = new OscillatorNode(ctx, { type: "sawtooth", frequency: freq });
+      const saw3 = new OscillatorNode(ctx, { type: "sawtooth", frequency: freq * Math.pow(2, 25/1200) });
+      const mix = new GainNode(ctx, { gain: 0.4 });
+      filter = new BiquadFilterNode(ctx, { type: "lowpass", Q: 1, frequency: 800 + 6000 * this.tone });
+
+      saw1.connect(mix);
+      saw2.connect(mix);
+      saw3.connect(mix);
+      mix.connect(filter).connect(amp);
+      oscs.push(saw1, saw2, saw3);
+
+      saw1.frequency.setValueAtTime(freq * Math.pow(2, -7/12), when);
+      saw2.frequency.setValueAtTime(freq * Math.pow(2, -7/12), when);
+      saw3.frequency.setValueAtTime(freq * Math.pow(2, -7/12), when);
+      saw1.frequency.exponentialRampToValueAtTime(freq * Math.pow(2, -25/1200), when + 0.12);
+      saw2.frequency.exponentialRampToValueAtTime(freq, when + 0.12);
+      saw3.frequency.exponentialRampToValueAtTime(freq * Math.pow(2, 25/1200), when + 0.12);
+
+      amp.gain.setValueAtTime(0, when);
+      amp.gain.linearRampToValueAtTime(vel * 0.7, when + 0.02);
+      const hoverHold = Math.max(when + 0.03, end - 0.08);
+      if (end <= hoverHold + 0.005) end = hoverHold + 0.06;
+      amp.gain.setValueAtTime(vel * 0.7, hoverHold);
+      amp.gain.linearRampToValueAtTime(0, end);
+    } else if (c === "donk") {
+      const square = new OscillatorNode(ctx, { type: "square", frequency: freq * 1.5 });
+      const sine = new OscillatorNode(ctx, { type: "sine", frequency: freq * 1.5 });
+      filter = new BiquadFilterNode(ctx, { type: "bandpass", Q: 6, frequency: freq * 2.5 });
+
+      square.connect(filter);
+      sine.connect(new GainNode(ctx, { gain: 0.5 })).connect(filter);
+      filter.connect(amp);
+      oscs.push(square, sine);
+
+      square.frequency.setValueAtTime(freq * 1.5, when);
+      sine.frequency.setValueAtTime(freq * 1.5, when);
+      square.frequency.exponentialRampToValueAtTime(freq, when + 0.03);
+      sine.frequency.exponentialRampToValueAtTime(freq, when + 0.03);
+
+      const actualEnd = when + Math.min(dur, 0.18);
+      amp.gain.setValueAtTime(0, when);
+      amp.gain.linearRampToValueAtTime(vel * 0.7, when + 0.002);
+      amp.gain.exponentialRampToValueAtTime(0.001, actualEnd);
+    } else if (c === "berlin") {
+      const saw = new OscillatorNode(ctx, { type: "sawtooth", frequency: freq });
+      const sine = new OscillatorNode(ctx, { type: "sine", frequency: freq });
+      filter = new BiquadFilterNode(ctx, {
+        type: "lowpass",
+        Q: 4 + 6 * this.env,
+        frequency: 200 + 2500 * this.tone + 2000 * this.env
+      });
+
+      saw.connect(filter);
+      sine.connect(new GainNode(ctx, { gain: 0.5 })).connect(filter);
+      filter.connect(amp);
+      oscs.push(saw, sine);
+
+      filter.frequency.setValueAtTime(200 + 2500 * this.tone + 2000 * this.env, when);
+      filter.frequency.exponentialRampToValueAtTime(90 + 600 * this.tone, when + 0.09);
+
+      const actualEnd = when + Math.min(dur, 0.22);
+      amp.gain.setValueAtTime(0, when);
+      amp.gain.linearRampToValueAtTime(vel * 0.7, when + 0.003);
+      amp.gain.exponentialRampToValueAtTime(0.001, actualEnd);
     }
 
     oscs.forEach(o => { o.start(when); o.stop(end + 0.01); });

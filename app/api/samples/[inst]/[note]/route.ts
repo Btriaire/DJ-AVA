@@ -1,6 +1,6 @@
 // One note of a real instrument: downloaded once from the public soundfont, then served from the disk cache (MaRuche/Falken)
 import { NextRequest, NextResponse } from "next/server";
-import { instrument } from "@/lib/sampleFont";
+import { instrument, sampleUrl } from "@/lib/sampleFont";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -12,7 +12,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ ins
     const name = note.replace(/\.mp3$/, "");
 
     // Validate request
-    if (!instrument(inst) || !/^[A-G]b?[0-8]$/.test(name)) {
+    const def = instrument(inst);
+    if (!def || !/^[A-G]b?[0-8]$/.test(name)) {
       return NextResponse.json({ error: "bad request" }, { status: 400 });
     }
 
@@ -35,7 +36,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ ins
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
 
-    const res = await fetch(`https://gleitz.github.io/midi-js-soundfonts/FluidR3_GM/${inst}-mp3/${name}.mp3`, {
+    const res = await fetch(sampleUrl(def, name), {
       signal: controller.signal,
     }).finally(() => clearTimeout(timeout));
 

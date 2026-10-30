@@ -8,9 +8,11 @@ import { JamPads, JamSeg, JamShell, useJamRefresh } from "./JamKit";
 import { NoteLane } from "./NoteLane";
 import { KEY_ROWS } from "./jamKeys";
 import { JamSlots } from "./JamSlots";
+import { instrumentsOf } from "@/lib/sampleFont";
 
 const C = "var(--jam-bass)";
 const pct = (v: number) => `${Math.round(v * 100)} %`;
+const BASS_VOICES = [{ id: "", label: "Synthé (caractère)" }, ...instrumentsOf("Basses")];
 
 export function BassLabPanel({ engine }: { engine: DJEngine }) {
   const m = jamModules(engine).bass;
@@ -28,26 +30,26 @@ export function BassLabPanel({ engine }: { engine: DJEngine }) {
           BASSE JOUÉE
         </div>
         <div className="flex flex-wrap gap-1">
-          {["", "acoustic_bass", "electric_bass_finger", "electric_bass_pick", "fretless_bass", "slap_bass_1", "synth_bass_1", "synth_bass_2"].map((id) => (
+          {BASS_VOICES.map(({ id, label }) => (
             <button
               key={id}
               type="button"
               className="rounded-md px-2 py-1 text-[11px] font-bold"
               aria-pressed={m.lineVoice === id}
               style={m.lineVoice === id
-                ? { background: `color-mix(in srgb, ${C} 35%, #111)`, color: "#fff", boxShadow: `inset 0 0 0 1px ${C}` }
-                : { background: "rgba(255,255,255,.06)", color: "var(--jam-text-2)" }
+                ? {
+                    background: `color-mix(in srgb, ${C} 35%, #111)`,
+                    color: "#fff",
+                    boxShadow: `inset 0 0 0 1px ${C}`
+                  }
+                : {
+                    background: "rgba(255,255,255,.06)",
+                    color: "var(--jam-text-2)"
+                  }
               }
               onClick={() => { m.setLineVoice(id); bump(); }}
             >
-              {id === "" ? "Synthé (caractère)" :
-               id === "acoustic_bass" ? "Contrebasse" :
-               id === "electric_bass_finger" ? "Doigts" :
-               id === "electric_bass_pick" ? "Médiator" :
-               id === "fretless_bass" ? "Fretless" :
-               id === "slap_bass_1" ? "Slap" :
-               id === "synth_bass_1" ? "Synth 1" :
-               "Synth 2"}
+              {label}
             </button>
           ))}
         </div>
@@ -58,7 +60,7 @@ export function BassLabPanel({ engine }: { engine: DJEngine }) {
         )}
       </div>
       <div className="flex flex-wrap items-end gap-4">
-        <JamSeg label="Caractère" color={C} value={m.character} options={[["acid","Acid"],["reese","Reese"],["808","808"],["funk","Funk"],["moog","Moog"]]} onChange={(v: BassCharacter) => { m.setCharacter(v); bump(); }} />
+        <JamSeg label="Caractère" color={C} value={m.character} options={[["acid", "Acid"], ["reese", "Reese"], ["808", "808"], ["funk", "Funk"], ["moog", "Moog"], ["fm", "FM pop"], ["hoover", "Hoover"], ["donk", "Donk"], ["berlin", "Berlin"]]} onChange={(v: BassCharacter) => { m.setCharacter(v); bump(); }} />
         <JamSeg label="Wobble" color={C} value={String(m.wobbleDiv)} options={[["0.5", "1/2"], ["0.25", "1/4"], ["0.125", "1/8"], ["0.0625", "1/16"]] as const} onChange={(v) => { m.setWobble(m.wobble, Number(v)); bump(); }} />
         <JamSeg label="Ligne de basse" color={C} value={m.line} options={[["off", "Off"], ["follow", "Reprise"], ["root", "Racine"], ["offbeat", "Contretemps"], ["octaves", "Octaves"], ["bounce", "Rebond"], ["gallop", "Galop"], ["acid", "Acid"]] as const} onChange={(v: BassLine) => { m.set("line", v); bump(); }} />
         <JamSeg label="Relance" color={C} value={String(m.fillEvery)} options={[["0","Off"],["4","Toutes les 4 mes."],["8","Toutes les 8 mes."]]} onChange={(v) => { m.set("fillEvery", v === "4" ? 4 : v === "8" ? 8 : 0); bump(); }} />
