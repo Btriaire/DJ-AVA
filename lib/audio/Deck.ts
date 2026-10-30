@@ -1454,7 +1454,7 @@ export class Deck {
       if (gen === this.loadGen && this.stemMap && p.pitch) this.stemMap = { ...this.stemMap, voice: p.pitch.contour, voiceStep: p.pitch.hop * 4 };
       if (gen === this.loadGen && (!nj.notes || !p.pitch)) this.analysisPending = true;
       let attempts = 0;
-      while (this.loadGen === gen && (!nj.notes || !p.pitch || (nj.notes.rev ?? 1) < 4) && attempts < 45) {
+      while (this.loadGen === gen && (!nj.notes || !p.pitch || (nj.notes.rev ?? 1) < 5) && attempts < 45) {
         await new Promise(r => setTimeout(r, 4000));
         attempts++;
         let np = { pitch: null as { contour: number[]; hop: number } | null };

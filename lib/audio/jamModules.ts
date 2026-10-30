@@ -1304,7 +1304,7 @@ export class BeatLab extends JamModule {
         if (this.replay) { // each hit on its own sound, at its strength; no KICK+ / CLAP+ on top (they would double it)
           if (c === 0) this.drum("kick", at, Math.min(1, 0.25 + 0.75 * this.dyn(deck, t)), hz);
           else if (c === 1) this.drum("snare", at, Math.min(1, 0.25 + 0.75 * this.dyn(deck, t)));
-          else if (c === 2) this.drum("hat", at, Math.min(1, 0.2 + 0.6 * this.dyn(deck, t)));
+          else if (c === 2) this.drum("hat", at, Math.min(1, (0.2 + 0.6 * v) * (0.6 + 0.4 * this.dyn(deck, t)))); // each hat at its own accent (its NMF strength), shaped by the section's loudness
           this.hit(at);
         } else if (c === 0 && this.kick > 0) { this.drum("kick", at, Math.min(1, (0.6 + v) * this.kick), hz); this.hit(at); }
         else if (c === 1 && this.clap > 0) { this.drum("clap", at, Math.min(1, (0.6 + v) * this.clap)); this.hit(at); }
