@@ -30,6 +30,7 @@ export function VoxFxPanel({ engine }: { engine: DJEngine }) {
         <Knob label="ESPACE" value={m.space} min={0} max={1} defaultValue={0} color={C} size={46} led format={pct} onChange={(v) => { m.setSpace(v); bump(); }} />
         <Knob label="ÉCHO" value={m.echo} min={0} max={1} defaultValue={0} color={C} size={46} led format={pct} onChange={(v) => { m.setEcho(v); bump(); }} />
         <Knob label="RADIO" value={m.radio} min={0} max={1} defaultValue={0} color={C} size={46} led format={pct} onChange={(v) => { m.setRadio(v); bump(); }} />
+        <Knob label="HARMONIE" value={m.harmonyLevel} min={0} max={2} defaultValue={1} color={C} size={46} led format={pct} onChange={(v) => { m.setHarmonyLevel(v); bump(); }} />
       </div>
       <JamSeg
         color={C}

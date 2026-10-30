@@ -1,5 +1,6 @@
 // A real instrument played from per-note samples, long notes kept alive by crossfaded restarts (MaRuche/Falken)
 import { instrument, nearestZone, noteName, zonesFor } from "@/lib/sampleFont";
+import { normGain } from "./sampleLevel";
 
 export class SampledInstrument {
   readonly out: GainNode;
@@ -39,6 +40,10 @@ export class SampledInstrument {
           if (!res.ok) continue;
           const buf = await res.arrayBuffer();
           const audioBuf = await this.ctx.decodeAudioData(buf);
+          // the soundfont is recorded about 15 dB low: every sample is brought to the same playing level once, here
+          const chans = Array.from({ length: audioBuf.numberOfChannels }, (_, c) => audioBuf.getChannelData(c));
+          const g = normGain(chans, audioBuf.sampleRate);
+          for (const ch of chans) for (let i = 0; i < ch.length; i++) ch[i] *= g;
           if (this.current === id) {
             this.buffers.set(z, audioBuf);
           }

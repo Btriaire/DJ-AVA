@@ -2,6 +2,7 @@
 // song time to audio clock, the key's scale, the song's chord at a moment, and ONE lookahead scheduler for all four.
 import type { DJEngine } from "./engine";
 import type { Deck } from "./Deck";
+import { chordTrack } from "./jamChordTrack";
 
 export type JamRole = "bass" | "vocals" | "other" | "drums";
 export type JamDeckPref = "auto" | "A" | "B";
@@ -115,40 +116,30 @@ export function degreeNames(deck: Deck): string[] {
   });
 }
 
-// the song's own chord around song time t: the notes of the "other" stem are weighed by how long they sound in that
-// beat, every triad of the key gets a score (root counts double), the best one wins; a beat with nothing clear keeps
-// the chord before it, so the synth does not flicker. One answer per beat, cached.
-const chordCache = new WeakMap<Deck, { beat: number; degree: number }>();
+// the song's own chord around song time t, in the chosen colour
 export function chordAt(deck: Deck, t: number, color: ChordColor = "triad"): number[] {
   return degreeChord(deck, chordDegreeAt(deck, t), 48, color);
 }
-// which degree of the key the song is on around t (see chordAt)
+// which degree of the key the song is on at t: read from the chord track of the whole song (bass and "other" stems
+// together, smoothed: see jamChordTrack), computed once per song in the written key (the degree does not move with a key shift)
+const chordDegreeCache = new WeakMap<Deck, { notes: unknown; bpm: number; grid: number; key: string; track: number[]; offset: number; beatLen: number }>();
 export function chordDegreeAt(deck: Deck, t: number): number {
-  const { pcs } = jamScale(deck);
-  const beatLen = deck.bpm > 0 ? 60 / deck.bpm : 0.5;
-  const beat = Math.floor((t - deck.beatGridOffset) / beatLen);
-  const cached = chordCache.get(deck);
-  if (cached && cached.beat === beat) return cached.degree;
-  const from = deck.beatGridOffset + beat * beatLen, to = from + beatLen;
-  const shift = heardShift(deck);
-  const w = new Array<number>(12).fill(0);
-  const notes = deck.stemNotes?.other ?? [];
-  // notes are sorted by start: find the last one starting before the end of the beat, then look back a little
-  let hi = notes.length;
-  for (let lo = 0; lo < hi; ) { const mid = (lo + hi) >> 1; if (notes[mid][0] < to) lo = mid + 1; else hi = mid; }
-  for (let k = hi - 1; k >= 0 && k >= hi - 96; k--) {
-    const [s0, e0, m] = notes[k];
-    const overlap = Math.min(e0, to) - Math.max(s0, from);
-    if (overlap > 0) w[(((m + shift) % 12) + 12) % 12] += overlap;
+  const { stemNotes, bpm, beatGridOffset, key } = deck;
+  const keyStr = key ? `${key.pitchClass}${key.mode}` : "none";
+  let c = chordDegreeCache.get(deck);
+  if (!c || c.notes !== stemNotes || c.bpm !== bpm || c.grid !== beatGridOffset || c.key !== keyStr) {
+    const other = stemNotes?.other ?? [], bass = stemNotes?.bass ?? [];
+    const pcs = (key?.mode === "major" ? MAJOR : MINOR).map((x) => (x + (key?.pitchClass ?? 0)) % 12);
+    const beatLen = bpm > 0 ? 60 / bpm : 0.5;
+    const offset = beatGridOffset - Math.ceil(beatGridOffset / beatLen) * beatLen;
+    let duration = 0;
+    for (const n of other) if (n[1] > duration) duration = n[1];
+    for (const n of bass) if (n[1] > duration) duration = n[1];
+    c = { notes: stemNotes, bpm, grid: beatGridOffset, key: keyStr, track: chordTrack(other, bass, pcs, beatLen, offset, duration), offset, beatLen };
+    chordDegreeCache.set(deck, c);
   }
-  let best = -1, bestScore = 0;
-  for (let deg = 0; deg < 7; deg++) {
-    const score = 2 * w[pcs[deg]] + w[pcs[(deg + 2) % 7]] + w[pcs[(deg + 4) % 7]];
-    if (score > bestScore) { bestScore = score; best = deg; }
-  }
-  const degree = best >= 0 && bestScore > beatLen * 0.25 ? best : cached?.degree ?? 0;
-  chordCache.set(deck, { beat, degree });
-  return degree;
+  const { track } = c, b = Math.floor((t - c.offset) / c.beatLen);
+  return track.length ? track[Math.min(track.length - 1, Math.max(0, b))] : 0;
 }
 
 // ---- one scheduler for every stem module: 30 ms tick, 0.15 s lookahead, song-time windows per deck ----
