@@ -1517,3 +1517,9 @@ body.has-zoom::before {
   /* Light text for beat controls */
   --jam-beat-ink: oklch(0.95 0.03 48);
 }
+
+/* Solar Lab (drone) and DX7 Lab accents: sky blue and leaf green, 7:1 on the dark panels, no pink */
+:root {
+  --jam-solar: oklch(0.80 0.12 230);
+  --jam-dx7: oklch(0.82 0.14 150);
+}

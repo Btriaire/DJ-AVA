@@ -14,7 +14,7 @@ import { Fader } from "@/components/Fader";
 import { SynthPanel } from "@/components/SynthPanel";
 import { SamplerPanel } from "@/components/SamplerPanel";
 import DX7Synth from "@/components/DX7Synth";
-import Solar42F from "@/components/Solar42F";
+import { SolarLabPanel } from "@/components/jam/SolarLabPanel";
 import { SoundFxPanel } from "@/components/SoundFxPanel";
 import { DrumMachinePanel } from "@/components/DrumMachinePanel";
 import { DjSynthPanel } from "@/components/DjSynthPanel";
@@ -447,7 +447,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
     { key: "stemprep", label: "Préparation des stems · Bibliothèque", scope: "global", category: "Instruments & Sources" },
     { key: "synth", label: "Synthé", scope: "global", category: "Instruments & Sources" },
     { key: "dx7", label: "DX7 · Synthé + Sampler", scope: "global", category: "Instruments & Sources" },
-    { key: "solar42", label: "Solar 42F · Drone", scope: "global", category: "Instruments & Sources" },
+    { key: "solar42", label: "Solar 42F · Nappe dans la tonalité du morceau, suit ses accords, s'efface sous la voix, GEL d'un stem", scope: "global", category: "Stems en live" },
     { key: "sampler", label: "Sculpteur de son", scope: "global", category: "Instruments & Sources" },
     { key: "soundfx", label: "FX Sonores", scope: "global", category: "Instruments & Sources" },
     { key: "rhythm", label: "Liaisons rythmiques · Batterie, basse, voix pilotent les modules", scope: "global", category: "Instruments & Sources" },
@@ -1622,7 +1622,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
                   right={[["sampler", modules.sampler && <SamplerPanel engine={engine} />], ["soundfx", modules.soundfx && <SoundFxPanel engine={engine} />]]}
                 />
                 <RackRow onClose={closeRackModule} left={[["dx7", modules.dx7 && <DX7Synth key={`dx7-${resetKey}`} engine={engine} embedded />]]} right={[]} />
-                <RackRow onClose={closeRackModule} left={[["solar42", modules.solar42 && <Solar42F key={`solar42-${resetKey}`} engine={engine} embedded />]]} right={[]} />
+                <RackRow onClose={closeRackModule} left={[["solar42", modules.solar42 && <SolarLabPanel key={`solar42-${resetKey}`} engine={engine} />]]} right={[]} />
               </div>
             )}
 

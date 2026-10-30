@@ -64,7 +64,7 @@ export const SOFT_BED = 0.35; // DOUCE + REMPLACER: the original stays at 35 % u
 // the original stem's loudness envelope (moved)
 const levelCache = new WeakMap<AudioBuffer, { env: Float32Array; ref: number }>();
 
-abstract class JamModule {
+export abstract class JamModule {
   pref: JamDeckPref = "auto";
   readonly bus: GainNode; // the module's instruments meet here, then go into the stem's chain
   private routedTo: AudioNode | null = null;
@@ -115,13 +115,14 @@ abstract class JamModule {
   }
   // the bus plays inside the stem's chain (filter, drive, FX, deck fader, crossfader); follows deck changes
   protected route(deck: Deck) {
-    const i = this.stem(deck);
-    const to = i >= 0 ? deck.stemInput(i) : null;
+    const to = this.routeTarget(deck);
     if (this.routedTo === to) return;
     if (this.routedTo) this.out.disconnect(this.routedTo);
     this.routedTo = to;
     if (to) this.out.connect(to);
   }
+  // where the module plays: its stem's chain (a module that also plays without stems overrides this)
+  protected routeTarget(deck: Deck): AudioNode | null { const i = this.stem(deck); return i >= 0 ? deck.stemInput(i) : null; }
   readonly pressed = new Set<string>();
   abstract pads(): PadDef[];
   // stems prepared but not playing: the module can switch them on itself
