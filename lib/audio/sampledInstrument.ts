@@ -108,10 +108,22 @@ export class SampledInstrument {
     };
     await Promise.all([worker(), worker(), worker(), worker()]);
     if (this.current !== id) return false;
-    const gains = [...loaded.values()].map((b) => normGain(Array.from({ length: b.numberOfChannels }, (_, c) => b.getChannelData(c)), b.sampleRate)).sort((a, b) => a - b);
-    const g = gains[gains.length >> 1] ?? 1;
-    for (const b of loaded.values()) for (let c = 0; c < b.numberOfChannels; c++) { const ch = b.getChannelData(c); for (let i = 0; i < ch.length; i++) ch[i] *= g; }
-    this.sfz = { playable: regions.filter((r) => loaded.has(files.get(r)!)), files, buffers: loaded };
+    // the level is set on each region as it will sound (its own volume included: VCSL lifts quiet takes by up to 40 dB),
+    // then lowered if the loud regions would clip on their own at full velocity
+    const playable = regions.filter((r) => loaded.has(files.get(r)!));
+    const chans = (b: AudioBuffer) => Array.from({ length: b.numberOfChannels }, (_, c) => b.getChannelData(c));
+    // set on the loudest layer (what a full-velocity note plays), like the soundfont samples; softer layers stay softer
+    const top = Math.max(...playable.map((r) => r.hivel));
+    const gains = playable.filter((r) => r.hivel === top).map((r) => { const b = loaded.get(files.get(r)!)!; return normGain(chans(b), b.sampleRate, -18, 60) / 10 ** (r.volume / 20); }).sort((x, y) => x - y);
+    let g = gains[gains.length >> 1] ?? 1;
+    const peakOf = new Map<AudioBuffer, number>();
+    for (const b of loaded.values()) { let pk = 0; for (const ch of chans(b)) for (let i = 0; i < ch.length; i++) { const v = Math.abs(ch[i]); if (v > pk) pk = v; } peakOf.set(b, pk); }
+    // ponytail: 90th percentile, not the max: one boosted quiet take with a stray click must not turn the whole bank down (the master limiter catches it)
+    const peaks = playable.map((r) => peakOf.get(loaded.get(files.get(r)!)!)! * 10 ** (r.volume / 20)).sort((x, y) => x - y);
+    const loudest = peaks[Math.floor(peaks.length * 0.9)] ?? 0;
+    if (loudest * g * 0.9 > 1) g = 1 / (loudest * 0.9);
+    for (const b of loaded.values()) for (const ch of chans(b)) for (let i = 0; i < ch.length; i++) ch[i] *= g;
+    this.sfz = { playable, files, buffers: loaded };
     this.failed = !this.ready();
     return this.ready();
   }

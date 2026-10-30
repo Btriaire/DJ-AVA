@@ -59,7 +59,7 @@ export function BeatLabPanel({ engine }: { engine: DJEngine }) {
           </div>
         )}
         <div className="text-[10px] text-[var(--jam-text-3)]">
-          Boîtes à rythmes réelles : collection smpldsnds/drum-machines (domaine public). Chargées une fois, puis gardées sur le disque.
+          Boîtes à rythmes réelles : collection smpldsnds/drum-machines (domaine public). Batteries acoustiques et percussions : VCSL (CC0), plusieurs couches de force et plusieurs prises par élément. Chargées au premier usage, puis gardées sur le disque.
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-3">
