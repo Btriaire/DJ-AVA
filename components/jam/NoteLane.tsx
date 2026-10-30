@@ -5,7 +5,7 @@ import { useFrameLoop } from "../frameLoop";
 export interface LaneNote { start: number; end: number; midi: number; kind: "song" | "line" }
 export interface LaneData { pos: number; beat: number; notes: LaneNote[] }
 
-export function NoteLane({ data, color, accent, label }: { data: () => LaneData | null; color: string; accent: string; label: string }) {
+export function NoteLane({ data, color, accent, label, legend = ["notes du morceau", "ligne jouée"] }: { data: () => LaneData | null; color: string; accent: string; label: string; legend?: [string, string] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const lastWidth = useRef(0);
   const lastHeight = useRef(0);
@@ -122,11 +122,11 @@ export function NoteLane({ data, color, accent, label }: { data: () => LaneData 
       <div className="flex gap-2 text-[10px] text-neutral-400">
         <div className="flex items-center gap-1">
           <div className="h-2 w-2 rounded" style={{ background: color, opacity: 0.45 }} />
-          <span>notes du morceau</span>
+          <span>{legend[0]}</span>
         </div>
         <div className="flex items-center gap-1">
           <div className="h-2 w-2 rounded" style={{ background: accent, opacity: 0.95 }} />
-          <span>ligne jouée</span>
+          <span>{legend[1]}</span>
         </div>
       </div>
     </div>

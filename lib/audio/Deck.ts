@@ -210,6 +210,7 @@ export class Deck {
   private stemDrive: WaveShaperNode[] = [];
   // per-stem output point (after the optional per-stem DJ FX rack); this is what gets routed to stemBus or the shared Rack
   private stemOut: GainNode[] = [];
+  private stemPre: GainNode[] = []; // per-stem pre-fader tap: the sources play here, then into stemGains
   // per-stem DJ FX pedalboard, created on first use (see stemFxRack)
   private stemDjFx: (FXRack | null)[] = [];
 
@@ -388,6 +389,9 @@ export class Deck {
     for (let i = 0; i < Deck.STEM_MAX; i++) {
       const g = C();
       this.stemGains.push(g);
+      const pre = C();
+      pre.connect(g);
+      this.stemPre.push(pre);
 
       // dedicated per-stem FX, always live: g -> filter -> drive -> stemBus
       // (or -> rack.input, if this stem is later targeted for the shared
@@ -916,7 +920,7 @@ export class Deck {
   // one source in normal mode, N (per stem) when stems are active
   private makeSources(): AudioBufferSourceNode[] {
     if (this.stemsActive && this.stemReady) {
-      return this.stemBuffers.map((b, i) => this.buildSource(b!, this.stemGains[i], i === 0, i));
+      return this.stemBuffers.map((b, i) => this.buildSource(b!, this.stemPre[i], i === 0, i));
     }
     if (!this.buffer) return [];
     return [this.buildSource(this.buffer, this.trim, true)];
@@ -1559,6 +1563,8 @@ export class Deck {
   // input of stem i's chain (filter, drive, FX, fader): the stem modules play their sounds here, so the deck fader,
   // the crossfader and the stem's effects apply to them too; several sources can share it
   stemInput(i: number): AudioNode | null { return this.stemSynthIn[i] ?? null; }
+  // the stem as it plays, before its fader and FX (a vocoder listens here; the stem modules' sounds are not in it)
+  stemPreTap(i: number): AudioNode | null { return this.stemPre[i] ?? null; }
 
   get stemSynthIndex(): number | null {
     return this.synthStem;
@@ -2080,7 +2086,7 @@ export class Deck {
       pos = this.loopStart + ((pos - this.loopStart) % len);
     }
     if (pos >= this.duration - 0.02) return;
-    const src = this.buildSource(buf, this.stemGains[i], i === 0, i);
+    const src = this.buildSource(buf, this.stemPre[i], i === 0, i);
     src.start(when, pos);
     old.onended = () => old.disconnect();
     try {

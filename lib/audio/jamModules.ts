@@ -20,6 +20,8 @@ import { degreeNames } from "./stemJam";
 import { captureBars } from "./jamCapture";
 import { degreeShifts } from "./jamMelody";
 import { nextSungAt } from "./jamVoiceNext";
+import { Vocoder } from "./jamVocoder";
+import { harmonyNotes, type HarmonyMode } from "./jamHarmony";
 import { chordAt, chordDegreeAt, degreeChord, heardShift, voiceLead, type ChordColor, jamDeck, jamScale, jamStem, nextGrid, onJamTick, snapToScale, songToCtx, spb, type JamDeckPref, type JamRole } from "./stemJam";
 
 export const beatIdx = (div: number) => Math.max(0, BEAT_DIVS.indexOf(div));
@@ -410,7 +412,6 @@ export class VoxFx extends JamModule {
   readonly choir: ChoirVoice;
   readonly sampledChoir: SampledInstrument;
   harmony = false;
-  harmonyUp: 2 | 4 = 2;
   doubled = false;
   harmonyVoice: "" | "choir_aahs" | "voice_oohs" = "choir_aahs";
   chop: { start: number; slice: number; beats: number } | null = null;
@@ -418,14 +419,6 @@ export class VoxFx extends JamModule {
   chopMode: "slices" | "melody" = "slices";
   melodySlice = 0; // the slice the melody mode plays: the last one played in "slices" mode
 
-  constructor(engine: DJEngine) {
-    super(engine, "vocals");
-    this.choir = new ChoirVoice(engine.ctx);
-    this.choir.out.connect(this.bus);
-    this.sampledChoir = new SampledInstrument(engine.ctx);
-    this.sampledChoir.out.connect(this.bus);
-    onJamTick(engine, (deck, from, to) => this.tick(deck, from, to));
-  }
 
   get level(): number { const d = this.deck(); return d.stemVol[this.stem(d)] ?? 1; }
   setLevel(v: number) { const d = this.deck(); d.setStemVol(this.stem(d), v); }
@@ -446,26 +439,7 @@ export class VoxFx extends JamModule {
     return `${inst.label} : se charge à la première note`;
   }
 
-  pads(): PadDef[] {
-    const t = (id: string, label: string, sub: string, fx: FxName, div: number | undefined, wet: number): PadDef => ({ id, label, sub, mode: "hold", run: (on) => this.fx(fx, on, div, wet) });
-    return [
-      t("echo", "ÉCHO", "1/4", "echo", 0.25, 1),
-      t("dub", "DUB", "1/2", "dub", 0.5, 1),
-      t("freeze", "FREEZE", "figé", "freeze", undefined, 0.9),
-      t("gate", "GATE", "1/16", "gate", 0.0625, 1),
-      t("vowel", "VOYELLE", "wah", "vowel", undefined, 0.9),
-      t("reverse", "REVERSE", "1 temps", "reverse", 1, 1),
-      { id: "double", label: "DOUBLE", sub: "voix large", mode: "toggle", isOn: () => this.doubled, run: (on) => { this.doubled = on; this.fx("double", on, undefined, 0.7, 0); } },
-      { id: "harmony", label: "HARMONIE", sub: this.harmonyUp === 4 ? "quinte" : "tierce", mode: "toggle", isOn: () => this.harmony, run: (on) => { this.harmony = on; } },
-    ];
-  }
 
-  protected keep() { return ["harmonyUp", "chopBeats", "harmonyVoice", "chopMode"]; }
-  protected resetFields() {
-    this.harmony = false; this.harmonyUp = 2; this.chop = null; this.chopBeats = 4; this.chopMode = "slices"; this.melodySlice = 0; this.harmonyVoice = "choir_aahs";
-    if (this.doubled) { this.doubled = false; this.fx("double", false, undefined, 0, 0); }
-    this.setLevel(1); this.setSpace(0); this.setEcho(0); this.setRadio(0);
-  }
 
   warning(): string | null {
     return this.harmony && !this.deck().stemMap?.voice?.length ? "Mélodie de la voix non analysée : HARMONIE reste muette sur ce morceau." : null;
@@ -566,36 +540,166 @@ export class VoxFx extends JamModule {
   get radio(): number { const d = this.deck(); return Math.max(0, d.stemFilterX[this.stem(d)] ?? 0); }
   setRadio(v: number) { const d = this.deck(); d.setStemFilter(this.stem(d), v * 0.85); }
 
+  vocoder: Vocoder;
+  vocoderOn = false;
+  vocoderLevel = 0.8;
+  harmonyMode: HarmonyMode = "third";
+  private vocTap: AudioNode | null = null;
+  private vocChord: number[] | null = null;
+  private played: { start: number; end: number; midi: number }[] = [];
+
+  constructor(engine: DJEngine) {
+    super(engine, "vocals");
+    this.choir = new ChoirVoice(engine.ctx);
+    this.choir.out.connect(this.bus);
+    this.sampledChoir = new SampledInstrument(engine.ctx);
+    this.sampledChoir.out.connect(this.bus);
+    this.vocoder = new Vocoder(engine.ctx);
+    this.vocoder.out.connect(this.bus);
+    onJamTick(engine, (deck, from, to) => this.tick(deck, from, to));
+  }
+
+  private wireVocoder(deck: Deck) {
+    const i = this.stem(deck);
+    const tap = i >= 0 ? deck.stemPreTap(i) : null;
+    if (tap === this.vocTap) return;
+    if (this.vocTap) this.vocTap.disconnect(this.vocoder.mod);
+    this.vocTap = tap;
+    if (tap) tap.connect(this.vocoder.mod);
+  }
+
+  setVocoder(on: boolean) {
+    this.vocoderOn = on;
+    this.route(this.deck());
+    if (on) {
+      this.wireVocoder(this.deck());
+      this.vocoder.start();
+      this.vocoder.setLevel(this.vocoderLevel);
+      const d = this.deck();
+      if (!this.vocChord) {
+        const line = d.position();
+        this.vocChord = voiceLead(null, degreeChord(d, chordDegreeAt(d, line), 60, "seventh"));
+      }
+      this.vocoder.setChord(this.vocChord, d.ctx.currentTime);
+    } else {
+      this.vocoder.stop(this.deck().ctx.currentTime);
+      if (this.vocTap) this.vocTap.disconnect(this.vocoder.mod);
+      this.vocTap = null;
+    }
+    jamChanged();
+  }
+
+  setVocoderLevel(v: number) {
+    this.vocoderLevel = v;
+    if (this.vocoderOn) this.vocoder.setLevel(v);
+  }
+
+  protected keep() { return ["harmonyMode", "chopBeats", "harmonyVoice", "chopMode", "vocoderLevel"]; }
+
+  protected resetFields() {
+    this.harmony = false;
+    this.harmonyMode = "third";
+    this.chop = null;
+    this.chopBeats = 4;
+    this.chopMode = "slices";
+    this.melodySlice = 0;
+    this.harmonyVoice = "choir_aahs";
+    if (this.vocoderOn) this.setVocoder(false);
+    this.vocoderLevel = 0.8;
+    if (this.doubled) { this.doubled = false; this.fx("double", false, undefined, 0, 0); }
+    this.setLevel(1);
+    this.setSpace(0);
+    this.setEcho(0);
+    this.setRadio(0);
+  }
+
+  laneData(): { pos: number; beat: number; notes: { start: number; end: number; midi: number; kind: "song" | "line" }[] } | null {
+    const d = this.deck();
+    if (this.stem(d) < 0) return null;
+    const pos = d.position(), beat = d.bpm ? 60 / d.bpm : 0.5;
+    const from = pos - beat, to = pos + 3 * beat, shift = heardShift(d);
+    const out: { start: number; end: number; midi: number; kind: "song" | "line" }[] = [];
+    const voice = d.stemMap?.voice ?? [];
+    const step = d.stemMap?.voiceStep ?? 0.1;
+    let lastMidi = -1, start = 0;
+    for (let k = Math.max(0, Math.floor(from / step)); k * step < to && k < voice.length; k++) {
+      const midi = Math.round(voice[k]);
+      if (midi < 0) {
+        if (lastMidi >= 0) {
+          out.push({ start, end: k * step, midi: lastMidi + shift, kind: "song" });
+          lastMidi = -1;
+        }
+        continue;
+      }
+      if (midi !== lastMidi) {
+        if (lastMidi >= 0) out.push({ start, end: k * step, midi: lastMidi + shift, kind: "song" });
+        start = k * step;
+        lastMidi = midi;
+      }
+    }
+    if (lastMidi >= 0) out.push({ start, end: Math.min(to, voice.length * step), midi: lastMidi + shift, kind: "song" });
+    this.played = this.played.filter(n => n.end > pos - 2 * beat);
+    for (const n of this.played) if (n.start < to && n.end > from) out.push({ ...n, kind: "line" });
+    return { pos, beat: d.bpm ? beat : 0, notes: out };
+  }
+
   private tick(deck: Deck, from: number, to: number) {
-    if (!this.harmony || deck !== this.deck() || this.stem(deck) < 0) return;
+    if (deck !== this.deck() || this.stem(deck) < 0) return;
+    if (this.vocoderOn) {
+      this.wireVocoder(deck);
+      this.route(deck);
+      if (!deck.bpm) return;
+      const beatLen = 60 / deck.bpm;
+      for (let b = Math.ceil((from - deck.beatGridOffset) / beatLen); b * beatLen + deck.beatGridOffset < to; b++) {
+        const line = deck.beatGridOffset + b * beatLen;
+        const chord = voiceLead(this.vocChord, degreeChord(deck, chordDegreeAt(deck, line), 60, "seventh"));
+        this.vocChord = chord;
+        this.vocoder.setChord(chord, songToCtx(deck, line));
+        this.hit(songToCtx(deck, line));
+      }
+    }
+    if (!this.harmony) return;
     const map = deck.stemMap, v = map?.voice, step = map?.voiceStep;
     if (!v || !step) return;
     this.route(deck);
     const { pcs } = jamScale(deck);
     const shift = heardShift(deck), rate = Math.max(0.25, deck.playbackRate);
-
     if (this.harmonyVoice && this.sampledChoir.current !== this.harmonyVoice) {
       void this.sampledChoir.load(this.harmonyVoice).then(jamChanged);
     }
-
     for (let k = Math.max(1, Math.ceil(from / step)); k * step < to && k < v.length; k++) {
       const m = Math.round(v[k]);
       if (v[k] < 0 || m === Math.round(v[k - 1])) continue;
       let j = k;
       while (j < v.length && v[j] >= 0 && Math.round(v[j]) === m && j - k < 64) j++;
       const sung = snapToScale(m + shift, pcs);
-      let up = sung, n = 0;
-      while (n < this.harmonyUp) { up++; if (pcs.includes(((up % 12) + 12) % 12)) n++; }
       const at = songToCtx(deck, k * step);
       const len = Math.max(0.2, ((j - k) * step) / rate);
-
-      if (this.harmonyVoice && this.sampledChoir.ready()) {
-        this.sampledChoir.note(up, at, len, 0.75, "pad");
-      } else {
-        this.choir.note(up, at, len, 0.9);
+      const notes = harmonyNotes(sung, pcs, this.harmonyMode);
+      for (const note of notes) {
+        if (this.harmonyVoice && this.sampledChoir.ready()) {
+          this.sampledChoir.note(note, at, len, notes.length === 1 ? 0.75 : 0.6, "pad");
+        } else {
+          this.choir.note(note, at, len, 0.9);
+        }
+        this.played.push({ start: k * step, end: j * step, midi: note });
       }
       this.hit(at);
     }
+  }
+
+  pads(): PadDef[] {
+    const t = (id: string, label: string, sub: string, fx: FxName, div: number | undefined, wet: number): PadDef => ({ id, label, sub, mode: "hold", run: (on) => this.fx(fx, on, div, wet) });
+    return [
+      t("echo", "ÉCHO", "1/4", "echo", 0.25, 1),
+      t("dub", "DUB", "1/2", "dub", 0.5, 1),
+      t("freeze", "FREEZE", "figé", "freeze", undefined, 0.9),
+      t("gate", "GATE", "1/16", "gate", 0.0625, 1),
+      t("vowel", "VOYELLE", "wah", "vowel", undefined, 0.9),
+      t("reverse", "REVERSE", "1 temps", "reverse", 1, 1),
+      { id: "double", label: "DOUBLE", sub: "voix large", mode: "toggle", isOn: () => this.doubled, run: (on) => { this.doubled = on; this.fx("double", on, undefined, 0.7, 0); } },
+      { id: "harmony", label: "HARMONIE", sub: this.harmonyMode === "third" ? "tierce" : this.harmonyMode === "fifth" ? "quinte" : this.harmonyMode === "chord" ? "accord" : "dessous", mode: "toggle", isOn: () => this.harmony, run: (on) => { this.harmony = on; } },
+    ];
   }
 }
 
