@@ -17,6 +17,9 @@ import { humanize } from "./jamHuman";
 import { instrument } from "@/lib/sampleFont";
 import { fillNote, isFillBar, type FillEvery } from "./jamFill";
 import { degreeNames } from "./stemJam";
+import { captureBars } from "./jamCapture";
+import { degreeShifts } from "./jamMelody";
+import { nextSungAt } from "./jamVoiceNext";
 import { chordAt, chordDegreeAt, degreeChord, heardShift, voiceLead, type ChordColor, jamDeck, jamScale, jamStem, nextGrid, onJamTick, snapToScale, songToCtx, spb, type JamDeckPref, type JamRole } from "./stemJam";
 
 export const beatIdx = (div: number) => Math.max(0, BEAT_DIVS.indexOf(div));
@@ -412,6 +415,8 @@ export class VoxFx extends JamModule {
   harmonyVoice: "" | "choir_aahs" | "voice_oohs" = "choir_aahs";
   chop: { start: number; slice: number; beats: number } | null = null;
   chopBeats: 2 | 4 | 8 = 4;
+  chopMode: "slices" | "melody" = "slices";
+  melodySlice = 0; // the slice the melody mode plays: the last one played in "slices" mode
 
   constructor(engine: DJEngine) {
     super(engine, "vocals");
@@ -455,9 +460,9 @@ export class VoxFx extends JamModule {
     ];
   }
 
-  protected keep() { return ["harmonyUp", "chopBeats", "harmonyVoice"]; }
+  protected keep() { return ["harmonyUp", "chopBeats", "harmonyVoice", "chopMode"]; }
   protected resetFields() {
-    this.harmony = false; this.harmonyUp = 2; this.chop = null; this.chopBeats = 4; this.harmonyVoice = "choir_aahs";
+    this.harmony = false; this.harmonyUp = 2; this.chop = null; this.chopBeats = 4; this.chopMode = "slices"; this.melodySlice = 0; this.harmonyVoice = "choir_aahs";
     if (this.doubled) { this.doubled = false; this.fx("double", false, undefined, 0, 0); }
     this.setLevel(1); this.setSpace(0); this.setEcho(0); this.setRadio(0);
   }
@@ -475,8 +480,39 @@ export class VoxFx extends JamModule {
     jamChanged();
   }
 
+  slicePitchClass(): number {
+    const d = this.deck();
+    if (!this.chop || !d.stemMap?.voice?.length || !d.stemMap.voiceStep) return jamScale(d).root;
+    const { voice, voiceStep } = d.stemMap;
+    const start = this.chop.start + this.melodySlice * this.chop.slice;
+    const end = start + this.chop.slice;
+    const values: number[] = [];
+    for (let k = Math.ceil(start / voiceStep); k * voiceStep < end && k < voice.length; k++) {
+      const t = k * voiceStep;
+      if (t >= start && t < end && voice[k] >= 0) values.push(voice[k]);
+    }
+    if (!values.length) return jamScale(d).root;
+    const median = values.sort((a, b) => a - b)[Math.floor(values.length / 2)];
+    return ((median + heardShift(d)) % 12 + 12) % 12;
+  }
+
+  melodyShift(i: number): number {
+    if (!this.chop) return 0;
+    return degreeShifts(jamScale(this.deck()).pcs, this.slicePitchClass())[i];
+  }
+
   chopPads(): PadDef[] {
-    return Array.from({ length: 8 }, (_, i) => ({ id: `chop${i}`, label: String(i + 1), sub: this.chop ? `${((i * this.chop.beats) / 8).toFixed(1).replace(".0", "")} t` : "vide", mode: "hold" as const, run: (on: boolean) => { if (on) this.playChop(i); } }));
+    const pcs = this.slicePitchClass();
+    const shifts = this.chopMode === "melody" ? degreeShifts(jamScale(this.deck()).pcs, pcs) : [];
+    return Array.from({ length: 8 }, (_, i) => ({
+      id: `chop${i}`,
+      label: String(i + 1),
+      sub: this.chopMode === "melody" ?
+        ["Do","Do#","Ré","Mib","Mi","Fa","Fa#","Sol","Lab","La","Sib","Si"][((pcs + shifts[i]) % 12 + 12) % 12] :
+        this.chop ? `${((i * this.chop.beats) / 8).toFixed(1).replace(".0", "")} t` : "vide",
+      mode: "hold" as const,
+      run: (on: boolean) => { if (on) this.playChop(i); }
+    }));
   }
 
   playChop(i: number) {
@@ -486,8 +522,17 @@ export class VoxFx extends JamModule {
     const ctx = d.ctx, rate = Math.max(0.25, d.playbackRate);
     const q = jamSettings.quant > 0 ? Math.min(jamSettings.quant, 0.25) : 0;
     const at = q > 0 && d.playing ? nextGrid(d, q).at : ctx.currentTime + 0.005;
-    const len = this.chop.slice / rate;
-    const src = new AudioBufferSourceNode(ctx, { buffer: buf, playbackRate: rate });
+    let len: number, shift: number;
+    if (this.chopMode === "melody") {
+      shift = this.melodyShift(i);
+      len = this.chop.slice / (rate * 2 ** (shift / 12));
+      i = this.melodySlice;
+    } else {
+      shift = 0;
+      len = this.chop.slice / rate;
+      this.melodySlice = i;
+    }
+    const src = new AudioBufferSourceNode(ctx, { buffer: buf, playbackRate: rate * 2 ** (shift / 12) });
     const env = new GainNode(ctx, { gain: 0 });
     env.gain.setValueAtTime(0, at);
     env.gain.linearRampToValueAtTime(1, at + 0.004);
@@ -497,6 +542,21 @@ export class VoxFx extends JamModule {
     src.start(at, this.chop.start + i * this.chop.slice, this.chop.slice + 0.01);
     src.stop(at + len + 0.02);
     this.hit(at);
+  }
+
+  nextPhrase(): string | null {
+    const d = this.deck();
+    if (!this.harmony || !d.stemMap?.voice?.length || !d.stemMap.voiceStep) return null;
+    const t = nextSungAt(d.stemMap.voice, d.stemMap.voiceStep, d.position());
+    if (t === null) return null;
+    const pos = d.position();
+    if (t - pos < 0.05) return "La voix chante : harmonie en cours";
+    return `Prochaine phrase chantée dans ${Math.ceil((t - pos) / Math.max(0.25, d.playbackRate))} s`;
+  }
+
+  setChopMode(mode: "slices" | "melody") {
+    this.chopMode = mode;
+    jamChanged();
   }
 
   get space(): number { const d = this.deck(); return d.stemReverbSend[this.stem(d)] ?? 0; }
@@ -646,6 +706,17 @@ export class HarmoSynth extends JamModule {
   loadProgression(name: ProgressionName) {
     this.loop = progression(name, jamScale(this.deck()).minor);
     this.loopStart = barOf(this.deck(), this.deck().position()) + 1;
+    this.loopState = "play";
+    jamChanged();
+  }
+  // the song's own chords over the next 4 bars go into the chord loop (read ahead from the analysed notes)
+  captureSong(): void {
+    const d = this.deck();
+    if (this.stem(d) < 0 || !d.bpm) return;
+    const barLen = 240 / d.bpm;
+    const next = barOf(d, d.position()) + 1;
+    this.loop = captureBars((t) => chordDegreeAt(d, t), d.beatGridOffset + next * barLen, barLen);
+    this.loopStart = next;
     this.loopState = "play";
     jamChanged();
   }

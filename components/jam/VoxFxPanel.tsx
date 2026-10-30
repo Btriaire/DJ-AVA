@@ -33,6 +33,7 @@ export function VoxFxPanel({ engine }: { engine: DJEngine }) {
           onChange={(v) => { m.setHarmonyVoice(v); bump(); }}
         />
         {m.harmonyStatus() && <span className="text-[11px] text-[var(--jam-text-2)]" aria-live="polite">{m.harmonyStatus()}</span>}
+        {m.nextPhrase() && <span className="text-[11px] text-[var(--jam-text-2)]" aria-live="polite">{m.nextPhrase()}</span>}
       </div>
       
       <JamPads m={m} list={m.pads()} color={C} className="grid grid-cols-4 gap-2 sm:grid-cols-8" keys={KEY_ROWS.vox} />
@@ -42,10 +43,11 @@ export function VoxFxPanel({ engine }: { engine: DJEngine }) {
           CAPTURER LA VOIX
         </button>
         <JamSeg label="Longueur" color={C} value={String(m.chopBeats)} options={[["2", "2 temps"], ["4", "1 mesure"], ["8", "2 mesures"]] as const} onChange={(v) => { m.set("chopBeats", v === "2" ? 2 : v === "8" ? 8 : 4); bump(); }} />
+        <JamSeg label="Jeu" color={C} value={m.chopMode} options={[["slices", "Tranches"], ["melody", "Mélodie"]] as const} onChange={(v) => { m.setChopMode(v); bump(); }} />
         <span className="text-[10px] text-[var(--jam-text-3)]">{m.chop ? `Phrase de ${m.chop.beats} temps prise à ${Math.floor(m.chop.start / 60)}:${String(Math.floor(m.chop.start % 60)).padStart(2, "0")}` : "Aucune phrase capturée"}</span>
       </div>
       <JamPads m={m} list={m.chopPads()} color={C} className="grid grid-cols-8 gap-1.5" keys={KEY_ROWS.vox.map((k) => `maj ${k}`)} />
-      <p className="text-[10px] text-[var(--jam-text-3)]">Maintiens un jet : il part en rythme et s&apos;arrête au relâché. CAPTURER prend les dernières mesures chantées : rejoue-les en morceaux, toujours en rythme. HARMONIE chante une tierce ou une quinte au-dessus de la voix, dans la tonalité.</p>
+      <p className="text-[10px] text-[var(--jam-text-3)]">Maintiens un jet : il part en rythme et s&apos;arrête au relâché. CAPTURER prend les dernières mesures chantées : rejoue-les en morceaux, toujours en rythme ; en MÉLODIE, le dernier morceau joué chante sur les 8 notes de la gamme. HARMONIE chante une tierce ou une quinte au-dessus de la voix, dans la tonalité.</p>
     </JamShell>
   );
 }

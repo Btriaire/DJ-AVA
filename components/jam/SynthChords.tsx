@@ -62,6 +62,9 @@ export function SynthChords({ m, C, bump }: { m: HarmoSynth; C: string; bump: ()
             {["Pop","Sombre","House","Jazz","Épique","Rêve"][["pop","dark","house","jazz","epic","dream"].indexOf(id)]}
           </button>
         ))}
+        <button type="button" onClick={() => { m.captureSong(); bump(); }} className="rounded-md px-2.5 py-1 text-[11px] font-bold" style={{ background: "color-mix(in srgb, var(--jam-synth) 18%, transparent)", color: "var(--jam-text)", boxShadow: "inset 0 0 0 1px var(--jam-synth)" }} title="Recopie les accords des 4 prochaines mesures du morceau dans la boucle d'accords, qui les rejoue en boucle">
+          Accords du morceau
+        </button>
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <button

@@ -96,8 +96,8 @@ export function Knob({
             />
           </div>
         </div>
-        <span className="text-[10px] font-medium uppercase tracking-wide text-neutral-500">{label}</span>
-        {format && <span className="text-[10px] text-neutral-400">{format(value)}</span>}
+        <span className="text-[10px] font-medium uppercase tracking-wide text-neutral-800">{label}</span>
+        {format && <span className="text-[10px] text-neutral-800">{format(value)}</span>}
       </div>
     );
   }
@@ -164,9 +164,9 @@ export function Knob({
             }}
           />
         )}
-        <span className="text-[10px] uppercase tracking-wide text-neutral-400">{label}</span>
+        <span className="text-[10px] uppercase tracking-wide text-[var(--jam-text-2)]">{label}</span>
       </div>
-      {format && <span className="text-[10px] text-neutral-500">{format(value)}</span>}
+      {format && <span className="text-[10px] text-[var(--jam-text-3)]">{format(value)}</span>}
     </div>
   );
 }
