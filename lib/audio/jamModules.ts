@@ -905,7 +905,7 @@ export class HarmoSynth extends JamModule {
   width = 0; // stereo chorus 0..1
   riserBars: 2 | 4 | 8 = 4;
   rate: 0.5 | 0.25 = 0.25; // arp step in beats
-  octave = 0; // -1, 0, +1
+  octave = 0; // -2..+2, the chords (and the replayed notes) moved by octaves
   color: ChordColor = "triad";
   echo = 0; // 0..1 the synth's own echo, a dotted eighth
   pumpOn = false; // the synth breathes on the kicks
@@ -1027,16 +1027,21 @@ export class HarmoSynth extends JamModule {
   pads(names: string[] = []): PadDef[] {
     return ["I", "II", "III", "IV", "V", "VI", "VII"].map((r, i) => ({ id: `deg${i}`, label: names[i] ?? r, sub: r, mode: "hold" as const, run: (on: boolean) => { if (on) this.hold(i); else if (this.degree === i) this.hold(null); } }));
   }
-  protected keep() { return ["shape", "rate", "octave", "color", "echo", "patchName", "arpOctaves", "gateLen", "sweepDiv", "width", "riserBars", "voice", "comp", "human"]; }
+  protected keep() { return ["shape", "rate", "octave", "color", "echo", "release", "sustain", "patchName", "arpOctaves", "gateLen", "sweepDiv", "width", "riserBars", "voice", "comp", "human"]; }
   protected sceneKeys() { return [...this.keep(), "mode", "pumpOn", "sweepDepth"]; }
   protected afterScene() { this.setEcho(this.echo); this.setSweep(this.sweepDepth, this.sweepDiv); this.setWidth(this.width); this.ensureVoice(); }
   // the sound, kept between sessions through this field (the synth itself holds the live one)
   get patchName(): string { return this.synth.patch; }
+  // RELEASE: seconds of tail added to every note; HOLD: notes held up to four times longer (synth and real instruments)
+  get release(): number { return this.synth.releaseExtra; }
+  set release(v: number) { this.synth.releaseExtra = this.sampled.releaseExtra = Math.min(4, Math.max(0, v)); }
+  get sustain(): number { return this.synth.hold; }
+  set sustain(v: number) { this.synth.hold = this.sampled.hold = Math.min(1, Math.max(0, v)); }
   set patchName(v: string) { if (["pluck", "supersaw", "organ", "keys", "brass"].includes(v)) this.synth.patch = v as SynthPatch; }
   protected resetFields() {
     this.mode = "off"; this.shape = "up"; this.rate = 0.25; this.octave = 0; this.degree = null;
     this.loop = [-1, -1, -1, -1]; this.loopState = "off"; this.setLevel(1); this.setTone(0.55); this.setOtherLevel(1);
-    this.color = "triad"; this.setEcho(0); this.pumpOn = false; this.setPatch("pluck");
+    this.color = "triad"; this.setEcho(0); this.release = 0; this.sustain = 0; this.pumpOn = false; this.setPatch("pluck");
     this.arpOctaves = 1; this.gateLen = 0.9; this.setSweep(0, 1); this.setWidth(0); this.riserBars = 4;
   }
   warning(): string | null {
@@ -1145,7 +1150,7 @@ export class HarmoSynth extends JamModule {
         for (let k = lowerBound(notes, from); k < notes.length && notes[k][0] < to; k++) {
           const [start, end, midi, vel] = notes[k];
           const at = songToCtx(deck, start);
-          this.player().note(midi + heardShift(deck), at, Math.max(0.08, (end - start) / rate), Math.min(1, (0.3 + 0.7 * this.dyn(deck, start)) * (0.75 + 0.25 * vel)), end - start > 0.6 ? "pad" : "pluck");
+          this.player().note(midi + heardShift(deck) + 12 * this.octave, at, Math.max(0.08, (end - start) / rate), Math.min(1, (0.3 + 0.7 * this.dyn(deck, start)) * (0.75 + 0.25 * vel)), end - start > 0.6 ? "pad" : "pluck");
           this.hit(at);
         }
       } else {

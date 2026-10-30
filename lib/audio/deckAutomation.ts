@@ -20,7 +20,7 @@ export interface AutoTake {
 const RECORDED: Record<Target, string[]> = {
   deck: [
     "setTrim", "setVolume", "setEQ", "setFilter", "setHold", "rampFilter", "setPitch", "toggleKeyLock", "setKeyShift",
-    "setCrowd", "setAutotune", "setAutotuneAmount", "setAutotuneRetune", "setAutotuneScale",
+    "setCrowd", "setAudience", "setAutotune", "setAutotuneAmount", "setAutotuneRetune", "setAutotuneScale",
     "setStemsActive", "setStemVol", "toggleStemFxTarget", "resetStemFx", "setStemReverbSend", "setStemDelaySend",
     "setStemFxVol", "setStemReverbDecay", "setStemDelayTime", "setStemDelayFeedback", "setStemFilter", "setStemDrive",
     "setStemMakeup", "setStemPump", "setFxWet", "setFxParam", "setBeatLoop", "setLoopRange", "clearLoop",

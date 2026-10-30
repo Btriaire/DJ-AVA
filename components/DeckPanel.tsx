@@ -102,6 +102,7 @@ type StemTpl = {
   name?: string;
   vol: number[];
   crowd: number;
+  audience?: number;
   makeup: boolean;
   loops?: ({ active: boolean; beats: number | null; start: number; end: number; smoothMs: number; rollAt: number | null } | null)[];
 };
@@ -490,6 +491,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
     const tpl: StemTpl = {
       vol: deck.stemVol.slice(),
       crowd: deck.crowd,
+      audience: deck.audience,
       makeup: deck.stemMakeup,
       loops,
     };
@@ -508,6 +510,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
     }
     deck.setStemMakeup(tpl.makeup);
     deck.setCrowd(tpl.crowd);
+    deck.setAudience(tpl.audience ?? 0);
     if (tpl.loops && Array.isArray(tpl.loops)) {
       tpl.loops.forEach((lp, i) => {
         if (!lp || !lp.active) {
@@ -1460,6 +1463,41 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                         rerender();
                       }}
                     />
+                  </div>
+                )}
+                {/* PUBLIC — une foule de concert virtuelle sous la platine : brouhaha qui suit l'énergie,
+                    applaudissements sur 2 et 4 dans les parties fortes, cris aux montées, et le public
+                    qui chante avec la voix (même coupée). */}
+                {name === "vocals" && (
+                  <div
+                    className="flex flex-col items-center justify-center gap-1 pointer-events-auto opacity-100"
+                    title="PUBLIC — ajoute une foule de concert : brouhaha, applaudissements sur les temps 2 et 4, cris quand le morceau monte, et le public qui chante avec la voix (même si tu coupes la voix)."
+                  >
+                    <Knob
+                      label="PUBLIC"
+                      value={deck.audience}
+                      min={0}
+                      max={1}
+                      defaultValue={0}
+                      size={40}
+                      color={color}
+                      led
+                      format={(v) => (v < 0.005 ? "—" : `+${Math.round(v * 100)}%`)}
+                      onChange={(v) => {
+                        deck.setAudience(v);
+                        rerender();
+                      }}
+                    />
+                    <button
+                      type="button"
+                      disabled={deck.audience < 0.005}
+                      onClick={() => deck.audienceCheer()}
+                      className="rounded px-1.5 py-1 text-[10px] font-black leading-none disabled:opacity-30"
+                      style={{ background: "rgba(255,255,255,0.08)", color: "#d8d8d8" }}
+                      title="Fait crier la foule maintenant"
+                    >
+                      BRAVO
+                    </button>
                   </div>
                 )}
               </Fragment>

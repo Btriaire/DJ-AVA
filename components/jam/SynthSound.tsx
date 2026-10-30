@@ -83,6 +83,8 @@ export function SynthSound({ m, C, bump }: { m: HarmoSynth; C: string; bump: () 
         <Knob label="NIVEAU" value={m.level} min={0} max={1.5} defaultValue={1} color={C} size={46} led format={pct} onChange={(v) => { m.setLevel(v); bump(); }} />
         <Knob label="TIMBRE" value={m.tone} min={0} max={1} defaultValue={0.55} color={C} size={46} led format={pct} onChange={(v) => { m.setTone(v); bump(); }} />
         <Knob label="ÉCHO" value={m.echo} min={0} max={1} defaultValue={0} color={C} size={46} led format={pct} onChange={(v) => { m.setEcho(v); bump(); }} />
+        <Knob label="RELEASE" value={m.release} min={0} max={4} defaultValue={0} color={C} size={46} led format={(v) => (v < 0.01 ? "court" : `+${v.toFixed(1)} s`)} onChange={(v) => { m.set("release", v); bump(); }} />
+        <Knob label="HOLD" value={m.sustain} min={0} max={1} defaultValue={0} color={C} size={46} led format={(v) => `×${(1 + 3 * v).toFixed(1)}`} onChange={(v) => { m.set("sustain", v); bump(); }} />
         <Knob label="BALAYAGE" value={m.sweepDepth} min={0} max={1} defaultValue={0} color={C} size={46} led format={pct} onChange={(v) => { m.setSweep(v); bump(); }} />
         <Knob label="LARGEUR" value={m.width} min={0} max={1} defaultValue={0} color={C} size={46} led format={pct} onChange={(v) => { m.setWidth(v); bump(); }} />
         <JamSeg label="Balayage" color={C} value={String(m.sweepDiv)} options={[["0.5","1/2 t"],["1","1 temps"],["2","2 temps"],["4","1 mesure"]] as const} onChange={(v) => { m.setSweep(m.sweepDepth, Number(v)); bump(); }} />

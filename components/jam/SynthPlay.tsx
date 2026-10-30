@@ -19,7 +19,7 @@ export function SynthPlay({ m, C, bump }: { m: HarmoSynth; C: string; bump: () =
         <JamSeg label="Forme" color={C} value={m.shape} options={[["up","Montant"],["down","Descendant"],["updown","Aller-retour"],["converge","Convergent"],["pinky","Pinky"],["random","Hasard"],["gate","Gate trance"]] as const} onChange={(v) => { m.set("shape", v); bump(); }} />
         <JamSeg label="Étendue" color={C} value={String(m.arpOctaves)} options={[["1","1 octave"],["2","2 octaves"]] as const} onChange={(v) => { m.set("arpOctaves", v === "2" ? 2 : 1); bump(); }} />
         <JamSeg label="Pas" color={C} value={String(m.rate)} options={[["0.5","1/8"],["0.25","1/16"]] as const} onChange={(v) => { m.set("rate", v === "0.5" ? 0.5 : 0.25); bump(); }} />
-        <JamSeg label="Octave" color={C} value={String(m.octave)} options={[["-1","-1"],["0","0"],["1","+1"]] as const} onChange={(v) => { m.set("octave", Number(v)); bump(); }} />
+        <JamSeg label="Octave" color={C} value={String(m.octave)} options={[["-2","-2"],["-1","-1"],["0","0"],["1","+1"],["2","+2"]] as const} onChange={(v) => { m.set("octave", Number(v)); bump(); }} />
         <JamSeg label="Couleur" color={C} value={m.color} options={[["triad","Triade"],["seventh","7e"],["ninth","9e"]] as const} onChange={(v) => { m.set("color", v); bump(); }} />
         <JamSeg label="Pompe" color={C} value={m.pumpOn ? "on" : "off"} options={[["off","Off"],["on","Sur les kicks"]] as const} onChange={(v) => { m.set("pumpOn", v === "on"); bump(); }} />
       </div>

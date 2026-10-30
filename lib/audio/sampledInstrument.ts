@@ -133,8 +133,11 @@ export class SampledInstrument {
     return !!this.current && n > 0 && n >= Math.ceil(this.total / 2);
   }
 
+  hold = 0; // 0..1 notes held longer (x1 to x4)
+  releaseExtra = 0; // seconds added to the release tail
   note(midi: number, when: number, dur: number, vel: number, kind: "pluck" | "stab" | "pad", detune = 0): void {
     if (!this.ready()) return;
+    dur *= 1 + 3 * this.hold;
     this.ends = this.ends.filter(e => e > this.ctx.currentTime);
     if (this.ends.length >= 24) return;
 
@@ -158,6 +161,7 @@ export class SampledInstrument {
       peak = vel * 0.9;
       cutoff = 1500 + vel * 9000;
     }
+    release += this.releaseExtra;
     if (!buffer) return;
 
     const attack = kind === "pad" ? 0.12 : 0.003;

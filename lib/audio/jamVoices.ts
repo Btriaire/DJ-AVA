@@ -191,11 +191,15 @@ export class PolySynth {
   get tone() { return this._tone; }
   setTone(v: number) { this._tone = Math.min(1, Math.max(0, v)); }
 
+  hold = 0; // 0..1 notes held longer (x1 to x4) and a higher sustain
+  releaseExtra = 0; // seconds added to every release tail
+
   note(midi: number, when: number, dur: number, vel: number, kind: "pluck" | "stab" | "pad") {
     const ctx = this.out.context;
     when = clampWhen(ctx, when);
+    dur *= 1 + 3 * this.hold;
     this.sounding = this.sounding.filter((e) => e > ctx.currentTime);
-    if (this.sounding.length >= 8) return;
+    if (this.sounding.length >= 14) return;
     const info = PATCH_INFO[this.patch];
     const cutoff = Math.min(16000, (300 + this._tone ** 2 * 7000) * info.cutoffMul);
     const peak = 0.22 * vel;
@@ -208,26 +212,26 @@ export class PolySynth {
       f.exponentialRampToValueAtTime(cutoff, when + 0.06);
       g.setValueAtTime(0, when);
       g.linearRampToValueAtTime(peak, when + 0.002 + info.attack);
-      g.exponentialRampToValueAtTime(0.001, when + 0.2 + info.attack);
-      end = when + 0.22 + info.attack;
+      g.exponentialRampToValueAtTime(0.001, when + 0.2 + info.attack + this.releaseExtra);
+      end = when + 0.22 + info.attack + this.releaseExtra;
     } else if (kind === "pad") {
       f.setValueAtTime(cutoff, when);
       f.linearRampToValueAtTime(cutoff * 1.6, when + Math.max(0.4, dur));
       g.setValueAtTime(0, when);
       g.linearRampToValueAtTime(peak, when + 0.35);
       g.linearRampToValueAtTime(0.6 * peak, when + Math.max(0.4, dur));
-      g.linearRampToValueAtTime(0, when + Math.max(0.4, dur) + 0.6);
-      end = when + Math.max(0.4, dur) + 0.62;
+      g.linearRampToValueAtTime(0, when + Math.max(0.4, dur) + 0.6 + this.releaseExtra);
+      end = when + Math.max(0.4, dur) + 0.62 + this.releaseExtra;
     } else {
       const hold = Math.max(0.3, dur);
       f.setValueAtTime(cutoff * 3, when);
       f.exponentialRampToValueAtTime(cutoff, when + 0.12);
       g.setValueAtTime(0, when);
       g.linearRampToValueAtTime(peak, when + 0.003 + info.attack);
-      g.exponentialRampToValueAtTime(0.2 * peak, when + 0.25);
-      g.setValueAtTime(0.2 * peak, when + hold);
-      g.linearRampToValueAtTime(0, when + hold + 0.08);
-      end = when + hold + 0.1;
+      g.exponentialRampToValueAtTime((0.2 + 0.6 * this.hold) * peak, when + 0.25);
+      g.setValueAtTime((0.2 + 0.6 * this.hold) * peak, when + hold);
+      g.linearRampToValueAtTime(0, when + hold + 0.08 + this.releaseExtra);
+      end = when + hold + 0.1 + this.releaseExtra;
     }
     patchOscillators(ctx, this.patch, mtof(midi), when, end, filter);
     filter.connect(amp).connect(this.out);

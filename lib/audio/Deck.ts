@@ -9,6 +9,7 @@ import { Retouch } from "./Retouch";
 import { Rack, RackPreset } from "./Rack";
 import { sha1Hex16 } from "./stemHash";
 import { PitchShifter } from "./PitchShifter";
+import { VirtualCrowd } from "./virtualCrowd";
 import type { ClockInfo } from "./stepClock";
 import { guess as guessBeat } from "web-audio-beat-detector";
 
@@ -233,6 +234,9 @@ export class Deck {
   // from a live single while keeping the performance. 0 = stereo untouched,
   // 1 = full mono (sides removed).
   crowd = 0;
+  // PUBLIC: a virtual concert crowd added under the deck (see virtualCrowd.ts), 0 = off
+  audience = 0;
+  private audienceFx: VirtualCrowd | null = null;
   private crowdIn!: GainNode;
   private crowdOut!: GainNode;
   private crowdStraight: GainNode[] = []; // L->L, R->R  (gain a = 1 - k/2)
@@ -1932,6 +1936,14 @@ export class Deck {
   get loopRange(): [number, number] | null { return this.loopActive ? [this.loopStart, this.loopEnd] : null; }
   // post-fader output of stem i, to listen to it (e.g. the drums for a sidechain)
   stemTap(i: number): AudioNode | null { return this.stemOut[i] ?? null; }
+  // the crowd plays through the deck's fader, after its EQ and FX
+  crowdInput(): AudioNode { return this.volume; }
+  setAudience(k: number) {
+    this.audience = Math.min(1, Math.max(0, k));
+    if (!this.audience && !this.audienceFx) return;
+    (this.audienceFx ??= new VirtualCrowd(this)).setLevel(this.audience);
+  }
+  audienceCheer() { this.audienceFx?.cheer(); }
   get retouchFx(): Retouch { return this.retouch; }
 
   public fxClock(): ClockInfo | null {
