@@ -1,5 +1,5 @@
 // A real drum machine kit, played hit by hit (MaRuche/Falken)
-import { DRUM_PARTS, type DrumPart } from "@/lib/drumKits";
+import { CORE_PARTS, drumKit, type DrumPart } from "@/lib/drumKits";
 
 export class SampledKit {
   readonly out: GainNode;
@@ -15,20 +15,31 @@ export class SampledKit {
   async load(id: string): Promise<boolean> {
     if (id === this.current) return this.ready();
 
+    const kit = drumKit(id);
+    if (!kit) {
+      this.failed = true;
+      return false;
+    }
+
     this.current = id;
     this.failed = false;
     this.buffers = {};
 
-    const promises = DRUM_PARTS.map(async (part) => {
-      const response = await fetch(`/api/drums/${id}/${part}.ogg`);
-      if (!response.ok) return;
+    const parts = Object.keys(kit.parts) as DrumPart[];
+    const promises = parts.map(async (part) => {
+      try {
+        const response = await fetch(`/api/drums/${id}/${part}.ogg`);
+        if (!response.ok) return;
 
-      const arrayBuffer = await response.arrayBuffer();
-      const audioBuffer = await this.out.context.decodeAudioData(arrayBuffer);
+        const arrayBuffer = await response.arrayBuffer();
+        const audioBuffer = await this.out.context.decodeAudioData(arrayBuffer);
 
-      if (this.current === id) {
-        this.normalizeBuffer(audioBuffer);
-        this.buffers[part] = audioBuffer;
+        if (this.current === id) {
+          this.normalizeBuffer(audioBuffer);
+          this.buffers[part] = audioBuffer;
+        }
+      } catch {
+        // Silently skip failing parts
       }
     });
 
@@ -58,11 +69,16 @@ export class SampledKit {
   }
 
   ready(): boolean {
-    return this.current !== null && DRUM_PARTS.every(part => this.buffers[part] !== undefined);
+    if (!this.current) return false;
+    return CORE_PARTS.every(part => this.buffers[part] !== undefined);
+  }
+
+  has(part: DrumPart): boolean {
+    return this.buffers[part] !== undefined;
   }
 
   play(part: DrumPart, when: number, vel: number): void {
-    if (!this.ready()) return;
+    if (!this.ready() || !this.has(part)) return;
 
     const ctx = this.out.context;
     when = Math.max(when, ctx.currentTime);

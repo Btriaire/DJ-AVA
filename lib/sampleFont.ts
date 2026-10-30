@@ -1,5 +1,5 @@
 // Real instruments: FluidR3 GM (Frank Wen, CC BY 3.0), Musyng Kite and FatBoy (CC BY-SA 3.0) soundfonts, one mp3 per note (MaRuche/Codestral)
-export type InstrumentFamily = "Claviers" | "Percussions mélodiques" | "Cordes" | "Voix" | "Vents" | "Guitares" | "Nappes" | "Basses" | "Cuivres" | "Orchestre";
+export type InstrumentFamily = "Claviers" | "Percussions mélodiques" | "Cordes" | "Voix" | "Vents" | "Guitares" | "Nappes" | "Basses" | "Cuivres" | "Orchestre" | "Monde";
 
 export interface Instrument {
   id: string;
@@ -81,7 +81,45 @@ export const INSTRUMENTS: Instrument[] = [
   { id: "fb_synth_bass_1", label: "Basse synthé 1 · FatBoy", family: "Basses", lo: 28, hi: 72, pad: false, font: "FatBoy", src: "synth_bass_1" },
   { id: "mk_synth_bass_2", label: "Basse synthé 2 · Musyng", family: "Basses", lo: 28, hi: 72, pad: false, font: "MusyngKite", src: "synth_bass_2" },
   { id: "fb_synth_bass_2", label: "Basse synthé 2 · FatBoy", family: "Basses", lo: 28, hi: 72, pad: false, font: "FatBoy", src: "synth_bass_2" },
-  { id: "lead_8_bass__lead", label: "Basse et lead synthé", family: "Basses", lo: 28, hi: 72, pad: false }
+  { id: "lead_8_bass__lead", label: "Basse et lead synthé", family: "Basses", lo: 28, hi: 72, pad: false },
+  { id: "mk_acoustic_grand_piano", label: "Piano à queue · Musyng", family: "Claviers", lo: 33, hi: 96, pad: false, font: "MusyngKite", src: "acoustic_grand_piano" },
+  { id: "fb_acoustic_grand_piano", label: "Piano à queue · FatBoy", family: "Claviers", lo: 33, hi: 96, pad: false, font: "FatBoy", src: "acoustic_grand_piano" },
+  { id: "bright_acoustic_piano", label: "Piano brillant", family: "Claviers", lo: 33, hi: 96, pad: false },
+  { id: "honkytonk_piano", label: "Piano bastringue", family: "Claviers", lo: 33, hi: 96, pad: false },
+  { id: "mk_electric_piano_1", label: "Piano électrique · Musyng", family: "Claviers", lo: 36, hi: 96, pad: false, font: "MusyngKite", src: "electric_piano_1" },
+  { id: "clavinet", label: "Clavinet", family: "Claviers", lo: 36, hi: 89, pad: false },
+  { id: "rock_organ", label: "Orgue rock", family: "Claviers", lo: 36, hi: 96, pad: true },
+  { id: "accordion", label: "Accordéon", family: "Claviers", lo: 48, hi: 84, pad: true },
+  { id: "xylophone", label: "Xylophone", family: "Percussions mélodiques", lo: 60, hi: 96, pad: false },
+  { id: "glockenspiel", label: "Glockenspiel", family: "Percussions mélodiques", lo: 72, hi: 105, pad: false },
+  { id: "tubular_bells", label: "Cloches tubulaires", family: "Percussions mélodiques", lo: 60, hi: 84, pad: false },
+  { id: "dulcimer", label: "Tympanon", family: "Percussions mélodiques", lo: 48, hi: 84, pad: false },
+  { id: "acoustic_guitar_steel", label: "Guitare folk", family: "Guitares", lo: 40, hi: 84, pad: false },
+  { id: "mk_acoustic_guitar_nylon", label: "Guitare classique · Musyng", family: "Guitares", lo: 40, hi: 84, pad: false, font: "MusyngKite", src: "acoustic_guitar_nylon" },
+  { id: "electric_guitar_jazz", label: "Guitare jazz", family: "Guitares", lo: 40, hi: 84, pad: false },
+  { id: "electric_guitar_muted", label: "Guitare étouffée", family: "Guitares", lo: 40, hi: 84, pad: false },
+  { id: "overdriven_guitar", label: "Guitare saturée", family: "Guitares", lo: 40, hi: 84, pad: true },
+  { id: "distortion_guitar", label: "Guitare distorsion", family: "Guitares", lo: 40, hi: 84, pad: true },
+  { id: "oboe", label: "Hautbois", family: "Vents", lo: 58, hi: 91, pad: true },
+  { id: "english_horn", label: "Cor anglais", family: "Vents", lo: 52, hi: 84, pad: true },
+  { id: "clarinet", label: "Clarinette", family: "Vents", lo: 50, hi: 91, pad: true },
+  { id: "bassoon", label: "Basson", family: "Vents", lo: 34, hi: 72, pad: true },
+  { id: "piccolo", label: "Piccolo", family: "Vents", lo: 74, hi: 108, pad: true },
+  { id: "recorder", label: "Flûte à bec", family: "Vents", lo: 60, hi: 96, pad: true },
+  { id: "mk_flute", label: "Flûte · Musyng", family: "Vents", lo: 60, hi: 96, pad: true, font: "MusyngKite", src: "flute" },
+  { id: "soprano_sax", label: "Saxophone soprano", family: "Vents", lo: 56, hi: 87, pad: true },
+  { id: "tenor_sax", label: "Saxophone ténor", family: "Vents", lo: 44, hi: 75, pad: true },
+  { id: "baritone_sax", label: "Saxophone baryton", family: "Vents", lo: 36, hi: 69, pad: true },
+  { id: "mk_alto_sax", label: "Saxophone alto · Musyng", family: "Vents", lo: 49, hi: 81, pad: true, font: "MusyngKite", src: "alto_sax" },
+  { id: "harmonica", label: "Harmonica", family: "Vents", lo: 60, hi: 84, pad: true },
+  { id: "sitar", label: "Sitar", family: "Monde", lo: 48, hi: 84, pad: false },
+  { id: "banjo", label: "Banjo", family: "Monde", lo: 48, hi: 84, pad: false },
+  { id: "shamisen", label: "Shamisen", family: "Monde", lo: 48, hi: 84, pad: false },
+  { id: "koto", label: "Koto", family: "Monde", lo: 48, hi: 89, pad: false },
+  { id: "bagpipe", label: "Cornemuse", family: "Monde", lo: 55, hi: 84, pad: true },
+  { id: "fiddle", label: "Violon folk", family: "Monde", lo: 55, hi: 96, pad: true },
+  { id: "shakuhachi", label: "Shakuhachi", family: "Monde", lo: 55, hi: 89, pad: false },
+  { id: "ocarina", label: "Ocarina", family: "Monde", lo: 60, hi: 89, pad: false }
 ];
 
 export function instrument(id: string): Instrument | undefined {
@@ -142,5 +180,5 @@ export function selfTest(): void {
   assert(INSTRUMENTS.every((inst) => inst.lo < inst.hi), "Invalid note range");
   assert(sampleUrl(INSTRUMENTS.find((inst) => inst.id === "mk_choir_aahs")!, "C4") === "https://gleitz.github.io/midi-js-soundfonts/MusyngKite/choir_aahs-mp3/C4.mp3", "Incorrect sample URL for mk_choir_aahs");
   assert(sampleUrl(INSTRUMENTS.find((inst) => inst.id === "trumpet")!, "C4") === "https://gleitz.github.io/midi-js-soundfonts/FluidR3_GM/trumpet-mp3/C4.mp3", "Incorrect sample URL for trumpet");
-  assert(["Claviers", "Percussions mélodiques", "Cordes", "Voix", "Vents", "Guitares", "Nappes", "Basses", "Cuivres", "Orchestre"].every((family) => INSTRUMENTS.some((inst) => inst.family === family)), "Missing instrument family");
+  assert(["Claviers", "Percussions mélodiques", "Cordes", "Voix", "Vents", "Guitares", "Nappes", "Basses", "Cuivres", "Orchestre", "Monde"].every((family) => INSTRUMENTS.some((inst) => inst.family === family)), "Missing instrument family");
 }

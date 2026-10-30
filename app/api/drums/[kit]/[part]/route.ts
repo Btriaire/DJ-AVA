@@ -16,6 +16,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ kit
     if (!def || !isDrumPart(name)) {
       return NextResponse.json({ error: "bad request" }, { status: 400 });
     }
+    const url = drumUrl(def, name);
+    if (!url) return NextResponse.json({ error: "this kit has no such sound" }, { status: 404 });
 
     // Cache setup
     const cacheRoot = process.env.SAMPLES_CACHE_DIR || join(process.cwd(), ".samples-cache");
@@ -37,7 +39,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ kit
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
 
-    const res = await fetch(drumUrl(def, name), {
+    const res = await fetch(url, {
       signal: controller.signal,
     }).finally(() => clearTimeout(timeout));
 

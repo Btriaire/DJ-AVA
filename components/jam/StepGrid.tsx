@@ -3,7 +3,7 @@ import { useRef } from "react";
 import { SEQ_ROWS, type BeatLab, type SEQ_PRESETS, type SeqRow } from "@/lib/audio/jamModules";
 
 const PRESETS: [keyof typeof SEQ_PRESETS, string][] = [["four", "4/4"], ["house", "House"], ["break", "Break"], ["trap", "Trap"], ["clear", "Effacer"]];
-const ROW_LABEL: Record<SeqRow, string> = { kick: "KICK", clap: "CLAP", hat: "CH", open: "OH" };
+const ROW_LABEL: Record<SeqRow, string> = { kick: "KICK", snare: "SNARE", clap: "CLAP", hat: "CH", open: "OH", tom: "TOM", perc: "PERC" };
 import { useTick } from "../ticker";
 
 export function StepGrid({ beat, color }: { beat: BeatLab; color: string }) {

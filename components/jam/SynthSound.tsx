@@ -39,7 +39,7 @@ export function SynthSound({ m, C, bump }: { m: HarmoSynth; C: string; bump: () 
             <option value="synth:keys">Keys FM</option>
             <option value="synth:brass">Cuivres (synthé)</option>
           </optgroup>
-          {["Claviers", "Percussions mélodiques", "Cordes", "Cuivres", "Orchestre", "Voix", "Vents", "Guitares", "Nappes"].map(family => (
+          {["Claviers", "Percussions mélodiques", "Cordes", "Cuivres", "Orchestre", "Voix", "Vents", "Monde", "Guitares", "Nappes"].map(family => (
             <optgroup key={family} label={family}>
               {INSTRUMENTS.filter(i => i.family === family).map(i => (
                 <option key={i.id} value={`inst:${i.id}`}>{i.label}</option>

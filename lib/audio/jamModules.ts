@@ -989,15 +989,14 @@ export class HarmoSynth extends JamModule {
 
 // ---------------- BEAT LAB ----------------
 export type HatMode = "off" | "8" | "16";
-export type SeqRow = "kick" | "clap" | "hat" | "open";
-export const SEQ_ROWS: SeqRow[] = ["kick", "clap", "hat", "open"];
-// starting patterns for the sequencer, as the sixteenths that play
+export type SeqRow = "kick" | "snare" | "clap" | "hat" | "open" | "tom" | "perc";
+export const SEQ_ROWS: SeqRow[] = ["kick", "snare", "clap", "hat", "open", "tom", "perc"];
 export const SEQ_PRESETS: Record<"four" | "house" | "break" | "trap" | "clear", Record<SeqRow, number[]>> = {
-  four: { kick: [0, 4, 8, 12], clap: [], hat: [], open: [] },
-  house: { kick: [0, 4, 8, 12], clap: [4, 12], hat: [0, 4, 8, 12], open: [2, 6, 10, 14] },
-  break: { kick: [0, 7, 10], clap: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14], open: [15] },
-  trap: { kick: [0, 11], clap: [8], hat: [0, 2, 4, 5, 6, 8, 10, 12, 13, 14, 15], open: [] },
-  clear: { kick: [], clap: [], hat: [], open: [] },
+  four: { kick: [0, 4, 8, 12], snare: [], clap: [], hat: [], open: [], tom: [], perc: [2, 6, 10, 14] },
+  house: { kick: [0, 4, 8, 12], snare: [], clap: [4, 12], hat: [0, 4, 8, 12], open: [2, 6, 10, 14], tom: [], perc: [3, 7, 11, 15] },
+  break: { kick: [0, 7, 10], snare: [4, 12], clap: [], hat: [0, 2, 4, 6, 8, 10, 12, 14], open: [15], tom: [14, 15], perc: [] },
+  trap: { kick: [0, 11], snare: [], clap: [8], hat: [0, 2, 4, 5, 6, 8, 10, 12, 13, 14, 15], open: [], tom: [], perc: [6, 14] },
+  clear: { kick: [], snare: [], clap: [], hat: [], open: [], tom: [], perc: [] },
 };
 export class BeatLab extends JamModule {
   readonly kit: DrumKit;
@@ -1010,7 +1009,7 @@ export class BeatLab extends JamModule {
   swing = 0; // 0..0.5 of a 16th, on the off 16ths
   // the 16-step sequencer: its own kit pattern over the song, on the grid of the bar
   seq = false;
-  pattern: Record<SeqRow, boolean[]> = { kick: Array(16).fill(false), clap: Array(16).fill(false), hat: Array(16).fill(false), open: Array(16).fill(false) };
+  pattern: Record<SeqRow, boolean[]> = { kick: Array(16).fill(false), snare: Array(16).fill(false), clap: Array(16).fill(false), hat: Array(16).fill(false), open: Array(16).fill(false), tom: Array(16).fill(false), perc: Array(16).fill(false) };
   seqLevel = 0.8;
   constructor(engine: DJEngine) {
     super(engine, "drums");
@@ -1072,10 +1071,34 @@ export class BeatLab extends JamModule {
         const i = step16(k), acc = i % 4 === 0 ? 1 : 0.8, v = this.seqLevel * acc;
         const at = songToCtx(deck, t) + (k % 2 !== 0 ? this.swing * sixteenth : 0);
         let any = false;
-        if (this.pattern.kick[i]) { this.drum("kick", at, v, hz); any = true; }
-        if (this.pattern.clap[i]) { this.drum("clap", at, v); any = true; }
-        if (this.pattern.hat[i]) { this.drum("hat", at, v * 0.8); any = true; }
-        if (this.pattern.open[i]) { this.drum("open", at, v * 0.8); any = true; }
+        for (const row of SEQ_ROWS) {
+          if (this.pattern[row][i]) {
+            switch (row) {
+              case "kick":
+                this.drum("kick", at, v, hz);
+                break;
+              case "snare":
+                this.drum("snare", at, v);
+                break;
+              case "clap":
+                this.drum("clap", at, v);
+                break;
+              case "hat":
+                this.drum("hat", at, v * 0.8);
+                break;
+              case "open":
+                this.drum("open", at, v * 0.8);
+                break;
+              case "tom":
+                this.drum("tom", at, v * 0.9);
+                break;
+              case "perc":
+                this.drum("perc", at, v * 0.8);
+                break;
+            }
+            any = true;
+          }
+        }
         if (any) this.hit(at);
       }
     }
@@ -1121,12 +1144,33 @@ export class BeatLab extends JamModule {
     }
     return `${kit.label} : se charge au premier coup`;
   }
-  private drum(part: "kick" | "clap" | "hat" | "open", at: number, v: number, hz = 50): void {
+  restore(o: Record<string, unknown> | undefined): void {
+    super.restore(o);
+    for (const row of SEQ_ROWS) {
+      if (!this.pattern[row]) {
+        this.pattern[row] = Array(16).fill(false);
+      } else {
+        this.pattern[row] = this.pattern[row].map(step => !!step).concat(Array(16).fill(false)).slice(0, 16);
+      }
+    }
+  }
+  private drum(part: "kick" | "snare" | "clap" | "hat" | "open" | "tom" | "rim" | "perc" | "cymbal", at: number, v: number, hz = 50): void {
     if (this.kitSound && this.sampledKit.current !== this.kitSound) {
       void this.sampledKit.load(this.kitSound).then(() => jamChanged());
     }
     if (this.kitSound && this.sampledKit.ready() && this.sampledKit.current === this.kitSound) {
-      this.sampledKit.play(part, at, v);
+      if (this.sampledKit.has(part)) {
+        this.sampledKit.play(part, at, v);
+      } else {
+        switch (part) {
+          case "snare":
+            this.sampledKit.play("clap", at, v);
+            break;
+          case "rim":
+            this.sampledKit.play("snare", at, v);
+            break;
+        }
+      }
     } else {
       switch (part) {
         case "kick":
@@ -1134,6 +1178,10 @@ export class BeatLab extends JamModule {
           break;
         case "clap":
           this.kit.clap(at, v);
+          break;
+        case "snare":
+        case "rim":
+          this.kit.clap(at, v * 0.9);
           break;
         case "hat":
           this.kit.hat(at, v, false);
@@ -1144,6 +1192,7 @@ export class BeatLab extends JamModule {
       }
     }
   }
+
 }
 
 // ---------------- the macro: BUILD over 2, 4 or 8 bars then DROP on the bar; BREAK takes drums and bass out ----------------
