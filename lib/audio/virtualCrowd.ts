@@ -288,16 +288,26 @@ export function synthTest(): void {
 }
 
 // ---- the player, one per deck
+export type CrowdOpts = { venue: VenueId; claps: boolean; cheers: boolean; sing: boolean };
+export const CROWD_DEFAULTS: CrowdOpts = { venue: "salle", claps: true, cheers: true, sing: true };
+
 export class VirtualCrowd {
   level = 0;
-  sing = true;
+  opts: CrowdOpts = { ...CROWD_DEFAULTS };
   private ctx: AudioContext;
   private out: GainNode;
+  private venueIn: GainNode;
+  private lowpass: BiquadFilterNode;
+  private room: ConvolverNode;
+  private dry: GainNode;
+  private wet: GainNode;
   private bedGain: GainNode;
   private singIn: GainNode;
   private singGain: GainNode;
-  private bed: AudioBufferSourceNode | null = null;
-  private bedBuf: AudioBuffer | null = null;
+  private beds: AudioBufferSourceNode[] = [];
+  private kit: CrowdKit | null = null;
+  private kitFor: VenueId | null = null;
+  private bedBuf: AudioBuffer | null = null; // synthesized fallback when the recordings cannot load
   private clapBufs: AudioBuffer[] = [];
   private cheerBuf: AudioBuffer | null = null;
   private singSrc: AudioNode | null = null;
@@ -313,9 +323,19 @@ export class VirtualCrowd {
     this.out = ctx.createGain();
     this.out.gain.value = 0;
     this.out.connect(deck.crowdInput());
+    // the venue: distance (low-pass) then dry + room
+    this.venueIn = ctx.createGain();
+    this.lowpass = ctx.createBiquadFilter();
+    this.lowpass.type = "lowpass";
+    this.room = ctx.createConvolver();
+    this.dry = ctx.createGain();
+    this.wet = ctx.createGain();
+    this.venueIn.connect(this.lowpass);
+    this.lowpass.connect(this.dry).connect(this.out);
+    this.lowpass.connect(this.room).connect(this.wet).connect(this.out);
     this.bedGain = ctx.createGain();
     this.bedGain.gain.value = 0;
-    this.bedGain.connect(this.out);
+    this.bedGain.connect(this.venueIn);
     // sing-along: three slowly wandering copies of the voice, band-limited and thrown into a big room
     this.singIn = ctx.createGain();
     this.singGain = ctx.createGain();
@@ -335,6 +355,7 @@ export class VirtualCrowd {
       this.lfos.push(lfo);
     });
     hp.connect(lp).connect(room).connect(this.singGain).connect(this.out);
+    this.applyVenue();
   }
 
   private toBuffer([l, r]: [Float32Array, Float32Array]): AudioBuffer {
@@ -343,12 +364,57 @@ export class VirtualCrowd {
     return b;
   }
 
-  private build(): void {
+  private buildSynth(): void {
     const sr = this.ctx.sampleRate;
     if (!this.bedBuf) this.bedBuf = this.toBuffer(babbleSamples(sr, 8, 7));
     if (!this.clapBufs.length) this.clapBufs = [11, 12, 13].map((s) => this.toBuffer(clapSamples(sr, s)));
     if (!this.cheerBuf) this.cheerBuf = this.toBuffer(cheerSamples(sr, 4, 21));
-    if (!this.lfoOn) { this.lfos.forEach((o) => o.start()); this.lfoOn = true; }
+  }
+
+  private applyVenue(): void {
+    const v = VENUES[this.opts.venue], t = this.ctx.currentTime;
+    this.room.buffer = makeReverbImpulse(this.ctx, v.room);
+    this.lowpass.frequency.setTargetAtTime(v.lowpass, t, 0.05);
+    this.dry.gain.setTargetAtTime(1 - 0.5 * v.wet, t, 0.05);
+    this.wet.gain.setTargetAtTime(v.wet * 1.5, t, 0.05);
+  }
+
+  // the recordings of the venue, loaded once; the bed restarts on them when they arrive
+  private ensureKit(): void {
+    const v = this.opts.venue;
+    if (this.kitFor === v) return;
+    this.kitFor = v;
+    void loadCrowdKit(this.ctx, v).then((kit) => {
+      if (this.opts.venue !== v) return;
+      this.kit = kit;
+      if (!kit) this.buildSynth();
+      if (this.level > 0) this.startBed();
+    });
+  }
+
+  // several copies of the crowd spread across the stereo field, slightly detuned so they never line up
+  private startBed(): void {
+    this.stopBed();
+    const v = VENUES[this.opts.venue];
+    const list = this.kit ? this.kit.beds : this.bedBuf ? [this.bedBuf] : [];
+    if (!list.length) return;
+    const n = this.kit ? v.layers : 1;
+    for (let k = 0; k < n; k++) {
+      const buf = list[k % list.length], src = this.ctx.createBufferSource(), pan = this.ctx.createStereoPanner(), g = this.ctx.createGain();
+      src.buffer = buf;
+      src.loop = true;
+      src.playbackRate.value = 1 + (k % 2 ? 1 : -1) * 0.025 * Math.ceil(k / 2);
+      pan.pan.value = n === 1 ? 0 : -0.7 + (1.4 * k) / (n - 1);
+      g.gain.value = 1 / Math.sqrt(n);
+      src.connect(g).connect(pan).connect(this.bedGain);
+      src.start(this.ctx.currentTime, Math.random() * buf.duration);
+      this.beds.push(src);
+    }
+  }
+
+  private stopBed(): void {
+    for (const b of this.beds) { try { b.stop(); } catch { /* not started */ } b.disconnect(); }
+    this.beds = [];
   }
 
   // follows the vocal stem: connected before its fader, re-plugged when the stems change
@@ -368,15 +434,10 @@ export class VirtualCrowd {
     this.out.gain.setTargetAtTime(k * 0.28, this.ctx.currentTime, 0.1); // at 100 % about 10 dB under the music
     if (k > 0 && was === 0) {
       if (this.stopTimer) { clearTimeout(this.stopTimer); this.stopTimer = null; }
-      this.build();
-      if (!this.bed) {
-        this.bed = this.ctx.createBufferSource();
-        this.bed.buffer = this.bedBuf;
-        this.bed.loop = true;
-        this.bed.connect(this.bedGain);
-        this.bed.start();
-      }
-      this.setSing(this.sing);
+      if (!this.lfoOn) { this.lfos.forEach((o) => o.start()); this.lfoOn = true; }
+      this.ensureKit();
+      if (!this.beds.length) this.startBed();
+      this.setOpts({});
       if (!this.timer) this.timer = setInterval(() => this.tick(), 30);
     } else if (k === 0 && was > 0) {
       this.stopTimer = setTimeout(() => this.halt(), 600);
@@ -386,32 +447,53 @@ export class VirtualCrowd {
   private halt(): void {
     this.stopTimer = null;
     if (this.timer) { clearInterval(this.timer); this.timer = null; }
-    if (this.bed) { this.bed.stop(); this.bed.disconnect(); this.bed = null; }
+    this.stopBed();
     if (this.singSrc) { try { this.singSrc.disconnect(this.singIn); } catch { /* already gone */ } }
     this.singSrc = null;
     this.singStem = -1;
     this.lastTo = null;
   }
 
-  setSing(on: boolean): void {
-    this.sing = on;
-    this.singGain.gain.setTargetAtTime(on && this.level > 0 ? 8 : 0, this.ctx.currentTime, 0.1);
+  setOpts(p: Partial<CrowdOpts>): void {
+    const venue = this.opts.venue;
+    this.opts = { ...this.opts, ...p };
+    this.singGain.gain.setTargetAtTime(this.opts.sing && this.level > 0 ? 8 : 0, this.ctx.currentTime, 0.1);
+    if (this.opts.venue !== venue) {
+      this.applyVenue();
+      if (this.level > 0) this.ensureKit();
+    }
   }
 
-  private play(buf: AudioBuffer, at: number, gain: number, rate = 1): void {
+  private play(buf: AudioBuffer, at: number, gain: number, rate = 1, offset = 0, len?: number, fadeIn = 0.004): void {
     const src = this.ctx.createBufferSource(), g = this.ctx.createGain();
     src.buffer = buf;
     src.playbackRate.value = rate;
-    g.gain.value = gain;
-    src.connect(g).connect(this.out);
-    src.start(at);
+    g.gain.setValueAtTime(0, at);
+    g.gain.linearRampToValueAtTime(gain, at + fadeIn);
+    if (len) g.gain.setTargetAtTime(0, at + fadeIn, len / 4);
+    src.connect(g).connect(this.venueIn);
+    src.start(at, offset, len);
+  }
+
+  // a crowd clap in time: a short cut of a real applause (many hands at once), else the synthesized clap
+  private clap(at: number, v: number): void {
+    const a = this.kit?.applause, rate = 0.97 + 0.06 * Math.random();
+    if (a) this.play(a, at, v * 2.4, rate, Math.random() * (a.duration - 0.4), 0.22, 0.003);
+    else if (this.clapBufs.length) this.play(this.clapBufs[Math.floor(Math.random() * this.clapBufs.length)], at, v * 0.7, rate);
+  }
+
+  // a real shout with an applause swelling under it
+  private shout(at: number, v: number): void {
+    const k = this.kit;
+    if (k?.cheers.length) {
+      this.play(k.cheers[Math.floor(Math.random() * k.cheers.length)], at, v * 1.2, 0.97 + 0.06 * Math.random());
+      this.play(k.applause, at, v * 0.8, 1, Math.random() * (k.applause.duration - 5), 4, 0.4);
+    } else if (this.cheerBuf) this.play(this.cheerBuf, at, v);
   }
 
   // one cheer now (the button)
   cheer(): void {
-    if (this.level === 0) return;
-    this.build();
-    if (this.cheerBuf) this.play(this.cheerBuf, this.ctx.currentTime, 0.9);
+    if (this.level > 0) this.shout(this.ctx.currentTime, 0.9);
   }
 
   private tick(): void {
@@ -429,8 +511,8 @@ export class VirtualCrowd {
     this.bedGain.gain.setTargetAtTime(bedLevel(d.stemMap, pos), now, 0.5);
     for (const e of crowdEvents(d.stemMap, d.bpm, d.beatGridOffset, from, to)) {
       const at = now + Math.max(0, (e.t - pos) / rate);
-      if (e.kind === "clap") this.play(this.clapBufs[Math.floor(Math.random() * this.clapBufs.length)], at, e.v * 0.7, 0.94 + 0.12 * Math.random());
-      else if (this.cheerBuf) this.play(this.cheerBuf, at, e.v);
+      if (e.kind === "clap") { if (this.opts.claps) this.clap(at, e.v); }
+      else if (this.opts.cheers) this.shout(at, e.v);
     }
   }
 
@@ -439,4 +521,156 @@ export class VirtualCrowd {
     this.halt();
     this.out.disconnect();
   }
+}
+
+// ---- real crowds: CC0 recordings from BigSoundBank (Joseph Sardin), one set per venue
+export type VenueId = "club" | "salle" | "stade" | "plein";
+export type Venue = { label: string; hint: string; beds: string[]; layers: number; applause: string; cheers: string[]; room: number; wet: number; lowpass: number };
+export const VENUES: Record<VenueId, Venue> = {
+  club: {
+    label: "CLUB",
+    hint: "Petite salle, 200 personnes tout près",
+    beds: ["3515"],
+    layers: 1,
+    applause: "0019",
+    cheers: ["0236", "0237", "2481", "2483"],
+    room: 1.0,
+    wet: 0.15,
+    lowpass: 12000
+  },
+  salle: {
+    label: "SALLE",
+    hint: "Salle de concert, 2 000 personnes",
+    beds: ["3516", "0642"],
+    layers: 2,
+    applause: "0020",
+    cheers: ["2480", "2484", "2485", "2487"],
+    room: 2.4,
+    wet: 0.35,
+    lowpass: 9000
+  },
+  stade: {
+    label: "STADE",
+    hint: "Stade, 30 000 personnes, immense et lointain",
+    beds: ["3515", "3516", "0642", "0825"],
+    layers: 4,
+    applause: "0021",
+    cheers: ["2480", "2484", "2485", "2487", "0236", "0237"],
+    room: 4.5,
+    wet: 0.55,
+    lowpass: 5000
+  },
+  plein: {
+    label: "PLEIN AIR",
+    hint: "Festival en plein air, presque sans écho",
+    beds: ["3516", "0825"],
+    layers: 3,
+    applause: "0021",
+    cheers: ["2480", "2484", "2487", "0236"],
+    room: 0.6,
+    wet: 0.08,
+    lowpass: 7000
+  }
+};
+
+export const VENUE_IDS = Object.keys(VENUES) as VenueId[];
+
+export function loopArray(x: Float32Array, s: number, e: number, f: number): Float32Array {
+  e = Math.min(e, x.length);
+  const L = e - s - f;
+  if (L <= f) return x.slice(s, e);
+  const out = new Float32Array(L);
+  for (let i = 0; i < L; i++) {
+    if (i < f) {
+      out[i] = x[s + i] * Math.sqrt(i / f) + x[s + L + i] * Math.sqrt(1 - i / f);
+    } else {
+      out[i] = x[s + i];
+    }
+  }
+  return out;
+}
+
+export function normalizeRms(chs: Float32Array[], targetDb: number): void {
+  let sumSq = 0;
+  for (const ch of chs) {
+    for (let i = 0; i < ch.length; i++) {
+      sumSq += ch[i] * ch[i];
+    }
+  }
+  const rms = Math.sqrt(sumSq / (chs.length * chs[0].length));
+  if (rms < 1e-6) return;
+  const gain = Math.pow(10, targetDb / 20) / rms;
+  for (const ch of chs) {
+    for (let i = 0; i < ch.length; i++) {
+      ch[i] *= gain;
+    }
+  }
+}
+
+const clipCache = new Map<string, Promise<AudioBuffer | null>>();
+
+export function loadClip(ctx: BaseAudioContext, id: string, loop?: [number, number]): Promise<AudioBuffer | null> {
+  const key = id + (loop ? ":loop" : "");
+  if (clipCache.has(key)) return clipCache.get(key)!;
+  const promise = (async () => {
+    try {
+      const response = await fetch(`/api/crowd?id=${id}`);
+      if (!response.ok) return null;
+      const arrayBuffer = await response.arrayBuffer();
+      const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+      const chs: Float32Array[] = Array.from({ length: audioBuffer.numberOfChannels }, (_, i) => audioBuffer.getChannelData(i));
+      if (loop) {
+        const [startSec, endSecFromEnd] = loop;
+        const sr = audioBuffer.sampleRate;
+        const s = Math.round(startSec * sr);
+        const e = audioBuffer.length - Math.round(endSecFromEnd * sr);
+        const f = Math.round(0.5 * sr);
+        for (let i = 0; i < chs.length; i++) {
+          chs[i] = loopArray(chs[i], s, e, f);
+        }
+      }
+      normalizeRms(chs, -20);
+      const newBuffer = ctx.createBuffer(audioBuffer.numberOfChannels, chs[0].length, audioBuffer.sampleRate);
+      for (let i = 0; i < chs.length; i++) {
+        newBuffer.getChannelData(i).set(chs[i]);
+      }
+      return newBuffer;
+    } catch {
+      return null;
+    }
+  })();
+  clipCache.set(key, promise);
+  promise.then(result => {
+    if (result === null) clipCache.delete(key);
+  });
+  return promise;
+}
+
+export type CrowdKit = { beds: AudioBuffer[]; applause: AudioBuffer; cheers: AudioBuffer[] };
+
+export async function loadCrowdKit(ctx: BaseAudioContext, v: VenueId): Promise<CrowdKit | null> {
+  const venue = VENUES[v];
+  const [beds, [applause], cheers] = await Promise.all([
+    Promise.all(venue.beds.map(id => loadClip(ctx, id, [2, 2]))),
+    Promise.all([loadClip(ctx, venue.applause, [3, 3])]),
+    Promise.all(venue.cheers.map(id => loadClip(ctx, id))),
+  ]);
+  if (beds.every(bed => bed === null) || applause === null) return null;
+  return {
+    beds: beds.filter(bed => bed !== null) as AudioBuffer[],
+    applause,
+    cheers: cheers.filter(cheer => cheer !== null) as AudioBuffer[]
+  };
+}
+
+export function kitTest(): void {
+  const x = new Float32Array(1000);
+  for (let i = 0; i < x.length; i++) x[i] = Math.sin(i * 0.05);
+  const y = loopArray(x, 100, 900, 100);
+  if (y.length !== 700) throw new Error("loop length");
+  if (Math.abs(y[0] - x[800]) > 1e-6 || Math.abs(y[699] - x[799]) > 1e-6) throw new Error("loop seam");
+  const a = [new Float32Array([0.5, -0.5, 0.5, -0.5])];
+  normalizeRms(a, -20);
+  if (Math.abs(Math.abs(a[0][0]) - 0.1) > 1e-6) throw new Error("rms");
+  for (const v of VENUE_IDS.map((k) => VENUES[k])) if (v.layers < 1 || !v.beds.length || !v.cheers.length || v.wet < 0 || v.wet > 1) throw new Error("venue");
 }

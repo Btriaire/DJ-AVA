@@ -9,7 +9,7 @@ import { Retouch } from "./Retouch";
 import { Rack, RackPreset } from "./Rack";
 import { sha1Hex16 } from "./stemHash";
 import { PitchShifter } from "./PitchShifter";
-import { VirtualCrowd } from "./virtualCrowd";
+import { CROWD_DEFAULTS, VirtualCrowd, type CrowdOpts } from "./virtualCrowd";
 import type { ClockInfo } from "./stepClock";
 import { guess as guessBeat } from "web-audio-beat-detector";
 
@@ -236,6 +236,7 @@ export class Deck {
   crowd = 0;
   // PUBLIC: a virtual concert crowd added under the deck (see virtualCrowd.ts), 0 = off
   audience = 0;
+  audienceOpts: CrowdOpts = { ...CROWD_DEFAULTS }; // venue and what the crowd does
   private audienceFx: VirtualCrowd | null = null;
   private crowdIn!: GainNode;
   private crowdOut!: GainNode;
@@ -1941,9 +1942,14 @@ export class Deck {
   setAudience(k: number) {
     this.audience = Math.min(1, Math.max(0, k));
     if (!this.audience && !this.audienceFx) return;
-    (this.audienceFx ??= new VirtualCrowd(this)).setLevel(this.audience);
+    if (!this.audienceFx) { this.audienceFx = new VirtualCrowd(this); this.audienceFx.setOpts(this.audienceOpts); }
+    this.audienceFx.setLevel(this.audience);
   }
   audienceCheer() { this.audienceFx?.cheer(); }
+  setAudienceOpts(p: Partial<CrowdOpts>) {
+    this.audienceOpts = { ...this.audienceOpts, ...p };
+    this.audienceFx?.setOpts(this.audienceOpts);
+  }
   get retouchFx(): Retouch { return this.retouch; }
 
   public fxClock(): ClockInfo | null {

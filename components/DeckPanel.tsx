@@ -3,6 +3,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore } 
 import { useIsClient } from "@/lib/useIsClient";
 import { Deck } from "@/lib/audio/Deck";
 import { automationFor } from "@/lib/audio/deckAutomation";
+import { VENUES, VENUE_IDS, type CrowdOpts, type VenueId } from "@/lib/audio/virtualCrowd";
 import { Knob } from "./Knob";
 import { Fader } from "./Fader";
 import { StemFxPanel } from "./StemFxPanel";
@@ -103,6 +104,7 @@ type StemTpl = {
   vol: number[];
   crowd: number;
   audience?: number;
+  audienceOpts?: CrowdOpts;
   makeup: boolean;
   loops?: ({ active: boolean; beats: number | null; start: number; end: number; smoothMs: number; rollAt: number | null } | null)[];
 };
@@ -492,6 +494,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
       vol: deck.stemVol.slice(),
       crowd: deck.crowd,
       audience: deck.audience,
+      audienceOpts: deck.audienceOpts,
       makeup: deck.stemMakeup,
       loops,
     };
@@ -510,6 +513,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
     }
     deck.setStemMakeup(tpl.makeup);
     deck.setCrowd(tpl.crowd);
+    if (tpl.audienceOpts) deck.setAudienceOpts(tpl.audienceOpts);
     deck.setAudience(tpl.audience ?? 0);
     if (tpl.loops && Array.isArray(tpl.loops)) {
       tpl.loops.forEach((lp, i) => {
@@ -1471,7 +1475,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                 {name === "vocals" && (
                   <div
                     className="flex flex-col items-center justify-center gap-1 pointer-events-auto opacity-100"
-                    title="PUBLIC — ajoute une foule de concert : brouhaha, applaudissements sur les temps 2 et 4, cris quand le morceau monte, et le public qui chante avec la voix (même si tu coupes la voix)."
+                    title="PUBLIC — ajoute une vraie foule de concert (enregistrements CC0) : brouhaha qui suit l'énergie, applaudissements sur les temps 2 et 4, cris aux montées, et le public qui chante avec la voix (même si tu coupes la voix). Choisis le lieu : club, salle, stade ou plein air."
                   >
                     <Knob
                       label="PUBLIC"
@@ -1498,6 +1502,47 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                     >
                       BRAVO
                     </button>
+                    <select
+                      aria-label="Lieu du public"
+                      title={VENUES[deck.audienceOpts.venue].hint}
+                      value={deck.audienceOpts.venue}
+                      disabled={deck.audience < 0.005}
+                      onChange={(e) => {
+                        deck.setAudienceOpts({ venue: e.target.value as VenueId });
+                        rerender();
+                      }}
+                      className="w-full rounded bg-black/40 px-0.5 py-0.5 text-[9px] font-bold text-neutral-200 disabled:opacity-30"
+                    >
+                      {VENUE_IDS.map((id) => (
+                        <option key={id} value={id}>{VENUES[id].label}</option>
+                      ))}
+                    </select>
+                    <div className="flex w-full flex-col gap-0.5">
+                      {([
+                        ["claps", "CLAPS", "Applaudissements en rythme sur les temps 2 et 4"],
+                        ["cheers", "CRIS", "Cris et ovations aux montées et à la fin"],
+                        ["sing", "CHANT", "Le public chante avec la voix du morceau"],
+                      ] as const).map(([key, label, title]) => {
+                        const on = deck.audienceOpts[key];
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            aria-pressed={on}
+                            title={title}
+                            disabled={deck.audience < 0.005}
+                            onClick={() => {
+                              deck.setAudienceOpts({ [key]: !on });
+                              rerender();
+                            }}
+                            className="rounded px-1 py-0.5 text-[9px] font-black leading-none disabled:opacity-30"
+                            style={{ background: on ? "rgba(56,189,248,0.25)" : "rgba(255,255,255,0.06)", color: on ? "#e0f2fe" : "#a3a3a3" }}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </Fragment>
