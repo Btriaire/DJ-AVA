@@ -132,20 +132,28 @@ abstract class JamModule {
   }
   // a line under the title when something asked for cannot work on this song (its notes were never analysed)
   warning(): string | null { return null; }
-  // the real loudness 0..1 of this module's original stem right after song time t: the replays breathe like the song
+  // the real loudness 0..1 of every stem the module owns right after song time t: the replays breathe like the song
   protected dyn(deck: Deck, t: number): number {
-    const buffer = deck.getStemBuffer(this.stem(deck));
-    if (!buffer) return 1;
-    let cached = levelCache.get(buffer);
+    const buffers = this.swapStems(deck).map(i => deck.getStemBuffer(i)).filter(b => b !== null);
+    if (buffers.length === 0) return 1;
+    let cached = levelCache.get(buffers[0]);
     if (!cached) {
-      const env = envelope(buffer.getChannelData(0), buffer.sampleRate);
-      if (buffer.numberOfChannels > 1) {
-        const env1 = envelope(buffer.getChannelData(1), buffer.sampleRate);
-        for (let i = 0; i < env.length; i++) env[i] = (env[i] + env1[i]) / 2;
+      const envs = buffers.map(buffer => {
+        const env = envelope(buffer.getChannelData(0), buffer.sampleRate);
+        if (buffer.numberOfChannels > 1) {
+          const env1 = envelope(buffer.getChannelData(1), buffer.sampleRate);
+          for (let i = 0; i < env.length; i++) env[i] = (env[i] + env1[i]) / 2;
+        }
+        return env;
+      });
+      const minLength = Math.min(...envs.map(env => env.length));
+      const combinedEnv = new Float32Array(minLength);
+      for (let i = 0; i < minLength; i++) {
+        combinedEnv[i] = envs.reduce((sum, env) => sum + env[i], 0);
       }
-      const ref = percentile(env, 0.95);
-      cached = { env, ref };
-      levelCache.set(buffer, cached);
+      const ref = percentile(combinedEnv, 0.95);
+      cached = { env: combinedEnv, ref };
+      levelCache.set(buffers[0], cached);
     }
     return levelAt(cached.env, 0.005, t, cached.ref);
   }
