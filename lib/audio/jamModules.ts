@@ -26,6 +26,7 @@ import { Vocoder } from "./jamVocoder";
 import { harmonyNotes, type HarmonyMode } from "./jamHarmony";
 import { voiceNotes, type VoiceNote } from "./jamVoiceNotes";
 import { chordHits, cleanNotes } from "./jamReplay";
+import { envelope, levelAt, percentile } from "./jamPrecision";
 import { chordAt, chordDegreeAt, degreeChord, heardShift, voiceLead, type ChordColor, jamDeck, jamScale, jamStem, nextGrid, onJamTick, snapToScale, songToCtx, spb, type JamDeckPref, type JamRole } from "./stemJam";
 
 export const beatIdx = (div: number) => Math.max(0, BEAT_DIVS.indexOf(div));
@@ -56,6 +57,9 @@ function loadSlots(role: string): (Record<string, unknown> | null)[] {
 function saveSlots(role: string, slots: (Record<string, unknown> | null)[]) {
   try { const all = JSON.parse(localStorage.getItem(SLOTS) ?? "{}") as Record<string, unknown>; all[role] = slots; localStorage.setItem(SLOTS, JSON.stringify(all)); } catch { /* storage blocked: scenes last the session */ }
 }
+
+// the original stem's loudness envelope, made once per stem buffer (5 ms frames), shared by the modules
+const levelCache = new WeakMap<AudioBuffer, { env: Float32Array; ref: number }>();
 
 abstract class JamModule {
   pref: JamDeckPref = "auto";
@@ -128,6 +132,23 @@ abstract class JamModule {
   }
   // a line under the title when something asked for cannot work on this song (its notes were never analysed)
   warning(): string | null { return null; }
+  // the real loudness 0..1 of this module's original stem right after song time t: the replays breathe like the song
+  protected dyn(deck: Deck, t: number): number {
+    const buffer = deck.getStemBuffer(this.stem(deck));
+    if (!buffer) return 1;
+    let cached = levelCache.get(buffer);
+    if (!cached) {
+      const env = envelope(buffer.getChannelData(0), buffer.sampleRate);
+      if (buffer.numberOfChannels > 1) {
+        const env1 = envelope(buffer.getChannelData(1), buffer.sampleRate);
+        for (let i = 0; i < env.length; i++) env[i] = (env[i] + env1[i]) / 2;
+      }
+      const ref = percentile(env, 0.95);
+      cached = { env, ref };
+      levelCache.set(buffer, cached);
+    }
+    return levelAt(cached.env, 0.005, t, cached.ref);
+  }
   // REMPLACER: the module takes the stem over: the original fades out over one bar while the module replays its part
   swapped = false;
   private swapBefore = 1;
@@ -396,7 +417,7 @@ export class BassLab extends JamModule {
         while (midi > 55) midi -= 12;
         while (midi < 28) midi += 12;
         const at = songToCtx(deck, s0);
-        this.lineNote(midi, at, Math.max(0.08, (e0 - s0) / rate), Math.min(1, 0.55 + v));
+        this.lineNote(midi, at, Math.max(0.08, (e0 - s0) / rate), Math.min(1, (0.3 + 0.7 * this.dyn(deck, s0)) * (0.75 + 0.25 * v)));
         this.played.push({ start: s0, end: e0, midi });
         this.hit(at);
       }
@@ -746,9 +767,9 @@ export class VoxFx extends JamModule {
       const notes = harmonyNotes(sung, pcs, this.harmonyMode);
       for (const note of notes) {
         if (this.harmonyVoice && this.sampledChoir.ready()) {
-          this.sampledChoir.note(note, at, len, notes.length === 1 ? 0.85 : 0.7, "pad");
+          this.sampledChoir.note(note, at, len, (notes.length === 1 ? 0.85 : 0.7) * (0.4 + 0.6 * this.dyn(deck, seg.k0 * step)), "pad");
         } else {
-          this.choir.note(note, at, len, 1);
+          this.choir.note(note, at, len, 0.4 + 0.6 * this.dyn(deck, seg.k0 * step));
         }
         this.played.push({ start: seg.k0 * step, end: seg.k1 * step, midi: note });
       }
@@ -1032,7 +1053,7 @@ export class HarmoSynth extends JamModule {
         for (let k = lowerBound(notes, from); k < notes.length && notes[k][0] < to; k++) {
           const [start, end, midi, vel] = notes[k];
           const at = songToCtx(deck, start);
-          this.player().note(midi + heardShift(deck), at, Math.max(0.08, (end - start) / rate), Math.min(1, 0.35 + vel * 0.65), end - start > 0.6 ? "pad" : "pluck");
+          this.player().note(midi + heardShift(deck), at, Math.max(0.08, (end - start) / rate), Math.min(1, (0.3 + 0.7 * this.dyn(deck, start)) * (0.75 + 0.25 * vel)), end - start > 0.6 ? "pad" : "pluck");
           this.hit(at);
         }
       } else {
@@ -1041,7 +1062,7 @@ export class HarmoSynth extends JamModule {
         while (k < hits.length && hits[k].t < to) {
           const hit = hits[k];
           const at = songToCtx(deck, hit.t);
-          this.player().chord(this.voiced(deck, hit.t), at, Math.max(0.08, hit.dur / rate), Math.min(1, 0.4 + hit.vel * 0.6), hit.dur > 0.6 ? "pad" : "pluck", 0.006);
+          this.player().chord(this.voiced(deck, hit.t), at, Math.max(0.08, hit.dur / rate), Math.min(1, (0.3 + 0.7 * this.dyn(deck, hit.t)) * (0.8 + 0.2 * hit.vel)), hit.dur > 0.6 ? "pad" : "pluck", 0.006);
           this.hit(at);
           k++;
         }
@@ -1188,9 +1209,9 @@ export class BeatLab extends JamModule {
         const [t, v, c] = hits[k];
         const at = songToCtx(deck, t);
         if (this.replay) { // each hit on its own sound, at its strength; no KICK+ / CLAP+ on top (they would double it)
-          if (c === 0) this.drum("kick", at, Math.min(1, 0.55 + v), hz);
-          else if (c === 1) this.drum("snare", at, Math.min(1, 0.55 + v));
-          else if (c === 2) this.drum("hat", at, Math.min(1, 0.4 + v));
+          if (c === 0) this.drum("kick", at, Math.min(1, 0.25 + 0.75 * this.dyn(deck, t)), hz);
+          else if (c === 1) this.drum("snare", at, Math.min(1, 0.25 + 0.75 * this.dyn(deck, t)));
+          else if (c === 2) this.drum("hat", at, Math.min(1, 0.2 + 0.6 * this.dyn(deck, t)));
           this.hit(at);
         } else if (c === 0 && this.kick > 0) { this.drum("kick", at, Math.min(1, (0.6 + v) * this.kick), hz); this.hit(at); }
         else if (c === 1 && this.clap > 0) { this.drum("clap", at, Math.min(1, (0.6 + v) * this.clap)); this.hit(at); }

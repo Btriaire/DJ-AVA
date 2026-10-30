@@ -1,4 +1,5 @@
 import type { StemNotes } from "@/lib/stemNotes";
+import { alignLegacyNotes } from "./jamPrecision";
 import type { StemMap } from "@/lib/stemAnalysis";
 import { getMemLevel } from "@/lib/memoryGovernor";
 import { detectBPM, buildWaveformPeaks } from "./bpm";
@@ -1442,6 +1443,7 @@ export class Deck {
       try {
         p = (await (await fetch(`/api/stems/pitch?read=1&hash=${hash}&model=${this.stemModel}${this.stemOptsQS()}`)).json()) as { pitch: { contour: number[]; hop: number } | null };
         nj = (await (await fetch(`/api/stems/notes?read=1&hash=${hash}&model=${this.stemModel}${this.stemOptsQS()}`)).json()) as { notes: StemNotes | null };
+        nj.notes = nj.notes && alignLegacyNotes(nj.notes);
       } catch {
         // no pitch or notes: proceed without them
       }
@@ -1452,7 +1454,7 @@ export class Deck {
       if (gen === this.loadGen && this.stemMap && p.pitch) this.stemMap = { ...this.stemMap, voice: p.pitch.contour, voiceStep: p.pitch.hop * 4 };
       if (gen === this.loadGen && (!nj.notes || !p.pitch)) this.analysisPending = true;
       let attempts = 0;
-      while (this.loadGen === gen && (!nj.notes || !p.pitch) && attempts < 45) {
+      while (this.loadGen === gen && (!nj.notes || !p.pitch || (nj.notes.rev ?? 1) < 3) && attempts < 45) {
         await new Promise(r => setTimeout(r, 4000));
         attempts++;
         let np = { pitch: null as { contour: number[]; hop: number } | null };
@@ -1460,11 +1462,12 @@ export class Deck {
         try {
           np = (await (await fetch(`/api/stems/pitch?read=1&hash=${hash}&model=${this.stemModel}${this.stemOptsQS()}`)).json()) as { pitch: { contour: number[]; hop: number } | null };
           nnj = (await (await fetch(`/api/stems/notes?read=1&hash=${hash}&model=${this.stemModel}${this.stemOptsQS()}`)).json()) as { notes: StemNotes | null };
+          nnj.notes = nnj.notes && alignLegacyNotes(nnj.notes);
         } catch {
           // no pitch or notes: proceed without them
         }
         if (this.loadGen === gen) {
-          if (nnj.notes && !nj.notes) {
+          if (nnj.notes && (!nj.notes || (nnj.notes.rev ?? 1) > (nj.notes.rev ?? 1))) {
             this.stemNotes = nnj.notes;
             if (this.stemMap) this.stemMap = { ...this.stemMap, notes: { other: nnj.notes.other, drums: nnj.notes.drums } };
             nj.notes = nnj.notes;
@@ -1475,11 +1478,12 @@ export class Deck {
           }
         }
       }
-      if (this.loadGen === gen) this.analysisPending = false;
+      if (this.loadGen === gen) this.analysisPending = !nj.notes || !p.pitch;
     } catch {
       // no map: the DJ simply works without it
     }
   }
+
 
 
   // query-string suffix carrying the current quality opts, shared by every

@@ -1,5 +1,6 @@
 // A real drum machine kit, played hit by hit (MaRuche/Falken)
 import { CORE_PARTS, drumKit, type DrumPart } from "@/lib/drumKits";
+import { leadingSilence } from "./jamPrecision";
 
 export class SampledKit {
   readonly out: GainNode;
@@ -32,10 +33,21 @@ export class SampledKit {
         if (!response.ok) return;
 
         const arrayBuffer = await response.arrayBuffer();
-        const audioBuffer = await this.out.context.decodeAudioData(arrayBuffer);
+        let audioBuffer = await this.out.context.decodeAudioData(arrayBuffer);
 
         if (this.current === id) {
           this.normalizeBuffer(audioBuffer);
+          const chans = Array.from({ length: audioBuffer.numberOfChannels }, (_, c) => audioBuffer.getChannelData(c));
+          const n = leadingSilence(chans, audioBuffer.sampleRate);
+          if (n > 0) {
+            const newBuf = this.out.context.createBuffer(audioBuffer.numberOfChannels, audioBuffer.length - n, audioBuffer.sampleRate);
+            for (let c = 0; c < audioBuffer.numberOfChannels; c++) {
+              const oldCh = audioBuffer.getChannelData(c);
+              const newCh = newBuf.getChannelData(c);
+              newCh.set(oldCh.subarray(n));
+            }
+            audioBuffer = newBuf;
+          }
           this.buffers[part] = audioBuffer;
         }
       } catch {
