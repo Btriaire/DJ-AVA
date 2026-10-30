@@ -405,20 +405,42 @@ export class BassLab extends JamModule {
 // ---------------- VOX FX ----------------
 export class VoxFx extends JamModule {
   readonly choir: ChoirVoice;
-  harmony = false; // a sung third above the vocal melody, in key
-  harmonyUp: 2 | 4 = 2; // scale steps above the voice: a third, or a fifth
+  readonly sampledChoir: SampledInstrument;
+  harmony = false;
+  harmonyUp: 2 | 4 = 2;
   doubled = false;
-  // CHOPS: a captured phrase of the vocal stem (song seconds), cut in 8 slices played on pads, in time
+  harmonyVoice: "" | "choir_aahs" | "voice_oohs" = "choir_aahs";
   chop: { start: number; slice: number; beats: number } | null = null;
   chopBeats: 2 | 4 | 8 = 4;
+
   constructor(engine: DJEngine) {
     super(engine, "vocals");
     this.choir = new ChoirVoice(engine.ctx);
     this.choir.out.connect(this.bus);
+    this.sampledChoir = new SampledInstrument(engine.ctx);
+    this.sampledChoir.out.connect(this.bus);
     onJamTick(engine, (deck, from, to) => this.tick(deck, from, to));
   }
+
   get level(): number { const d = this.deck(); return d.stemVol[this.stem(d)] ?? 1; }
   setLevel(v: number) { const d = this.deck(); d.setStemVol(this.stem(d), v); }
+
+  setHarmonyVoice(id: "" | "choir_aahs" | "voice_oohs") {
+    this.harmonyVoice = id;
+    if (id) void this.sampledChoir.load(id).then(jamChanged);
+    jamChanged();
+  }
+
+  harmonyStatus(): string | null {
+    if (!this.harmonyVoice) return null;
+    const inst = instrument(this.harmonyVoice);
+    if (!inst) return null;
+    if (this.sampledChoir.failed) return `${inst.label} indisponible : la voix de synthèse chante à sa place`;
+    if (this.sampledChoir.ready()) return `${inst.label} prêt`;
+    if (this.sampledChoir.current === this.harmonyVoice) return `Chargement : ${inst.label} ${this.sampledChoir.done}/${this.sampledChoir.total}`;
+    return `${inst.label} : se charge à la première note`;
+  }
+
   pads(): PadDef[] {
     const t = (id: string, label: string, sub: string, fx: FxName, div: number | undefined, wet: number): PadDef => ({ id, label, sub, mode: "hold", run: (on) => this.fx(fx, on, div, wet) });
     return [
@@ -432,16 +454,18 @@ export class VoxFx extends JamModule {
       { id: "harmony", label: "HARMONIE", sub: this.harmonyUp === 4 ? "quinte" : "tierce", mode: "toggle", isOn: () => this.harmony, run: (on) => { this.harmony = on; } },
     ];
   }
-  protected keep() { return ["harmonyUp", "chopBeats"]; }
+
+  protected keep() { return ["harmonyUp", "chopBeats", "harmonyVoice"]; }
   protected resetFields() {
-    this.harmony = false; this.harmonyUp = 2; this.chop = null; this.chopBeats = 4;
+    this.harmony = false; this.harmonyUp = 2; this.chop = null; this.chopBeats = 4; this.harmonyVoice = "choir_aahs";
     if (this.doubled) { this.doubled = false; this.fx("double", false, undefined, 0, 0); }
     this.setLevel(1); this.setSpace(0); this.setEcho(0); this.setRadio(0);
   }
+
   warning(): string | null {
     return this.harmony && !this.deck().stemMap?.voice?.length ? "Mélodie de la voix non analysée : HARMONIE reste muette sur ce morceau." : null;
   }
-  // the bars just played of the vocal stem become the phrase (ends on the last bar line, so it is in time)
+
   capture() {
     const d = this.deck();
     if (!d.bpm || this.stem(d) < 0) return;
@@ -450,10 +474,11 @@ export class VoxFx extends JamModule {
     this.chop = { start: end - this.chopBeats * beat, slice: (this.chopBeats * beat) / 8, beats: this.chopBeats };
     jamChanged();
   }
+
   chopPads(): PadDef[] {
     return Array.from({ length: 8 }, (_, i) => ({ id: `chop${i}`, label: String(i + 1), sub: this.chop ? `${((i * this.chop.beats) / 8).toFixed(1).replace(".0", "")} t` : "vide", mode: "hold" as const, run: (on: boolean) => { if (on) this.playChop(i); } }));
   }
-  // one slice of the phrase, at the deck's speed, on the next grid line; it goes through the voice's chain and effects
+
   playChop(i: number) {
     const d = this.deck(), si = this.stem(d), buf = si >= 0 ? d.getStemBuffer(si) : null;
     if (!buf || !this.chop) return;
@@ -473,13 +498,14 @@ export class VoxFx extends JamModule {
     src.stop(at + len + 0.02);
     this.hit(at);
   }
+
   get space(): number { const d = this.deck(); return d.stemReverbSend[this.stem(d)] ?? 0; }
   setSpace(v: number) { const d = this.deck(), i = this.stem(d); if (i < 0) return; if (v > 0 && (d.stemFxVol[i] ?? 0) < 0.7) d.setStemFxVol(i, 0.7); d.setStemReverbSend(i, v); }
   get echo(): number { const d = this.deck(); return d.stemDelaySend[this.stem(d)] ?? 0; }
   setEcho(v: number) { const d = this.deck(), i = this.stem(d); if (i < 0) return; if (v > 0 && (d.stemFxVol[i] ?? 0) < 0.7) d.setStemFxVol(i, 0.7); d.setStemDelaySend(i, v); }
-  // RADIO: the voice thins out like a phone line (positive side of the stem filter = high-pass)
   get radio(): number { const d = this.deck(); return Math.max(0, d.stemFilterX[this.stem(d)] ?? 0); }
   setRadio(v: number) { const d = this.deck(); d.setStemFilter(this.stem(d), v * 0.85); }
+
   private tick(deck: Deck, from: number, to: number) {
     if (!this.harmony || deck !== this.deck() || this.stem(deck) < 0) return;
     const map = deck.stemMap, v = map?.voice, step = map?.voiceStep;
@@ -487,17 +513,27 @@ export class VoxFx extends JamModule {
     this.route(deck);
     const { pcs } = jamScale(deck);
     const shift = heardShift(deck), rate = Math.max(0.25, deck.playbackRate);
+
+    if (this.harmonyVoice && this.sampledChoir.current !== this.harmonyVoice) {
+      void this.sampledChoir.load(this.harmonyVoice).then(jamChanged);
+    }
+
     for (let k = Math.max(1, Math.ceil(from / step)); k * step < to && k < v.length; k++) {
       const m = Math.round(v[k]);
-      if (v[k] < 0 || m === Math.round(v[k - 1])) continue; // only where a new sung note starts
+      if (v[k] < 0 || m === Math.round(v[k - 1])) continue;
       let j = k;
       while (j < v.length && v[j] >= 0 && Math.round(v[j]) === m && j - k < 64) j++;
       const sung = snapToScale(m + shift, pcs);
-      // a third (2 scale steps) or a fifth (4) above the voice
       let up = sung, n = 0;
       while (n < this.harmonyUp) { up++; if (pcs.includes(((up % 12) + 12) % 12)) n++; }
       const at = songToCtx(deck, k * step);
-      this.choir.note(up, at, Math.max(0.2, ((j - k) * step) / rate), 0.9);
+      const len = Math.max(0.2, ((j - k) * step) / rate);
+
+      if (this.harmonyVoice && this.sampledChoir.ready()) {
+        this.sampledChoir.note(up, at, len, 0.75, "pad");
+      } else {
+        this.choir.note(up, at, len, 0.9);
+      }
       this.hit(at);
     }
   }

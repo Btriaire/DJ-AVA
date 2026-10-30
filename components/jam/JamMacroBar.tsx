@@ -17,8 +17,8 @@ export function JamMacroBar({ engine }: { engine: DJEngine }) {
   return (
     <section aria-label="Macro jam" className="hw-panel hw-screwed flex flex-wrap items-center gap-4 p-3">
       <div>
-        <div className="text-[13px] font-black uppercase tracking-[0.3em] text-neutral-100">JAM</div>
-        <div className="text-[10px] text-neutral-500">les 4 stems ensemble</div>
+        <div className="text-[13px] font-black uppercase tracking-[0.3em] text-[var(--jam-text)]">JAM</div>
+        <div className="text-[10px] text-[var(--jam-text-3)]">les 4 stems ensemble</div>
       </div>
 
       <JamSeg
@@ -80,8 +80,8 @@ export function JamMacroBar({ engine }: { engine: DJEngine }) {
       >
         CLAVIER {keysOn ? "ACTIF" : "COUPÉ"}
       </button>
-      {keysOn && <span className="text-[10px] text-neutral-500">{`${row(KEY_ROWS.bass)} basse · ${row(KEY_ROWS.vox)} voix (+ Maj : morceaux) · ${row(KEY_ROWS.synth)} accords · ${row(KEY_ROWS.beat)} rythme`}</span>}
-      <div className="w-full text-[10px] text-neutral-500">
+      {keysOn && <span className="text-[10px] text-[var(--jam-text-3)]">{`${row(KEY_ROWS.bass)} basse · ${row(KEY_ROWS.vox)} voix (+ Maj : morceaux) · ${row(KEY_ROWS.synth)} accords · ${row(KEY_ROWS.beat)} rythme`}</span>}
+      <div className="w-full text-[10px] text-[var(--jam-text-3)]">
         BUILD monte batterie, écho de voix, filtre de basse et arpège jusqu&apos;à la mesure du drop. BREAK sort batterie et basse, la reprise retombe sur la mesure.
       </div>
     </section>

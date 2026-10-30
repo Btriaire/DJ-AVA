@@ -62,10 +62,10 @@ export function JamShell({
         <h3 className="text-[13px] font-black uppercase tracking-[0.22em] text-neutral-100">
           {title}
         </h3>
-        <span className="text-[10px] text-neutral-500">{tag}</span>
+        <span className="text-[10px] text-[var(--jam-text-3)]">{tag}</span>
         {lit && <ActivityLed lit={lit} color={color} />}
         {onReset && (
-          <button type="button" onClick={onReset} className="ml-auto rounded px-1.5 py-0.5 text-[9px] font-black tracking-[0.15em] text-neutral-500 hover:bg-white/5 hover:text-neutral-200" title="Remet le module à zéro : effets coupés, réglages par défaut">
+          <button type="button" onClick={onReset} className="ml-auto rounded px-1.5 py-0.5 text-[9px] font-black tracking-[0.15em] text-[var(--jam-text-3)] hover:bg-white/5 hover:text-[var(--jam-text)]" title="Remet le module à zéro : effets coupés, réglages par défaut">
             RÀZ
           </button>
         )}
@@ -171,7 +171,7 @@ export function JamPad({
       onKeyDown={handleKeyDown}
       onKeyUp={handleKeyUp}
     >
-      {hint && <span className="absolute right-1 top-1 rounded bg-black/45 px-1 font-mono text-[8px] font-bold leading-[12px] text-neutral-400">{hint}</span>}
+      {hint && <span className="absolute right-1 top-1 rounded bg-black/45 px-1 font-mono text-[8px] font-bold leading-[12px] text-[var(--jam-text-2)]">{hint}</span>}
       <div className="flex flex-col items-center justify-center">
         {label}
         {sub && (
@@ -197,7 +197,7 @@ export function JamSeg<T extends string>({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[9px] font-black uppercase tracking-[0.2em] text-neutral-500">
+      <span className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--jam-text-3)]">
         {label}
       </span>
       <div className="flex gap-1">
@@ -207,7 +207,7 @@ export function JamSeg<T extends string>({
             className={`px-2 py-1 text-[10px] font-bold rounded ${
               value === v
                 ? "text-white"
-                : "text-neutral-400 bg-white/5"
+                : "text-[var(--jam-text-2)] bg-white/5"
             }`}
             style={{
               backgroundColor:

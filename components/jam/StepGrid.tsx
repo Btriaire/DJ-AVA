@@ -26,7 +26,7 @@ export function StepGrid({ beat, color }: { beat: BeatLab; color: string }) {
           aria-pressed={beat.seq}
           onClick={() => beat.set("seq", !beat.seq)}
           className="px-3 py-1.5 text-xs font-bold rounded"
-          style={beat.seq ? { background: `color-mix(in srgb, ${color} 35%, #111)`, color: "#fff", boxShadow: `inset 0 0 0 1px ${color}` } : { background: "rgba(255,255,255,.05)", color: "#d4d4d8" }}
+          style={beat.seq ? { background: `color-mix(in srgb, ${color} 35%, #111)`, color: "#fff", boxShadow: `inset 0 0 0 1px ${color}` } : { background: "rgba(255,255,255,.05)", color: "var(--jam-text-3)" }}
         >
           SÉQUENCEUR
         </button>
@@ -35,7 +35,7 @@ export function StepGrid({ beat, color }: { beat: BeatLab; color: string }) {
             key={name}
             type="button"
             onClick={() => beat.setPreset(name)}
-            className="rounded bg-white/5 px-2 py-1 text-[10px] font-bold text-neutral-300 hover:bg-white/10"
+            className="rounded bg-white/5 px-2 py-1 text-[10px] font-bold text-[var(--jam-text-3)] hover:bg-white/10"
           >
             {label}
           </button>
@@ -43,7 +43,7 @@ export function StepGrid({ beat, color }: { beat: BeatLab; color: string }) {
       </div>
       {SEQ_ROWS.map((row) => (
         <div key={row} className="flex items-center gap-2">
-          <span className="w-8 shrink-0 text-[9px] font-black tracking-[0.15em] text-neutral-500">{ROW_LABEL[row]}</span>
+          <span className="w-8 shrink-0 text-[9px] font-black tracking-[0.15em] text-[var(--jam-text-2)]">{ROW_LABEL[row]}</span>
           <div className="grid flex-1 gap-1" style={{ gridTemplateColumns: "repeat(16, minmax(0, 1fr))" }}>
             {beat.pattern[row].map((on, i) => (
               <button

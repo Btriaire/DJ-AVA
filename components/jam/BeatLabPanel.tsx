@@ -7,10 +7,9 @@ import { JamPads, JamSeg, JamShell, useJamRefresh } from "./JamKit";
 import { KEY_ROWS } from "./jamKeys";
 import { StepGrid } from "./StepGrid";
 
-const C = "#fb923c";
+const C = "var(--jam-beat)";
 const pct = (v: number) => `${Math.round(v * 100)} %`;
 
-// BEAT LAB: kick and clap layers on the song's own hits, generated hats with swing, rolls and fills on the drum stem
 export function BeatLabPanel({ engine }: { engine: DJEngine }) {
   const m = jamModules(engine).beat;
   useJamRefresh();
@@ -28,7 +27,7 @@ export function BeatLabPanel({ engine }: { engine: DJEngine }) {
       <JamSeg label="Charleston" color={C} value={m.hats} options={[["off", "Off"], ["8", "Contretemps"], ["16", "Doubles"]] as const} onChange={(v: HatMode) => { m.set("hats", v); bump(); }} />
       <JamPads m={m} list={m.pads()} color={C} className="grid grid-cols-4 gap-2 sm:grid-cols-8" keys={KEY_ROWS.beat} />
       <StepGrid beat={m} color={C} />
-      <p className="text-[10px] text-neutral-500">KICK+ et CLAP+ renforcent les coups du morceau, exactement sur ses temps. Le séquenceur ajoute ton propre motif par-dessus, calé sur la mesure.</p>
+      <p className="text-[10px] text-[var(--jam-text-3)]">KICK+ et CLAP+ renforcent les coups du morceau, exactement sur ses temps. Le séquenceur ajoute ton propre motif par-dessus, calé sur la mesure.</p>
     </JamShell>
   );
 }

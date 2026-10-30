@@ -1495,3 +1495,25 @@ body.has-zoom::before {
   --jam-warn: oklch(0.86 0.13 75);    /* warning text */
   --jam-ok: oklch(0.86 0.14 145);     /* status text */
 }
+
+/* Vox FX and Beat Lab accents (values by MaRuche/Codestral after a Pol brief): gold amber and vivid orange, no pink */
+:root {
+
+  /* Amber gold accent for vox controls */
+  --jam-vox: oklch(0.80 0.15 82);
+
+  /* Dark fill for vox controls */
+  --jam-vox-fill: oklch(0.30 0.06 82);
+
+  /* Light text for vox controls */
+  --jam-vox-ink: oklch(0.95 0.03 82);
+
+  /* Vivid orange accent for beat controls */
+  --jam-beat: oklch(0.76 0.16 48);
+
+  /* Dark fill for beat controls */
+  --jam-beat-fill: oklch(0.30 0.06 48);
+
+  /* Light text for beat controls */
+  --jam-beat-ink: oklch(0.95 0.03 48);
+}
