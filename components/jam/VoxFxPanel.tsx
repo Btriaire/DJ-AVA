@@ -33,21 +33,40 @@ export function VoxFxPanel({ engine }: { engine: DJEngine }) {
         <Knob label="RADIO" value={m.radio} min={0} max={1} defaultValue={0} color={C} size={46} led format={pct} onChange={(v) => { m.setRadio(v); bump(); }} />
         <Knob label="HARMONIE" value={m.harmonyLevel} min={0} max={2} defaultValue={1} color={C} size={46} led format={pct} onChange={(v) => { m.setHarmonyLevel(v); bump(); }} />
       </div>
-      <JamSeg
-        color={C}
-        label="Harmonie"
-        value={m.harmonyMode}
-        options={[
-          ["third", "Tierce"],
-          ["fifth", "Quinte"],
-          ["chord", "Accord"],
-          ["low", "Dessous"]
-        ]}
-        onChange={(v) => {
-          m.set("harmonyMode", v);
-          bump();
-        }}
-      />
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          aria-pressed={m.harmony}
+          onClick={() => {
+            m.set("harmony", !m.harmony);
+            bump();
+          }}
+          className={`h-9 rounded-md px-3 text-[11px] font-black tracking-[0.15em] ${
+            m.harmony
+              ? "bg-[color-mix(in_srgb,_var(--jam-vox)_45%,_#111)] text-white ring-1 ring-inset ring-[var(--jam-vox)]"
+              : "bg-[rgba(255,255,255,0.06)] text-[var(--jam-text-2)]"
+          }`}
+          title="La chorale chante avec la voix, dans la tonalité"
+        >
+          HARMONIE
+        </button>
+        <JamSeg
+          label="Harmonie"
+          color={C}
+          value={m.harmonyMode}
+          options={[
+            ["third", "Tierce"],
+            ["fifth", "Quinte"],
+            ["chord", "Accord"],
+            ["low", "Dessous"]
+          ]}
+          onChange={(v) => {
+            m.set("harmonyMode", v);
+            m.set("harmony", true);
+            bump();
+          }}
+        />
+      </div>
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex w-full flex-col gap-1.5">
           <div className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--jam-text-2)]">
@@ -71,15 +90,23 @@ export function VoxFxPanel({ engine }: { engine: DJEngine }) {
                       color: "var(--jam-text-2)"
                     }
                 }
-                onClick={() => { m.setHarmonyVoice(id); bump(); }}
+                onClick={() => {
+                  m.setHarmonyVoice(id);
+                  m.set("harmony", true);
+                  bump();
+                }}
               >
                 {label}
               </button>
             ))}
           </div>
         </div>
-        {m.harmonyStatus() && <span className="text-[11px] text-[var(--jam-text-2)]" aria-live="polite">{m.harmonyStatus()}</span>}
-        {m.nextPhrase() && <span className="text-[11px] text-[var(--jam-text-2)]" aria-live="polite">{m.nextPhrase()}</span>}
+        <span className="text-[11px] text-[var(--jam-text-2)]" aria-live="polite">
+          {m.harmony
+            ? `${m.nextPhrase() ?? "Harmonie prête : elle chante dès que la voix chante"}${m.harmonyStatus() ? ` · ${m.harmonyStatus()}` : ""}`
+            : "Harmonie éteinte : appuie sur HARMONIE (ou choisis une voix)"
+          }
+        </span>
       </div>
       
       <div className="flex flex-wrap items-center gap-3 rounded-lg bg-black/25 p-2">
@@ -129,7 +156,7 @@ export function VoxFxPanel({ engine }: { engine: DJEngine }) {
         <span className="text-[10px] text-[var(--jam-text-3)]">{m.chop ? `Phrase de ${m.chop.beats} temps prise à ${Math.floor(m.chop.start / 60)}:${String(Math.floor(m.chop.start % 60)).padStart(2, "0")}` : "Aucune phrase capturée"}</span>
       </div>
       <JamPads m={m} list={m.chopPads()} color={C} className="grid grid-cols-8 gap-1.5" keys={KEY_ROWS.vox.map((k) => `maj ${k}`)} />
-      <p className="text-[10px] text-[var(--jam-text-3)]">Maintiens un jet : il part en rythme et s&apos;arrête au relâché. CAPTURER prend les dernières mesures chantées : rejoue-les en morceaux, toujours en rythme ; en MÉLODIE, le dernier morceau joué chante sur les 8 notes de la gamme. HARMONIE chante une tierce, une quinte, un accord complet ou en dessous de la voix, dans la tonalité. VOCODER fait parler un accord de synthé avec la voix, même quand le curseur VOIX est baissé.</p>
+      <p className="text-[10px] text-[var(--jam-text-3)]">Maintiens un jet : il part en rythme et s&apos;arrête au relâché. CAPTURER prend les dernières mesures chantées : rejoue-les en morceaux, toujours en rythme ; en MÉLODIE, le dernier morceau joué chante sur les 8 notes de la gamme. HARMONIE (bouton ou pad) chante une tierce, une quinte, un accord complet ou en dessous de la voix, dans la tonalité, dès que la voix chante ; choisir une voix l’allume aussi. VOCODER fait parler un accord de synthé avec la voix, même quand le curseur VOIX est baissé.</p>
     </JamShell>
   );
 }
