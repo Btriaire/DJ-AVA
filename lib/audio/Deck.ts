@@ -173,6 +173,7 @@ export class Deck {
   stemProgress: number | null = null;
   private stemProgressTimer: ReturnType<typeof setInterval> | null = null;
   stemCached = false; // server already has the stems on disk -> loading is instant
+  analysisPending = false; // the server is still making this song's notes or voice analysis: they are read again every 4 s
   stemNotes: StemNotes | null = null; // MIDI notes of the song (never played: they only time the effects)
   stemMap: StemMap | null = null; // peaks, slow parts and blanks of the song (made when its stems were prepared)
   stemHash = ""; // server content hash of the loaded track (for the library badge)
@@ -1436,18 +1437,50 @@ export class Deck {
       const j = (await r.json()) as { map: StemMap | null };
       if (gen !== this.loadGen) return;
       this.stemMap = j.map;
-      // the sung notes of the voice (made at preparation): read only, nothing is computed while loading
-      const p = (await (await fetch(`/api/stems/pitch?read=1&hash=${hash}&model=${this.stemModel}${this.stemOptsQS()}`)).json()) as { pitch: { contour: number[]; hop: number } | null };
-      const nj = (await (await fetch(`/api/stems/notes?read=1&hash=${hash}&model=${this.stemModel}${this.stemOptsQS()}`)).json()) as { notes: StemNotes | null };
+      let p = { pitch: null as { contour: number[]; hop: number } | null };
+      let nj = { notes: null as StemNotes | null };
+      try {
+        p = (await (await fetch(`/api/stems/pitch?read=1&hash=${hash}&model=${this.stemModel}${this.stemOptsQS()}`)).json()) as { pitch: { contour: number[]; hop: number } | null };
+        nj = (await (await fetch(`/api/stems/notes?read=1&hash=${hash}&model=${this.stemModel}${this.stemOptsQS()}`)).json()) as { notes: StemNotes | null };
+      } catch {
+        // no pitch or notes: proceed without them
+      }
       if (gen === this.loadGen) {
         this.stemNotes = nj.notes;
         if (this.stemMap && nj.notes) this.stemMap = { ...this.stemMap, notes: { other: nj.notes.other, drums: nj.notes.drums } };
       }
       if (gen === this.loadGen && this.stemMap && p.pitch) this.stemMap = { ...this.stemMap, voice: p.pitch.contour, voiceStep: p.pitch.hop * 4 };
+      if (gen === this.loadGen && (!nj.notes || !p.pitch)) this.analysisPending = true;
+      let attempts = 0;
+      while (this.loadGen === gen && (!nj.notes || !p.pitch) && attempts < 45) {
+        await new Promise(r => setTimeout(r, 4000));
+        attempts++;
+        let np = { pitch: null as { contour: number[]; hop: number } | null };
+        let nnj = { notes: null as StemNotes | null };
+        try {
+          np = (await (await fetch(`/api/stems/pitch?read=1&hash=${hash}&model=${this.stemModel}${this.stemOptsQS()}`)).json()) as { pitch: { contour: number[]; hop: number } | null };
+          nnj = (await (await fetch(`/api/stems/notes?read=1&hash=${hash}&model=${this.stemModel}${this.stemOptsQS()}`)).json()) as { notes: StemNotes | null };
+        } catch {
+          // no pitch or notes: proceed without them
+        }
+        if (this.loadGen === gen) {
+          if (nnj.notes && !nj.notes) {
+            this.stemNotes = nnj.notes;
+            if (this.stemMap) this.stemMap = { ...this.stemMap, notes: { other: nnj.notes.other, drums: nnj.notes.drums } };
+            nj.notes = nnj.notes;
+          }
+          if (this.stemMap && np.pitch && !p.pitch) {
+            this.stemMap = { ...this.stemMap, voice: np.pitch.contour, voiceStep: np.pitch.hop * 4 };
+            p.pitch = np.pitch;
+          }
+        }
+      }
+      if (this.loadGen === gen) this.analysisPending = false;
     } catch {
       // no map: the DJ simply works without it
     }
   }
+
 
   // query-string suffix carrying the current quality opts, shared by every
   // /api/stems/* call so cache hits/misses stay consistent across them

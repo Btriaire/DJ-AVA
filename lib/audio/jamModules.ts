@@ -275,6 +275,7 @@ export class BassLab extends JamModule {
   }
   warning(): string | null {
     const n = this.deck().stemNotes;
+    if (!n && this.deck().analysisPending) return "Analyse des notes du morceau en cours : la basse suit dès qu'elle est prête (quelques secondes).";
     if (this.subLevel > 0 && !n?.bass?.length) return "Notes de basse non analysées : le SUB reste muet sur ce morceau.";
     if (this.line === "follow" && !n?.bass?.length) return "Notes de basse non analysées : la REPRISE reste muette sur ce morceau.";
     return null;
@@ -445,6 +446,7 @@ export class VoxFx extends JamModule {
 
 
   warning(): string | null {
+    if (this.harmony && !this.deck().stemMap?.voice?.length && this.deck().analysisPending) return "Analyse de la voix en cours : HARMONIE chante dès qu'elle est prête (quelques secondes).";
     return this.harmony && !this.deck().stemMap?.voice?.length ? "Mélodie de la voix non analysée : HARMONIE reste muette sur ce morceau." : null;
   }
 
@@ -884,6 +886,7 @@ export class HarmoSynth extends JamModule {
     this.arpOctaves = 1; this.gateLen = 0.9; this.setSweep(0, 1); this.setWidth(0); this.riserBars = 4;
   }
   warning(): string | null {
+    if (this.mode !== "off" && !this.deck().stemNotes && this.deck().analysisPending) return "Analyse des accords du morceau en cours : le synthé les suit dès qu'elle est prête (quelques secondes).";
     return this.mode !== "off" && !this.deck().stemNotes?.other?.length ? "Accords du morceau non analysés : le synthé reste sur l'accord de la tonique (les pads marchent)." : null;
   }
   // REC (from the next bar), then PLAY; a press while playing clears the loop
@@ -991,11 +994,22 @@ export class HarmoSynth extends JamModule {
 export type HatMode = "off" | "8" | "16";
 export type SeqRow = "kick" | "snare" | "clap" | "hat" | "open" | "tom" | "perc";
 export const SEQ_ROWS: SeqRow[] = ["kick", "snare", "clap", "hat", "open", "tom", "perc"];
-export const SEQ_PRESETS: Record<"four" | "house" | "break" | "trap" | "clear", Record<SeqRow, number[]>> = {
+export const SEQ_PRESETS: Record<"four" | "house" | "break" | "trap" | "techno" | "disco" | "funk" | "boombap" | "garage" | "dnb" | "reggaeton" | "dubstep" | "electro" | "rock" | "bossa" | "clear", Record<SeqRow, number[]>> = {
   four: { kick: [0, 4, 8, 12], snare: [], clap: [], hat: [], open: [], tom: [], perc: [2, 6, 10, 14] },
   house: { kick: [0, 4, 8, 12], snare: [], clap: [4, 12], hat: [0, 4, 8, 12], open: [2, 6, 10, 14], tom: [], perc: [3, 7, 11, 15] },
   break: { kick: [0, 7, 10], snare: [4, 12], clap: [], hat: [0, 2, 4, 6, 8, 10, 12, 14], open: [15], tom: [14, 15], perc: [] },
   trap: { kick: [0, 11], snare: [], clap: [8], hat: [0, 2, 4, 5, 6, 8, 10, 12, 13, 14, 15], open: [], tom: [], perc: [6, 14] },
+  techno: { kick: [0, 4, 8, 12], snare: [], clap: [4, 12], hat: [0, 1, 3, 4, 5, 7, 8, 9, 11, 12, 13, 15], open: [2, 6, 10, 14], tom: [], perc: [7, 15] },
+  disco: { kick: [0, 4, 8, 12], snare: [4, 12], clap: [], hat: [0, 1, 3, 4, 5, 7, 8, 9, 11, 12, 13, 15], open: [2, 6, 10, 14], tom: [], perc: [] },
+  funk: { kick: [0, 3, 7, 10], snare: [4, 12], clap: [], hat: [0, 2, 4, 6, 8, 10, 12, 14], open: [15], tom: [], perc: [] },
+  boombap: { kick: [0, 3, 10], snare: [4, 12], clap: [], hat: [0, 2, 4, 6, 8, 10, 12, 14], open: [], tom: [], perc: [14] },
+  garage: { kick: [0, 9], snare: [4, 12], clap: [], hat: [2, 6, 10, 14], open: [], tom: [], perc: [3, 11] },
+  dnb: { kick: [0, 10], snare: [4, 12], clap: [], hat: [0, 2, 4, 6, 8, 10, 12, 14], open: [], tom: [], perc: [] },
+  reggaeton: { kick: [0, 4, 8, 12], snare: [3, 6, 11, 14], clap: [], hat: [0, 2, 4, 6, 8, 10, 12, 14], open: [], tom: [], perc: [] },
+  dubstep: { kick: [0, 7], snare: [8], clap: [], hat: [0, 2, 4, 6, 8, 10, 12, 14], open: [], tom: [14, 15], perc: [] },
+  electro: { kick: [0, 6, 10], snare: [], clap: [4, 12], hat: [0, 2, 4, 6, 8, 10, 12, 14], open: [], tom: [], perc: [2, 7, 10, 15] },
+  rock: { kick: [0, 8, 10], snare: [4, 12], clap: [], hat: [0, 2, 4, 6, 8, 10, 12, 14], open: [], tom: [14, 15], perc: [] },
+  bossa: { kick: [0, 3, 8, 11], snare: [], clap: [], hat: [0, 2, 4, 6, 8, 10, 12, 14], open: [], tom: [], perc: [0, 3, 6, 10, 12] },
   clear: { kick: [], snare: [], clap: [], hat: [], open: [], tom: [], perc: [] },
 };
 export class BeatLab extends JamModule {

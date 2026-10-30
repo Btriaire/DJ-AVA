@@ -2,7 +2,7 @@
 import { useRef } from "react";
 import { SEQ_ROWS, type BeatLab, type SEQ_PRESETS, type SeqRow } from "@/lib/audio/jamModules";
 
-const PRESETS: [keyof typeof SEQ_PRESETS, string][] = [["four", "4/4"], ["house", "House"], ["break", "Break"], ["trap", "Trap"], ["clear", "Effacer"]];
+const PRESETS: [keyof typeof SEQ_PRESETS, string][] = [["four", "4/4"], ["house", "House"], ["techno", "Techno"], ["disco", "Disco"], ["funk", "Funk"], ["break", "Break"], ["boombap", "Boom bap"], ["trap", "Trap"], ["garage", "Garage"], ["dnb", "Drum & bass"], ["reggaeton", "Reggaeton"], ["dubstep", "Dubstep"], ["electro", "Électro"], ["rock", "Rock"], ["bossa", "Bossa"], ["clear", "Effacer"]];
 const ROW_LABEL: Record<SeqRow, string> = { kick: "KICK", snare: "SNARE", clap: "CLAP", hat: "CH", open: "OH", tom: "TOM", perc: "PERC" };
 import { useTick } from "../ticker";
 
