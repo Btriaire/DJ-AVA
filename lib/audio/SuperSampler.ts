@@ -194,7 +194,7 @@ export class SuperSampler {
   }
 
   setParam<K extends keyof SSParams>(key: K, value: SSParams[K]): void {
-    if (!Number.isFinite(value)) return;
+    if (typeof value === "number" && !Number.isFinite(value)) return; // only numbers are checked: LOOP, ONE SHOT and REVERSE are booleans
 
     let clampedValue: SSParams[K] = value;
 

@@ -26,6 +26,9 @@ import { SSKeys } from "./SSKeys"
 import { SSPads } from "./SSPads"
 import { SSSeq } from "./SSSeq"
 import { detectBPM } from "@/lib/audio/bpm"
+import { detectRoot } from "@/lib/audio/pitchDetect"
+import { noteName } from "@/lib/sampleFont"
+import { samplerFollow } from "@/lib/audio/samplerFollow"
 import { addLocalTrack } from "@/lib/library"
 
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
@@ -64,7 +67,36 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
     engine.superSampler.setSource(buffer, name)
     setSrcBpm(bpmHint && bpmHint > 0 ? bpmHint : detectBPM(buffer))
     setStatus(label)
+    autoTune(buffer)
   }
+
+  const [srcStem, setSrcStem] = useState(-1); // -1 = the whole song, else the stem index the source came from
+  const [tuned, setTuned] = useState<string | null>(null);
+  const [followOn, setFollowOn] = useState(() => samplerFollow(engine).on);
+  // the source's own note, so the keys and the chords play in tune (only for short sounds: a whole song has no single note)
+  const autoTune = (buffer: AudioBuffer) => {
+    if (buffer.duration > 20) { setTuned(null); return; }
+    const r = detectRoot(buffer.getChannelData(0), buffer.sampleRate);
+    if (!r || r.confidence < 0.6) { setTuned(null); return; }
+    set("rootNote", r.midi); set("fine", -r.cents);
+    setTuned(`${noteName(r.midi)} ${r.cents >= 0 ? "+" : ""}${r.cents} c`);
+  };
+  // CAPTURE: the last `bars` whole bars before the playhead, from the song or the chosen stem, cut on the bar lines
+  const capture = (bars: number) => {
+    const buf = srcStem >= 0 ? deck.getStemBuffer(srcStem) : deck.audioBuffer;
+    if (!buf || deck.bpm <= 0) { setStatus("Rien à capturer : charge un morceau sur la platine " + side); return; }
+    const barLen = 240 / deck.bpm, off = deck.beatGridOffset;
+    const barStart = off + Math.floor((deck.position() - off) / barLen) * barLen;
+    const start = barStart - bars * barLen;
+    if (start < 0) { setStatus(`Pas encore ${bars} mesure${bars > 1 ? "s" : ""} jouée${bars > 1 ? "s" : ""}`); return; }
+    const sr = buf.sampleRate, n = Math.round(bars * barLen * sr), s0 = Math.round(start * sr);
+    const seg = engine.ctx.createBuffer(buf.numberOfChannels, n, sr);
+    for (let c = 0; c < buf.numberOfChannels; c++) seg.getChannelData(c).set(buf.getChannelData(c).subarray(s0, s0 + n));
+    const what = srcStem >= 0 ? deck.stemNames[srcStem] : "morceau";
+    loadBuffer(seg, `${deck.name || "Platine " + side} · ${what} · ${bars} mes.`, `Capturé : ${bars} mesure${bars > 1 ? "s" : ""} (${what})`, deck.bpm);
+    set("start", 0); set("end", 1); set("loop", true);
+  };
+  const toggleFollow = () => { const f = samplerFollow(engine); f.on = !f.on; setFollowOn(f.on); };
 
   const loadFile = async (file: File) => {
     setBusy(true)
@@ -85,6 +117,7 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
       setStatus("Aucun morceau sur la platine " + s)
       return
     }
+    setSrcStem(-1)
     loadBuffer(deck.audioBuffer, deck.name || "Platine " + s, "Source : platine " + s, deck.bpm)
   }
 
@@ -95,6 +128,7 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
       setStatus("Stem indisponible (sépare d'abord le morceau)")
       return
     }
+    setSrcStem(i)
     loadBuffer(buf, (deck.name || "Platine " + side) + " · " + deck.stemNames[i], "Source : stem " + deck.stemNames[i], deck.bpm)
   }
 
@@ -389,6 +423,18 @@ export function SuperSampler({ engine, onLibraryChange }: { engine: DJEngine; on
                 {name}
               </button>
             ))}
+          </div>
+
+          <div className="flex gap-1 items-center">
+            <div className="text-[10px] tracking-[0.2em] text-neutral-400">CAPTURE</div>
+            <button className="hw-btn flex-1 text-[9px]" onClick={() => capture(1)} title="Capture les dernières mesures entières avant la tête de lecture (morceau ou stem choisi), coupées sur la mesure, en boucle">1 MES</button>
+            <button className="hw-btn flex-1 text-[9px]" onClick={() => capture(2)} title="Capture les dernières mesures entières avant la tête de lecture (morceau ou stem choisi), coupées sur la mesure, en boucle">2 MES</button>
+            <button className="hw-btn flex-1 text-[9px]" onClick={() => capture(4)} title="Capture les dernières mesures entières avant la tête de lecture (morceau ou stem choisi), coupées sur la mesure, en boucle">4 MES</button>
+          </div>
+          <button className={`hw-btn flex-1 text-[9px]${followOn ? " hw-btn-on" : ""}`} aria-pressed={followOn} onClick={toggleFollow} title="Le son échantillonné joue les accords du morceau sur ses vrais coups, comme la REPRISE du Synth">SUIT LES ACCORDS</button>
+          <div className="text-[10px] text-neutral-400" aria-live="polite">
+            {tuned && <div>Note du son : {tuned}, accordé automatiquement</div>}
+            {followOn && !deck.stemNotes && <div>Accords du morceau pas encore analysés : prépare ses stems.</div>}
           </div>
 
           <div className="flex gap-1">
