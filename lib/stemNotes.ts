@@ -14,7 +14,7 @@ export interface StemNotes {
   tuning?: number; // semitones from A440, -0.5..0.5
 }
 
-export const NOTES_REV = 3; // 3: drums on the real attack, notes 10 ms earlier (timing measured on the stems)
+export const NOTES_REV = 4; // 4: MP3 stems read too, guitar and piano join "other" with 6 stems; 3: drums on the real attack, notes 10 ms earlier (timing measured on the stems)
 
 const CACHE_FILE = "notes.json";
 const TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes

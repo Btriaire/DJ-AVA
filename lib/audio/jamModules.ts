@@ -151,21 +151,24 @@ abstract class JamModule {
   }
   // REMPLACER: the module takes the stem over: the original fades out over one bar while the module replays its part
   swapped = false;
-  private swapBefore = 1;
+  private swapBefore: number[] = [];
 
   toggleSwap() {
-    const d = this.deck(), i = this.stem(d);
-    if (i < 0) return;
+    const d = this.deck(), list = this.swapStems(d);
+    if (!list.length) return;
     this.swapped = !this.swapped;
     if (this.swapped) {
-      this.swapBefore = Math.max(0.2, d.stemVol[i] || 1);
-      d.rampStemVol(i, 0, 4 * spb(d));
+      this.swapBefore = list.map(i => Math.max(0.2, d.stemVol[i] || 1));
+      list.forEach(i => d.rampStemVol(i, 0, 4 * spb(d)));
     } else {
-      d.rampStemVol(i, this.swapBefore, 4 * spb(d));
+      list.forEach((i, k) => d.rampStemVol(i, this.swapBefore[k] ?? 1, 4 * spb(d)));
     }
     this.onSwap(this.swapped);
     jamChanged();
   }
+
+  // the stems REMPLACER fades out: the module's own stem (the Synth adds guitar and piano with 6 stems)
+  protected swapStems(d: Deck): number[] { const i = this.stem(d); return i < 0 ? [] : [i]; }
 
   // the hook where each module starts its reprise when it takes the stem over
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -807,6 +810,8 @@ export class HarmoSynth extends JamModule {
   protected onSwap(on: boolean): void {
     if (on && this.mode === "off") this.mode = "replay";
   }
+  // with 6 stems, guitar and piano are part of what the Synth replays
+  protected swapStems(d: Deck): number[] { const i = this.stem(d); return i < 0 ? [] : [i, d.stemIndex("guitar"), d.stemIndex("piano")].filter((k) => k >= 0); }
   comp: CompName = "charleston"; // the accompaniment rhythm of the "comp" mode
   human = 0.35; // 0..1 timing and velocity looseness
   width = 0; // stereo chorus 0..1

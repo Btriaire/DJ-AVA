@@ -9,6 +9,9 @@ from basic_pitch.inference import predict
 d = sys.argv[1]
 def wav(name):
     p = os.path.join(d, name + ".wav")
+    if os.path.exists(p):
+        return p
+    p = os.path.join(d, name + ".mp3")
     return p if os.path.exists(p) else None
 
 def clean(ev, mono):
@@ -61,8 +64,13 @@ def drum_hits(path):
         out.append([round(float(librosa.frames_to_time(fi, sr=sr, hop_length=hop)), 3), round(float(env[fi]) / top, 2), cls])
     return out
 
-out = {"version": 1, "rev": 3}
-if wav("other"): out["other"] = notes(wav("other"), 60, 2000, False)
+# with 6 stems guitar and piano carry the chords: their notes join "other"
+out = {"version": 1, "rev": 4}
+other_notes = []
+if wav("other"): other_notes.extend(notes(wav("other"), 60, 2000, False))
+if wav("guitar"): other_notes.extend(notes(wav("guitar"), 60, 2000, False))
+if wav("piano"): other_notes.extend(notes(wav("piano"), 60, 2000, False))
+if other_notes: out["other"] = sorted(other_notes, key=lambda n: (n[0], n[2]))
 if wav("bass"): out["bass"] = notes(wav("bass"), 30, 400, True)
 if wav("drums"): out["drums"] = drum_hits(wav("drums"))
 ref = wav("other") or wav("bass")
