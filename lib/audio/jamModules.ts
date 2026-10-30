@@ -12,6 +12,8 @@ import { progression, type ProgressionName } from "./jamProgressions";
 import { SyncedSweep } from "./jamSweep";
 import { StereoChorus } from "./jamChorus";
 import { SampledInstrument } from "./sampledInstrument";
+import { SampledKit } from "./sampledKit";
+import { drumKit } from "@/lib/drumKits";
 import { compHit, voiceFor, type CompName } from "./jamComp";
 import { humanize } from "./jamHuman";
 import { instrument } from "@/lib/sampleFont";
@@ -999,6 +1001,8 @@ export const SEQ_PRESETS: Record<"four" | "house" | "break" | "trap" | "clear", 
 };
 export class BeatLab extends JamModule {
   readonly kit: DrumKit;
+  readonly sampledKit: SampledKit; // a real drum machine, played instead of the synthetic kit once loaded
+  kitSound = ""; // "" = the synthetic kit, else a drum machine id
   kick = 0; // 0..1 layer on the song's kicks
   clap = 0; // on its snares
   hats: HatMode = "off";
@@ -1012,6 +1016,8 @@ export class BeatLab extends JamModule {
     super(engine, "drums");
     this.kit = new DrumKit(engine.ctx);
     this.kit.out.connect(this.bus);
+    this.sampledKit = new SampledKit(engine.ctx);
+    this.sampledKit.out.connect(this.bus);
     onJamTick(engine, (deck, from, to) => this.tick(deck, from, to));
   }
   get level(): number { const d = this.deck(); return d.stemVol[this.stem(d)] ?? 1; }
@@ -1023,7 +1029,7 @@ export class BeatLab extends JamModule {
       f("half", "HALF", "demi-tempo", "halftime", 1), f("build", "BUILD", "montée", "build", 1), f("scatter", "SCATTER", "1/8", "scatter", 0.125), f("stop", "STOP", "frein", "brake", 1),
     ];
   }
-  protected keep() { return ["hatLevel", "swing", "seqLevel", "pattern"]; }
+  protected keep() { return ["hatLevel", "swing", "seqLevel", "pattern", "kitSound"]; }
   protected resetFields() {
     this.kick = 0; this.clap = 0; this.hats = "off"; this.hatLevel = 0.7; this.swing = 0; this.seq = false; this.seqLevel = 0.8;
     this.setPreset("clear"); this.setLevel(1);
@@ -1049,9 +1055,9 @@ export class BeatLab extends JamModule {
     if (this.stem(d) < 0) return;
     this.route(d);
     const at = d.playing ? nextGrid(d, 0.25).at : d.ctx.currentTime + 0.01;
-    this.kit.kick(at, 1, this.kickHz(d));
-    this.kit.clap(at, 0.8);
-    this.kit.hat(at, 0.9, true);
+    this.drum("kick", at, 1, this.kickHz(d));
+    this.drum("clap", at, 0.8);
+    this.drum("open", at, 0.9);
     this.hit(at);
   }
   // the kick sings the key's root, between E1 and D#2 (41 to 78 Hz)
@@ -1066,10 +1072,10 @@ export class BeatLab extends JamModule {
         const i = step16(k), acc = i % 4 === 0 ? 1 : 0.8, v = this.seqLevel * acc;
         const at = songToCtx(deck, t) + (k % 2 !== 0 ? this.swing * sixteenth : 0);
         let any = false;
-        if (this.pattern.kick[i]) { this.kit.kick(at, v, hz); any = true; }
-        if (this.pattern.clap[i]) { this.kit.clap(at, v); any = true; }
-        if (this.pattern.hat[i]) { this.kit.hat(at, v * 0.8, false); any = true; }
-        if (this.pattern.open[i]) { this.kit.hat(at, v * 0.8, true); any = true; }
+        if (this.pattern.kick[i]) { this.drum("kick", at, v, hz); any = true; }
+        if (this.pattern.clap[i]) { this.drum("clap", at, v); any = true; }
+        if (this.pattern.hat[i]) { this.drum("hat", at, v * 0.8); any = true; }
+        if (this.pattern.open[i]) { this.drum("open", at, v * 0.8); any = true; }
         if (any) this.hit(at);
       }
     }
@@ -1078,18 +1084,63 @@ export class BeatLab extends JamModule {
       for (let k = lowerBound(hits, from); k < hits.length && hits[k][0] < to; k++) {
         const [t, v, c] = hits[k];
         const at = songToCtx(deck, t);
-        if (c === 0 && this.kick > 0) { this.kit.kick(at, Math.min(1, (0.6 + v) * this.kick), hz); this.hit(at); }
-        else if (c === 1 && this.clap > 0) { this.kit.clap(at, Math.min(1, (0.6 + v) * this.clap)); this.hit(at); }
+        if (c === 0 && this.kick > 0) { this.drum("kick", at, Math.min(1, (0.6 + v) * this.kick), hz); this.hit(at); }
+        else if (c === 1 && this.clap > 0) { this.drum("clap", at, Math.min(1, (0.6 + v) * this.clap)); this.hit(at); }
       }
     }
     if (this.hats !== "off") {
       const div = this.hats === "8" ? 0.5 : 0.25, sixteenth = spb(deck) * 0.25;
       for (const { t, k } of this.steps(deck, div, from, to)) {
         const at = songToCtx(deck, t);
-        if (this.hats === "8") { if (k % 2 !== 0) { this.kit.hat(at, this.hatLevel, true); this.hit(at); } continue; } // open hat on the offbeat
+        if (this.hats === "8") { if (k % 2 !== 0) { this.drum("open", at, this.hatLevel); this.hit(at); } continue; } // open hat on the offbeat
         const swung = k % 2 !== 0 ? this.swing * sixteenth : 0;
-        this.kit.hat(at + swung, this.hatLevel * (k % 4 === 2 ? 1 : 0.6), false);
+        this.drum("hat", at + swung, this.hatLevel * (k % 4 === 2 ? 1 : 0.6));
         this.hit(at + swung);
+      }
+    }
+  }
+  setKitSound(id: string): void {
+    this.kitSound = id;
+    if (id !== "") {
+      void this.sampledKit.load(id).then(() => jamChanged());
+    }
+    jamChanged();
+  }
+  kitStatus(): string | null {
+    if (this.kitSound === "") return null;
+    const kit = drumKit(this.kitSound);
+    if (!kit) return null;
+    if (this.sampledKit.failed && this.sampledKit.current === this.kitSound) {
+      return `${kit.label} indisponible : la batterie de synthèse joue à sa place`;
+    }
+    if (this.sampledKit.ready() && this.sampledKit.current === this.kitSound) {
+      return `${kit.label} prête`;
+    }
+    if (this.sampledKit.current === this.kitSound) {
+      return `Chargement : ${kit.label}`;
+    }
+    return `${kit.label} : se charge au premier coup`;
+  }
+  private drum(part: "kick" | "clap" | "hat" | "open", at: number, v: number, hz = 50): void {
+    if (this.kitSound && this.sampledKit.current !== this.kitSound) {
+      void this.sampledKit.load(this.kitSound).then(() => jamChanged());
+    }
+    if (this.kitSound && this.sampledKit.ready() && this.sampledKit.current === this.kitSound) {
+      this.sampledKit.play(part, at, v);
+    } else {
+      switch (part) {
+        case "kick":
+          this.kit.kick(at, v, hz);
+          break;
+        case "clap":
+          this.kit.clap(at, v);
+          break;
+        case "hat":
+          this.kit.hat(at, v, false);
+          break;
+        case "open":
+          this.kit.hat(at, v, true);
+          break;
       }
     }
   }
