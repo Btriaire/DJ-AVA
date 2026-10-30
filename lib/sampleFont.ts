@@ -1,5 +1,5 @@
 // Real instruments: FluidR3 GM (Frank Wen, CC BY 3.0), Musyng Kite and FatBoy (CC BY-SA 3.0) soundfonts, one mp3 per note (MaRuche/Codestral)
-export type InstrumentFamily = "Claviers" | "Percussions mélodiques" | "Cordes" | "Voix" | "Vents" | "Guitares" | "Nappes" | "Basses" | "Cuivres" | "Orchestre" | "Monde";
+export type InstrumentFamily = "Acoustique" | "Claviers" | "Percussions mélodiques" | "Cordes" | "Voix" | "Vents" | "Guitares" | "Nappes" | "Basses" | "Cuivres" | "Orchestre" | "Monde";
 
 export interface Instrument {
   id: string;
@@ -10,6 +10,8 @@ export interface Instrument {
   pad: boolean;
   font?: "MusyngKite" | "FatBoy";
   src?: string;
+  sfz?: string; // a multisampled bank of danigb/samples (velocity layers, round robins): its websfz path
+  sfzPath?: string; // the sample folder, when the bank's own description points to the wrong one
 }
 
 export const INSTRUMENTS: Instrument[] = [
@@ -119,7 +121,40 @@ export const INSTRUMENTS: Instrument[] = [
   { id: "bagpipe", label: "Cornemuse", family: "Monde", lo: 55, hi: 84, pad: true },
   { id: "fiddle", label: "Violon folk", family: "Monde", lo: 55, hi: 96, pad: true },
   { id: "shakuhachi", label: "Shakuhachi", family: "Monde", lo: 55, hi: 89, pad: false },
-  { id: "ocarina", label: "Ocarina", family: "Monde", lo: 60, hi: 89, pad: false }
+  { id: "ocarina", label: "Ocarina", family: "Monde", lo: 60, hi: 89, pad: false },
+  // multisampled banks, several velocity layers per note: VCSL (CC0), Splendid Grand Piano (public domain), Greg Sullivan E-Pianos (CC BY 3.0), jRhodes3d (CC BY-NC), Smolken double bass (CC0)
+  { id: "sfz_steinway", label: "Piano à queue Steinway", family: "Acoustique", lo: 21, hi: 108, pad: false, sfz: "vcsl/Zithers/grand-piano-steinway-b.websfz.json" },
+  { id: "sfz_splendid", label: "Piano Steinway Splendid", family: "Acoustique", lo: 21, hi: 108, pad: false, sfz: "splendid-grand-piano/websfz.json", sfzPath: "" },
+  { id: "sfz_kawai", label: "Piano à queue Kawai", family: "Acoustique", lo: 21, hi: 108, pad: false, sfz: "vcsl/Zithers/grand-piano-kawai.websfz.json" },
+  { id: "sfz_upright", label: "Piano droit Yamaha", family: "Acoustique", lo: 21, hi: 100, pad: false, sfz: "vcsl/Zithers/upright-piano-yamaha.websfz.json" },
+  { id: "sfz_upright_old", label: "Piano droit ancien", family: "Acoustique", lo: 21, hi: 108, pad: false, sfz: "vcsl/Zithers/upright-piano-knight.websfz.json" },
+  { id: "sfz_harpsichord", label: "Clavecin français", family: "Acoustique", lo: 24, hi: 84, pad: false, sfz: "vcsl/Zithers/harpsichord-french.websfz.json" },
+  { id: "sfz_organ_soft", label: "Orgue d'église doux", family: "Acoustique", lo: 36, hi: 94, pad: true, sfz: "vcsl/Edge-blown Aerophones/pipe-organ-quiet.websfz.json" },
+  { id: "sfz_organ_full", label: "Orgue d'église plein", family: "Acoustique", lo: 36, hi: 94, pad: true, sfz: "vcsl/Edge-blown Aerophones/pipe-organ-loud.websfz.json" },
+  { id: "sfz_harp", label: "Harpe de concert", family: "Acoustique", lo: 28, hi: 102, pad: false, sfz: "vcsl/Composite Chordophones/concert-harp.websfz.json" },
+  { id: "sfz_folk_harp", label: "Harpe celtique", family: "Acoustique", lo: 36, hi: 93, pad: false, sfz: "vcsl/Composite Chordophones/folk-harp.websfz.json" },
+  { id: "sfz_marimba", label: "Marimba", family: "Acoustique", lo: 41, hi: 97, pad: false, sfz: "vcsl/Struck Idiophones/marimba.websfz.json" },
+  { id: "sfz_vibes", label: "Vibraphone", family: "Acoustique", lo: 53, hi: 89, pad: false, sfz: "vcsl/Struck Idiophones/vibraphone-soft-mallets.websfz.json" },
+  { id: "sfz_vibes_bowed", label: "Vibraphone à l'archet", family: "Acoustique", lo: 57, hi: 84, pad: true, sfz: "vcsl/Struck Idiophones/vibraphone-bowed.websfz.json" },
+  { id: "sfz_glock", label: "Glockenspiel", family: "Acoustique", lo: 67, hi: 97, pad: false, sfz: "vcsl/Struck Idiophones/glockenspiel.websfz.json" },
+  { id: "sfz_xylo", label: "Xylophone", family: "Acoustique", lo: 55, hi: 97, pad: false, sfz: "vcsl/Struck Idiophones/xylophone-medium-mallets.websfz.json" },
+  { id: "sfz_bells", label: "Cloches tubulaires", family: "Acoustique", lo: 60, hi: 77, pad: false, sfz: "vcsl/Struck Idiophones/tubular-bells-1.websfz.json" },
+  { id: "sfz_kalimba", label: "Kalimba", family: "Acoustique", lo: 59, hi: 82, pad: false, sfz: "vcsl/Plucked Idiophones/kalimba-kenya.websfz.json" },
+  { id: "sfz_timpani", label: "Timbales d'orchestre", family: "Acoustique", lo: 41, hi: 55, pad: false, sfz: "vcsl/Struck Membranophones/timpani-1-hit.websfz.json" },
+  { id: "sfz_tenor_sax", label: "Saxophone ténor", family: "Acoustique", lo: 44, hi: 85, pad: true, sfz: "vcsl/Reed Aerophones/tenor-saxophone-vibrato.websfz.json" },
+  { id: "sfz_harmonica", label: "Harmonica", family: "Acoustique", lo: 48, hi: 97, pad: true, sfz: "vcsl/Free Aerophones/harmonicahohnersuper64-normal.websfz.json" },
+  { id: "sfz_recorder", label: "Flûte à bec", family: "Acoustique", lo: 65, hi: 87, pad: true, sfz: "vcsl/Edge-blown Aerophones/baroque-alto-recorder-sustain.websfz.json" },
+  { id: "sfz_ocarina", label: "Ocarina", family: "Acoustique", lo: 69, hi: 86, pad: true, sfz: "vcsl/Edge-blown Aerophones/ocarina-typical-sus.websfz.json" },
+  { id: "sfz_psaltery", label: "Psaltérion", family: "Monde", lo: 67, hi: 89, pad: false, sfz: "vcsl/Zithers/psaltery-bowed-and-plucked-pluck.websfz.json" },
+  { id: "sfz_dan_tranh", label: "Đàn tranh", family: "Monde", lo: 47, hi: 84, pad: false, sfz: "vcsl/Zithers/dan-tranh-normal.websfz.json" },
+  { id: "sfz_balafon", label: "Balafon", family: "Monde", lo: 60, hi: 91, pad: false, sfz: "vcsl/Struck Idiophones/balafon-soft-mallet.websfz.json" },
+  { id: "sfz_mbira", label: "Mbira", family: "Monde", lo: 46, hi: 84, pad: false, sfz: "vcsl/Plucked Idiophones/mbira-dzavadzimu-nyamaropa-zimbabwe-low-b.websfz.json" },
+  { id: "sfz_cp80", label: "Yamaha CP80", family: "Claviers", lo: 21, hi: 108, pad: false, sfz: "gs-e-pianos/CP80/cp80.websfz.json" },
+  { id: "sfz_wurli", label: "Wurlitzer EP200", family: "Claviers", lo: 33, hi: 96, pad: false, sfz: "gs-e-pianos/Wurlitzer EP200/wurlitzer-ep200.websfz.json" },
+  { id: "sfz_pianet", label: "Hohner Pianet T", family: "Claviers", lo: 29, hi: 88, pad: false, sfz: "gs-e-pianos/Pianet T/pianet-t.websfz.json" },
+  { id: "sfz_rhodes", label: "Fender Rhodes MKI", family: "Claviers", lo: 21, hi: 108, pad: false, sfz: "jlearman/rhodes-mki/jrhodes3dst.websfz.json", sfzPath: "jRhodes3d-st/" },
+  { id: "sfz_upright_bass", label: "Contrebasse pizz", family: "Basses", lo: 21, hi: 108, pad: false, sfz: "dsmolken/double-bass/dsmolkenrubnerbasspizz.websfz.json" },
+  { id: "sfz_upright_bass_arco", label: "Contrebasse à l'archet", family: "Basses", lo: 21, hi: 107, pad: true, sfz: "dsmolken/double-bass/dsmolkenrubnerbassarco.websfz.json" },
 ];
 
 export function instrument(id: string): Instrument | undefined {
@@ -174,7 +209,7 @@ export function selfTest(): void {
   const ids = new Set(INSTRUMENTS.map(i => i.id));
   assert(ids.size === INSTRUMENTS.length, "duplicate instrument ids");
   INSTRUMENTS.forEach(i => assert(i.lo < i.hi, `invalid range for ${i.id}`));
-  assert(instrumentsOf("Basses").length === 12, "instrumentsOf(Basses) incorrect");
+  assert(instrumentsOf("Basses").length === 14, "instrumentsOf(Basses) incorrect");
   assert(instrument("slap_bass_1")?.lo === 28, "slap_bass_1 lo incorrect");
   assert(INSTRUMENTS.every((inst, i) => INSTRUMENTS.findIndex((other) => other.id === inst.id) === i), "Duplicate instrument IDs");
   assert(INSTRUMENTS.every((inst) => inst.lo < inst.hi), "Invalid note range");

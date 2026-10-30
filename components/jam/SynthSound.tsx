@@ -7,6 +7,7 @@ import type { HarmoSynth } from "@/lib/audio/jamModules";
 const pct = (v: number) => `${Math.round(v * 100)} %`;
 
 const QUICK_LABELS: Record<string, string> = {
+  sfz_steinway: "Piano réel",
   acoustic_grand_piano: "Piano",
   electric_piano_1: "Rhodes",
   mk_string_ensemble_1: "Orchestre",
@@ -39,7 +40,7 @@ export function SynthSound({ m, C, bump }: { m: HarmoSynth; C: string; bump: () 
             <option value="synth:keys">Keys FM</option>
             <option value="synth:brass">Cuivres (synthé)</option>
           </optgroup>
-          {["Claviers", "Percussions mélodiques", "Cordes", "Cuivres", "Orchestre", "Voix", "Vents", "Monde", "Guitares", "Nappes"].map(family => (
+          {["Acoustique", "Claviers", "Percussions mélodiques", "Cordes", "Cuivres", "Orchestre", "Voix", "Vents", "Monde", "Guitares", "Nappes"].map(family => (
             <optgroup key={family} label={family}>
               {INSTRUMENTS.filter(i => i.family === family).map(i => (
                 <option key={i.id} value={`inst:${i.id}`}>{i.label}</option>
@@ -76,7 +77,7 @@ export function SynthSound({ m, C, bump }: { m: HarmoSynth; C: string; bump: () 
         </div>
       )}
       <div className="text-[10px] text-[var(--jam-text-3)]">
-        Instruments réels : soundfonts FluidR3 GM (Frank Wen, CC BY 3.0), Musyng Kite et FatBoy (CC BY-SA 3.0). Chargés une fois, puis gardés sur le disque.
+        Instruments réels : soundfonts FluidR3 GM (Frank Wen, CC BY 3.0), Musyng Kite et FatBoy (CC BY-SA 3.0). Acoustique et claviers multi-couches : VCSL (CC0), Splendid Grand Piano (domaine public), E-Pianos de Greg Sullivan (CC BY 3.0), Rhodes jRhodes3d (CC BY-NC, usage non commercial), contrebasse de Dan Smolken (CC0), via danigb/samples. Chargés au premier usage, puis gardés sur le disque.
       </div>
       <div className="flex flex-wrap gap-3">
         <Knob label="NIVEAU" value={m.level} min={0} max={1.5} defaultValue={1} color={C} size={46} led format={pct} onChange={(v) => { m.setLevel(v); bump(); }} />

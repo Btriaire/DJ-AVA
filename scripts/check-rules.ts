@@ -109,6 +109,7 @@ import { selfTest as jamChordTrackTest } from "../lib/audio/jamChordTrack";
 import { selfTest as drumKitsTest } from "../lib/drumKits";
 import { SEQ_PRESETS, SEQ_ROWS } from "../lib/audio/jamModules";
 import { selfTest as jamReplayTest } from "../lib/audio/jamReplay";
+import { selfTest as websfzTest } from "../lib/websfz";
 import { selfTest as jamPrecisionTest } from "../lib/audio/jamPrecision";
 jamCompTest();
 jamHumanTest();
@@ -126,3 +127,4 @@ drumKitsTest();
 }
 jamReplayTest(); console.log("check-rules jam replay ok");
 jamPrecisionTest(); console.log("check-rules jam precision ok");
+websfzTest(); console.log("check-rules websfz ok");
