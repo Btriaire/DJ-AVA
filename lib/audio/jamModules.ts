@@ -432,8 +432,14 @@ export class BassLab extends JamModule {
   // every line note goes through here: the real bass when chosen and loaded, else the synth bass
   private lineNote(midi: number, at: number, len: number, vel: number, opts: { slide?: boolean; accent?: boolean } = {}) {
     if (this.lineVoice && this.sampledBass.current !== this.lineVoice) void this.sampledBass.load(this.lineVoice).then(() => jamChanged());
-    if (this.lineVoice && this.sampledBass.ready()) this.sampledBass.note(midi, at, len, Math.min(1, vel * (opts.accent ? 1.1 : 0.95)), "pluck");
-    else this.lineSynth.note(midi, at, len, vel, opts);
+    if (this.lineVoice && this.sampledBass.ready()) {
+      // any instrument can play the line: below its range the note goes up an octave (a cello, a piano), held instruments hold the long notes
+      const inst = instrument(this.lineVoice);
+      let m = midi;
+      while (inst && m < inst.lo) m += 12;
+      const kind = inst?.pad && len > 0.35 ? "pad" : "pluck";
+      this.sampledBass.note(m, at, len, Math.min(1, vel * (opts.accent ? 1.1 : 0.95)), kind);
+    } else this.lineSynth.note(midi, at, len, vel, opts);
   }
   get character(): BassCharacter { return this.lineSynth.character; }
   setCharacter(c: BassCharacter) { this.lineSynth.setCharacter(c); }

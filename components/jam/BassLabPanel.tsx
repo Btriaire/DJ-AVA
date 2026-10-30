@@ -8,11 +8,10 @@ import { JamPads, JamSeg, JamShell, useJamRefresh, JamSwap } from "./JamKit";
 import { NoteLane } from "./NoteLane";
 import { KEY_ROWS } from "./jamKeys";
 import { JamSlots } from "./JamSlots";
-import { instrumentsOf } from "@/lib/sampleFont";
+import { BassVoicePicker } from "./BassVoicePicker";
 
 const C = "var(--jam-bass)";
 const pct = (v: number) => `${Math.round(v * 100)} %`;
-const BASS_VOICES = [{ id: "", label: "Synthé (caractère)" }, ...instrumentsOf("Basses")];
 
 export function BassLabPanel({ engine }: { engine: DJEngine }) {
   const m = jamModules(engine).bass;
@@ -29,30 +28,7 @@ export function BassLabPanel({ engine }: { engine: DJEngine }) {
         <div className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--jam-text-2)]">
           BASSE JOUÉE
         </div>
-        <div className="flex flex-wrap gap-1">
-          {BASS_VOICES.map(({ id, label }) => (
-            <button
-              key={id}
-              type="button"
-              className="rounded-md px-2 py-1 text-[11px] font-bold"
-              aria-pressed={m.lineVoice === id}
-              style={m.lineVoice === id
-                ? {
-                    background: `color-mix(in srgb, ${C} 35%, #111)`,
-                    color: "#fff",
-                    boxShadow: `inset 0 0 0 1px ${C}`
-                  }
-                : {
-                    background: "rgba(255,255,255,.06)",
-                    color: "var(--jam-text-2)"
-                  }
-              }
-              onClick={() => { m.setLineVoice(id); bump(); }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <BassVoicePicker value={m.lineVoice} color={C} onChange={(id) => { m.setLineVoice(id); bump(); }} />
         {m.lineVoiceStatus() && (
           <div className="text-[11px] text-[var(--jam-text-2)]" aria-live="polite">
             {m.lineVoiceStatus()}
