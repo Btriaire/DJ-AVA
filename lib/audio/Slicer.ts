@@ -3,19 +3,22 @@ import { StepClock, type ClockInfo } from "./stepClock";
 export type SlicePresetId = "orig" | "rev" | "stutter" | "half" | "double" | "skip" | "shuffle" | "gate";
 
 export const SLICE_PRESETS: { id: SlicePresetId; label: string; title: string }[] = [
-  { id: "orig", label: "ORIGINAL", title: "Ordre d'origine : le morceau tel quel" },
-  { id: "rev", label: "INVERSE", title: "Les tranches de la mesure dans l'ordre inverse" },
-  { id: "stutter", label: "BÉGAIE", title: "Répète la première tranche de chaque temps" },
-  { id: "half", label: "DEMI", title: "Ralenti : chaque tranche jouée deux fois" },
-  { id: "double", label: "DOUBLE", title: "Accéléré : une tranche sur deux" },
-  { id: "skip", label: "SAUT", title: "Rejoue l'avant-dernière tranche de chaque temps" },
-  { id: "shuffle", label: "ALÉA", title: "Ordre aléatoire à chaque application" },
-  { id: "gate", label: "HACHE", title: "Une tranche sur deux, silence entre" },
+  { id: "orig", label: "ORIGINAL", title: "Rien ne change : le point de départ pour éditer les pas" },
+  { id: "rev", label: "INVERSE", title: "La mesure rejouée de la fin au début, tranche par tranche" },
+  { id: "stutter", label: "BÉGAIE", title: "Chaque temps répète sa première tranche : bégaiement" },
+  { id: "half", label: "DEMI", title: "Chaque tranche deux fois : la mesure semble deux fois plus lente" },
+  { id: "double", label: "DOUBLE", title: "Une tranche sur deux, deux fois : la mesure file deux fois plus vite" },
+  { id: "skip", label: "SAUT", title: "La fin de chaque temps remplacée par la tranche d'avant : petit accroc" },
+  { id: "shuffle", label: "ALÉA", title: "Tranches mélangées au hasard, nouveau tirage à chaque clic" },
+  { id: "gate", label: "HACHE", title: "Une tranche sur deux devient silence : effet hachoir" },
 ];
 
 export interface SliceDeck {
   playing: boolean;
   audioBuffer: AudioBuffer | null;
+  stemsActive: boolean;
+  stemReady: boolean;
+  stemNames: string[];
   bpm: number | null;
   playbackRate: number;
   beatGridOffset: number;
@@ -23,12 +26,16 @@ export interface SliceDeck {
   sliceGate: GainNode;
   position(): number;
   fxClock(): ClockInfo | null;
+  getStemBuffer(i: number): AudioBuffer | null;
+  stemSliceGate(i: number): GainNode | null;
+  stemSliceInput(i: number): AudioNode | null;
 }
 
 export interface SlicerState {
   slices: 8 | 16;
   pattern: number[];
   barShift: number;
+  target?: number;
 }
 
 export class Slicer {
@@ -45,6 +52,9 @@ export class Slicer {
   currentSlot = -1;
   onSlot: ((slot: number) => void) | null = null;
   scheduled: { src: AudioBufferSourceNode; start: number }[] = [];
+  target = -1;
+  private gateRef: GainNode | null = null;
+  private inputRef: AudioNode | null = null;
 
   constructor(ctx: BaseAudioContext, deck: SliceDeck) {
     this.ctx = ctx;
@@ -53,22 +63,38 @@ export class Slicer {
     this.clock.stepsPerBeat = 2;
   }
 
+  private stemOn(): boolean {
+    return this.target >= 0 && this.deck.stemsActive && this.deck.stemReady && !!this.deck.getStemBuffer(this.target);
+  }
+
+  private buf(): AudioBuffer | null {
+    return this.stemOn() ? this.deck.getStemBuffer(this.target) : this.deck.audioBuffer;
+  }
+
+  private gateNode(): GainNode {
+    return (this.stemOn() ? this.deck.stemSliceGate(this.target) : null) ?? this.deck.sliceGate;
+  }
+
+  private inputNode(): AudioNode {
+    return (this.stemOn() ? this.deck.stemSliceInput(this.target) : null) ?? this.deck.sliceInput;
+  }
+
   private onClockStep(time: number, stepDur: number): void {
     if (!this.engagedFlag) return;
-    if (!this.deck.playing || !this.deck.audioBuffer || !this.deck.bpm) {
+    if (!this.deck.playing || !this.buf() || !this.deck.bpm) {
       this.release();
       return;
     }
 
     if (!this.gated) {
       this.gated = true;
-      const g = this.deck.sliceGate.gain;
+      const g = this.gateRef!.gain;
       g.cancelScheduledValues(this.ctx.currentTime);
       g.setValueAtTime(1, Math.max(this.ctx.currentTime, time - 0.002));
       g.linearRampToValueAtTime(0, time);
     }
 
-    const buf = this.deck.audioBuffer;
+    const buf = this.buf()!;
     const rate = this.deck.playbackRate;
     const sliceTrack = (60 / this.deck.bpm) * 4 / this.slicesN;
     const posAt = this.deck.position() + (time - this.ctx.currentTime) * rate;
@@ -99,7 +125,7 @@ export class Slicer {
     g.gain.linearRampToValueAtTime(0, time + stepDur);
 
     src.connect(g);
-    g.connect(this.deck.sliceInput);
+    g.connect(this.inputRef!);
     src.start(time, startTrack, sliceTrack + 0.02);
     src.stop(time + stepDur + 0.01);
 
@@ -114,12 +140,14 @@ export class Slicer {
 
   engage(): boolean {
     if (this.engagedFlag) return true;
-    const buf = this.deck.audioBuffer;
+    const buf = this.buf();
     if (!this.deck.playing || !buf || !this.deck.bpm) return false;
 
     this.engagedFlag = true;
     this.momentary = false;
     this.gated = false;
+    this.gateRef = this.gateNode();
+    this.inputRef = this.inputNode();
     this.clock.stepsPerBeat = this.slicesN / 4;
     this.clock.start("grid");
     return true;
@@ -141,7 +169,7 @@ export class Slicer {
       }
     }
 
-    const g = this.deck.sliceGate.gain;
+    const g = (this.gateRef ?? this.deck.sliceGate).gain;
     g.cancelScheduledValues(this.ctx.currentTime);
     if (this.gated) {
       g.setValueAtTime(0, rt);
@@ -244,6 +272,7 @@ export class Slicer {
       slices: this.slicesN,
       pattern: [...this.pattern],
       barShift: this.shift,
+      target: this.target,
     };
   }
 
@@ -251,6 +280,7 @@ export class Slicer {
     if (partial.slices !== undefined) this.setSlices(partial.slices);
     if (partial.pattern !== undefined) this.pattern = [...partial.pattern];
     if (partial.barShift !== undefined) this.setBarShift(partial.barShift);
+    if (partial.target !== undefined) this.setTarget(partial.target);
   }
 
   panic(): void {
@@ -259,8 +289,31 @@ export class Slicer {
       try { entry.src.stop(); } catch {}
     }
     this.scheduled = [];
-    const g = this.deck.sliceGate.gain;
+    const g = (this.gateRef ?? this.deck.sliceGate).gain;
     g.cancelScheduledValues(this.ctx.currentTime);
     g.setValueAtTime(1, this.ctx.currentTime);
   }
+
+  setTarget(i: number): void {
+    if (this.engagedFlag) {
+      this.release();
+    }
+    this.target = i;
+  }
+}
+
+// runnable check: a stem target slices that stem (its buffer, gate and input) and falls back to the whole deck when the stems are off
+export function slicerTest(): void {
+  const node = (n: string) => ({ n, gain: { value: 1 } }) as unknown as GainNode;
+  const mix = { duration: 10 } as AudioBuffer, drums = { duration: 10 } as AudioBuffer;
+  const deck = {
+    playing: true, audioBuffer: mix, bpm: 120, playbackRate: 1, beatGridOffset: 0, position: () => 0, fxClock: () => null,
+    sliceInput: node("in"), sliceGate: node("gate"), stemsActive: true, stemReady: true, stemNames: ["drums"],
+    getStemBuffer: (i: number) => (i === 0 ? drums : null), stemSliceGate: () => node("sgate"), stemSliceInput: () => node("sin"),
+  } as unknown as SliceDeck;
+  const s = new Slicer({ currentTime: 0 } as BaseAudioContext, deck) as unknown as { setTarget(i: number): void; buf(): AudioBuffer; gateNode(): { n: string }; inputNode(): { n: string } };
+  s.setTarget(0);
+  if (s.buf() !== drums || s.gateNode().n !== "sgate" || s.inputNode().n !== "sin") throw new Error("slicer stem target");
+  (deck as { stemsActive: boolean }).stemsActive = false;
+  if (s.buf() !== mix || s.gateNode().n !== "gate" || s.inputNode().n !== "in") throw new Error("slicer fallback");
 }

@@ -1607,6 +1607,9 @@ export class Deck {
   stemInput(i: number): AudioNode | null { return this.stemSynthIn[i] ?? null; }
   // the stem as it plays, before its fader and FX (a vocoder listens here; the stem modules' sounds are not in it)
   stemPreTap(i: number): AudioNode | null { return this.stemPre[i] ?? null; }
+  // the Slicer on one stem: it ducks the stem before its fader and plays its slices into the fader
+  stemSliceGate(i: number): GainNode | null { return this.stemPre[i] ?? null; }
+  stemSliceInput(i: number): AudioNode | null { return this.stemGains[i] ?? null; }
 
   get stemSynthIndex(): number | null {
     return this.synthStem;

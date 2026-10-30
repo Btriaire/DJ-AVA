@@ -1,13 +1,21 @@
 "use client";
 import { useEffect, useState } from "react";
 import { DJEngine } from "@/lib/audio/engine";
-import { SLICE_PRESETS } from "@/lib/audio/Slicer";
+import { SLICE_PRESETS, type SlicePresetId } from "@/lib/audio/Slicer";
 import { PerfPad } from "./PerfPad";
+
+const STEM_FR: Record<string, string> = {
+  drums: "Batterie",
+  bass: "Basse",
+  other: "Autre",
+  vocals: "Voix",
+};
 
 export function SlicerPanel({ engine }: { engine: DJEngine }) {
   const [side, setSide] = useState<"A" | "B">("A");
   const [slot, setSlot] = useState(-1);
   const [, setV] = useState(0);
+  const [preset, setPreset] = useState<SlicePresetId>("orig");
   const force = () => setV((n) => n + 1);
 
   useEffect(() => {
@@ -66,26 +74,63 @@ export function SlicerPanel({ engine }: { engine: DJEngine }) {
         </div>
       </div>
 
-      <div className="flex flex-col gap-2">
-        <div className="flex justify-center">
+      <p className="text-[11px] text-neutral-300">
+        Découpe la mesure en cours en 8 ou 16 tranches et les rejoue dans un autre ordre, calé sur le tempo. Allume SLICE, puis choisis un motif ; éteins SLICE pour revenir au morceau.
+      </p>
+
+      <div className="flex items-center gap-2">
+        <span className="text-[9px] font-black tracking-[0.2em] text-neutral-400">SUR QUOI</span>
+        <div className="flex flex-wrap gap-1">
           <button
-            className={`hw-btn px-2 py-1 text-[11px] font-bold ${sl.engaged ? "hw-btn-on" : ""}`}
-            style={{ ["--led" as string]: "#38bdf8" }}
-            onClick={() => { sl.toggle(); force(); }}
-            disabled={!deck.playing || !deck.audioBuffer}
+            className={`hw-btn px-2 py-1 text-[11px] font-bold ${sl.target === -1 || !(deck.stemsActive && deck.stemReady) ? "hw-btn-on" : ""}`}
+            onClick={() => { sl.setTarget(-1); save(); force(); }}
           >
-            SLICE
+            Tout le morceau
           </button>
+          {deck.stemNames.map((name, i) => (
+            <button
+              key={i}
+              className={`hw-btn px-2 py-1 text-[11px] font-bold ${sl.target === i && deck.stemsActive && deck.stemReady ? "hw-btn-on" : ""} disabled:opacity-40`}
+              onClick={() => { sl.setTarget(i); save(); force(); }}
+              disabled={!(deck.stemsActive && deck.stemReady)}
+              title={!(deck.stemsActive && deck.stemReady) ? "Active les stems de la platine" : undefined}
+            >
+              {STEM_FR[name] ?? name}
+            </button>
+          ))}
         </div>
-        {!deck.playing || !deck.audioBuffer ? (
-          <p className="text-[11px] text-neutral-300 text-center">
-            Charge et lance un morceau sur la platine {side}
-          </p>
-        ) : null}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button
+          className={`hw-btn px-2 py-1 text-[11px] font-bold ${sl.engaged ? "hw-btn-on" : ""}`}
+          style={{ ["--led" as string]: "#38bdf8" }}
+          onClick={() => { sl.toggle(); force(); }}
+          disabled={!deck.playing || !deck.audioBuffer}
+        >
+          SLICE
+        </button>
+        <p className="text-[11px] text-neutral-300" aria-live="polite">
+          {!deck.playing || !deck.audioBuffer ? "Charge et lance un morceau sur la platine " + side : sl.engaged ? "Tu entends : " + SLICE_PRESETS.find(p => p.id === preset)?.title : "SLICE éteint : le morceau joue normalement"}
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-1 sm:grid-cols-4">
+        {SLICE_PRESETS.map((p) => (
+          <button
+            key={p.id}
+            className={`hw-btn px-2 py-1 text-[11px] font-bold ${preset === p.id ? "hw-btn-on" : ""}`}
+            onClick={() => { sl.applyPreset(p.id); setPreset(p.id); if (!sl.engaged) sl.toggle(); save(); force(); }}
+          >
+            <span className="block text-[11px] font-black">{p.label}</span>
+            <span className="block text-[10px] leading-tight text-neutral-400 text-left">{p.title}</span>
+          </button>
+        ))}
       </div>
 
       <div className="flex flex-col gap-2">
-        <div className="flex gap-1 justify-center">
+        <div className="flex items-center gap-1 justify-center">
+          <span className="text-[9px] font-black tracking-[0.2em] text-neutral-400">TRANCHES</span>
           <button
             className={`hw-btn px-2 py-1 text-[11px] font-bold ${sl.slices === 8 ? "hw-btn-on" : ""}`}
             onClick={() => { sl.setSlices(8); save(); force(); }}
@@ -100,28 +145,16 @@ export function SlicerPanel({ engine }: { engine: DJEngine }) {
           </button>
         </div>
 
-        <div className="flex gap-1 justify-center">
+        <div className="flex items-center gap-1 justify-center">
+          <span className="text-[9px] font-black tracking-[0.2em] text-neutral-400">DÉCALAGE</span>
           {[0, 1, 2, 3].map((n) => (
             <button
               key={n}
               className={`hw-btn px-2 py-1 text-[11px] font-bold ${sl.barShift === n ? "hw-btn-on" : ""}`}
               onClick={() => { sl.setBarShift(n); save(); force(); }}
-              title="Décale le premier temps de la mesure si le découpage n&apos;est pas calé sur le bon temps"
+              title="Décale le premier temps de la mesure si le découpage n'est pas calé sur le bon temps"
             >
               {n}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap gap-1 justify-center">
-          {SLICE_PRESETS.map((p) => (
-            <button
-              key={p.id}
-              className="hw-btn px-2 py-1 text-[11px] font-bold"
-              onClick={() => { sl.applyPreset(p.id); save(); force(); }}
-              title={p.title}
-            >
-              {p.label}
             </button>
           ))}
         </div>
@@ -132,7 +165,7 @@ export function SlicerPanel({ engine }: { engine: DJEngine }) {
           <PerfPad
             key={i}
             label={String(i + 1)}
-            color={`hsl(${Math.round((i / sl.slices) * 300)} 80% 60%)`}
+            color={`oklch(0.78 0.13 ${Math.round(60 + (i / sl.slices) * 170)})`}
             active={sl.holding === i}
             lit={slot === i}
             onDown={() => { sl.holdSlice(i); force(); }}
@@ -150,7 +183,7 @@ export function SlicerPanel({ engine }: { engine: DJEngine }) {
             style={{
               backgroundColor: sl.pattern[k] < 0
                 ? "transparent"
-                : `hsl(${Math.round((sl.pattern[k] / sl.slices) * 300)} 80% 60% / ${slot === k ? "1" : "0.35"})`,
+                : `oklch(0.78 0.13 ${Math.round(60 + (sl.pattern[k] / sl.slices) * 170)} / ${slot === k ? "1" : "0.35"})`,
             }}
             onClick={(e) => {
               sl.cycleStep(k, e.altKey || e.shiftKey ? -1 : 1);
@@ -164,11 +197,7 @@ export function SlicerPanel({ engine }: { engine: DJEngine }) {
       </div>
 
       <p className="text-[10px] text-neutral-300">
-        Clic : change la tranche jouée à ce pas · Maj+clic : sens inverse · — = silence
-      </p>
-
-      <p className="text-[10px] text-neutral-300">
-        Le slicer utilise le mix complet de la platine (les stems sont ignorés).
+        Pads : maintiens pour répéter une tranche. Ligne du bas : clic pour changer la tranche jouée à ce pas, Maj+clic en sens inverse, — = silence.
       </p>
     </div>
   );
