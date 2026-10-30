@@ -492,6 +492,14 @@ export class DJEngine {
       stem: (name) => (d.stemsActive && d.stemReady && d.stemIndex(name) >= 0 ? d.getStemBuffer(d.stemIndex(name)) : null),
       events: (name) => this.keyEvents(d, name),
       rate: d.playbackRate,
+      // ponytail: shares the Slicer's gates, so DJ KEYS REMPLACE and the Slicer on the same deck and stem fight over one level
+      duck: (stem, on) => {
+        const i = stem ? d.stemIndex(stem) : -1;
+        const g = (i >= 0 && d.stemsActive && d.stemReady ? d.stemSliceGate(i) : null) ?? d.sliceGate;
+        const t = this.ctx.currentTime;
+        g.gain.cancelScheduledValues(t);
+        g.gain.setTargetAtTime(on ? 0 : 1, t, on ? 0.008 : 0.02);
+      },
     };
   }
 

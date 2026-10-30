@@ -179,7 +179,7 @@ export const DJKeyboard = ({ engine }: Props) => {
     const isActive = (activeMask & (1 << slice)) !== 0;
     const isBlack = KEY_IS_BLACK[slice];
     const isFirstRow = slice < 8;
-    const accentColor = isFirstRow ? "#38bdf8" : "#e879f9";
+    const accentColor = isFirstRow ? "#38bdf8" : "#fbbf24";
 
     const whiteKeysBefore = KEY_IS_BLACK.slice(0, slice).filter(b => !b).length;
     const whiteWidth = 100 / 9.3; // 9 touches blanches + marge pour la 16e touche noire
@@ -251,7 +251,7 @@ export const DJKeyboard = ({ engine }: Props) => {
         <div className="flex gap-0.5 mt-1">
           {Array.from({ length: 16 }, (_, i) => {
             const isActive = (activeMask & (1 << i)) !== 0;
-            const accentColor = i < 8 ? "#38bdf8" : "#e879f9";
+            const accentColor = i < 8 ? "#38bdf8" : "#fbbf24";
             return (
               <div
                 key={i}
@@ -278,7 +278,7 @@ export const DJKeyboard = ({ engine }: Props) => {
         </div>
 
         <div className="hw-recess p-2 rounded-lg text-[11px] leading-snug text-neutral-300">
-          Joue les tranches du morceau de la platine choisie : chaque touche = une tranche (réglable avec TRANCHE), en rythme. MAINTIEN garde les notes, ROULEMENT les répète tant qu&apos;elle est enfoncée. Pas de morceau ? Charge-le sur la platine A ou B.
+          <b className="text-neutral-100">Comment jouer :</b> lance un morceau sur la platine, puis <b className="text-neutral-100">maintiens une touche</b>. Chaque touche = un temps, à partir de la mesure en cours : les 16 touches couvrent 4 mesures (réglable avec TRANCHE). Tant que tu tiens la touche, ce temps se répète en rythme et, avec REMPLACE, la platine se tait ; lâche et le morceau reprend. Enchaîne plusieurs touches pour refaire le groove. Source : prends les tranches dans un seul stem (batterie, voix…).
         </div>
         <div className="hw-recess p-2 rounded-lg space-y-2">
           {renderLCD()}
@@ -354,30 +354,34 @@ export const DJKeyboard = ({ engine }: Props) => {
 
           <div className="grid grid-cols-2 gap-1">
             <button
+              className={`hw-btn ${settings.replace ? "hw-btn-on" : ""}`}
+              onClick={() => setSetting("replace", !settings.replace)}
+              aria-pressed={settings.replace}
+              title="La platine (ou le stem choisi en Source) se tait pendant que tu joues : la touche remplace la musique, puis la musique revient quand tu lâches"
+            >
+              REMPLACE
+            </button>
+            <button
               className={`hw-btn ${settings.reverse ? "hw-btn-on" : ""}`}
               onClick={() => setSetting("reverse", !settings.reverse)}
-              title="Joue les tranches à l'envers"
+              aria-pressed={settings.reverse}
+              title="Joue chaque tranche à l'envers"
             >
               À L&apos;ENVERS
             </button>
             <button
               className={`hw-btn ${settings.hold ? "hw-btn-on" : ""} ${showStop && settings.hold ? "animate-pulse" : ""}`}
               onClick={() => setSetting("hold", !settings.hold)}
-              title="Garde les notes jouées tant qu'elles ne sont pas relâchées"
+              aria-pressed={settings.hold}
+              title="Une touche continue après l'avoir lâchée ; appuie encore pour l'arrêter"
             >
               MAINTIEN
             </button>
             <button
-              className={`hw-btn ${settings.gate ? "hw-btn-on" : ""}`}
-              onClick={() => setSetting("gate", !settings.gate)}
-              title="Répète la note en rafale tant qu'elle est enfoncée"
-            >
-              ROULEMENT
-            </button>
-            <button
               className={`hw-btn ${bank === "drums" ? "hw-btn-on" : ""}`}
               onClick={toggleBank}
-              title="Remplace les tranches par 16 sons de batterie synthétiques"
+              aria-pressed={bank === "drums"}
+              title="Remplace les tranches du morceau par 16 sons de batterie"
             >
               BATTERIE
             </button>
@@ -475,7 +479,7 @@ export const DJKeyboard = ({ engine }: Props) => {
             max={1}
             defaultValue={0.5}
             size={48}
-            color="#e879f9"
+            color="#fbbf24"
             led={false}
             format={(v) => `${Math.round(v * 100)}%`}
             onChange={(v) => setSetting("filter", v)}

@@ -18,7 +18,7 @@ export const SLICE_DIVS: { label: string; beats: number }[] = [
   { label: "2M", beats: 8 },
   { label: "4M", beats: 16 },
 ];
-export const DEFAULT_SLICE_DIV = 2; // 1/16
+export const DEFAULT_SLICE_DIV = 5; // 1/4: one beat per key, the 16 keys cover 4 bars
 export const DRUM_NAMES: string[] = ["Kick", "Kick 2", "Snare", "Clap", "Hat fermé", "Hat ouvert", "Rim", "Tom bas", "Tom haut", "Crash", "Montée", "Descente", "Sub", "Stab", "Sirène", "Zap"];
 
 export type PadBank = "slices" | "drums";
@@ -34,6 +34,7 @@ export interface PadSource {
   stem?: (name: string) => AudioBuffer | null; // a stem's audio, when the deck plays its stems
   events?: (name: string) => number[]; // the song's real hits (song seconds, sorted): "drums", "bass", "other", "vocals", "phrases" or "mix"
   rate?: number; // the deck's playback rate (AU TEMPS waits in audio seconds)
+  duck?: (stem: string | null, on: boolean) => void; // REMPLACE: silences the deck (stem null) or one of its stems while keys sound
 }
 
 export interface PadSettings {
@@ -51,6 +52,7 @@ export interface PadSettings {
   quant: boolean; // AU TEMPS: a key waits for the next grid line
   kit: number; // BATTERIE sounds: 0 synthetic, i = DRUM_KITS[i - 1]
   onHits: boolean; // SUR LES COUPS: each key starts on one of the next real hits instead of the grid
+  replace: boolean; // REMPLACE: the deck (or the stem played) goes quiet while a key sounds
 }
 
 export const DEFAULT_PAD_SETTINGS: PadSettings = {
@@ -66,8 +68,9 @@ export const DEFAULT_PAD_SETTINGS: PadSettings = {
   reverb: 0.35,
   source: 0,
   onHits: false,
-  quant: false,
+  quant: true,
   kit: 0,
+  replace: true,
 };
 
 interface Voice {
@@ -93,6 +96,7 @@ export class SamplePad {
   private readonly reverbOut: GainNode;
   private readonly noiseBuffer: AudioBuffer;
   private lastPlayedSlice: number | null = null;
+  private duckedStem: string | null | undefined = undefined; // what REMPLACE silenced, undefined when nothing
 
   private bank: PadBank = "slices";
   private drumBuffers: AudioBuffer[] | null = null;
@@ -509,7 +513,7 @@ export class SamplePad {
     source.connect(gain);
     gain.connect(this.filter);
 
-    source.loop = this.settings.hold;
+    source.loop = true; // a held key repeats its slice in time until it is released
     const startTime = at;
     source.start(at, 0);
 
@@ -536,9 +540,26 @@ export class SamplePad {
     source.onended = () => {
       if (this.voices.get(slice) === voice) {
         this.voices.delete(slice);
+        this.updateDuck();
       }
       if (voice.gateInterval) clearInterval(voice.gateInterval);
     };
+    this.updateDuck();
+  }
+
+  // the stem the keys play (null = the whole deck)
+  private playedStem(): string | null {
+    const name = PAD_SOURCES[this.settings.source]?.id ?? "mix";
+    return name === "mix" ? null : name === "phrases" ? "vocals" : name;
+  }
+
+  private updateDuck(): void {
+    const want = this.settings.replace && this.bank === "slices" && this.voices.size > 0 ? this.playedStem() : undefined;
+    if (want === this.duckedStem) return;
+    const duck = this.source().duck;
+    if (this.duckedStem !== undefined) duck?.(this.duckedStem, false);
+    if (want !== undefined) duck?.(want, true);
+    this.duckedStem = want;
   }
 
 
@@ -554,6 +575,7 @@ export class SamplePad {
     voice.source.stop(now + 0.012);
     if (voice.gateInterval) clearInterval(voice.gateInterval);
     this.voices.delete(slice);
+    this.updateDuck();
   }
 
   // the level of this module for the next `sec` seconds (a rhythm link plays it softer or louder)
@@ -622,6 +644,7 @@ export class SamplePad {
       this.echoSend.gain.value = this.settings.echo;
     } else if (key === "source") {
       this.settings.source = typeof value === "number" ? Math.max(0, Math.min(PAD_SOURCES.length - 1, Math.round(value))) : 0;
+      this.updateDuck();
     } else if (key === "kit") {
       this.settings.kit = typeof value === "number" ? Math.max(0, Math.min(DRUM_KITS.length, Math.round(value))) : 0;
       this.loadKit();
@@ -644,6 +667,9 @@ export class SamplePad {
       this.reverbOut.gain.setTargetAtTime(this.settings.reverb, this.ctx.currentTime, 0.02);
     } else if (key === "gate") {
       this.settings.gate = typeof value === "boolean" ? value : false;
+    } else if (key === "replace") {
+      this.settings.replace = typeof value === "boolean" ? value : true;
+      this.updateDuck();
     }
   }
 
@@ -846,4 +872,27 @@ export class SamplePad {
 
     return buffer;
   }
+}
+
+// runnable check: REMPLACE silences the stem the keys play once, and gives it back when the last key stops
+export function duckTest(): void {
+  const calls: string[] = [];
+  const pad = Object.create(SamplePad.prototype) as { voices: Map<number, unknown>; bank: string; duckedStem: unknown; settings: PadSettings; source: () => PadSource; updateDuck(): void };
+  pad.voices = new Map();
+  pad.bank = "slices";
+  pad.duckedStem = undefined;
+  pad.settings = { ...DEFAULT_PAD_SETTINGS, source: 1 };
+  pad.source = () => ({ buffer: null, bpm: 120, beatOffset: 0, position: 0, duck: (s, on) => calls.push(`${s}:${on}`) });
+  pad.voices.set(0, {});
+  pad.updateDuck();
+  pad.voices.set(1, {});
+  pad.updateDuck();
+  if (JSON.stringify(calls) !== JSON.stringify(["drums:true"])) throw new Error("Expected calls to be ['drums:true']");
+  pad.voices.clear();
+  pad.updateDuck();
+  if (JSON.stringify(calls) !== JSON.stringify(["drums:true","drums:false"])) throw new Error("Expected calls to be ['drums:true','drums:false']");
+  pad.settings.source = 0;
+  pad.voices.set(2, {});
+  pad.updateDuck();
+  if (JSON.stringify(calls) !== JSON.stringify(["drums:true","drums:false","null:true"])) throw new Error("Expected calls to be ['drums:true','drums:false','null:true']");
 }
