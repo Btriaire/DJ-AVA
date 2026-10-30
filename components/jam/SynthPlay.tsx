@@ -1,6 +1,6 @@
 "use client";
 import { Knob } from "../Knob";
-import { JamSeg } from "./JamKit";
+import { JamSeg, JamSwap } from "./JamKit";
 import type { HarmoSynth } from "@/lib/audio/jamModules";
 
 const pct = (v: number) => `${Math.round(v * 100)} %`;
@@ -10,7 +10,9 @@ export function SynthPlay({ m, C, bump }: { m: HarmoSynth; C: string; bump: () =
     <section className="flex flex-col gap-2" aria-label="Contrôles de jeu du synthé">
       <h4 className="text-[10px] font-black uppercase tracking-[0.22em] text-[var(--jam-text-2)]">Jeu</h4>
       <div className="flex flex-wrap items-end gap-4">
-        <JamSeg label="Jeu" color={C} value={m.mode} options={[["off","Off"],["arp","Arpège"],["stab","Stabs"],["pad","Nappe"],["comp","Accompagnement"]] as const} onChange={(v) => { m.set("mode", v); bump(); }} />
+        <JamSeg label="Jeu" color={C} value={m.mode} options={[["off","Off"],["replay","Reprise"],["arp","Arpège"],["stab","Stabs"],["pad","Nappe"],["comp","Accompagnement"]] as const} onChange={(v) => { m.set("mode", v); bump(); }} />
+        {m.mode === "replay" && <JamSeg label="Reprise" color={C} value={m.replayStyle} options={[["chords", "Accords du morceau"], ["notes", "Notes du morceau"]] as const} onChange={(v) => { m.set("replayStyle", v); bump(); }} />}
+        <JamSwap m={m} color={C} what="la partie" onChange={bump} />
         {m.mode === "comp" && (
           <JamSeg label="Rythme" color={C} value={m.comp} options={[["charleston","Charleston"],["bossa","Bossa"],["skank","Skank reggae"],["ballad","Ballade"],["pulse","Croches"],["strum","Grattage"]] as const} onChange={(v) => { m.set("comp", v); bump(); }} />
         )}

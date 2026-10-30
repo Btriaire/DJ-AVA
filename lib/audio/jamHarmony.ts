@@ -1,5 +1,5 @@
 // The notes the vocal harmony sings over a sung note (MaRuche/Codestral)
-export type HarmonyMode = "third" | "fifth" | "chord" | "low";
+export type HarmonyMode = "third" | "fifth" | "chord" | "low" | "unison";
 
 export function harmonyNotes(sung: number, pcs: number[], mode: HarmonyMode): number[] {
   const up = (n: number): number => {
@@ -17,6 +17,7 @@ export function harmonyNotes(sung: number, pcs: number[], mode: HarmonyMode): nu
     case "fifth": return [up(4)];
     case "chord": return [up(2), up(4)];
     case "low": return [up(2) - 12, sung - 12];
+    case "unison": return [sung];
   }
 }
 
@@ -33,4 +34,5 @@ export function selfTest(): void {
   assert(harmonyNotes(62, pcsC, "chord")[0] === 65 && harmonyNotes(62, pcsC, "chord")[1] === 69, "C major chord from 62 should be [65, 69]");
   assert(harmonyNotes(64, pcsC, "low")[0] === 55 && harmonyNotes(64, pcsC, "low")[1] === 52, "C major low from 64 should be [55, 52]");
   assert(harmonyNotes(69, pcsA, "third")[0] === 72, "A minor third from 69 should be 72");
+  assert(harmonyNotes(60, pcsC, "unison")[0] === 60, "C major unison from 60 should be [60]");
 }

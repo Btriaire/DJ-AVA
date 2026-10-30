@@ -3,7 +3,7 @@ import { useReducer } from "react";
 import type { DJEngine } from "@/lib/audio/engine";
 import { jamModules, type HatMode } from "@/lib/audio/jamModules";
 import { Knob } from "../Knob";
-import { JamPads, JamSeg, JamShell, useJamRefresh } from "./JamKit";
+import { JamPads, JamSeg, JamShell, useJamRefresh, JamSwap } from "./JamKit";
 import { KEY_ROWS } from "./jamKeys";
 import { StepGrid } from "./StepGrid";
 import { DRUM_KITS } from "@/lib/drumKits";
@@ -61,6 +61,10 @@ export function BeatLabPanel({ engine }: { engine: DJEngine }) {
         <div className="text-[10px] text-[var(--jam-text-3)]">
           Boîtes à rythmes réelles : collection smpldsnds/drum-machines (domaine public). Chargées une fois, puis gardées sur le disque.
         </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <JamSwap m={m} color={C} what="la batterie" onChange={bump} />
+        <span className="text-[10px] text-[var(--jam-text-3)]">Chaque coup du morceau rejoué sur la boîte choisie</span>
       </div>
       <JamSeg label="Charleston" color={C} value={m.hats} options={[["off", "Off"], ["8", "Contretemps"], ["16", "Doubles"]] as const} onChange={(v: HatMode) => { m.set("hats", v); bump(); }} />
       <JamPads m={m} list={m.pads()} color={C} className="grid grid-cols-4 gap-2 sm:grid-cols-8" keys={KEY_ROWS.beat} />

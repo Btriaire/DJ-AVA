@@ -247,3 +247,29 @@ export function JamPads({ m, list, color, className, keys }: { m: { press: (id: 
     </div>
   );
 }
+
+// REMPLACER: the module takes its stem over (the original fades out over one bar), the same key in every module
+export function JamSwap({ m, color, what, onChange }: { m: { swapped: boolean; toggleSwap: () => void }; color: string; what: string; onChange: () => void }) {
+  return (
+    <button
+      type="button"
+      className="h-9 rounded-md px-3 text-[11px] font-black tracking-[0.15em]"
+      aria-pressed={m.swapped}
+      onClick={() => { m.toggleSwap(); onChange(); }}
+      title={`Le module rejoue ${what} du morceau et l'original s'efface en une mesure (appuie encore pour le rendre)`}
+      style={{
+        background: m.swapped ? `color-mix(in srgb, ${color} 45%, #111)` : 'rgba(255,255,255,.06)',
+        color: m.swapped ? '#fff' : 'var(--jam-text-2)',
+        boxShadow: m.swapped ? `inset 0 0 0 1px ${color}` : 'none'
+      }}
+    >
+      <svg className="inline-block w-3.5 h-3.5 mr-1" aria-hidden="true" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M1 7H13M13 7L9 3M13 7L9 11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+      REMPLACER
+      <span className="ml-2 text-[10px] text-[var(--jam-text-3)]">
+        {m.swapped ? "remplacé" : `${what} d'origine`}
+      </span>
+    </button>
+  );
+}

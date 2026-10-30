@@ -108,6 +108,7 @@ import { selfTest as sampleLevelTest } from "../lib/audio/sampleLevel";
 import { selfTest as jamChordTrackTest } from "../lib/audio/jamChordTrack";
 import { selfTest as drumKitsTest } from "../lib/drumKits";
 import { SEQ_PRESETS, SEQ_ROWS } from "../lib/audio/jamModules";
+import { selfTest as jamReplayTest } from "../lib/audio/jamReplay";
 jamCompTest();
 jamHumanTest();
 console.log("check-rules jam comp, humanize ok");
@@ -122,3 +123,4 @@ drumKitsTest();
   for (const [name, rows] of Object.entries(SEQ_PRESETS)) for (const r of SEQ_ROWS) if (!rows[r] || rows[r].some((x) => x < 0 || x > 15)) throw new Error(`preset ${name} row ${r}`);
   console.log(`check-rules sequencer presets ok (${Object.keys(SEQ_PRESETS).length})`);
 }
+jamReplayTest(); console.log("check-rules jam replay ok");

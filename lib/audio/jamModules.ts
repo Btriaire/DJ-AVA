@@ -25,6 +25,7 @@ import { nextSungAt } from "./jamVoiceNext";
 import { Vocoder } from "./jamVocoder";
 import { harmonyNotes, type HarmonyMode } from "./jamHarmony";
 import { voiceNotes, type VoiceNote } from "./jamVoiceNotes";
+import { chordHits, cleanNotes } from "./jamReplay";
 import { chordAt, chordDegreeAt, degreeChord, heardShift, voiceLead, type ChordColor, jamDeck, jamScale, jamStem, nextGrid, onJamTick, snapToScale, songToCtx, spb, type JamDeckPref, type JamRole } from "./stemJam";
 
 export const beatIdx = (div: number) => Math.max(0, BEAT_DIVS.indexOf(div));
@@ -127,6 +128,27 @@ abstract class JamModule {
   }
   // a line under the title when something asked for cannot work on this song (its notes were never analysed)
   warning(): string | null { return null; }
+  // REMPLACER: the module takes the stem over: the original fades out over one bar while the module replays its part
+  swapped = false;
+  private swapBefore = 1;
+
+  toggleSwap() {
+    const d = this.deck(), i = this.stem(d);
+    if (i < 0) return;
+    this.swapped = !this.swapped;
+    if (this.swapped) {
+      this.swapBefore = Math.max(0.2, d.stemVol[i] || 1);
+      d.rampStemVol(i, 0, 4 * spb(d));
+    } else {
+      d.rampStemVol(i, this.swapBefore, 4 * spb(d));
+    }
+    this.onSwap(this.swapped);
+    jamChanged();
+  }
+
+  // the hook where each module starts its reprise when it takes the stem over
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  protected onSwap(on: boolean): void {}
   // the settings kept between sessions (what is playing right now is not: nothing starts by itself at the next launch)
   protected abstract keep(): string[];
   snapshot(): Record<string, unknown> {
@@ -140,6 +162,7 @@ abstract class JamModule {
   }
   // RÀZ: every held effect off, every setting back to its default
   reset() {
+    if (this.swapped) this.toggleSwap(); // RAZ brings the original stem back
     for (const id of [...this.pressed]) this.press(id, false);
     this.pressed.clear();
     this.resetFields();
@@ -533,6 +556,11 @@ export class VoxFx extends JamModule {
     return `Prochaine phrase chantée dans ${Math.ceil((t - pos) / Math.max(0.25, d.playbackRate))} s`;
   }
 
+  // REMPLACER: the choir sings the melody itself (unison) while the voice fades out
+  protected onSwap(on: boolean): void {
+    if (on) { this.harmony = true; this.harmonyMode = "unison"; }
+    else { this.harmonyMode = "third"; this.harmony = false; }
+  }
   setChopMode(mode: "slices" | "melody") {
     this.chopMode = mode;
     jamChanged();
@@ -730,7 +758,7 @@ export class VoxFx extends JamModule {
 }
 
 // ---------------- SYNTH (on the "other" stem) ----------------
-export type SynthMode = "off" | "arp" | "stab" | "pad" | "comp";
+export type SynthMode = "off" | "arp" | "stab" | "pad" | "comp" | "replay";
 export type ArpShape = ArpOrder;
 const GATE = [1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1]; // the trance gate, per sixteenth
 export class HarmoSynth extends JamModule {
@@ -746,6 +774,19 @@ export class HarmoSynth extends JamModule {
   readonly riser: Riser;
   readonly sampled: SampledInstrument;
   voice = "synth:pluck"; // "synth:<patch>" or "inst:<real instrument id>"
+  // REPRISE: the song's own part replayed, its cleaned notes or its chord strikes at their exact times
+  replayStyle: "notes" | "chords" = "chords";
+  private replayCache: WeakMap<object, { notes: Note[]; hits: { t: number; dur: number; vel: number }[] }> = new WeakMap();
+
+  private replayData(deck: Deck): { notes: Note[]; hits: { t: number; dur: number; vel: number }[] } {
+    const other = deck.stemNotes?.other ?? [];
+    const c = cleanNotes(other);
+    return { notes: c, hits: chordHits(c) };
+  }
+
+  protected onSwap(on: boolean): void {
+    if (on && this.mode === "off") this.mode = "replay";
+  }
   comp: CompName = "charleston"; // the accompaniment rhythm of the "comp" mode
   human = 0.35; // 0..1 timing and velocity looseness
   width = 0; // stereo chorus 0..1
@@ -981,6 +1022,30 @@ export class HarmoSynth extends JamModule {
         this.player().chord(notes, at, (hit.len * beat) / 4, hit.vel * h.vel, hit.len >= 4 ? "pad" : "pluck", 0.012, hit.dir);
         this.hit(at);
       }
+    } else if (this.mode === "replay") {
+      const rate = Math.max(0.25, deck.playbackRate);
+      const key = deck.stemNotes;
+      let data = key ? this.replayCache.get(key) : undefined;
+      if (!data) { data = this.replayData(deck); if (key) this.replayCache.set(key, data); }
+      const { notes, hits } = data;
+      if (this.replayStyle === "notes") {
+        for (let k = lowerBound(notes, from); k < notes.length && notes[k][0] < to; k++) {
+          const [start, end, midi, vel] = notes[k];
+          const at = songToCtx(deck, start);
+          this.player().note(midi + heardShift(deck), at, Math.max(0.08, (end - start) / rate), Math.min(1, 0.35 + vel * 0.65), end - start > 0.6 ? "pad" : "pluck");
+          this.hit(at);
+        }
+      } else {
+        let k = 0;
+        for (let hi = hits.length; k < hi; ) { const mid = (k + hi) >> 1; if (hits[mid].t < from) k = mid + 1; else hi = mid; } // first hit at or after from
+        while (k < hits.length && hits[k].t < to) {
+          const hit = hits[k];
+          const at = songToCtx(deck, hit.t);
+          this.player().chord(this.voiced(deck, hit.t), at, Math.max(0.08, hit.dur / rate), Math.min(1, 0.4 + hit.vel * 0.6), hit.dur > 0.6 ? "pad" : "pluck", 0.006);
+          this.hit(at);
+          k++;
+        }
+      }
     } else {
       for (const { t, k } of this.steps(deck, 1, from, to)) {
         const key = this.chord(deck, t).join();
@@ -1014,7 +1079,8 @@ export const SEQ_PRESETS: Record<"four" | "house" | "break" | "trap" | "techno" 
 };
 export class BeatLab extends JamModule {
   readonly kit: DrumKit;
-  readonly sampledKit: SampledKit; // a real drum machine, played instead of the synthetic kit once loaded
+  readonly sampledKit: SampledKit;
+  replay = false; // REPRISE: every drum hit of the song replayed on the chosen kit (on with REMPLACER) // a real drum machine, played instead of the synthetic kit once loaded
   kitSound = ""; // "" = the synthetic kit, else a drum machine id
   kick = 0; // 0..1 layer on the song's kicks
   clap = 0; // on its snares
@@ -1076,7 +1142,7 @@ export class BeatLab extends JamModule {
   // the kick sings the key's root, between E1 and D#2 (41 to 78 Hz)
   private kickHz(deck: Deck): number { const r = jamScale(deck).root; return 440 * Math.pow(2, (28 + ((r - 4 + 12) % 12) - 69) / 12); }
   private tick(deck: Deck, from: number, to: number) {
-    if ((this.kick <= 0 && this.clap <= 0 && this.hats === "off" && !this.seq) || deck !== this.deck() || this.stem(deck) < 0) return;
+    if ((!this.replay && this.kick <= 0 && this.clap <= 0 && this.hats === "off" && !this.seq) || deck !== this.deck() || this.stem(deck) < 0) return;
     this.route(deck);
     const hz = this.kickHz(deck);
     if (this.seq) {
@@ -1116,12 +1182,17 @@ export class BeatLab extends JamModule {
         if (any) this.hit(at);
       }
     }
-    if (this.kick > 0 || this.clap > 0) {
+    if (this.replay || this.kick > 0 || this.clap > 0) {
       const hits = deck.stemNotes?.drums ?? [];
       for (let k = lowerBound(hits, from); k < hits.length && hits[k][0] < to; k++) {
         const [t, v, c] = hits[k];
         const at = songToCtx(deck, t);
-        if (c === 0 && this.kick > 0) { this.drum("kick", at, Math.min(1, (0.6 + v) * this.kick), hz); this.hit(at); }
+        if (this.replay) { // each hit on its own sound, at its strength; no KICK+ / CLAP+ on top (they would double it)
+          if (c === 0) this.drum("kick", at, Math.min(1, 0.55 + v), hz);
+          else if (c === 1) this.drum("snare", at, Math.min(1, 0.55 + v));
+          else if (c === 2) this.drum("hat", at, Math.min(1, 0.4 + v));
+          this.hit(at);
+        } else if (c === 0 && this.kick > 0) { this.drum("kick", at, Math.min(1, (0.6 + v) * this.kick), hz); this.hit(at); }
         else if (c === 1 && this.clap > 0) { this.drum("clap", at, Math.min(1, (0.6 + v) * this.clap)); this.hit(at); }
       }
     }
@@ -1136,6 +1207,7 @@ export class BeatLab extends JamModule {
       }
     }
   }
+  protected onSwap(on: boolean): void { this.replay = on; }
   setKitSound(id: string): void {
     this.kitSound = id;
     if (id !== "") {

@@ -3,7 +3,7 @@ import { useReducer } from "react";
 import type { DJEngine } from "@/lib/audio/engine";
 import { jamModules } from "@/lib/audio/jamModules";
 import { Knob } from "../Knob";
-import { JamPads, JamSeg, JamShell, useJamRefresh } from "./JamKit";
+import { JamPads, JamSeg, JamShell, useJamRefresh, JamSwap } from "./JamKit";
 import { KEY_ROWS } from "./jamKeys";
 import { NoteLane } from "./NoteLane";
 import { instrumentsOf } from "@/lib/sampleFont";
@@ -54,12 +54,7 @@ export function VoxFxPanel({ engine }: { engine: DJEngine }) {
           label="Harmonie"
           color={C}
           value={m.harmonyMode}
-          options={[
-            ["third", "Tierce"],
-            ["fifth", "Quinte"],
-            ["chord", "Accord"],
-            ["low", "Dessous"]
-          ]}
+          options={[["unison", "Unisson"], ["third", "Tierce"], ["fifth", "Quinte"], ["chord", "Accord"], ["low", "Dessous"]]}
           onChange={(v) => {
             m.set("harmonyMode", v);
             m.set("harmony", true);
@@ -144,6 +139,10 @@ export function VoxFxPanel({ engine }: { engine: DJEngine }) {
         <span className="text-[10px] text-[var(--jam-text-3)]">
           Accord de 7e du morceau, change à chaque temps
         </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <JamSwap m={m} color={C} what="la voix" onChange={bump} />
+        <span className="text-[10px] text-[var(--jam-text-3)]">La chorale chante la mélodie à la place de la voix</span>
       </div>
       <JamPads m={m} list={m.pads()} color={C} className="grid grid-cols-4 gap-2 sm:grid-cols-8" keys={KEY_ROWS.vox} />
       {/* CHOPS: the bars just sung become 8 slices to replay in time (Shift + the same keys) */}
