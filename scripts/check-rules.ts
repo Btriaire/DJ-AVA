@@ -116,6 +116,7 @@ import { selfTest as samplerFollowTest } from "../lib/audio/samplerFollow";
 import { slicerTest } from "../lib/audio/Slicer";
 import { duckTest } from "../lib/audio/SamplePad";
 import { solarTest } from "../lib/audio/solarLab";
+import { dx7Test } from "../lib/audio/dx7Lab";
 import { selfTest as crowdTest, synthTest as crowdSynthTest, kitTest as crowdKitTest } from "../lib/audio/virtualCrowd";
 import { selfTest as jamPrecisionTest } from "../lib/audio/jamPrecision";
 jamCompTest();
@@ -142,3 +143,4 @@ crowdTest(); crowdSynthTest(); crowdKitTest(); console.log("check-rules virtual 
 slicerTest(); console.log("check-rules slicer stems ok");
 duckTest(); console.log("check-rules dj keys replace ok");
 solarTest(); console.log("check-rules solar lab ok");
+dx7Test(); console.log("check-rules dx7 lab ok");

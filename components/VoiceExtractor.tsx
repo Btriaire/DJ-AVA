@@ -103,8 +103,8 @@ function probeDuration(file: File | Blob): Promise<number> {
   });
 }
 
-// ---------- photoreal gunmetal-chassis styling helpers (matches the look of
-// DX7Synth, the other "VST plugin" module in this project) ----------
+// ---------- photoreal gunmetal-chassis styling helpers (the look of the old
+// DX7 and Solar 42F "VST plugin" modules) ----------
 const moduleStyle: React.CSSProperties = {
   background: "linear-gradient(180deg,#232427,#17181a)",
   border: "1px solid #000",

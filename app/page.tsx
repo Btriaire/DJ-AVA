@@ -13,7 +13,7 @@ import { DeckPanel } from "@/components/DeckPanel";
 import { Fader } from "@/components/Fader";
 import { SynthPanel } from "@/components/SynthPanel";
 import { SamplerPanel } from "@/components/SamplerPanel";
-import DX7Synth from "@/components/DX7Synth";
+import { Dx7LabPanel } from "@/components/jam/Dx7LabPanel";
 import { SolarLabPanel } from "@/components/jam/SolarLabPanel";
 import { SoundFxPanel } from "@/components/SoundFxPanel";
 import { DrumMachinePanel } from "@/components/DrumMachinePanel";
@@ -446,7 +446,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
     // Instruments & Sources
     { key: "stemprep", label: "Préparation des stems · Bibliothèque", scope: "global", category: "Instruments & Sources" },
     { key: "synth", label: "Synthé", scope: "global", category: "Instruments & Sources" },
-    { key: "dx7", label: "DX7 · Synthé + Sampler", scope: "global", category: "Instruments & Sources" },
+    { key: "dx7", label: "DX7 · Synthé FM : stabs en rythme sur les accords, accords tenus, basse doublée, pads d'accords", scope: "global", category: "Stems en live" },
     { key: "solar42", label: "Solar 42F · Nappe dans la tonalité du morceau, suit ses accords, s'efface sous la voix, GEL d'un stem", scope: "global", category: "Stems en live" },
     { key: "sampler", label: "Sculpteur de son", scope: "global", category: "Instruments & Sources" },
     { key: "soundfx", label: "FX Sonores", scope: "global", category: "Instruments & Sources" },
@@ -1621,7 +1621,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
                   left={[["synth", modules.synth && <SynthPanel key={`synth-${resetKey}`} engine={engine} />]]}
                   right={[["sampler", modules.sampler && <SamplerPanel engine={engine} />], ["soundfx", modules.soundfx && <SoundFxPanel engine={engine} />]]}
                 />
-                <RackRow onClose={closeRackModule} left={[["dx7", modules.dx7 && <DX7Synth key={`dx7-${resetKey}`} engine={engine} embedded />]]} right={[]} />
+                <RackRow onClose={closeRackModule} left={[["dx7", modules.dx7 && <Dx7LabPanel key={`dx7-${resetKey}`} engine={engine} />]]} right={[]} />
                 <RackRow onClose={closeRackModule} left={[["solar42", modules.solar42 && <SolarLabPanel key={`solar42-${resetKey}`} engine={engine} />]]} right={[]} />
               </div>
             )}
