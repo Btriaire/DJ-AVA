@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ModulePresetBar } from "./ModulePresetBar";
 import type { DJEngine } from "@/lib/audio/engine";
-import { PAD_SLICES, ECHO_DIVS, SLICE_DIVS, DRUM_NAMES, type PadBank, type PadSettings } from "@/lib/audio/SamplePad";
+import { PAD_SLICES, PAD_SOURCES, ECHO_DIVS, SLICE_DIVS, DRUM_NAMES, type PadBank, type PadSettings } from "@/lib/audio/SamplePad";
 import { Knob } from "./Knob";
 
 type Props = {
@@ -279,6 +279,42 @@ export const DJKeyboard = ({ engine }: Props) => {
 
           <div className="relative h-44 w-full overflow-hidden rounded-b-md">
             {Array.from({ length: PAD_SLICES }, (_, i) => renderKey(i))}
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-1">
+              <span className="text-[9px] font-black uppercase tracking-[0.2em] text-[var(--jam-text-2)]">Source</span>
+              {PAD_SOURCES.map((source, i) => (
+                <button
+                  key={source.id}
+                  className={`hw-btn px-2 py-0.5 text-[10px] ${settings.source === i ? "hw-btn-on" : ""}`}
+                  aria-pressed={settings.source === i}
+                  onClick={() => setSetting("source", i)}
+                  title={i === 0 ? "Tranches prises dans le morceau entier" : `Tranches prises dans le stem ${source.label.toLowerCase()} seul`}
+                >
+                  {source.label}
+                </button>
+              ))}
+            </div>
+            <button
+              className={`hw-btn ${settings.onHits ? "hw-btn-on" : ""}`}
+              aria-pressed={settings.onHits}
+              onClick={() => setSetting("onHits", !settings.onHits)}
+              title="Chaque touche part sur un des prochains vrais coups du morceau (batterie, notes, voix) et dure jusqu'au suivant, au lieu d'une grille fixe"
+            >
+              SUR LES COUPS
+            </button>
+            {(() => {
+              const deck = keySource === "A" ? engine.deckA : engine.deckB;
+              if (settings.source > 0 && !(deck.stemsActive && deck.stemReady)) {
+                return <div className="text-[10px] text-[var(--jam-text-3)]" aria-live="polite">Stems non joués sur cette platine : les tranches viennent du morceau entier.</div>;
+              } else if (settings.onHits && !deck.stemNotes) {
+                return <div className="text-[10px] text-[var(--jam-text-3)]" aria-live="polite">Coups du morceau pas encore analysés : les touches restent sur la grille.</div>;
+              } else if (settings.onHits) {
+                return <div className="text-[10px] text-[var(--jam-text-3)]" aria-live="polite">Chaque touche = un vrai coup, à partir du début de la mesure.</div>;
+              }
+              return null;
+            })()}
           </div>
 
           <div className="grid grid-cols-2 gap-1">

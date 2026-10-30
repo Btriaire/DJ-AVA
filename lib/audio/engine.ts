@@ -10,6 +10,8 @@ import { SoundFX } from "./SoundFX";
 import { DrumMachine } from "./DrumMachine";
 import { DjSynth } from "./DjSynth";
 import { Slicer } from "./Slicer";
+import { mergeEvents } from "./padSlices";
+import { voiceNotes } from "./jamVoiceNotes";
 import { MidiManager } from "./midi";
 import { idbPutBlob, idbGetBlob, idbDelBlob } from "../library";
 import * as Tone from "tone";
@@ -477,6 +479,9 @@ export class DJEngine {
     return this.keySide;
   }
 
+  // the song's real hits for DJ KEYS, per source, computed once per analysis (the notes or voice objects are the cache keys)
+  private keyEventCache = new WeakMap<object, Map<string, number[]>>();
+
   private keySourceInfo(): PadSource {
     const d = this.keySide === "A" ? this.deckA : this.deckB;
     return {
@@ -484,8 +489,53 @@ export class DJEngine {
       bpm: d.fxClock()?.bpm ?? d.bpm,
       beatOffset: d.beatGridOffset,
       position: d.position(),
+      stem: (name) => (d.stemsActive && d.stemReady && d.stemIndex(name) >= 0 ? d.getStemBuffer(d.stemIndex(name)) : null),
+      events: (name) => this.keyEvents(d, name),
     };
   }
+
+  private keyEvents(d: Deck, name: string): number[] {
+    const key = (name === "vocals" ? d.stemMap?.voice : d.stemNotes) as object | undefined;
+    if (!key) return [];
+
+    let cache = this.keyEventCache.get(key);
+    if (!cache) {
+      cache = new Map<string, number[]>();
+      this.keyEventCache.set(key, cache);
+    }
+
+    const cachedEvents = cache.get(name);
+    if (cachedEvents) return cachedEvents;
+
+    let times: number[];
+    switch (name) {
+      case "drums":
+        times = mergeEvents([(d.stemNotes?.drums ?? []).map(h => h[0])]);
+        break;
+      case "bass":
+        times = mergeEvents([(d.stemNotes?.bass ?? []).map(h => h[0])]);
+        break;
+      case "other":
+        times = mergeEvents([(d.stemNotes?.other ?? []).map(h => h[0])]);
+        break;
+      case "vocals":
+        times = voiceNotes(d.stemMap?.voice ?? [], d.stemMap?.voiceStep ?? 0).map(n => n.k0 * (d.stemMap?.voiceStep ?? 0));
+        break;
+      case "mix":
+        times = mergeEvents([
+          (d.stemNotes?.drums ?? []).map(h => h[0]),
+          (d.stemNotes?.bass ?? []).map(h => h[0]),
+          (d.stemNotes?.other ?? []).map(h => h[0]),
+        ]);
+        break;
+      default:
+        times = [];
+    }
+
+    cache.set(name, times);
+    return times;
+  }
+
 
   masterDeck(): Deck | null {
     // Choose playing deck with BPM (A has priority if both are playing), or any deck with BPM

@@ -1,3 +1,4 @@
+import { gridSlices, hitSlices, type PadSlice } from "./padSlices";
 export const PAD_SLICES = 16;
 export const ECHO_DIVS: number[] = [0.25, 0.5, 1, 2];
 
@@ -19,11 +20,16 @@ export const DRUM_NAMES: string[] = ["Kick", "Kick 2", "Snare", "Clap", "Hat fer
 
 export type PadBank = "slices" | "drums";
 
+// where the slices come from: the whole song or one of its stems
+export const PAD_SOURCES: { id: string; label: string }[] = [{ id: "mix", label: "Mix" }, { id: "drums", label: "Batterie" }, { id: "bass", label: "Basse" }, { id: "other", label: "Autre" }, { id: "vocals", label: "Voix" }];
+
 export interface PadSource {
   buffer: AudioBuffer | null;
   bpm: number;
   beatOffset: number;
   position: number;
+  stem?: (name: string) => AudioBuffer | null; // a stem's audio, when the deck plays its stems
+  events?: (name: string) => number[]; // the song's real hits (song seconds, sorted): "drums", "bass", "other", "vocals" or "mix"
 }
 
 export interface PadSettings {
@@ -37,6 +43,8 @@ export interface PadSettings {
   gate: boolean;
   volume: number;
   reverb: number;
+  source: number; // index in PAD_SOURCES (0 = the whole mix)
+  onHits: boolean; // SUR LES COUPS: each key starts on one of the next real hits instead of the grid
 }
 
 export const DEFAULT_PAD_SETTINGS: PadSettings = {
@@ -50,6 +58,8 @@ export const DEFAULT_PAD_SETTINGS: PadSettings = {
   gate: false,
   volume: 0.8,
   reverb: 0.35,
+  source: 0,
+  onHits: false,
 };
 
 interface Voice {
@@ -413,20 +423,27 @@ export class SamplePad {
     };
   }
 
-  private startVoice(slice: number): void {
-    const src = this.source();
-    if (!src.buffer || src.bpm <= 0) return;
-
+  // the audio and the span of key `slice` right now: from the chosen stem (the mix when stems do not play), on the grid or on the real hits
+  private sliceAt(slice: number): { buffer: AudioBuffer; start: number; len: number } | null {
+    const src = this.source(); if (!src.buffer || src.bpm <= 0) return null;
+    const name = PAD_SOURCES[this.settings.source]?.id ?? "mix";
+    const buffer = name === "mix" ? src.buffer : src.stem?.(name) ?? src.buffer;
     const spb = 60 / src.bpm;
     const barStart = src.beatOffset + Math.floor((src.position - src.beatOffset) / (4 * spb)) * 4 * spb;
-    const sliceStart = barStart + slice * this.sliceSec(spb);
-    if (sliceStart >= src.buffer.duration) return;
+    const sec = this.sliceSec(spb);
+    const hits = this.settings.onHits ? src.events?.(name) ?? [] : [];
+    const list: PadSlice[] = hits.length
+      ? hitSlices(hits, barStart, PAD_SLICES, Math.max(sec, spb), buffer.duration) // a hit lasts until the next one, at most a beat (or TRANCHE when longer)
+      : gridSlices(barStart, sec, PAD_SLICES, buffer.duration); // the grid, also while the hits are not analysed yet
+    const s = list[slice]; return s && s.len > 0.01 ? { buffer, start: s.start, len: s.len } : null;
+  }
+
+  private startVoice(slice: number): void {
+    const sl = this.sliceAt(slice); if (!sl) return;
+    const sr = sl.buffer.sampleRate;
+    const sliceBuffer = this.copySlice(sl.buffer, Math.floor(sl.start * sr), Math.floor(sl.len * sr), this.settings.reverse);
 
     const source = this.ctx.createBufferSource();
-    const sr = src.buffer.sampleRate;
-    const sliceLength = Math.floor(Math.min(this.sliceSec(spb), src.buffer.duration - sliceStart) * sr);
-    const sliceBuffer = this.copySlice(src.buffer, Math.floor(sliceStart * sr), sliceLength, this.settings.reverse);
-
     source.buffer = sliceBuffer;
     source.playbackRate.value = 2 ** (this.settings.pitch / 12);
 
@@ -456,7 +473,7 @@ export class SamplePad {
         if (this.voices.get(slice) !== voice) return;
         this.stopVoice(slice);
         this.startVoice(slice);
-      }, this.sliceSec(spb) * 1000);
+      }, sl.len * 1000);
 
       voice.gateInterval = interval as unknown as number;
     }
@@ -468,6 +485,7 @@ export class SamplePad {
       if (voice.gateInterval) clearInterval(voice.gateInterval);
     };
   }
+
 
   private stopVoice(slice: number): void {
     const voice = this.voices.get(slice);
@@ -500,13 +518,7 @@ export class SamplePad {
       return;
     }
 
-    const src = this.source();
-    if (!src.buffer || src.bpm <= 0) return;
-
-    const spb = 60 / src.bpm;
-    const barStart = src.beatOffset + Math.floor((src.position - src.beatOffset) / (4 * spb)) * 4 * spb;
-    const sliceStart = barStart + slice * this.sliceSec(spb);
-    if (sliceStart >= src.buffer.duration) return;
+    if (!this.sliceAt(slice)) return;
 
     if (this.voices.has(slice)) {
       if (this.settings.hold) {
@@ -518,6 +530,7 @@ export class SamplePad {
 
     this.startVoice(slice);
   }
+
 
   release(slice: number): void {
     if (this.settings.hold) return;
@@ -552,6 +565,10 @@ export class SamplePad {
     } else if (key === "echo") {
       this.settings.echo = typeof value === "number" ? Math.max(0, Math.min(1, value)) : 0;
       this.echoSend.gain.value = this.settings.echo;
+    } else if (key === "source") {
+      this.settings.source = typeof value === "number" ? Math.max(0, Math.min(PAD_SOURCES.length - 1, Math.round(value))) : 0;
+    } else if (key === "onHits") {
+      this.settings.onHits = typeof value === "boolean" ? value : false;
     } else if (key === "sliceDiv") {
       this.settings.sliceDiv = typeof value === "number" ? Math.max(0, Math.min(SLICE_DIVS.length - 1, Math.round(value))) : DEFAULT_SLICE_DIV;
     } else if (key === "echoDiv") {
