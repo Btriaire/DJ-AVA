@@ -59,6 +59,9 @@ function saveSlots(role: string, slots: (Record<string, unknown> | null)[]) {
 }
 
 // the original stem's loudness envelope, made once per stem buffer (5 ms frames), shared by the modules
+export const SOFT_BED = 0.35; // DOUCE + REMPLACER: the original stays at 35 % under the module
+
+// the original stem's loudness envelope (moved)
 const levelCache = new WeakMap<AudioBuffer, { env: Float32Array; ref: number }>();
 
 abstract class JamModule {
@@ -69,6 +72,7 @@ abstract class JamModule {
   private hitTimes: number[] = []; // audio times of the last notes played, for the panel's activity light
   protected constructor(protected engine: DJEngine, readonly role: JamRole) {
     this.bus = engine.ctx.createGain();
+    this.initSoft();
   }
 
   deck(): Deck { return jamDeck(this.engine, this.pref); }
@@ -114,9 +118,9 @@ abstract class JamModule {
     const i = this.stem(deck);
     const to = i >= 0 ? deck.stemInput(i) : null;
     if (this.routedTo === to) return;
-    if (this.routedTo) this.bus.disconnect(this.routedTo);
+    if (this.routedTo) this.out.disconnect(this.routedTo);
     this.routedTo = to;
-    if (to) this.bus.connect(to);
+    if (to) this.out.connect(to);
   }
   readonly pressed = new Set<string>();
   abstract pads(): PadDef[];
@@ -167,11 +171,77 @@ abstract class JamModule {
     this.swapped = !this.swapped;
     if (this.swapped) {
       this.swapBefore = list.map(i => Math.max(0.2, d.stemVol[i] || 1));
-      list.forEach(i => d.rampStemVol(i, 0, 4 * spb(d)));
+      list.forEach((i, k) => d.rampStemVol(i, this.soft ? SOFT_BED * this.swapBefore[k] : 0, (this.soft ? 8 : 4) * spb(d)));
     } else {
-      list.forEach((i, k) => d.rampStemVol(i, this.swapBefore[k] ?? 1, 4 * spb(d)));
+      list.forEach((i, k) => d.rampStemVol(i, this.swapBefore[k] ?? 1, this.soft ? 8 * spb(d) : 4 * spb(d)));
     }
     this.onSwap(this.swapped);
+    jamChanged();
+  }
+
+  // DOUCE: the module's sound rounded (gentle low-pass, slow glue compressor) and, with REMPLACER, the original kept underneath
+  soft = false;
+  protected softCutoff = 2800; // Hz of the low-pass when DOUCE is on (each module sets its own)
+  out!: GainNode;        // what route() connects to the stem
+  private softTone!: BiquadFilterNode;
+  private softGlue!: DynamicsCompressorNode;
+  private softSpace: [number, number][] = []; // reverb send and FX return of each swap stem before DOUCE
+  initSoft(): void {
+    this.softTone = this.engine.ctx.createBiquadFilter();
+    this.softTone.type = "lowpass";
+    this.softTone.frequency.value = 20000;
+    this.softTone.Q.value = 0.5;
+
+    this.softGlue = this.engine.ctx.createDynamicsCompressor();
+    this.softGlue.threshold.value = 0;
+    this.softGlue.ratio.value = 1;
+    this.softGlue.knee.value = 12;
+    this.softGlue.attack.value = 0.003;
+    this.softGlue.release.value = 0.15;
+
+    this.out = this.engine.ctx.createGain();
+    this.out.gain.value = 1;
+
+    this.bus.connect(this.softTone);
+    this.softTone.connect(this.softGlue);
+    this.softGlue.connect(this.out);
+  }
+  setSoft(on: boolean): void {
+    const was = this.soft;
+    this.soft = on;
+    const ctx = this.engine.ctx;
+    this.softTone.frequency.setTargetAtTime(on ? this.softCutoff : 20000, ctx.currentTime, 0.08);
+    this.softGlue.threshold.setTargetAtTime(on ? -30 : 0, ctx.currentTime, 0.08);
+    this.softGlue.ratio.setTargetAtTime(on ? 4 : 1, ctx.currentTime, 0.08);
+    this.out.gain.setTargetAtTime(on ? 0.85 : 1, ctx.currentTime, 0.08);
+
+    // the module and the original share the deck's reverb, so they sit in the same room
+    if (on && !was) {
+      const d = this.deck();
+      const list = this.swapStems(d);
+      this.softSpace = list.map(i => [d.stemReverbSend[i] ?? 0, d.stemFxVol[i] ?? 0.4]);
+      list.forEach(i => {
+        d.setStemFxVol(i, Math.max(d.stemFxVol[i] ?? 0.4, 0.7));
+        d.setStemReverbSend(i, Math.max(d.stemReverbSend[i] ?? 0, 0.22));
+      });
+    } else if (!on && was) {
+      const d = this.deck();
+      const list = this.swapStems(d);
+      this.softSpace.forEach((saved, k) => {
+        d.setStemReverbSend(list[k], saved[0]);
+        d.setStemFxVol(list[k], saved[1]);
+      });
+      this.softSpace = [];
+    }
+
+    if (this.swapped) {
+      const d = this.deck();
+      const list = this.swapStems(d);
+      list.forEach((i, k) => {
+        const before = this.swapBefore[k] ?? 1;
+        d.rampStemVol(i, on ? SOFT_BED * before : 0, 8 * spb(d));
+      });
+    }
     jamChanged();
   }
 
@@ -184,17 +254,19 @@ abstract class JamModule {
   // the settings kept between sessions (what is playing right now is not: nothing starts by itself at the next launch)
   protected abstract keep(): string[];
   snapshot(): Record<string, unknown> {
-    const o: Record<string, unknown> = { pref: this.pref };
+    const o: Record<string, unknown> = { pref: this.pref, soft: this.soft };
     for (const k of this.keep()) o[k] = (this as unknown as Record<string, unknown>)[k];
     return o;
   }
   restore(o: Record<string, unknown> | undefined) {
     if (!o) return;
     for (const k of ["pref", ...this.keep()]) if (k in o && typeof o[k] === typeof (this as unknown as Record<string, unknown>)[k]) (this as unknown as Record<string, unknown>)[k] = o[k];
+    if (typeof o.soft === "boolean") this.setSoft(o.soft);
   }
   // RÀZ: every held effect off, every setting back to its default
   reset() {
     if (this.swapped) this.toggleSwap(); // RAZ brings the original stem back
+    if (this.soft) this.setSoft(false);
     for (const id of [...this.pressed]) this.press(id, false);
     this.pressed.clear();
     this.resetFields();
@@ -288,6 +360,7 @@ const ACID: Record<number, [ "R" | "O" | "5" | "3", string]> = {
   0: ["R", "a"], 2: ["O", "s"], 3: ["R", ""], 5: ["5", ""], 6: ["O", "a"], 8: ["R", ""], 10: ["3", "s"], 11: ["R", ""], 13: ["O", "as"], 14: ["R", ""],
 };
 export class BassLab extends JamModule {
+  protected softCutoff = 1500; // the buzz of the synth bass rounded off with DOUCE
   readonly sub: SubVoice;
   readonly lineSynth: BassVoice;
   subLevel = 0; // 0..1, the sub doubles the song's own bass notes
@@ -467,6 +540,7 @@ export class BassLab extends JamModule {
 
 // ---------------- VOX FX ----------------
 export class VoxFx extends JamModule {
+  protected softCutoff = 4500; // the words stay clear with DOUCE
   readonly choir: ChoirVoice;
   readonly sampledChoir: SampledInstrument;
   harmony = false;
@@ -1111,6 +1185,7 @@ export const SEQ_PRESETS: Record<"four" | "house" | "break" | "trap" | "techno" 
   clear: { kick: [], snare: [], clap: [], hat: [], open: [], tom: [], perc: [] },
 };
 export class BeatLab extends JamModule {
+  protected softCutoff = 7000; // the hats and cymbals keep their air with DOUCE
   readonly kit: DrumKit;
   readonly sampledKit: SampledKit;
   replay = false; // REPRISE: every drum hit of the song replayed on the chosen kit (on with REMPLACER) // a real drum machine, played instead of the synthetic kit once loaded
