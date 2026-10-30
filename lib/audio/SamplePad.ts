@@ -1,3 +1,5 @@
+import { SampledKit } from "./sampledKit";
+import { DRUM_KITS, type DrumPart } from "@/lib/drumKits";
 import { nextGridTime } from "./rhythmMath";
 import { gridSlices, hitSlices, type PadSlice } from "./padSlices";
 export const PAD_SLICES = 16;
@@ -47,6 +49,7 @@ export interface PadSettings {
   reverb: number;
   source: number; // index in PAD_SOURCES (0 = the whole mix)
   quant: boolean; // AU TEMPS: a key waits for the next grid line
+  kit: number; // BATTERIE sounds: 0 synthetic, i = DRUM_KITS[i - 1]
   onHits: boolean; // SUR LES COUPS: each key starts on one of the next real hits instead of the grid
 }
 
@@ -64,6 +67,7 @@ export const DEFAULT_PAD_SETTINGS: PadSettings = {
   source: 0,
   onHits: false,
   quant: false,
+  kit: 0,
 };
 
 interface Voice {
@@ -382,6 +386,36 @@ export class SamplePad {
     return buffer;
   }
 
+  // BATTERIE on a real kit: the drum keys take Beat Lab's kits (machines or acoustic), the effect keys stay synthetic
+  private kit: SampledKit | null = null;
+  private static readonly DRUM_KEY_PARTS: (DrumPart | null)[] = ["kick", "kick", "snare", "clap", "hat", "open", "rim", "tom", "tom", "cymbal", null, null, null, null, null, null];
+
+  kitStatus(): string | null {
+    if (this.settings.kit === 0) return null;
+    const kitLabel = DRUM_KITS[this.settings.kit - 1].label;
+    if (this.kit?.ready()) return `${kitLabel} prête`;
+    if (this.kit?.failed) return `${kitLabel} indisponible (réseau ?) : sons synthétiques`;
+    return `${kitLabel} : chargement`;
+  }
+
+  private loadKit(): void {
+    if (this.settings.kit === 0) return;
+    const def = DRUM_KITS[this.settings.kit - 1];
+    if (!def) return;
+    this.kit ??= new SampledKit(this.ctx);
+    void this.kit.load(def.id).then(() => this.onKitChange?.());
+  }
+
+  private onKitChange: (() => void) | null = null; // the panel re-renders when a kit has loaded
+  setKitListener(fn: (() => void) | null): void { this.onKitChange = fn; }
+
+  // the buffer and level of drum key `index`: the kit's sound when it has this part, else null (the synthetic one plays)
+  private kitSample(index: number): { buffer: AudioBuffer; gain: number } | null {
+    if (this.settings.kit === 0 || !this.kit?.ready()) return null;
+    const part = SamplePad.DRUM_KEY_PARTS[index];
+    return part ? this.kit.sample(part, 0.85) : null;
+  }
+
   triggerDrum(index: number): void {
     if (index < 0 || index >= 16) return;
 
@@ -389,7 +423,8 @@ export class SamplePad {
       this.drumBuffers = this.generateDrumBuffers();
     }
 
-    const buffer = this.drumBuffers[index];
+    const ks = this.kitSample(index);
+    const buffer = ks?.buffer ?? this.drumBuffers[index];
     if (!buffer) return;
 
     if (this.voices.has(index)) {
@@ -401,21 +436,21 @@ export class SamplePad {
     source.playbackRate.value = 2 ** (this.settings.pitch / 12);
 
     const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(0, this.ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(1, this.ctx.currentTime + 0.004);
+    const at = this.ctx.currentTime + this.quantDelay();
+    gain.gain.setValueAtTime(0, at);
+    gain.gain.linearRampToValueAtTime(ks?.gain ?? 1, at + 0.004);
 
     source.connect(gain);
     gain.connect(this.filter);
 
-    const startTime = this.ctx.currentTime;
-    source.start(0, 0);
-    source.stop(startTime + buffer.duration);
+    source.start(at, 0);
+    source.stop(at + buffer.duration);
 
     const voice: Voice = {
       source,
       gain,
       gateInterval: null,
-      startTime,
+      startTime: at,
     };
 
     this.voices.set(index, voice);
@@ -426,6 +461,7 @@ export class SamplePad {
       }
     };
   }
+
 
   // the audio and the span of key `slice` right now: from the chosen stem (the mix when stems do not play), on the grid or on the real hits
   private sliceAt(slice: number): { buffer: AudioBuffer; start: number; len: number } | null {
@@ -586,6 +622,9 @@ export class SamplePad {
       this.echoSend.gain.value = this.settings.echo;
     } else if (key === "source") {
       this.settings.source = typeof value === "number" ? Math.max(0, Math.min(PAD_SOURCES.length - 1, Math.round(value))) : 0;
+    } else if (key === "kit") {
+      this.settings.kit = typeof value === "number" ? Math.max(0, Math.min(DRUM_KITS.length, Math.round(value))) : 0;
+      this.loadKit();
     } else if (key === "quant") {
       this.settings.quant = typeof value === "boolean" ? value : false;
     } else if (key === "onHits") {

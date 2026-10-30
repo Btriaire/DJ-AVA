@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ModulePresetBar } from "./ModulePresetBar";
 import type { DJEngine } from "@/lib/audio/engine";
+import { DRUM_KITS } from "@/lib/drumKits";
 import { PAD_SLICES, PAD_SOURCES, ECHO_DIVS, SLICE_DIVS, DRUM_NAMES, type PadBank, type PadSettings } from "@/lib/audio/SamplePad";
 import { Knob } from "./Knob";
 
@@ -37,6 +38,12 @@ export const DJKeyboard = ({ engine }: Props) => {
     engine.keyPad.setBank(next);
     setBank(next);
   };
+
+  // a kit loads in the background: the status line follows it
+  useEffect(() => {
+    engine.keyPad.setKitListener(() => setSettings({ ...engine.keyPad.settings }));
+    return () => engine.keyPad.setKitListener(null);
+  }, [engine]);
 
   const setSetting = (key: keyof PadSettings, value: number | boolean) => {
     engine.keyPad.set(key, value);
@@ -312,6 +319,24 @@ export const DJKeyboard = ({ engine }: Props) => {
             >
               AU TEMPS
             </button>
+            {bank === "drums" && (
+              <div className="flex flex-col gap-1">
+                <select
+                  aria-label="Sons de la batterie"
+                  className="hw-input text-[11px]"
+                  value={settings.kit}
+                  onChange={(e) => setSetting("kit", Number(e.target.value))}
+                >
+                  <option value={0}>Sons synthétiques</option>
+                  {DRUM_KITS.map((k, i) => (
+                    <option key={k.id} value={i + 1}>{k.label} · {k.style}</option>
+                  ))}
+                </select>
+                {engine.keyPad.kitStatus() && (
+                  <div className="text-[10px] text-[var(--jam-text-3)]" aria-live="polite">{engine.keyPad.kitStatus()}</div>
+                )}
+              </div>
+            )}
             {(() => {
               const deck = keySource === "A" ? engine.deckA : engine.deckB;
               if (settings.source > 0 && !(deck.stemsActive && deck.stemReady)) {

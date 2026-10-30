@@ -158,6 +158,23 @@ export class SampledKit {
     if (!this.current) return false;
     return CORE_PARTS.every(part => this.has(part));
   }
+  // the sound a hit of `part` would play now (its velocity layer, the next take), for another player to use
+  sample(part: DrumPart, vel: number): { buffer: AudioBuffer; gain: number } | null {
+    if (!this.has(part)) return null;
+    let buffer: AudioBuffer | undefined;
+    let gain: number;
+    const s = this.sfzParts[part];
+    if (s) {
+      const r = pickRegion(s.regions, s.key, Math.round(1 + vel * 126), this.rr++);
+      buffer = r ? s.buffers.get(r) : undefined;
+      gain = (0.35 + 0.65 * vel) * 10 ** ((r?.volume ?? 0) / 20);
+    } else {
+      buffer = this.buffers[part];
+      gain = vel;
+    }
+    return buffer ? { buffer, gain } : null;
+  }
+
   has(part: DrumPart): boolean {
     return this.buffers[part] !== undefined || this.sfzParts[part] !== undefined;
   }
