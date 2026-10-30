@@ -304,10 +304,20 @@ export const DJKeyboard = ({ engine }: Props) => {
             >
               SUR LES COUPS
             </button>
+            <button
+              className={`hw-btn ${settings.quant ? "hw-btn-on" : ""}`}
+              aria-pressed={settings.quant}
+              onClick={() => setSetting("quant", !settings.quant)}
+              title="Une touche attend la prochaine double croche (le prochain temps pour une phrase) : on peut jouer large et rester en rythme"
+            >
+              AU TEMPS
+            </button>
             {(() => {
               const deck = keySource === "A" ? engine.deckA : engine.deckB;
               if (settings.source > 0 && !(deck.stemsActive && deck.stemReady)) {
                 return <div className="text-[10px] text-[var(--jam-text-3)]" aria-live="polite">Stems non joués sur cette platine : les tranches viennent du morceau entier.</div>;
+              } else if (PAD_SOURCES[settings.source]?.id === "phrases") {
+                return <div className="text-[10px] text-[var(--jam-text-3)]" aria-live="polite">{deck.stemMap?.voice?.length ? "Chaque touche = une phrase chantée, à partir de la mesure en cours." : "Voix pas encore analysée : les touches restent sur la grille."}</div>;
               } else if (settings.onHits && !deck.stemNotes) {
                 return <div className="text-[10px] text-[var(--jam-text-3)]" aria-live="polite">Coups du morceau pas encore analysés : les touches restent sur la grille.</div>;
               } else if (settings.onHits) {

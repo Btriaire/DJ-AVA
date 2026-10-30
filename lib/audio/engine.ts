@@ -10,7 +10,7 @@ import { SoundFX } from "./SoundFX";
 import { DrumMachine } from "./DrumMachine";
 import { DjSynth } from "./DjSynth";
 import { Slicer } from "./Slicer";
-import { mergeEvents } from "./padSlices";
+import { mergeEvents, phraseStarts } from "./padSlices";
 import { voiceNotes } from "./jamVoiceNotes";
 import { MidiManager } from "./midi";
 import { idbPutBlob, idbGetBlob, idbDelBlob } from "../library";
@@ -491,11 +491,12 @@ export class DJEngine {
       position: d.position(),
       stem: (name) => (d.stemsActive && d.stemReady && d.stemIndex(name) >= 0 ? d.getStemBuffer(d.stemIndex(name)) : null),
       events: (name) => this.keyEvents(d, name),
+      rate: d.playbackRate,
     };
   }
 
   private keyEvents(d: Deck, name: string): number[] {
-    const key = (name === "vocals" ? d.stemMap?.voice : d.stemNotes) as object | undefined;
+    const key = (name === "vocals" || name === "phrases" ? d.stemMap?.voice : d.stemNotes) as object | undefined;
     if (!key) return [];
 
     let cache = this.keyEventCache.get(key);
@@ -518,6 +519,11 @@ export class DJEngine {
       case "other":
         times = mergeEvents([(d.stemNotes?.other ?? []).map(h => h[0])]);
         break;
+      case "phrases": {
+        const step = d.stemMap?.voiceStep ?? 0;
+        times = phraseStarts(voiceNotes(d.stemMap?.voice ?? [], step).map((n) => ({ start: n.k0 * step, end: n.k1 * step })));
+        break;
+      }
       case "vocals":
         times = voiceNotes(d.stemMap?.voice ?? [], d.stemMap?.voiceStep ?? 0).map(n => n.k0 * (d.stemMap?.voiceStep ?? 0));
         break;

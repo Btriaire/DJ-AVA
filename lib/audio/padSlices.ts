@@ -61,6 +61,20 @@ function assert(cond: boolean, msg: string): void {
   if (!cond) throw new Error(msg);
 }
 
+export function phraseStarts(notes: { start: number; end: number }[], gap = 0.35): number[] {
+  const starts: number[] = [];
+  let prevEnd = -Infinity;
+
+  for (const note of notes) {
+    if (note.start - prevEnd >= gap) {
+      starts.push(note.start);
+    }
+    prevEnd = Math.max(prevEnd, note.end);
+  }
+
+  return starts;
+}
+
 export function selfTest(): void {
   const gridResult = gridSlices(10, 0.5, 4, 11.2);
   assert(gridResult.length === 3, "gridSlices length");
@@ -97,4 +111,8 @@ export function selfTest(): void {
 
   assert(hitSlices([], 0, 16, 1, 10).length === 0, "hitSlices empty");
   assert(hitSlices(ev, 9, 4, 1, 10).length === 0, "hitSlices out of range");
+  assert(JSON.stringify(phraseStarts([])) === JSON.stringify([]), 'phraseStarts([]) should return an empty array');
+  assert(JSON.stringify(phraseStarts([{ start: 1, end: 1.5 }, { start: 1.6, end: 2 }, { start: 2.5, end: 3 }, { start: 3.1, end: 3.2 }])) === JSON.stringify([1, 2.5]), 'phraseStarts with 0.1 gap should return [1, 2.5]');
+  assert(JSON.stringify(phraseStarts([{ start: 0, end: 4 }, { start: 1, end: 1.2 }, { start: 4.2, end: 5 }])) === JSON.stringify([0]), 'phraseStarts with 0.35 gap should return [0]');
+  assert(JSON.stringify(phraseStarts([{ start: 0, end: 1 }, { start: 2, end: 3 }], 2)) === JSON.stringify([0]), 'phraseStarts with custom gap should return [0]');
 }
