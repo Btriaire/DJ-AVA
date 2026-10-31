@@ -14,6 +14,7 @@ import { Fader } from "@/components/Fader";
 import { SynthPanel } from "@/components/SynthPanel";
 import { SamplerPanel } from "@/components/SamplerPanel";
 import { Dx7LabPanel } from "@/components/jam/Dx7LabPanel";
+import { VoiceLabPanel } from "@/components/jam/VoiceLabPanel";
 import { SolarLabPanel } from "@/components/jam/SolarLabPanel";
 import { SoundFxPanel } from "@/components/SoundFxPanel";
 import { DrumMachinePanel } from "@/components/DrumMachinePanel";
@@ -283,6 +284,7 @@ export default function Home() {
   type Modules = {
     synth: boolean;
     dx7: boolean;
+    voicelab: boolean;
     solar42: boolean;
     sampler: boolean;
     soundfx: boolean;
@@ -327,6 +329,7 @@ export default function Home() {
   const DEFAULT_MODULES: Modules = {
     synth: false,
     dx7: false,
+    voicelab: false,
     solar42: false,
     sampler: false,
     soundfx: false,
@@ -451,6 +454,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
     { key: "drums", label: "Boîte à rythmes", scope: "global", category: "Instruments & Sources" },
     { key: "dance", label: "Montée & Drop · Build-up sur 4, 8 ou 16 temps, drop sur le temps, pompe des stems", scope: "global", category: "Performance DJ" },
     { key: "jambass", label: "Bass Lab · Sub sur les notes de basse, pompe sur les kicks, wobble, drop", scope: "global", category: "Stems en live" },
+    { key: "voicelab", label: "Voix humaines · Doublage, harmonies, octave, voix femme, homme, enfant, chuchoté, foule (préparées à l'avance)", scope: "global", category: "Stems en live" },
     { key: "jamvox", label: "Vox FX · Jets en rythme sur la voix, harmonie à la tierce", scope: "global", category: "Stems en live" },
     { key: "jamsynth", label: "Synth · Arpèges, stabs et nappes dans la tonalité du morceau", scope: "global", category: "Stems en live" },
     { key: "jambeat", label: "Beat Lab · Kick et clap sur les coups du morceau, charleston, rolls", scope: "global", category: "Stems en live" },
@@ -1613,6 +1617,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
                 />
                 <RackRow onClose={closeRackModule} left={[["dx7", modules.dx7 && <Dx7LabPanel key={`dx7-${resetKey}`} engine={engine} />]]} right={[]} />
                 <RackRow onClose={closeRackModule} left={[["solar42", modules.solar42 && <SolarLabPanel key={`solar42-${resetKey}`} engine={engine} />]]} right={[]} />
+                <RackRow onClose={closeRackModule} left={[["voicelab", modules.voicelab && <VoiceLabPanel key={`voicelab-${resetKey}`} engine={engine} />]]} right={[]} />
               </div>
             )}
 

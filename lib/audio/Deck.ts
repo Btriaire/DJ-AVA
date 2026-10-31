@@ -1506,7 +1506,7 @@ export class Deck {
 
   // query-string suffix carrying the current quality opts, shared by every
   // /api/stems/* call so cache hits/misses stay consistent across them
-  private stemOptsQS(): string {
+  stemOptsQS(): string {
     return `${this.stemUltra ? "&ultra=1" : ""}${this.stemLossless ? "&wav=1" : ""}${this.stemDenoiseVocals ? "&denoise=1" : ""}`;
   }
 

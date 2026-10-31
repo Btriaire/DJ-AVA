@@ -4,6 +4,7 @@ import { backfillVocalPitch } from "@/lib/vocalPitch";
 import { backfillStemNotes } from "@/lib/stemNotes";
 import { analyseStems } from "@/lib/stemAnalysis";
 import { analyseFx } from "@/lib/fxAnalysis";
+import { backfillVoiceLayers } from "@/lib/vocalLayers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +22,7 @@ export async function GET(req: NextRequest) {
     void backfillStemNotes(hash, m, opts);
     backfillVocalPitch(hash, m, opts);
     void analyseFx(hash, m, opts).catch(() => null); // effects analyses, made once in the background
+    backfillVoiceLayers(hash, m, opts); // human voice layers, once the vocal pitch exists
   }
   return NextResponse.json({ map });
 }

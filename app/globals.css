@@ -1522,4 +1522,5 @@ body.has-zoom::before {
 :root {
   --jam-solar: oklch(0.80 0.12 230);
   --jam-dx7: oklch(0.82 0.14 150);
+  --jam-voice: oklch(0.84 0.11 75);
 }
