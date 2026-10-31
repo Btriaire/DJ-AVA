@@ -22,9 +22,9 @@ interface RawTrack {
   album?: { cover_big?: string; cover_medium?: string; cover_xl?: string };
 }
 
-export async function searchDeezer(query: string): Promise<DeezerTrack[]> {
+export async function searchDeezer(query: string, index = 0): Promise<DeezerTrack[]> {
   if (!query.trim()) return [];
-  const url = `${API}/search?q=${encodeURIComponent(query)}&limit=60`;
+  const url = `${API}/search?q=${encodeURIComponent(query)}&limit=60&index=${index}`;
   const r = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(8000) });
   if (!r.ok) throw new Error(`Deezer ${r.status}`);
   const j = (await r.json()) as { data?: RawTrack[] };

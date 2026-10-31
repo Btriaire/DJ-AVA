@@ -1,4 +1,5 @@
 "use client";
+import { MAX_PAGES, mergeResults, searchUrl } from "@/lib/searchMore";
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { DJEngine } from "@/lib/audio/engine";
 import {
@@ -183,6 +184,8 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   const [q, setQ] = useState(initialSearch?.q ?? "");
   const [durKey, setDurKey] = useState<string>(initialSearch?.durKey ?? "all"); // YouTube duration filter
   const [results, setResults] = useState<AudiusTrack[]>(initialSearch?.results ?? []);
+  const [morePage, setMorePage] = useState(0); // last page asked (PLUS DE TITRES)
+  const [moreAdded, setMoreAdded] = useState(-1); // how many new titles the last PLUS DE TITRES brought (-1 = none asked)
   useEffect(() => {
     try {
       sessionStorage.setItem(SEARCH_STATE_KEY, JSON.stringify({ tab, q, durKey, results }));
@@ -969,19 +972,28 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   }
 
   // --- Audius / YouTube search ---
-  async function search(durOverride?: string) {
-    if (!q.trim()) return;
+  // more = PLUS DE TITRES: the next page of the same search, added after the results already shown
+  async function search(durOverride?: string, more = false) {
+    if (!q.trim() || tab === "files" || tab === "playlists" || tab === "auto") return;
+    const page = more ? morePage + 1 : 0;
+    if (more && page >= MAX_PAGES) return;
     setLoading(true);
     try {
-      let url = `/api/${tab}/search?q=${encodeURIComponent(q)}`;
-      if (tab === "youtube" || tab === "soundcloud") {
-        const f = DUR_FILTERS.find((d) => d.key === (durOverride ?? durKey)) ?? DUR_FILTERS[0];
-        url += `&n=60&min=${f.min}&max=${f.max}`; // bigger pool + duration bounds
-      }
-      const r = await fetch(url);
+      const f = DUR_FILTERS.find((d) => d.key === (durOverride ?? durKey)) ?? DUR_FILTERS[0];
+      const r = await fetch(searchUrl(tab, q, page, f));
       const j = await r.json();
       if (j.error) flash(j.error);
-      setResults(j.tracks ?? []);
+      const got: AudiusTrack[] = j.tracks ?? [];
+      if (more) {
+        const m = mergeResults(results, got);
+        setResults(m.list);
+        setMoreAdded(m.added);
+        if (!m.added) flash("Plus de nouveaux titres pour cette recherche");
+      } else {
+        setResults(got);
+        setMoreAdded(-1);
+      }
+      setMorePage(page);
     } catch (e) {
       flash((e as Error).message);
     } finally {
@@ -1021,21 +1033,31 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   }
 
   // --- AI auto-playlist: build a set of singles close in style / BPM / sound ---
-  async function generateAuto(seed: Seed, opts?: { sameArtist?: boolean }) {
+  // more = PLUS DE PROPOSITIONS: the next proposals for the same seed, after the ones shown
+  async function generateAuto(seed: Seed, opts?: { sameArtist?: boolean; more?: boolean }) {
     const only = opts?.sameArtist ?? sameArtist;
+    const more = !!opts?.more;
     setTab("auto");
-    setAutoKeywords(null);
-    setAutoSeed(seed);
-    setAutoTracks([]);
+    if (!more) {
+      setAutoKeywords(null);
+      setAutoSeed(seed);
+      setAutoTracks([]);
+    }
     setAutoLoading(true);
     try {
       const r = await fetch("/api/ai/playlist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...seed, sameArtist: only, maxDurationMin: autoMaxDurationMin }),
+        body: JSON.stringify({ ...seed, sameArtist: only, maxDurationMin: autoMaxDurationMin, exclude: more ? autoTracks.map((t) => t.id) : undefined }),
       });
       const j = await r.json();
       if (j.error) flash(j.error);
+      if (more) {
+        const m = mergeResults(autoTracks, (j.tracks ?? []) as AudiusTrack[]);
+        setAutoTracks(m.list);
+        if (!m.added) flash("Plus de nouvelles propositions pour cette graine");
+        return;
+      }
       setAutoTracks(j.tracks ?? []);
       setAutoUsedAI(!!j.usedAI);
       if ((j.tracks ?? []).length === 0 && !j.error)
@@ -2866,6 +2888,18 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                   </li>
                 ))}
               </ul>
+              {results.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => search(undefined, true)}
+                  disabled={loading || morePage + 1 >= MAX_PAGES || moreAdded === 0}
+                  className="hw-btn w-full px-3 py-2 text-[12px] font-bold disabled:opacity-40"
+                  style={{ ["--led" as string]: SRC_BADGE[tab as TrackSource]?.color ?? COLOR_B }}
+                  title="Demande la suite des résultats de cette recherche, ajoutée sous la liste (sans doublons)"
+                >
+                  {loading ? "Recherche…" : moreAdded === 0 ? "Plus rien de nouveau" : morePage + 1 >= MAX_PAGES ? "Maximum atteint" : `PLUS DE TITRES (${results.length} affichés)`}
+                </button>
+              )}
             </div>
           )}
 
@@ -3102,6 +3136,18 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                     );
                   })}
                 </ul>
+              )}
+              {autoSeed && autoTracks.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void generateAuto(autoSeed, { more: true })}
+                  disabled={autoLoading}
+                  className="hw-btn w-full px-3 py-2 text-[12px] font-bold disabled:opacity-40"
+                  style={{ ["--led" as string]: "#fbbf24" }}
+                  title="Demande d'autres titres proches de la même graine, ajoutés sous la liste (sans doublons)"
+                >
+                  {autoLoading ? "Recherche…" : `PLUS DE PROPOSITIONS (${autoTracks.length} affichées)`}
+                </button>
               )}
             </div>
           )}

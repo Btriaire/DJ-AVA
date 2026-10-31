@@ -41,6 +41,7 @@ interface SeedIn {
   bpm?: number | null;
   sameArtist?: boolean; // restrict the whole set to the seed's artist/group
   maxDurationMin?: number | null; // hard cap; null = no cap (long tracks are still soft-penalized)
+  exclude?: string[]; // ids already proposed (PLUS DE PROPOSITIONS asks for the next ones)
 }
 
 // Ask Groq (OpenAI-compatible) to expand a seed into similar search phrases.
@@ -197,7 +198,9 @@ export async function POST(req: NextRequest) {
     }
 
     const LIMIT = 32;
+    const skip = new Set(Array.isArray(seed.exclude) ? seed.exclude.filter((x) => typeof x === "string").slice(0, 400) : []);
     const ranked = [...best.values()]
+      .filter(({ t }) => !skip.has(t.id))
       .map(({ t, w }) => ({ t, s: score(seed, t, w) }))
       .sort((a, b) => b.s - a.s)
       .slice(0, LIMIT)
