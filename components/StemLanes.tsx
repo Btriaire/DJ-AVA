@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import type { Deck } from "@/lib/audio/Deck";
 
 const STEM_COLORS: Record<string, string> = {
-  vocals: "#f472b6",
+  vocals: "#fdba74",
   drums: "#fb923c",
   bass: "#a78bfa",
   other: "#38bdf8",

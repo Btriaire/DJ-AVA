@@ -266,7 +266,7 @@ export function HarmonyPanel({ engine }: { engine: DJEngine }) {
             <g key={i}>
               <path
                 d={sector(r0, r1, angle - 0.24, angle + 0.24)}
-                fill={`hsl(${(n - 1) * 30} 55% 28%)`}
+                fill={`hsl(${camelotHue(`${n}A`)} 55% 28%)`}
                 stroke={compatA ? "#10b981" : compatB ? "#fbbf24" : "#000"}
                 strokeWidth={compatA || compatB ? 2 : 1}
               />

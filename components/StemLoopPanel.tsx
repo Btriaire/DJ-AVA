@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import type { Deck } from "../lib/audio/Deck";
 import { Knob } from "./Knob";
 
-const HUES = ["#f472b6", "#fb923c", "#38bdf8", "#a3e635", "#a78bfa", "#facc15"];
+const HUES = ["#fdba74", "#fb923c", "#38bdf8", "#a3e635", "#a78bfa", "#facc15"];
 const LENGTHS = [1/8, 1/4, 1/2, 1, 2, 4, 8, 16];
 const LABELS = ["1/8","1/4","1/2","1","2","4","8","16"];
 const ROLL_OPTS = [null, 1, 2, 4, 8];

@@ -475,7 +475,7 @@ export function TempoRuler({ bpm, median }: { bpm?: number; median?: number }) {
 // the rest of a title's card: its stems as four lit bars, its audio quality as signal bars, its length on a 10 min scale
 export function StemQuad({ state, pct }: { state: "none" | "queued" | "download" | "run" | "done" | "error"; pct: number | null }) {
   const stems = [
-    { name: "voix", color: "#f472b6" },
+    { name: "voix", color: "#fdba74" },
     { name: "batterie", color: "#fb923c" },
     { name: "basse", color: "#a78bfa" },
     { name: "autres", color: "#38bdf8" },

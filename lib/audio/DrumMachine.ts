@@ -5,12 +5,12 @@ export type DrumVoice = "kick" | "snare" | "clap" | "hatc" | "hato" | "tom" | "r
 export const DRUM_VOICES: { id: DrumVoice; label: string; color: string }[] = [
   { id: "kick", label: "KICK", color: "#ff6a3d" },
   { id: "snare", label: "SNARE", color: "#fbbf24" },
-  { id: "clap", label: "CLAP", color: "#f472b6" },
+  { id: "clap", label: "CLAP", color: "#fdba74" },
   { id: "hatc", label: "HAT F", color: "#38bdf8" },
   { id: "hato", label: "HAT O", color: "#2dd4bf" },
   { id: "tom", label: "TOM", color: "#a78bfa" },
   { id: "rim", label: "RIM", color: "#a3e635" },
-  { id: "perc", label: "PERC", color: "#e879f9" },
+  { id: "perc", label: "PERC", color: "#fbbf24" },
 ];
 
 export type DrumKit = "808" | "909" | "techno";

@@ -70,7 +70,7 @@ export const STEM_FR: Record<string, string> = {
 };
 
 export const STEM_COLOR: Record<string, string> = {
-  vocals: "#f472b6",
+  vocals: "#fdba74",
   drums: "#fb923c",
   bass: "#a78bfa",
   other: "#38bdf8",

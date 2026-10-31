@@ -58,7 +58,7 @@ const ACCENTS = [
   "#34d399",
   "#ffcc00",
   "#f97316",
-  "#f472b6",
+  "#fdba74",
 ];
 
 export type RadioDest = "relay" | "A" | "B" | "open";
@@ -438,7 +438,7 @@ export default function RadioView({
         done: voiced,
         total: vTotal,
         state: failed ? "warn" : left > 0 ? "running" : "done",
-        color: "#e879f9",
+        color: "#fbbf24",
         detail: failed
           ? "Le serveur de voix ne répond pas : l'émission jouera sans annonces"
           : left > 0

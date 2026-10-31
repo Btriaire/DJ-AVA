@@ -178,6 +178,7 @@ export function bestShift(from: KeyResult, to: KeyResult, maxShift = 6): number 
   return bestS;
 }
 
+// 12 distinct hues from red to violet, never pink or magenta (the app's palette rule)
 export function camelotHue(camelot: string): number {
-  return (parseInt(camelot, 10) - 1) * 30;
+  return Math.round((parseInt(camelot, 10) - 1) * 24);
 }

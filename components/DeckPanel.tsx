@@ -1349,7 +1349,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                         disabled={!deck.stemsActive}
                         style={
                           deck.stemSynthIndex === i
-                            ? { background: "#e879f9", color: "#0a0a0a" }
+                            ? { background: "#fbbf24", color: "#0a0a0a" }
                             : { background: "rgba(255,255,255,0.08)", color: "#b0b0b0" }
                         }
                         title="Remplace ce stem par le Synthé DJ (il passe par les filtres et effets de ce stem). Clique à nouveau pour rendre le stem"

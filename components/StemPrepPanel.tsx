@@ -184,7 +184,7 @@ export function StemPrepPanel({ engine }: { engine: DJEngine }) {
                                 stem === "drums" ? "#fb923c" :
                                 stem === "bass" ? "#a78bfa" :
                                 stem === "other" ? "#38bdf8" :
-                                "#f472b6",
+                                "#fdba74",
                             }}
                           >
                             {STEM_FR[stem] ?? stem}

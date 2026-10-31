@@ -7,7 +7,7 @@ export type SSPadsProps = {
 };
 
 const KEYS = ["A","S","D","F","G","H","J","K","Z","X","C","V","B","N","M",","] as const;
-const ROW_COLORS = ["#5ef2ff", "#a78bfa", "#fbbf24", "#f472b6"] as const;
+const ROW_COLORS = ["#5ef2ff", "#a78bfa", "#fbbf24", "#fdba74"] as const;
 
 export function SSPads({ onPlay, onRelease, sliceLabel }: SSPadsProps) {
   const [pressed, setPressed] = useState(new Set<number>());

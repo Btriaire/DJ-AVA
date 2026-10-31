@@ -75,7 +75,7 @@ const VIDEO_COLORS: Record<VideoLevel | "unknown", string> = {
 // (phone: check, sleeve, title, stems — BPM, key and length go under the title)
 // list rows: compact in a narrow tray; from 56rem of tray width the tempo gets its own wide column, plus stems and length columns
 const ROW_COLS = "[grid-template-columns:28px_40px_minmax(0,1fr)_auto] sm:[grid-template-columns:28px_40px_minmax(0,1fr)_56px_66px_112px_64px] @4xl:[grid-template-columns:28px_44px_minmax(220px,1.2fr)_minmax(180px,1fr)_96px_172px_150px_64px]";
-const LIST_ACCENTS = ["#22d3ee", "#34d399", "#ffcc00", "#a78bfa", "#f97316", "#f472b6"];
+const LIST_ACCENTS = ["#22d3ee", "#34d399", "#ffcc00", "#a78bfa", "#f97316", "#fdba74"];
 const DUR_OPTIONS = DUR_FILTERS.map((f) => [f.key, f.label] as const);
 const RESULT_AUDIO_OPTIONS = [["all", "Toutes"], ["HQ", "HQ et plus"], ["HR", "HiRes"]] as const;
 const TRAY_AUDIO_OPTIONS = [["all", "Toutes"], ["HR", "HiRes"], ["HQ", "HQ"], ["STD", "Standard"], ["LQ", "Basse"], ["unknown", "?"]] as const;

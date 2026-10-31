@@ -16,6 +16,7 @@ import { SamplerPanel } from "@/components/SamplerPanel";
 import { Dx7LabPanel } from "@/components/jam/Dx7LabPanel";
 import { VoiceLabPanel } from "@/components/jam/VoiceLabPanel";
 import { ConsolePanel } from "@/components/ConsolePanel";
+import { SettingsBackup } from "@/components/SettingsBackup";
 import { SolarLabPanel } from "@/components/jam/SolarLabPanel";
 import { SoundFxPanel } from "@/components/SoundFxPanel";
 import { DrumMachinePanel } from "@/components/DrumMachinePanel";
@@ -933,7 +934,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
             <button
               onClick={() => { setView("radio"); setShowLibrary(false); }}
               className={`inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${view === "radio" ? "hw-btn-on shadow-sm" : "text-neutral-400 hover:text-neutral-200"}`}
-              style={{ ["--led" as string]: "#e879f9" }}
+              style={{ ["--led" as string]: "#fbbf24" }}
               title="Radio-AVA : donne tes artistes préférés, elle cherche sur YouTube, analyse les BPM et compose des sets qui s'enchaînent"
             >
               <IconRadio className="w-3.5 h-3.5" />
@@ -1227,6 +1228,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
                       {showYouTube ? "ON" : "OFF"}
                     </button>
                   </label>
+                  <SettingsBackup />
                 </div>
               )}
             </div>

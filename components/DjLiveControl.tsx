@@ -12,7 +12,7 @@ export function DjLiveControl() {
         onClick={() => setDjLive({ on: !live.on })}
         aria-pressed={live.on}
         className={`hw-btn inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold ${live.on ? "hw-btn-on" : ""}`}
-        style={{ ["--led" as string]: "#e879f9", color: live.on ? "#e879f9" : undefined }}
+        style={{ ["--led" as string]: "#fbbf24", color: live.on ? "#fbbf24" : undefined }}
         title="DJ intelligent : quand il est actif, il intervient sur les morceaux qui jouent (filtres, échos, réverbs, stems...), sur un set ou sur ce que tu joues à la main. Sa force règle la fréquence et l'intensité."
       >
         DJ {live.on ? "ON" : "OFF"}
@@ -42,7 +42,7 @@ export function DjLiveControl() {
       {live.on && (
         <span
           className="text-[11px] font-bold"
-          style={{ color: live.stems > 0 ? "#e879f9" : live.stemsAvail > 0 ? "#f59e0b" : "#9ca3af" }}
+          style={{ color: live.stems > 0 ? "#fbbf24" : live.stemsAvail > 0 ? "#f59e0b" : "#9ca3af" }}
           title={
             live.stems > 0
               ? "Le morceau qui joue est joué par ses stems : le DJ les utilise (batterie, voix, basse...)"
@@ -57,11 +57,11 @@ export function DjLiveControl() {
       {live.on && (
         <span
           className="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-bold"
-          style={{ color: "#e879f9", borderColor: live.action ? "#e879f9" : "var(--prep-line, #3f3f46)", background: live.action ? "color-mix(in srgb, #e879f9 18%, transparent)" : "transparent", transition: "all .25s" }}
+          style={{ color: "#fbbf24", borderColor: live.action ? "#fbbf24" : "var(--prep-line, #3f3f46)", background: live.action ? "color-mix(in srgb, #fbbf24 18%, transparent)" : "transparent", transition: "all .25s" }}
           title="Dernière intervention du DJ et nombre de gestes depuis qu'il est actif"
           aria-live="polite"
         >
-          <span aria-hidden className="inline-block h-2 w-2 rounded-full" style={{ background: live.action ? "#e879f9" : "#52525b", boxShadow: live.action ? "0 0 8px #e879f9" : "none" }} />
+          <span aria-hidden className="inline-block h-2 w-2 rounded-full" style={{ background: live.action ? "#fbbf24" : "#52525b", boxShadow: live.action ? "0 0 8px #fbbf24" : "none" }} />
           {live.action ? `DJ : ${live.action}` : "DJ à l'écoute"}
           <span className="font-mono text-[10px] opacity-80">{`${live.moves} geste${live.moves > 1 ? "s" : ""}`}</span>
         </span>

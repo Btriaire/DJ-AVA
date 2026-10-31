@@ -108,7 +108,7 @@ export function StemsMidiConverter() {
   return (
     <div className="flex w-full flex-col gap-2 rounded-lg bg-black/30 p-2.5 ring-1 ring-white/10">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold uppercase tracking-wide text-fuchsia-300">
+        <span className="text-[10px] font-bold uppercase tracking-wide text-amber-300">
           ♪ Stems → MIDI
         </span>
         {phase === "working" && <span className="animate-pulse text-[9px] text-amber-300">analyse…</span>}
@@ -119,7 +119,7 @@ export function StemsMidiConverter() {
         value={model}
         onChange={(e) => setModel(e.target.value as Model)}
         disabled={phase === "working"}
-        className="w-full rounded bg-neutral-800 px-2 py-1.5 text-xs outline-none ring-1 ring-neutral-700 focus:ring-fuchsia-500 disabled:opacity-50"
+        className="w-full rounded bg-neutral-800 px-2 py-1.5 text-xs outline-none ring-1 ring-neutral-700 focus:ring-amber-500 disabled:opacity-50"
       >
         <option value="htdemucs">4 instruments (batterie · basse · voix · autre)</option>
         <option value="htdemucs_6s">6 instruments (+ guitare · piano)</option>
@@ -129,7 +129,7 @@ export function StemsMidiConverter() {
         onClick={() => fileRef.current?.click()}
         disabled={phase === "working"}
         className="hw-btn hw-btn-on px-3 py-1.5 text-xs disabled:opacity-50"
-        style={{ ["--led" as string]: "#e879f9" }}
+        style={{ ["--led" as string]: "#fbbf24" }}
       >
         ♪ Charger un morceau → MIDI
       </button>

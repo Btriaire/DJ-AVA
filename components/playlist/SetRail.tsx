@@ -8,7 +8,7 @@ import { STATUS_COLOR } from "./NextStep";
 import { DECK_COLOR, DRAG_TYPE, type SendDest } from "./types";
 import { TRANSITION_LABEL } from "@/lib/transitions";
 
-const LIST_ACCENTS = ["#22d3ee", "#34d399", "#ffcc00", "#a78bfa", "#f97316", "#f472b6"];
+const LIST_ACCENTS = ["#22d3ee", "#34d399", "#ffcc00", "#a78bfa", "#f97316", "#fdba74"];
 
 export interface SetRailProps {
   tracks: LibTrack[];

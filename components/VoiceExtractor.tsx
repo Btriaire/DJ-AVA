@@ -113,9 +113,9 @@ const moduleStyle: React.CSSProperties = {
 const lcdStyle: React.CSSProperties = {
   background: "linear-gradient(180deg,#1a0518,#10020f)",
   border: "2px solid #05010a",
-  boxShadow: "inset 0 0 14px rgba(232,121,249,.35)",
+  boxShadow: "inset 0 0 14px rgba(251,191,36,.35)",
 };
-function membraneBtn(active: boolean, tint = "#e879f9"): React.CSSProperties {
+function membraneBtn(active: boolean, tint = "#fbbf24"): React.CSSProperties {
   return {
     background: active
       ? `linear-gradient(180deg, color-mix(in srgb, ${tint} 88%, #fff) 0%, ${tint} 55%, color-mix(in srgb, ${tint} 55%, #000) 100%)`
@@ -127,7 +127,7 @@ function membraneBtn(active: boolean, tint = "#e879f9"): React.CSSProperties {
       : "inset 0 1px 0 rgba(255,255,255,.08), 0 1px 2px rgba(0,0,0,.5)",
   };
 }
-function moduleLabel(text: string, color = "#f3b6fb") {
+function moduleLabel(text: string, color = "#fde68a") {
   return (
     <div className="mb-1.5 flex items-center gap-1.5">
       <span className="h-1.5 w-1.5 rounded-full" style={{ background: color, boxShadow: `0 0 5px ${color}` }} />
@@ -162,7 +162,7 @@ function MiniKeyboard({ value, onChange, heightClass = "h-11" }: { value: number
           style={{
             left: `${i * whiteW}%`,
             width: `${whiteW}%`,
-            background: value === m ? "linear-gradient(180deg,#f3b6fb,#e879f9)" : "linear-gradient(180deg,#efeae8,#d8d2ce)",
+            background: value === m ? "linear-gradient(180deg,#fde68a,#fbbf24)" : "linear-gradient(180deg,#efeae8,#d8d2ce)",
             border: "1px solid #000",
             boxShadow: value === m ? "inset 0 0 8px rgba(255,255,255,.6)" : "inset 0 -2px 3px rgba(0,0,0,.15)",
           }}
@@ -179,7 +179,7 @@ function MiniKeyboard({ value, onChange, heightClass = "h-11" }: { value: number
             style={{
               left: `${whiteBefore * whiteW - blackW / 2}%`,
               width: `${blackW}%`,
-              background: value === m ? "linear-gradient(180deg,#e879f9,#9d3fb0)" : "linear-gradient(180deg,#3a3a3d,#0d0d0e)",
+              background: value === m ? "linear-gradient(180deg,#fbbf24,#b45309)" : "linear-gradient(180deg,#3a3a3d,#0d0d0e)",
               border: "1px solid #000",
             }}
           />
@@ -566,8 +566,8 @@ export function VoiceExtractor() {
 
             {/* fluorescent LCD status readout */}
             <div className="flex min-w-[180px] flex-1 items-center gap-2 rounded px-3 py-1.5 font-mono" style={lcdStyle}>
-              <span className="shrink-0 text-[9px]" style={{ color: playing || busy ? "#e879f9" : "#5a3d55" }}>●</span>
-              <span className="truncate text-[11px] font-bold tracking-wide" style={{ color: "#f3b6fb", textShadow: "0 0 6px rgba(232,121,249,.8)" }}>
+              <span className="shrink-0 text-[9px]" style={{ color: playing || busy ? "#fbbf24" : "#5a4a2d" }}>●</span>
+              <span className="truncate text-[11px] font-bold tracking-wide" style={{ color: "#fde68a", textShadow: "0 0 6px rgba(251,191,36,.8)" }}>
                 {lcdMessage}
               </span>
             </div>
@@ -703,8 +703,8 @@ export function VoiceExtractor() {
                           key={i}
                           className="flex-1 rounded-[1px]"
                           style={{
-                            background: lit ? "#e879f9" : "#2a2b2e",
-                            boxShadow: lit ? "0 0 4px rgba(232,121,249,.8)" : "none",
+                            background: lit ? "#fbbf24" : "#2a2b2e",
+                            boxShadow: lit ? "0 0 4px rgba(251,191,36,.8)" : "none",
                             opacity: phase === "fetching" ? 0.5 : 1,
                           }}
                         />
@@ -725,7 +725,7 @@ export function VoiceExtractor() {
               <div className="rounded-md p-2.5" style={moduleStyle}>
                 {moduleLabel("Transport")}
                 <div className="rounded-sm p-1.5" style={{ background: "#0d0e10", border: "1px solid #000", boxShadow: "inset 0 2px 4px rgba(0,0,0,.6)" }}>
-                  <Waveform peaks={peaks} progress={duration ? position / duration : 0} cue={0} color="#e879f9" onSeek={onSeek} />
+                  <Waveform peaks={peaks} progress={duration ? position / duration : 0} cue={0} color="#fbbf24" onSeek={onSeek} />
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-3">
                   <button onClick={togglePlay} className="rounded-sm px-4 py-1.5 text-xs font-bold" style={membraneBtn(playing, "#22c55e")}>
@@ -825,7 +825,7 @@ export function VoiceExtractor() {
                         onClick={() => applyPreset(FEMALE_VOICE_PRESET)}
                         title="Pitch +4, Formant +3 — timbre voix féminine, garde le pitch juste (pas de robot/quantification)"
                         className="rounded-sm px-1.5 py-1 text-[10px] font-bold"
-                        style={membraneBtn(false, "#f472b6")}
+                        style={membraneBtn(false, "#fdba74")}
                       >
                         ♀ FÉMININE
                       </button>
@@ -888,7 +888,7 @@ export function VoiceExtractor() {
                     >
                       {params.vocoderOn ? "ON" : "OFF"}
                     </button>
-                    <Knob label="Mix" value={params.vocoderMix} min={0} max={1} defaultValue={1} onChange={(v) => setParam("vocoderMix", v)} color="#e879f9" led />
+                    <Knob label="Mix" value={params.vocoderMix} min={0} max={1} defaultValue={1} onChange={(v) => setParam("vocoderMix", v)} color="#fbbf24" led />
                     <select
                       value={params.carrier}
                       onChange={(e) => setParam("carrier", e.target.value as CarrierType)}
@@ -910,7 +910,7 @@ export function VoiceExtractor() {
                           max={72}
                           defaultValue={45}
                           onChange={(v) => setParam("carrierNote", Math.round(v))}
-                          color="#e879f9"
+                          color="#fbbf24"
                           format={(v) => v.toFixed(0)}
                         />
                       </>
@@ -976,7 +976,7 @@ export function VoiceExtractor() {
 
           {params.carrier === "synth" && (
             <div className="rounded-md p-2.5" style={moduleStyle}>
-              {moduleLabel("Clavier — note du carrier", "#e879f9")}
+              {moduleLabel("Clavier — note du carrier", "#fbbf24")}
               <MiniKeyboard value={params.carrierNote} onChange={(n) => setParam("carrierNote", n)} heightClass="h-24 sm:h-32" />
             </div>
           )}
@@ -1006,7 +1006,7 @@ export function VoiceExtractor() {
                           onClick={() => seekTo(seg.start)}
                           className="flex gap-2 rounded-sm px-1.5 py-1 text-left text-[11px] hover:brightness-125"
                           style={{
-                            background: position >= seg.start && position < seg.end ? "rgba(232,121,249,.25)" : "transparent",
+                            background: position >= seg.start && position < seg.end ? "rgba(251,191,36,.25)" : "transparent",
                             color: position >= seg.start && position < seg.end ? "#fbe4fe" : "#c98ee0",
                           }}
                         >

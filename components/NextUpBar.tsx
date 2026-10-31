@@ -42,8 +42,8 @@ export function NextUpBar() {
   const list = rh.upcoming.slice(0, 6);
   return (
     <section className="mb-3 flex items-stretch gap-2 overflow-x-auto rounded-xl border border-zinc-700 bg-[#0d0d10] p-2" aria-label="Prochains titres">
-      <div className="flex min-w-[170px] max-w-[230px] shrink-0 flex-col justify-between gap-1 rounded-lg border border-fuchsia-500/50 bg-fuchsia-500/10 px-2.5 py-1.5">
-        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-fuchsia-300">En cours</span>
+      <div className="flex min-w-[170px] max-w-[230px] shrink-0 flex-col justify-between gap-1 rounded-lg border border-amber-500/50 bg-amber-500/10 px-2.5 py-1.5">
+        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-amber-300">En cours</span>
         <span className="truncate text-[12px] font-bold text-zinc-100" title={rh.now.name}>
           {label(rh.now)}
         </span>
@@ -52,7 +52,7 @@ export function NextUpBar() {
           onClick={() => relayHostSkipNow()}
           disabled={rh.firstLocked || list.length === 0}
           title="Passer au titre suivant maintenant : l'enchaînement démarre tout de suite"
-          className="flex items-center justify-center gap-1 rounded border border-fuchsia-400/60 px-2 py-0.5 text-[10px] font-bold text-fuchsia-200 hover:bg-fuchsia-500/20 disabled:opacity-30"
+          className="flex items-center justify-center gap-1 rounded border border-amber-400/60 px-2 py-0.5 text-[10px] font-bold text-amber-200 hover:bg-amber-500/20 disabled:opacity-30"
         >
           <Icon d={ICON.skip} size={11} />
           Suivant maintenant

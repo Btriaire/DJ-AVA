@@ -28,7 +28,7 @@ export const DJ_PRESETS: DjPreset[] = [
   { id: "stab", label: "STAB", color: "#fbbf24", glyph: "◆", title: "Accord court de house / rave", mono: false,
     oscs: [{ type: "sawtooth", detune: -22, octave: 0, gain: 0.3, pan: -0.6 }, { type: "sawtooth", detune: -8, octave: 0, gain: 0.3, pan: -0.2 }, { type: "sawtooth", detune: 8, octave: 0, gain: 0.3, pan: 0.2 }, { type: "sawtooth", detune: 22, octave: 0, gain: 0.3, pan: 0.6 }, { type: "square", detune: 0, octave: 0, gain: 0.15, pan: 0 }],
     sub: 0, cutoff: 0.55, reso: 0.25, env: 0.5, envDecay: 0.22, a: 0.002, d: 0.26, s: 0, r: 0.14, glide: 0, drive: 0.3, wobble: 0, wobbleDiv: 3, octave: 0, level: 0.75 },
-  { id: "pluck", label: "PLUCK", color: "#f472b6", glyph: "♪", title: "Note pincée courte et mélodique", mono: false,
+  { id: "pluck", label: "PLUCK", color: "#fdba74", glyph: "♪", title: "Note pincée courte et mélodique", mono: false,
     oscs: [{ type: "triangle", detune: 0, octave: 0, gain: 0.6, pan: 0 }, { type: "sawtooth", detune: 7, octave: 0, gain: 0.35, pan: 0 }],
     sub: 0, cutoff: 0.5, reso: 0.2, env: 0.6, envDecay: 0.16, a: 0.001, d: 0.35, s: 0, r: 0.2, glide: 0, drive: 0.1, wobble: 0, wobbleDiv: 3, octave: 0, level: 1.0 },
   { id: "pad", label: "PAD", color: "#60a5fa", glyph: "▬", title: "Nappe lente et large pour les ambiances", mono: false,

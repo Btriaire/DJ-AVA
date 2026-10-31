@@ -2835,7 +2835,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                         })
                       }
                       className="hw-btn px-2 py-1 text-xs"
-                      style={{ ["--led" as string]: "#e879f9", color: "#e879f9" }}
+                      style={{ ["--led" as string]: "#fbbf24", color: "#fbbf24" }}
                       title="Générer une playlist auto (style + BPM proches)"
                     >
                       ✨ Auto
@@ -2873,7 +2873,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           {tab === "auto" && (
             <div className="flex flex-col gap-2">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[11px] font-bold uppercase tracking-wide text-fuchsia-300">
+                <span className="text-[11px] font-bold uppercase tracking-wide text-amber-300">
                   ✨ Playlist auto IA
                 </span>
                 <span className="text-[10px] text-neutral-500">
@@ -2887,7 +2887,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                       if (autoSeed) generateAuto(autoSeed, { sameArtist: next });
                     }}
                     className={`hw-btn px-2 py-1 text-xs ${sameArtist ? "hw-btn-on" : ""}`}
-                    style={{ ["--led" as string]: "#e879f9", color: sameArtist ? "#0a0a0a" : "#e879f9" }}
+                    style={{ ["--led" as string]: "#fbbf24", color: sameArtist ? "#0a0a0a" : "#fbbf24" }}
                     title="Restreindre la sélection au même groupe / chanteur que la graine"
                   >
                     🎤 Même artiste{sameArtist ? " ✓" : ""}
@@ -2913,8 +2913,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
 
               {/* keyword-driven discovery — no seed track needed: launch a themed
                   set straight from an idea ("années 80; 100 BPM; Electro; live") */}
-              <div className="flex items-center gap-1.5 rounded bg-fuchsia-500/5 px-2 py-1.5 ring-1 ring-fuchsia-500/20">
-                <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-fuchsia-400">
+              <div className="flex items-center gap-1.5 rounded bg-amber-500/5 px-2 py-1.5 ring-1 ring-amber-500/20">
+                <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-amber-400">
                   🔍 Découverte par mots-clés
                 </span>
                 <input
@@ -2931,7 +2931,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                   onClick={() => generateDiscover(keywordInput)}
                   disabled={!keywordInput.trim()}
                   className="hw-btn shrink-0 px-2 py-1 text-xs disabled:opacity-30"
-                  style={{ ["--led" as string]: "#e879f9", color: "#e879f9" }}
+                  style={{ ["--led" as string]: "#fbbf24", color: "#fbbf24" }}
                 >
                   Chercher
                 </button>
@@ -2957,7 +2957,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                       else if (autoSeed) generateAuto(autoSeed);
                     }}
                     className={`hw-btn px-2 py-1 text-xs ${autoMaxDurationMin === min ? "hw-btn-on" : ""}`}
-                    style={{ ["--led" as string]: "#e879f9", color: autoMaxDurationMin === min ? "#0a0a0a" : "#e879f9" }}
+                    style={{ ["--led" as string]: "#fbbf24", color: autoMaxDurationMin === min ? "#0a0a0a" : "#fbbf24" }}
                     title={min == null ? "Pas de plafond — les titres longs (sets/mixes/lives) restent juste moins bien classés" : `Exclut tout ce qui dépasse ${min} minutes`}
                   >
                     {label}
@@ -2967,7 +2967,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
 
               {/* keywords card */}
               {autoKeywords && (
-                <div className="flex items-center gap-2 rounded bg-fuchsia-500/10 px-3 py-2 ring-1 ring-fuchsia-500/30">
+                <div className="flex items-center gap-2 rounded bg-amber-500/10 px-3 py-2 ring-1 ring-amber-500/30">
                   <span className="text-lg">🔍</span>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm text-neutral-100">{autoKeywords}</div>
@@ -2975,7 +2975,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                   </div>
                   <span
                     className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-black"
-                    style={{ color: "#0a0a0a", background: autoUsedAI ? "#e879f9" : "#6b7280" }}
+                    style={{ color: "#0a0a0a", background: autoUsedAI ? "#fbbf24" : "#6b7280" }}
                     title={autoUsedAI ? "Mots-clés interprétés par l'IA (Groq) — sources Audius + YouTube" : "IA non configurée — recherche directe des mots-clés, Audius + YouTube"}
                   >
                     {autoUsedAI ? "IA · AUDIUS+YT" : "AUDIUS+YT"}
@@ -2984,7 +2984,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                     <button
                       onClick={saveAutoAsPlaylist}
                       className="hw-btn hw-btn-on shrink-0 px-3 py-1 text-xs"
-                      style={{ ["--led" as string]: "#e879f9" }}
+                      style={{ ["--led" as string]: "#fbbf24" }}
                       title="Enregistrer toute la sélection comme playlist"
                     >
                       ≣ Enregistrer la playlist
@@ -2995,7 +2995,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
 
               {/* seed card */}
               {autoSeed && (
-                <div className="flex items-center gap-2 rounded bg-fuchsia-500/10 px-3 py-2 ring-1 ring-fuchsia-500/30">
+                <div className="flex items-center gap-2 rounded bg-amber-500/10 px-3 py-2 ring-1 ring-amber-500/30">
                   <span className="text-lg">◎</span>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm text-neutral-100">{autoSeed.title}</div>
@@ -3006,7 +3006,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                     </div>
                   </div>
                   <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-black"
-                    style={{ color: "#0a0a0a", background: sameArtist ? "#e879f9" : autoUsedAI ? "#e879f9" : "#6b7280" }}
+                    style={{ color: "#0a0a0a", background: sameArtist ? "#fbbf24" : autoUsedAI ? "#fbbf24" : "#6b7280" }}
                     title={sameArtist ? "Restreint au même artiste — Audius + YouTube" : autoUsedAI ? "Suggestions élargies par l'IA (Groq) — sources Audius + YouTube" : "IA non configurée — similarité Audius + YouTube (tendances + liés + BPM)"}>
                     {sameArtist ? "🎤 MÊME ARTISTE" : autoUsedAI ? "IA · AUDIUS+YT" : "AUDIUS+YT"}
                   </span>
@@ -3014,7 +3014,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                     <button
                       onClick={saveAutoAsPlaylist}
                       className="hw-btn hw-btn-on shrink-0 px-3 py-1 text-xs"
-                      style={{ ["--led" as string]: "#e879f9" }}
+                      style={{ ["--led" as string]: "#fbbf24" }}
                       title="Enregistrer toute la sélection comme playlist"
                     >
                       ≣ Enregistrer la playlist
@@ -3024,7 +3024,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
               )}
 
               {autoLoading && (
-                <p className="py-6 text-center text-sm text-fuchsia-300">
+                <p className="py-6 text-center text-sm text-amber-300">
                   ✨ Génération de la playlist… (analyse style + BPM)
                 </p>
               )}
@@ -3074,7 +3074,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                         <button
                           onClick={() => generateAuto({ id: t.source === "youtube" ? undefined : t.id, title: t.title, artist: t.artist, genre: t.genre, bpm: t.bpm })}
                           className="hw-btn px-2 py-1 text-xs"
-                          style={{ ["--led" as string]: "#e879f9", color: "#e879f9" }}
+                          style={{ ["--led" as string]: "#fbbf24", color: "#fbbf24" }}
                           title="Rebondir : nouvelle playlist à partir de ce titre"
                         >
                           ✨
@@ -3339,7 +3339,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
             { key: "youtube", label: "YouTube", color: "#ef4444" },
             { key: "soundcloud", label: "SoundCloud", color: "#ff7700" },
             { key: "deezer", label: "Deezer", color: "#a238ff" },
-            { key: "auto", label: "Auto-IA", color: "#e879f9" },
+            { key: "auto", label: "Auto-IA", color: "#fbbf24" },
           ],
           tab,
           onTab: (key) => setTab(key as typeof tab),
@@ -3671,7 +3671,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                 ["youtube", "▶ YouTube", "#ef4444"],
                 ["soundcloud", "☁ SoundCloud", "#ff7700"],
                 ["deezer", "◆ Deezer", "#a238ff"],
-                ["auto", "✨ Auto-IA", "#e879f9"],
+                ["auto", "✨ Auto-IA", "#fbbf24"],
               ] as const
             ).map(([key, label, color]) => (
               <button

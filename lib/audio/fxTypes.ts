@@ -140,7 +140,7 @@ export const FX_LIST: FxMeta[] = [
   {
     id: "roll",
     label: "ROLL",
-    color: "#f472b6",
+    color: "#fdba74",
     glyph: "⟳",
     title: "Boucle les derniers temps tant que tu maintiens (loop roll)",
     insert: true,
@@ -270,7 +270,7 @@ export const FX_LIST: FxMeta[] = [
   {
     id: "pitch",
     label: "PITCH",
-    color: "#e879f9",
+    color: "#fbbf24",
     glyph: "♯",
     title: "Transpose le son en demi-tons",
     insert: true,
@@ -304,7 +304,7 @@ export const FX_LIST: FxMeta[] = [
   }, {
     id: "ring",
     label: "RING",
-    color: "#f472b6",
+    color: "#fdba74",
     glyph: "⊗",
     title: "Modulation en anneau : son métallique, robotique ou cloche",
     insert: true,
@@ -485,7 +485,7 @@ export const FX_LIST: FxMeta[] = [
   }, {
     id: "rise",
     label: "RISE",
-    color: "#e879f9",
+    color: "#fbbf24",
     glyph: "↗",
     title: "Montée de hauteur : le stem grimpe en continu (jusqu'à 2 octaves) sur la durée choisie, sans changer le tempo",
     insert: true,
