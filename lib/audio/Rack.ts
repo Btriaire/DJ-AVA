@@ -401,7 +401,19 @@ export interface MacroTarget {
   id: RackModuleId;
   key: string;
 }
+// one editable EQ curve: the deck EQ (curve -1) or the EQ of one stem (curve i)
+export interface EqView {
+  getGain(i: number): number;
+  setGain(i: number, db: number): void;
+  getQ(): number;
+  isOn(): boolean;
+  response(freqs: Float32Array, out: Float32Array): void;
+  readonly spectrumBins: number;
+  spectrum(which: "pre" | "post", arr: Uint8Array<ArrayBuffer>): void;
+}
+
 export interface RackPreset {
+  stemEq?: (number[] | null)[]; // per-stem EQ band gains
   order: RackModuleId[];
   modules: Record<string, { on: boolean; mix: number; params: Record<string, number>; flags?: Record<string, boolean>; target?: number }>;
   macros: { value: number; targets: MacroTarget[] }[];
@@ -563,6 +575,9 @@ export class Rack {
   // one insert point per stem: the deck wires stemOut[i] -> input and output -> its stem bus;
   // the effects aimed at stem i sit in between (in rack order), the rest stay on the whole deck
   private stemIns: { input: GainNode; output: GainNode }[] = [];
+  private stemEqs: (EqBuilt | null)[] = []; // per-stem 15-band EQ, built on first use, first in its stem's chain
+  private stemEqGains: number[][] = [];
+  private stemEqTails: GainNode[] = []; // what each stem EQ feeds (rewired freely; the EQ's own analyser stays connected)
   private stemsLive = 0; // stems playing right now (0 = the full mix plays, every effect is on the whole deck)
   private bpm = 0;
   order: RackModuleId[] = [...DEFAULT_ORDER];
@@ -637,9 +652,15 @@ export class Rack {
     }
     this.input.disconnect();
     for (const x of this.stemIns) x.input.disconnect();
+    for (const t of this.stemEqTails) t?.disconnect();
     for (const s of this.slots.values()) s.output.disconnect();
     let prev: AudioNode = this.input;
-    const stemPrev: AudioNode[] = this.stemIns.map((x) => x.input);
+    const stemPrev: AudioNode[] = this.stemIns.map((x, i) => {
+      const eq = this.stemEqs[i];
+      if (!eq) return x.input;
+      x.input.connect(eq.fxIn);
+      return this.stemEqTails[i];
+    });
     for (const id of this.order) {
       const s = this.slots.get(id)!;
       const w = this.placeOf(s);
@@ -669,6 +690,52 @@ export class Rack {
     }
     return this.stemIns[i];
   }
+  // the EQ of stem i, built on first use (flat, so building it changes nothing audible)
+  private stemEq(i: number): EqBuilt {
+    let eq = this.stemEqs[i];
+    if (!eq) {
+      this.stemInsert(i);
+      eq = buildEq(this.ctx, EQ_FREQS); // no auto gain: a cut on a stem must stay a cut
+      this.stemEqs[i] = eq;
+      this.stemEqTails[i] = this.ctx.createGain();
+      eq.fxOut.connect(this.stemEqTails[i]);
+      this.stemEqGains[i] = EQ_FREQS.map(() => 0);
+      this.rewire();
+    }
+    return eq;
+  }
+  // curve -1 = the deck EQ (goes through setParam, so REC automation records it), i = stem i
+  eqView(curve: number): EqView {
+    if (curve < 0) {
+      return {
+        getGain: (i) => this.getParam("eq", `g${i}`),
+        setGain: (i, db) => this.setParam("eq", `g${i}`, db),
+        getQ: () => this.getParam("eq", "q"),
+        isOn: () => this.isOn("eq"),
+        response: (f, o) => this.eqResponse(f, o),
+        spectrumBins: this.eqSpectrumBins,
+        spectrum: (w, a) => this.getEqSpectrum(w, a),
+      };
+    }
+    const eq = () => this.stemEq(curve);
+    return {
+      getGain: (i) => this.stemEqGains[curve]?.[i] ?? 0,
+      setGain: (i, db) => {
+        eq().onParam(`g${i}`, db);
+        this.stemEqGains[curve][i] = Math.max(-18, Math.min(18, db));
+      },
+      getQ: () => this.getParam("eq", "q"),
+      isOn: () => true,
+      response: (f, o) => eq().response(f, o),
+      spectrumBins: 1024,
+      spectrum: (w, a) => eq()[w].getByteFrequencyData(a),
+    };
+  }
+  // stems whose EQ is not flat (for the panel badges)
+  stemEqUsed(i: number): boolean {
+    return !!this.stemEqGains[i]?.some((g) => Math.abs(g) > 0.05);
+  }
+
   // the deck tells how many stems play (0 = the full mix): aimed effects move in or out of the stems
   setStemsLive(n: number) {
     if (n === this.stemsLive) return;
@@ -783,6 +850,7 @@ export class Rack {
       modules[id] = { on: s.on, mix: s.mix, params: { ...s.params }, flags: { ...s.flags }, target: s.target };
     }
     return {
+      stemEq: this.stemEqGains.map((g) => (g && g.some((x) => Math.abs(x) > 0.05) ? [...g] : null)),
       order: [...this.order],
       modules,
       macros: this.macros.map((m) => ({ value: m.value, targets: m.targets.map((t) => ({ ...t })) })),
@@ -791,6 +859,13 @@ export class Rack {
   import(p: RackPreset | undefined | null) {
     if (!p) return;
     if (Array.isArray(p.order)) this.setOrder(p.order);
+    if (Array.isArray(p.stemEq)) {
+      p.stemEq.forEach((g, i) => {
+        if (!g && !this.stemEqs[i]) return;
+        const v = this.eqView(i);
+        EQ_FREQS.forEach((_, b) => v.setGain(b, g?.[b] ?? 0));
+      });
+    }
     if (p.modules) {
       for (const [id, m] of Object.entries(p.modules)) {
         const slot = this.slots.get(id as RackModuleId);

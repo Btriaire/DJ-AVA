@@ -21,6 +21,7 @@ import { cropWav } from "@/lib/audio/wavEncode";
 import { Spectrum } from "./Spectrum";
 import { RackPanel } from "./RackPanel";
 import { EqRackStrip } from "./EqRackStrip";
+import { otherDeckOf } from "@/lib/audio/eqLab";
 
 import { loadLibrary, saveLibrary, idbPutBlob, idbGetBlob, uid, LibTrack } from "@/lib/library";
 import { encodeWav } from "@/lib/audio/engine";
@@ -997,6 +998,23 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
           + Filter */}
       <div className="flex items-center justify-between px-1 text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500">
         <span>Voie</span>
+        {deck.fxMap && deck.fxMap.lufs > -70 && (() => {
+          // match the other deck's real level when it is analysed too, else a club level of -12 LUFS
+          const o = otherDeckOf(deck);
+          const target = o?.fxMap && o.fxMap.lufs > -70 ? o.fxMap.lufs + 20 * Math.log10(Math.max(0.01, o.trimLevel)) : -12;
+          const g = deck.autoTrim(target);
+          return (
+            <button
+              type="button"
+              onClick={() => { if (g !== null) { setTrim(g); deck.setTrim(g); } }}
+              className="rounded px-1.5 py-0.5 text-[9px] font-bold normal-case tracking-normal"
+              style={{ background: "rgba(255,255,255,0.08)", color: "#d4d4d4" }}
+              title={`Ce morceau est à ${deck.fxMap.lufs} LUFS (mesuré à la préparation). Clique pour l'amener au niveau ${o?.fxMap ? "de l'autre deck" : "club (-12 LUFS)"}`}
+            >
+              NIVEAU AUTO {deck.fxMap.lufs} LUFS
+            </button>
+          );
+        })()}
         <span className="font-normal normal-case tracking-normal">Gain · aigus / médium / graves · filtre</span>
       </div>
       <div className="hw-recess flex items-center justify-around py-3">

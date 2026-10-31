@@ -3,6 +3,7 @@ import { isCached, isModel } from "@/lib/stems";
 import { backfillVocalPitch } from "@/lib/vocalPitch";
 import { backfillStemNotes } from "@/lib/stemNotes";
 import { analyseStems } from "@/lib/stemAnalysis";
+import { analyseFx } from "@/lib/fxAnalysis";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export async function GET(req: NextRequest) {
   if (isCached(hash, m, opts)) {
     void backfillStemNotes(hash, m, opts);
     backfillVocalPitch(hash, m, opts);
+    void analyseFx(hash, m, opts).catch(() => null); // effects analyses, made once in the background
   }
   return NextResponse.json({ map });
 }

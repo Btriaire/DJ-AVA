@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { setThrow, throwKind } from "@/lib/audio/fxThrows";
 import type { Deck } from "../lib/audio/Deck";
 import { Knob } from "./Knob";
 import { useFrameLoop } from "./frameLoop";
@@ -273,6 +274,30 @@ export function StemFxPanel({ deck, i, label, color, rerender, onClose }: Props)
           />
         </div>
         <span className="text-[10px] text-neutral-500">Pad : glisse pour doser filtre et drive · double-clic : zéro</span>
+        {deck.stemNames[i] === "vocals" && (
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">Fin de phrase</span>
+            {(["echo", "reverb"] as const).map((k) => {
+              const on = throwKind(deck) === k;
+              const ready = !!deck.fxMap?.phraseEnds.length;
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  disabled={!ready}
+                  aria-pressed={on}
+                  onClick={() => { setThrow(deck, on ? null : k); rerender(); }}
+                  className="rounded px-2 py-1 text-[10px] font-bold disabled:opacity-40"
+                  style={on ? { background: color, color: "#0a0a0a" } : { background: "rgba(255,255,255,0.08)", color: "#d4d4d4" }}
+                  title={ready ? `${k === "echo" ? "Un écho" : "Une reverb"} part tout seul sur le dernier mot de chaque phrase chantée (repérées à la préparation)` : "Morceau pas encore analysé : prépare ses stems"}
+                >
+                  {k === "echo" ? "ÉCHO AUTO" : "REVERB AUTO"}
+                </button>
+              );
+            })}
+            {deck.fxMap && <span className="text-[10px] text-neutral-500">{deck.fxMap.phraseEnds.length} phrases repérées</span>}
+          </div>
+        )}
         {djRack && (
           <div className="flex flex-col gap-1.5 border-t border-white/10 pt-2.5">
             <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">Effets DJ — {label} seul</span>

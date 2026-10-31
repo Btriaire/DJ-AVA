@@ -7,6 +7,9 @@ import { EQ_PRESETS, presetGains } from "@/lib/audio/eqPresets";
 import { Fader } from "./Fader";
 import { Knob } from "./Knob";
 import { EqGraph } from "./EqGraph";
+import { EqLabControls } from "./EqLabControls";
+import { eqLabFor, linkedMove, measure, otherDeckOf } from "@/lib/audio/eqLab";
+import { stemLabel } from "./RackGuideBlock";
 import { DigitalVU } from "./EqVisuals";
 
 // ---- persistent EQ presets (5 numbered slots, like a hardware EQ) ----
@@ -78,6 +81,12 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
   const [lcd, setLcd] = useState<string | null>(null);
   const [ab, setAb] = useState<"A" | "B">("A");
   const [fadersOpen, setFadersOpen] = useState(false);
+  const [curve, setCurve] = useState(-1); // -1 = the whole deck, i = stem i
+  const [linked, setLinked] = useState<Set<number>>(() => new Set());
+  const [linking, setLinking] = useState(false);
+  const lab = eqLabFor(deck);
+  const view = rack.eqView(curve);
+  const other = otherDeckOf(deck);
   const lcdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abMem = useRef<{ A: number[] | null; B: number[] | null }>({ A: null, B: null });
 
@@ -108,7 +117,7 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
   const eqOn = rack.isOn("eq");
 
   const saveEqSlot = (n: number) => {
-    const g = EQ_FREQS.map((_, i) => rack.getParam("eq", `g${i}`));
+    const g = EQ_FREQS.map((_, i) => view.getGain(i));
     const next = eqPresets.slice(); next[n] = { g };
     setEqPresets(next); saveEqPresets(next);
     setEqSaveMode(false); setEqActivePreset(n);
@@ -117,30 +126,30 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
 
   const recallEqSlot = (n: number) => {
     const p = eqPresets[n]; if (!p) return;
-    EQ_FREQS.forEach((_, i) => rack.setParam("eq", `g${i}`, p.g[i]));
+    EQ_FREQS.forEach((_, i) => view.setGain(i, p.g[i]));
     setEqActivePreset(n); flashLcd(`EQ PRESET ${n + 1}`); rerender();
   };
 
   const resetEq = () => {
-    EQ_FREQS.forEach((_, i) => rack.setParam("eq", `g${i}`, 0));
+    EQ_FREQS.forEach((_, i) => view.setGain(i, 0));
     setEqActivePreset(null); flashLcd("EQ RESET"); rerender();
   };
 
   const applyPreset = (preset: [number, number][]) => {
     const gains = presetGains(preset, EQ_FREQS);
-    EQ_FREQS.forEach((_, i) => rack.setParam("eq", `g${i}`, gains[i]));
+    EQ_FREQS.forEach((_, i) => view.setGain(i, gains[i]));
     setEqActivePreset(null); rerender();
   };
 
   const toggleAb = () => {
-    const currentGains = EQ_FREQS.map((_, i) => rack.getParam("eq", `g${i}`));
+    const currentGains = EQ_FREQS.map((_, i) => view.getGain(i));
     const currentQ = rack.getParam("eq", "q");
     abMem.current[ab] = [...currentGains, currentQ];
     const nextAb = ab === "A" ? "B" : "A";
     setAb(nextAb);
     const otherMem = abMem.current[nextAb];
     if (otherMem) {
-      EQ_FREQS.forEach((_, i) => rack.setParam("eq", `g${i}`, otherMem[i]));
+      EQ_FREQS.forEach((_, i) => view.setGain(i, otherMem[i]));
       rack.setParam("eq", "q", otherMem[15]);
     }
     flashLcd(`COMPARAISON ${nextAb}`);
@@ -153,7 +162,7 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
     try { localStorage.setItem("djsynth.eq.faders", JSON.stringify(newState)); } catch { /* ignore */ }
   };
 
-  const currentGains = EQ_FREQS.map((_, i) => rack.getParam("eq", `g${i}`));
+  const currentGains = EQ_FREQS.map((_, i) => view.getGain(i));
   const currentQ = rack.getParam("eq", "q");
   const currentMix = rack.getMix("eq");
 
@@ -216,16 +225,72 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
 
       {/* ── response graph ── */}
       <EqGraph
-        rack={rack}
+        eq={view}
         color={color}
         sampleRate={deck.ctx.sampleRate}
         active={() => deck.playing}
         onEdit={(i, db, finished) => {
-          rack.setParam("eq", `g${i}`, db);
+          if (linked.has(i)) lab.apply(curve, linkedMove(lab.read(curve), i, db, linked));
+          else view.setGain(i, db);
           setEqActivePreset(null);
           if (finished) flashLcd(`EQ ${freqLabels[i]} ${db > 0 ? "+" : ""}${db.toFixed(1)} dB`);
           rerender();
         }}
+      />
+
+      {/* ── which curve: the whole deck or one stem (each stem keeps its own EQ) ── */}
+      <div className="flex flex-wrap items-center gap-1">
+        <span className="w-20 shrink-0 text-[9px] font-bold uppercase tracking-wider text-neutral-400">Sur quoi</span>
+        {[-1, ...deck.stemNames.map((_, i) => i)].map((c) => (
+          <button
+            key={c}
+            aria-pressed={curve === c}
+            onClick={() => { setCurve(c); flashLcd(c < 0 ? "EQ TOUT LE MORCEAU" : `EQ ${stemLabel(deck.stemNames[c]).toUpperCase()}`); }}
+            className="rounded px-2 py-1 text-[10px] font-bold"
+            style={curve === c ? { background: color, color: "#0a0a0a" } : { background: "rgba(255,255,255,0.08)", color: "#d4d4d4" }}
+            title={c < 0 ? "La courbe de tout le deck" : "La courbe de ce stem seul : chaque stem garde la sienne"}
+          >
+            {c < 0 ? "Tout le morceau" : stemLabel(deck.stemNames[c])}
+            {c >= 0 && rack.stemEqUsed(c) && <span className="ml-1" aria-hidden>·</span>}
+          </button>
+        ))}
+        {curve >= 0 && !deck.stemsActive && <span className="text-[10px] text-amber-300">Active les stems pour entendre cette courbe.</span>}
+        {deck.stemNames.length === 0 && <span className="text-[10px] text-neutral-400">Prépare les stems pour une courbe par stem.</span>}
+        <button
+          onClick={() => { setLinking((v) => !v); flashLcd(linking ? "LIEN FINI" : "CLIQUE LES BANDES À LIER"); }}
+          className="ml-auto rounded px-2 py-1 text-[10px] font-bold"
+          style={linking || linked.size > 1 ? { background: color, color: "#0a0a0a" } : { background: "rgba(255,255,255,0.08)", color: "#d4d4d4" }}
+          title="Lie plusieurs bandes : en bouger une bouge les autres du même nombre de dB. Clique LIER puis les noms des bandes sous les faders"
+        >
+          LIER{linked.size > 1 ? ` (${linked.size})` : ""}
+        </button>
+        {linked.size > 0 && (
+          <button onClick={() => setLinked(new Set())} className="rounded px-2 py-1 text-[10px] font-bold" style={{ background: "rgba(255,255,255,0.08)", color: "#d4d4d4" }}>
+            DÉLIER
+          </button>
+        )}
+      </div>
+
+      <EqLabControls
+        lab={lab}
+        curve={curve}
+        otherView={other && other.name ? other.rack.eqView(-1) : null}
+        prepared={!!deck.fxMap}
+        spectra={async (cs) => {
+          // the prepared spectra of the whole song when every one asked for exists, else 1.5 s of listening for all (same scale)
+          const prep = (c: number | "other") => {
+            const d = c === "other" ? other : deck;
+            const n = c === "other" || c < 0 ? "mix" : deck.stemNames[c];
+            return d?.fxMap?.spectra[n] ?? null;
+          };
+          const ready = cs.map(prep);
+          if (ready.every((x) => x)) return ready as number[][];
+          return Promise.all(cs.map((c) => measure(c === "other" ? other!.rack.eqView(-1) : rack.eqView(c), deck.ctx.sampleRate, 1500)));
+        }}
+        stemNames={deck.stemNames}
+        color={color}
+        flashLcd={flashLcd}
+        onChanged={rerender}
       />
 
       {/* ── factory presets ── */}
@@ -328,7 +393,7 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
           FADERS {fadersOpen ? "▴" : "▾"}
         </button>
 
-        {fadersOpen && (
+        {(fadersOpen || linking) && (
           <div className="flex gap-1 overflow-x-auto [contain:inline-size]">
             {EQ_FREQS.map((_, i) => (
               <div key={i} className="flex flex-col items-center gap-0.5">
@@ -342,15 +407,24 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
                   step={0.1}
                   vertical
                   onChange={(v) => {
-                    rack.setParam("eq", `g${i}`, v);
+                    if (linked.has(i)) lab.apply(curve, linkedMove(lab.read(curve), i, v, linked));
+                    else view.setGain(i, v);
                     flashLcd(`EQ ${freqLabels[i]} ${v > 0 ? "+" : ""}${v.toFixed(1)} dB`);
                     rerender();
                   }}
                   className="!h-[90px]"
                 />
-                <span className="text-[8px] font-bold uppercase" style={{ color: eqOn ? color : "#6b6b6b" }}>
+                <button
+                  type="button"
+                  aria-pressed={linked.has(i)}
+                  disabled={!linking}
+                  onClick={() => setLinked((prev) => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n; })}
+                  className="rounded px-0.5 text-[8px] font-bold uppercase"
+                  style={linked.has(i) ? { background: color, color: "#0a0a0a" } : { color: eqOn ? color : "#6b6b6b" }}
+                  title={linking ? "Clique pour lier ou délier cette bande" : "Clique LIER pour lier des bandes"}
+                >
                   {freqLabels[i]}
-                </span>
+                </button>
               </div>
             ))}
           </div>

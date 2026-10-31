@@ -1,5 +1,6 @@
 import type { StemNotes } from "@/lib/stemNotes";
 import { alignLegacyNotes } from "./jamPrecision";
+import type { FxMap } from "../fxAnalysis";
 import type { StemMap } from "@/lib/stemAnalysis";
 import { getMemLevel } from "@/lib/memoryGovernor";
 import { detectBPM, buildWaveformPeaks } from "./bpm";
@@ -183,6 +184,7 @@ export class Deck {
   analysisPending = false; // the server is still making this song's notes or voice analysis: they are read again every 4 s
   stemNotes: StemNotes | null = null; // MIDI notes of the song (never played: they only time the effects)
   stemMap: StemMap | null = null; // peaks, slow parts and blanks of the song (made when its stems were prepared)
+  fxMap: FxMap | null = null; // spectra, loudness and sung phrase ends of the song, for the effects (made once from its stems)
   stemHash = ""; // server content hash of the loaded track (for the library badge)
   // shared per-stem effect SENDS (Reverb / Delay) — independent of the Rack
   // DSP splice above: every stem gets its own send amount into one shared
@@ -1081,6 +1083,12 @@ export class Deck {
   setTrim(v: number) {
     this.trim.gain.value = v;
   }
+  get trimLevel(): number { return this.trim.gain.value; }
+  // the gain that brings this song to `target` LUFS (from its prepared loudness), within the knob's range; null when not analysed
+  autoTrim(target: number): number | null {
+    if (!this.fxMap || !(this.fxMap.lufs > -70)) return null;
+    return Math.min(1.5, Math.max(0.2, Math.pow(10, (target - this.fxMap.lufs) / 20)));
+  }
   setVolume(v: number) {
     this.volume.gain.value = v;
   }
@@ -1443,6 +1451,11 @@ export class Deck {
       const j = (await r.json()) as { map: StemMap | null };
       if (gen !== this.loadGen) return;
       this.stemMap = j.map;
+      this.fxMap = null;
+      void fetch(`/api/stems/fx?hash=${hash}&model=${this.stemModel}${this.stemOptsQS()}`)
+        .then((x) => x.json() as Promise<{ fx: FxMap | null }>)
+        .then((x) => { if (gen === this.loadGen) this.fxMap = x.fx; })
+        .catch(() => undefined);
       let p = { pitch: null as { contour: number[]; hop: number } | null };
       let nj = { notes: null as StemNotes | null };
       try {

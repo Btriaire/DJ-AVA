@@ -1,14 +1,14 @@
 "use client";
 import { useEffect, useRef } from "react";
-import type { Rack } from "@/lib/audio/Rack";
+import type { EqView } from "@/lib/audio/Rack";
 import { EQ_FREQS } from "@/lib/audio/Rack";
 import { PAD, makeGeom, clampDb, fmtFreq, nodeHue, nearestNode, smoothDeltas, traceValues, type Geom } from "@/lib/audio/eqGraphGeom";
 
 const MAJOR: Record<number, string> = { 100: "100", 1000: "1k", 10000: "10k" };
 
-export function EqGraph({ rack, color, sampleRate, active, onEdit }: { rack: Rack; color: string; sampleRate: number; active: () => boolean; onEdit: (i: number, db: number, finished: boolean) => void }) {
+export function EqGraph({ eq, color, sampleRate, active, onEdit }: { eq: EqView; color: string; sampleRate: number; active: () => boolean; onEdit: (i: number, db: number, finished: boolean) => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const props = useRef({ rack, color, sampleRate, active, onEdit });
+  const props = useRef({ eq, color, sampleRate, active, onEdit });
   const geom = useRef<Geom | null>(null);
   const drag = useRef<number | null>(null);
   const tracing = useRef(false);
@@ -17,8 +17,8 @@ export function EqGraph({ rack, color, sampleRate, active, onEdit }: { rack: Rac
   const lastGain = useRef(0);
   const lastInteraction = useRef(0);
   const peak = useRef<number[]>([]);
-  const bufPre = useRef(new Uint8Array(rack.eqSpectrumBins) as Uint8Array<ArrayBuffer>);
-  const bufPost = useRef(new Uint8Array(rack.eqSpectrumBins) as Uint8Array<ArrayBuffer>);
+  const bufPre = useRef(new Uint8Array(eq.spectrumBins) as Uint8Array<ArrayBuffer>);
+  const bufPost = useRef(new Uint8Array(eq.spectrumBins) as Uint8Array<ArrayBuffer>);
   const freqBuf = useRef(new Float32Array(160) as Float32Array<ArrayBuffer>);
   const outBuf = useRef(new Float32Array(160) as Float32Array<ArrayBuffer>);
   const hover = useRef<number | null>(null);
@@ -27,7 +27,7 @@ export function EqGraph({ rack, color, sampleRate, active, onEdit }: { rack: Rac
 
   // keep the latest props readable from the draw loop and the handlers without re-creating the loop
   useEffect(() => {
-    props.current = { rack, color, sampleRate, active, onEdit };
+    props.current = { eq, color, sampleRate, active, onEdit };
   });
 
   useEffect(() => {
@@ -98,10 +98,10 @@ export function EqGraph({ rack, color, sampleRate, active, onEdit }: { rack: Rac
     };
 
     const drawSpectra = (ctx: CanvasRenderingContext2D, g: Geom) => {
-      const { rack, sampleRate, color } = props.current;
-      const bins = rack.eqSpectrumBins;
-      rack.getEqSpectrum("pre", bufPre.current);
-      rack.getEqSpectrum("post", bufPost.current);
+      const { eq, sampleRate, color } = props.current;
+      const bins = eq.spectrumBins;
+      eq.spectrum("pre", bufPre.current);
+      eq.spectrum("post", bufPost.current);
 
       ctx.save();
       ctx.beginPath();
@@ -146,7 +146,7 @@ export function EqGraph({ rack, color, sampleRate, active, onEdit }: { rack: Rac
     };
 
     const drawCurve = (ctx: CanvasRenderingContext2D, g: Geom) => {
-      const { rack, color } = props.current;
+      const { eq, color } = props.current;
       const freqs = freqBuf.current;
       const out = outBuf.current;
 
@@ -154,7 +154,7 @@ export function EqGraph({ rack, color, sampleRate, active, onEdit }: { rack: Rac
         freqs[i] = 20 * Math.pow(1000, i / 159);
       }
 
-      rack.eqResponse(freqs, out);
+      eq.response(freqs, out);
 
       ctx.beginPath();
       for (let i = 0; i < 160; i++) {
@@ -190,10 +190,10 @@ export function EqGraph({ rack, color, sampleRate, active, onEdit }: { rack: Rac
     };
 
     const drawNodes = (ctx: CanvasRenderingContext2D, g: Geom) => {
-      const { rack } = props.current;
+      const { eq } = props.current;
       const gains: number[] = [];
       for (let i = 0; i < 15; i++) {
-        gains[i] = rack.getParam("eq", "g" + i);
+        gains[i] = eq.getGain(i);
       }
 
       for (let i = 0; i < 15; i++) {
@@ -234,8 +234,8 @@ export function EqGraph({ rack, color, sampleRate, active, onEdit }: { rack: Rac
     };
 
     const drawBypass = (ctx: CanvasRenderingContext2D, g: Geom) => {
-      const { rack } = props.current;
-      if (rack.isOn("eq")) return;
+      const { eq } = props.current;
+      if (eq.isOn()) return;
 
       ctx.fillStyle = "rgba(5,8,13,0.55)";
       ctx.fillRect(PAD.l, PAD.t, g.plotW, g.plotH);
@@ -299,7 +299,7 @@ export function EqGraph({ rack, color, sampleRate, active, onEdit }: { rack: Rac
 
     const gains: number[] = [];
     for (let i = 0; i < 15; i++) {
-      gains[i] = props.current.rack.getParam("eq", "g" + i);
+      gains[i] = props.current.eq.getGain(i);
     }
 
     hover.current = nearestNode(g, EQ_FREQS, gains, local.x, local.y, 14);
@@ -311,7 +311,7 @@ export function EqGraph({ rack, color, sampleRate, active, onEdit }: { rack: Rac
       if (e.shiftKey) {
         const deltas = smoothDeltas(drag.current, db - lastGain.current, 15);
         deltas.forEach(({ k, d }) => {
-          const current = props.current.rack.getParam("eq", "g" + k);
+          const current = props.current.eq.getGain(k);
           props.current.onEdit(k, clampDb(current + d), false);
         });
       }
@@ -346,7 +346,7 @@ export function EqGraph({ rack, color, sampleRate, active, onEdit }: { rack: Rac
 
     const gains: number[] = [];
     for (let i = 0; i < 15; i++) {
-      gains[i] = props.current.rack.getParam("eq", "g" + i);
+      gains[i] = props.current.eq.getGain(i);
     }
 
     const i = nearestNode(g, EQ_FREQS, gains, local.x, local.y, 14);
@@ -368,13 +368,13 @@ export function EqGraph({ rack, color, sampleRate, active, onEdit }: { rack: Rac
 
     canvas.releasePointerCapture(e.pointerId);
     if (drag.current !== null) {
-      const db = props.current.rack.getParam("eq", "g" + drag.current);
+      const db = props.current.eq.getGain(drag.current);
       props.current.onEdit(drag.current, db, true);
       drag.current = null;
     } else if (tracing.current) {
       tracing.current = false;
       if (lastModifiedBand.current !== null) {
-        const db = props.current.rack.getParam("eq", "g" + lastModifiedBand.current);
+        const db = props.current.eq.getGain(lastModifiedBand.current);
         props.current.onEdit(lastModifiedBand.current, db, true);
         lastModifiedBand.current = null;
       }
@@ -397,7 +397,7 @@ export function EqGraph({ rack, color, sampleRate, active, onEdit }: { rack: Rac
 
     const gains: number[] = [];
     for (let i = 0; i < 15; i++) {
-      gains[i] = props.current.rack.getParam("eq", "g" + i);
+      gains[i] = props.current.eq.getGain(i);
     }
 
     const i = nearestNode(g, EQ_FREQS, gains, local.x, local.y, 14);
@@ -420,7 +420,7 @@ export function EqGraph({ rack, color, sampleRate, active, onEdit }: { rack: Rac
 
       const gains: number[] = [];
       for (let i = 0; i < 15; i++) {
-        gains[i] = props.current.rack.getParam("eq", "g" + i);
+        gains[i] = props.current.eq.getGain(i);
       }
 
       const i = nearestNode(g, EQ_FREQS, gains, local.x, local.y, 14);
