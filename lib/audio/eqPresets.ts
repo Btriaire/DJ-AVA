@@ -21,9 +21,9 @@ export const EQ_PRESETS: EqPreset[] = [
   { id: "radio", name: "Radio", title: "Bande étroite façon poste de radio", pts: [[63,-12],[160,-4],[400,2],[1000,4],[2500,3],[6300,-4],[16000,-12]] },
   { id: "telephone", name: "Téléphone", title: "Voix de téléphone, très étroite", pts: [[25,-18],[250,-14],[500,2],[1000,6],[2500,5],[4000,-4],[8000,-18]] },
   // ---- live and concert recordings: room boom, hall reverb in the low-mids, missing sub, harsh crowd and cymbals ----
-  { id: "live-clair", live: true, name: "Live clair", title: "Concert enregistré : retire la résonance de la salle (160 à 400 Hz) et rend de la netteté", pts: [[25,-6],[63,0],[160,-3],[250,-4],[400,-3],[1000,0],[2500,2],[6300,2],[12000,1]] },
-  { id: "live-voix", live: true, name: "Voix live", title: "La voix du chanteur passe devant le public et la salle", pts: [[40,-4],[160,-2],[315,-4],[630,-1],[1600,2],[2500,4],[4000,3],[6300,-1],[10000,1]] },
-  { id: "live-sec", live: true, name: "Salle sèche", title: "Moins d'écho de salle : creuse le bas-médium où traîne la réverbération, rend l'attaque", pts: [[100,0],[250,-4],[400,-5],[630,-3],[1000,0],[2500,2],[4000,3],[6300,2]] },
+  { id: "live-clair", live: true, name: "Live clair", title: "Concert enregistré : retire la résonance de la salle (160 à 400 Hz) et rend de la netteté", pts: [[25,-6],[63,0],[160,-4],[250,-4],[400,-4],[1000,0],[2500,2],[6300,2],[12000,1]] },
+  { id: "live-voix", live: true, name: "Voix live", title: "La voix du chanteur passe devant le public et la salle", pts: [[40,-4],[160,-3],[315,-4],[630,-1],[1600,2],[2500,4],[4000,3],[6300,-1],[10000,1]] },
+  { id: "live-sec", live: true, name: "Salle sèche", title: "Moins d'écho de salle : creuse le bas-médium où traîne la réverbération, rend l'attaque", pts: [[100,0],[250,-5],[400,-5],[630,-3],[1000,0],[2500,2],[4000,3],[6300,2]] },
   { id: "live-club", live: true, name: "Live en club", title: "Un live souvent maigre en bas : ajoute le sous-grave et le punch pour le dancefloor", pts: [[25,2],[40,5],[63,5],[100,2],[250,-3],[630,-1],[2500,1],[4000,3],[10000,2]] },
   { id: "live-public", live: true, name: "Public discret", title: "Calme les cris, sifflets et applaudissements aigus du public, garde la musique", pts: [[25,-4],[250,0],[1000,0],[2500,-2],[4000,-4],[6300,-5],[10000,-3],[16000,-1]] },
   { id: "live-bootleg", live: true, name: "Bootleg", title: "Prise de téléphone dans le public : coupe le grondement saturé, rend présence et air", pts: [[25,-18],[40,-10],[100,-6],[160,-4],[400,-1],[1600,1],[2500,3],[4000,4],[8000,4],[16000,3]] },
