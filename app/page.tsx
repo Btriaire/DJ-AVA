@@ -15,6 +15,7 @@ import { SynthPanel } from "@/components/SynthPanel";
 import { SamplerPanel } from "@/components/SamplerPanel";
 import { Dx7LabPanel } from "@/components/jam/Dx7LabPanel";
 import { VoiceLabPanel } from "@/components/jam/VoiceLabPanel";
+import { ConsolePanel } from "@/components/ConsolePanel";
 import { SolarLabPanel } from "@/components/jam/SolarLabPanel";
 import { SoundFxPanel } from "@/components/SoundFxPanel";
 import { DrumMachinePanel } from "@/components/DrumMachinePanel";
@@ -1452,6 +1453,9 @@ const [showModulePicker, setShowModulePicker] = useState(false);
                   className="w-32"
                 />
               </div>
+
+              {/* club mixer: headphones (CUE), crossfader curve, microphone, set history */}
+              <ConsolePanel engine={engine} />
 
               {/* The DJ-SYNTH sign: lit when the intelligent DJ is on */}
               <DjSynthLogo />

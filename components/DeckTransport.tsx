@@ -1,7 +1,11 @@
 "use client";
 import { Deck } from "@/lib/audio/Deck";
 
+// a jump of whole beats keeps the song on its grid (seconds when the tempo is unknown)
+const beatJump = (deck: Deck) => (beats: number, sec: number) => (deck.bpm ? (beats * 60) / deck.bpm : sec);
+
 export function DeckTransport({ deck, color, side, stepping, onStep, onSync, autoSync, autoReset, pitch, onToggleAutoSync, onTogglePitchReset, onChange }: { deck: Deck; color: string; side: "A" | "B"; stepping: boolean; onStep: (dir: -1 | 1) => void; onSync: () => void; autoSync: boolean; autoReset: boolean; pitch: number; onToggleAutoSync: () => void; onTogglePitchReset: () => void; onChange: () => void }) {
+  const jump = beatJump(deck);
   return (
     <div className="hw-recess flex flex-col gap-2 p-2" style={{ ["--led" as string]: color }}>
       <div>
@@ -58,34 +62,34 @@ export function DeckTransport({ deck, color, side, stepping, onStep, onSync, aut
           <button
             className="hw-btn px-2.5 py-2 text-[11px] font-bold min-h-[36px]"
             disabled={!deck.name}
-            onClick={() => { const t = Math.min(deck.duration, Math.max(0, deck.position() - 15)); deck.seek(t); onChange(); }}
-            title="Retour rapide"
+            onClick={() => { const t = Math.min(deck.duration, Math.max(0, deck.position() + jump(-16, -15))); deck.seek(t); onChange(); }}
+            title={deck.bpm ? "Recule de 16 temps (4 mesures) : reste calé sur la grille" : "Recule de 15 s"}
           >
-            «15
+            {deck.bpm ? "«16" : "«15"}
           </button>
           <button
             className="hw-btn px-2.5 py-2 text-[11px] font-bold min-h-[36px]"
             disabled={!deck.name}
-            onClick={() => { const t = Math.min(deck.duration, Math.max(0, deck.position() - 5)); deck.seek(t); onChange(); }}
-            title="Retour"
+            onClick={() => { const t = Math.min(deck.duration, Math.max(0, deck.position() + jump(-4, -5))); deck.seek(t); onChange(); }}
+            title={deck.bpm ? "Recule de 4 temps (1 mesure)" : "Recule de 5 s"}
           >
-            ‹5
+            {deck.bpm ? "‹4" : "‹5"}
           </button>
           <button
             className="hw-btn px-2.5 py-2 text-[11px] font-bold min-h-[36px]"
             disabled={!deck.name}
-            onClick={() => { const t = Math.min(deck.duration, Math.max(0, deck.position() + 5)); deck.seek(t); onChange(); }}
-            title="Avance"
+            onClick={() => { const t = Math.min(deck.duration, Math.max(0, deck.position() + jump(4, +5))); deck.seek(t); onChange(); }}
+            title={deck.bpm ? "Avance de 4 temps (1 mesure)" : "Avance de 5 s"}
           >
-            5›
+            {deck.bpm ? "4›" : "5›"}
           </button>
           <button
             className="hw-btn px-2.5 py-2 text-[11px] font-bold min-h-[36px]"
             disabled={!deck.name}
-            onClick={() => { const t = Math.min(deck.duration, Math.max(0, deck.position() + 15)); deck.seek(t); onChange(); }}
-            title="Avance rapide"
+            onClick={() => { const t = Math.min(deck.duration, Math.max(0, deck.position() + jump(16, +15))); deck.seek(t); onChange(); }}
+            title={deck.bpm ? "Avance de 16 temps (4 mesures) : reste calé sur la grille" : "Avance de 15 s"}
           >
-            15»
+            {deck.bpm ? "16»" : "15»"}
           </button>
           <button
             className={`hw-btn px-2.5 py-2 text-[11px] font-bold min-h-[36px] ${deck.quantize ? "hw-btn-on" : ""}`}

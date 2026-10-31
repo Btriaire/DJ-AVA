@@ -1,4 +1,5 @@
 import { Deck } from "./Deck";
+import { xfGains, type XfCurve } from "./djConsole";
 import { PadVoices } from "./padVoices";
 import { automationFor } from "./deckAutomation";
 import { Synth } from "./Synth";
@@ -635,9 +636,28 @@ export class DJEngine {
   }
 
   private applyCrossfade() {
-    const x = this.crossfade;
-    this.chA.gain.value = Math.cos((x * Math.PI) / 2);
-    this.chB.gain.value = Math.cos(((1 - x) * Math.PI) / 2);
+    const [a, b] = xfGains(this.crossfade, this.xfCurve);
+    const t = this.ctx.currentTime;
+    this.chA.gain.setTargetAtTime(a * this.duck, t, 0.005);
+    this.chB.gain.setTargetAtTime(b * this.duck, t, 0.005);
+  }
+  // crossfader curve (douce, mix, scratch) and the talkover dip of both decks
+  xfCurve: XfCurve = "douce";
+  private duck = 1;
+  setXfCurve(c: XfCurve) {
+    this.xfCurve = c;
+    this.applyCrossfade();
+  }
+  setDuck(g: number) {
+    this.duck = g;
+    const [a, b] = xfGains(this.crossfade, this.xfCurve);
+    const t = this.ctx.currentTime;
+    this.chA.gain.setTargetAtTime(a * g, t, g < 1 ? 0.05 : 0.25);
+    this.chB.gain.setTargetAtTime(b * g, t, g < 1 ? 0.05 : 0.25);
+  }
+  // the finished master (after its effects), for the headphones' CUE/master blend
+  get masterTap(): AudioNode {
+    return this.meterAnalyser;
   }
 
   // match deck B tempo to deck A (or vice-versa)

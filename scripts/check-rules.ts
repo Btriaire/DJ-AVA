@@ -123,6 +123,8 @@ import { eqLabTest } from "../lib/audio/eqLab";
 import { fxAnalysisTest } from "../lib/fxAnalysis";
 import { fxThrowsTest } from "../lib/audio/fxThrows";
 import { voiceLabTest } from "../lib/audio/voiceLab";
+import { djConsoleTest } from "../lib/audio/djConsole";
+import { harmonyMovesTest } from "../lib/audio/harmonyMoves";
 import { selfTest as crowdTest, synthTest as crowdSynthTest, kitTest as crowdKitTest } from "../lib/audio/virtualCrowd";
 import { selfTest as jamPrecisionTest } from "../lib/audio/jamPrecision";
 jamCompTest();
@@ -154,3 +156,5 @@ rackDivTest(); rackGuideTest(RACK_MODULES, START_MIX); console.log("check-rules 
 eqLabTest(); console.log("check-rules eq lab ok");
 fxAnalysisTest(); fxThrowsTest(); console.log("check-rules fx analysis ok");
 voiceLabTest(); console.log("check-rules voice lab ok");
+djConsoleTest(); console.log("check-rules console ok");
+harmonyMovesTest(); console.log("check-rules harmony ok");

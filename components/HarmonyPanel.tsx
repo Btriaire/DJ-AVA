@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { DJEngine } from "@/lib/audio/engine";
 import type { Deck } from "@/lib/audio/Deck";
 import { keyCompat, bestShift, camelotHue, type KeyResult } from "@/lib/audio/key";
+import { HARMONY_MOVES, applyMove, mashupOn, startMashup, stopMashup, walkHome, walking } from "@/lib/audio/harmonyMoves";
 
 const DeckCard = ({ deck, side, color, onChange }: { deck: Deck; side: "A" | "B"; color: string; onChange: () => void }) => {
   const effKey = deck.effectiveKey;
@@ -110,6 +111,8 @@ const DeckCard = ({ deck, side, color, onChange }: { deck: Deck; side: "A" | "B"
 
 export function HarmonyPanel({ engine }: { engine: DJEngine }) {
   const [, setV] = useState(0);
+  const [mover, setMover] = useState<"A" | "B">("B");
+  const [note, setNote] = useState<string | null>(null);
   const force = () => setV((n) => n + 1);
 
   useEffect(() => {
@@ -193,6 +196,63 @@ export function HarmonyPanel({ engine }: { engine: DJEngine }) {
       ) : (
         <div className="text-[10px] text-neutral-400">Charge un morceau sur chaque platine pour comparer les tonalités</div>
       )}
+      <div className="hw-recess flex flex-col gap-2 p-2">
+        <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-neutral-500">Mouvements d&apos;énergie</span>
+        <span className="text-[10px] text-neutral-400">Transpose un deck pour qu&apos;il tombe juste à côté de l&apos;autre sur la roue : même case, un cran plus haut (ça monte), plus bas (ça se calme), ou deux crans (boost).</span>
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="text-[10px] text-neutral-400">Bouger le deck</span>
+          {(["A", "B"] as const).map((s) => (
+            <button key={s} type="button" aria-pressed={mover === s} onClick={() => setMover(s)} className={`hw-btn px-2 py-1 text-[11px] font-bold ${mover === s ? "hw-btn-on" : ""}`} style={{ ["--led" as string]: s === "A" ? "#38bdf8" : "#f59e0b" }}>
+              {s}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {HARMONY_MOVES.map(([id, name, title]) => (
+            <button
+              key={id}
+              type="button"
+              title={title}
+              disabled={!effA || !effB}
+              onClick={() => {
+                const d = mover === "A" ? engine.deckA : engine.deckB, o = mover === "A" ? engine.deckB : engine.deckA;
+                const sh = applyMove(d, o, id);
+                setNote(sh === null ? "Tonalité inconnue sur un des decks." : `Deck ${mover} transposé de ${sh > 0 ? "+" : ""}${sh} demi-ton(s) : ${d.effectiveKey?.camelot ?? ""}`);
+                force();
+              }}
+              className="hw-btn px-2 py-1 text-[11px] font-bold disabled:opacity-40"
+              style={{ ["--led" as string]: "#4ade80" }}
+            >
+              {name}
+            </button>
+          ))}
+          <button
+            type="button"
+            title="Revient à la tonalité d'origine un demi-ton toutes les 2 mesures : on ne l'entend pas glisser"
+            onClick={() => { walkHome(mover === "A" ? engine.deckA : engine.deckB); force(); }}
+            className={`hw-btn px-2 py-1 text-[11px] font-bold ${walking(mover === "A" ? engine.deckA : engine.deckB) ? "hw-btn-on" : ""}`}
+            style={{ ["--led" as string]: "#4ade80" }}
+          >
+            RETOUR EN DOUCEUR
+          </button>
+        </div>
+        <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-neutral-500">A cappella</span>
+        <span className="text-[10px] text-neutral-400">La voix d&apos;un deck sur l&apos;instrumental de l&apos;autre, transposée dans sa tonalité et calée sur son tempo (stems nécessaires des deux côtés).</span>
+        <div className="flex flex-wrap gap-1">
+          {mashupOn(engine) ? (
+            <button type="button" onClick={() => { stopMashup(engine); setNote("Mashup fini : tout est revenu comme avant."); force(); }} className="hw-btn hw-btn-on px-2 py-1 text-[11px] font-bold" style={{ ["--led" as string]: "#4ade80" }}>
+              FIN DU MASHUP
+            </button>
+          ) : (
+            (["A", "B"] as const).map((s) => (
+              <button key={s} type="button" onClick={() => { setNote(startMashup(engine, s) ?? `Voix de ${s} sur l'instrumental de ${s === "A" ? "B" : "A"}.`); force(); }} className="hw-btn px-2 py-1 text-[11px] font-bold" style={{ ["--led" as string]: s === "A" ? "#38bdf8" : "#f59e0b" }}>
+                VOIX DE {s} SUR {s === "A" ? "B" : "A"}
+              </button>
+            ))
+          )}
+        </div>
+        {note && <span aria-live="polite" className="text-[10px] text-neutral-200">{note}</span>}
+      </div>
       <svg viewBox="-100 -100 200 200" className="mx-auto h-[190px] w-[190px]">
         {Array.from({ length: 24 }, (_, i) => {
           const n = (i % 12) + 1;
