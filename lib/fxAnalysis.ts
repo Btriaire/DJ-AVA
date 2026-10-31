@@ -2,6 +2,7 @@
 // the spectrum of every stem and of the mix (EQ Lab), the loudness (level matching), the ends of sung phrases (echo throws).
 import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { ffmpegPath, isCached, MODEL_STEMS, stemPath, type StemModel, type StemOpts } from "./stems";
 
@@ -136,6 +137,16 @@ async function decode(path: string): Promise<Float32Array | null> {
     });
     ffmpeg.on("error", () => resolve(null));
   });
+}
+
+// the cached analyses only (nothing computed): for lists of songs
+export function readFx(hash: string, model: StemModel, opts?: StemOpts): FxMap | null {
+  try {
+    const f = JSON.parse(readFileSync(join(dirname(stemPath(hash, model, "drums", opts)), "fx.json"), "utf8")) as FxMap;
+    return f.version === 1 ? f : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function analyseFx(hash: string, model: StemModel, opts?: StemOpts): Promise<FxMap | null> {

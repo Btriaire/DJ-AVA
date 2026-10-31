@@ -2,6 +2,7 @@
 import { Fragment, useState, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
 import type { LibTrack, Playlist, TransitionType } from "@/lib/library";
 import type { SetArc } from "@/lib/setBuilder";
+import { SetEnergyPanel } from "./SetEnergyCurve";
 import { BpmChip, Cover, Icon, KeyChip, StemPill, fmtDur, keyCompat } from "../prep/parts";
 import { setHealth } from "@/lib/setHealth";
 import type { PrepProgress } from "@/lib/setPrep";
@@ -305,6 +306,8 @@ export function SetDetail(props: SetDetailProps) {
               )}
             </Metric>
           </div>
+
+          {list.length > 1 && <SetEnergyPanel list={list} />}
 
           <div className="flex flex-wrap items-center gap-2">
             <button
