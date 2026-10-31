@@ -394,9 +394,9 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
         </button>
 
         {(fadersOpen || linking) && (
-          <div className="flex gap-1 overflow-x-auto [contain:inline-size]">
+          <div className="flex justify-between gap-2 overflow-x-auto [contain:inline-size]">
             {EQ_FREQS.map((_, i) => (
-              <div key={i} className="flex flex-col items-center gap-0.5">
+              <div key={i} className="flex flex-1 flex-col items-center gap-0.5">
                 <span className="font-mono text-[10px]" style={{ color }}>
                   {currentGains[i] > 0 ? "+" : ""}{currentGains[i].toFixed(1)} dB
                 </span>
@@ -412,7 +412,7 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
                     flashLcd(`EQ ${freqLabels[i]} ${v > 0 ? "+" : ""}${v.toFixed(1)} dB`);
                     rerender();
                   }}
-                  className="!h-[90px]"
+                  className="!h-[170px]"
                 />
                 <button
                   type="button"

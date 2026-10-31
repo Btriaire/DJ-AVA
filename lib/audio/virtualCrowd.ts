@@ -431,7 +431,7 @@ export class VirtualCrowd {
     k = Math.min(1, Math.max(0, k));
     const was = this.level;
     this.level = k;
-    this.out.gain.setTargetAtTime(k * 0.28, this.ctx.currentTime, 0.1); // at 100 % about 10 dB under the music
+    this.out.gain.setTargetAtTime(k * 0.6, this.ctx.currentTime, 0.1); // at 100 % about 3 dB under the music (was 10: too faint)
     if (k > 0 && was === 0) {
       if (this.stopTimer) { clearTimeout(this.stopTimer); this.stopTimer = null; }
       if (!this.lfoOn) { this.lfos.forEach((o) => o.start()); this.lfoOn = true; }
