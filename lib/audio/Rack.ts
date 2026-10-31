@@ -21,7 +21,6 @@ export type RackModuleId =
   | "drive"
   | "wavefold"
   | "crush"
-  | "robot"
   | "ringmod"
   | "voyelle"
   | "autowah"
@@ -31,15 +30,13 @@ export type RackModuleId =
   | "shimmer"
   | "delay"
   | "reverb"
-  | "limiter"
   | "loudness"
   | "surround"
   | "exciter"
   | "transient"
   | "multiband"
   | "xymatrix"
-  | "phaser"
-  | "combfilter";
+  | "phaser";
 
 export interface RackParamDef {
   key: string;
@@ -56,7 +53,31 @@ export interface RackModuleDef {
   title: string;
   params: RackParamDef[];
   flags?: { key: string; label: string }[]; // boolean toggles (e.g. delay ping-pong)
+  sync?: { key: string; kind: "time" | "rate" }; // the param that follows the "div" (musical time) param
 }
+
+// musical times for the synced modules, in beats (0 = free, the knob rules)
+export const RACK_DIVS: { label: string; beats: number }[] = [
+  { label: "Libre", beats: 0 }, { label: "1/16", beats: 0.25 }, { label: "1/8", beats: 0.5 }, { label: "1/8 pointé", beats: 0.75 },
+  { label: "1/4", beats: 1 }, { label: "1/2", beats: 2 }, { label: "1 mesure", beats: 4 }, { label: "2 mesures", beats: 8 },
+];
+const divParam = (def: number): RackParamDef => ({ key: "div", label: "Temps", min: 0, max: RACK_DIVS.length - 1, def, fmt: (v) => RACK_DIVS[Math.round(v)]?.label ?? "" });
+// the value a synced param takes at this tempo, clamped to its range (null = free)
+export function divValue(def: RackModuleDef, div: number, bpm: number): number | null {
+  const beats = RACK_DIVS[Math.round(div)]?.beats ?? 0;
+  const p = def.sync && def.params.find((q) => q.key === def.sync!.key);
+  if (!beats || !p || !(bpm > 0)) return null;
+  const sec = (beats * 60) / bpm;
+  const v = def.sync!.kind === "time" ? sec : 1 / sec;
+  return Math.min(p.max, Math.max(p.min, v));
+}
+
+// dosage an effect takes when it is switched on at 0 %: switching on is always heard
+export const START_MIX: Record<string, number> = {
+  isolator: 1, autotune: 1, comp: 1, drive: 0.6, wavefold: 0.5, crush: 0.6, ringmod: 0.5, voyelle: 0.8, autowah: 0.8,
+  resonator: 0.5, gate: 1, glitch: 0.6, shimmer: 0.35, delay: 0.3, reverb: 0.35, loudness: 1, surround: 1, exciter: 0.5,
+  transient: 1, multiband: 1, xymatrix: 1, phaser: 0.7,
+};
 
 const hz = (v: number) => `${v.toFixed(2)} Hz`;
 const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -192,17 +213,13 @@ export const RACK_MODULES: RackModuleDef[] = [
   },
   {
     id: "crush",
-    label: "CRUSH",
-    title: "Bit-crusher — réduction de résolution (lo-fi)",
-    params: [{ key: "bits", label: "Bits", min: 1, max: 8, def: 4, fmt: (v) => `${Math.round(v)} bit` }],
-  },
-  {
-    id: "robot",
-    label: "ROBOT",
-    title: "Voix robotique — bitcrush + décalage + médium",
+    label: "CRUSH · ROBOT",
+    title: "Bitcrusher et voix robot : son lo-fi qui grésille, ou voix de robot quand ROBOT monte",
     params: [
-      { key: "carrier", label: "Carrier", min: -500, max: 500, def: 0, fmt: hzr },
-      { key: "grit", label: "Grain", min: 1, max: 8, def: 4, fmt: (v) => `${Math.round(v)} bit` },
+      { key: "bits", label: "Grain", min: 1, max: 8, def: 4, fmt: (v) => `${Math.round(v)} bit` },
+      { key: "down", label: "Lo-fi", min: 1, max: 32, def: 6, fmt: (v) => `${Math.round(48 / v)} kHz` },
+      { key: "robot", label: "Robot", min: 0, max: 1, def: 0, fmt: pct },
+      { key: "shift", label: "Décalage", min: -500, max: 500, def: 0, fmt: hzr },
       { key: "tone", label: "Médium", min: 200, max: 4000, def: 1200, fmt: hzr },
     ],
   },
@@ -225,7 +242,9 @@ export const RACK_MODULES: RackModuleDef[] = [
       { key: "size", label: "Voix", min: 0.7, max: 1.4, def: 1, fmt: (v) => (v < 0.9 ? "grave" : v > 1.12 ? "aiguë" : "normale") },
       { key: "auto", label: "Auto", min: 0, max: 6, def: 0, fmt: (v) => (v < 0.05 ? "off" : `${v.toFixed(1)} Hz`) },
       { key: "reso", label: "Réso", min: 1, max: 20, def: 8, fmt: (v) => v.toFixed(0) },
+      divParam(0),
     ],
+    sync: { key: "auto", kind: "rate" },
   },
   {
     id: "autowah",
@@ -239,12 +258,16 @@ export const RACK_MODULES: RackModuleDef[] = [
   },
   {
     id: "resonator",
-    label: "RÉSO",
-    title: "Résonateur accordé — fait chanter le son sur une note",
+    label: "RÉSO · PEIGNE",
+    title: "Résonateur et filtre à peigne : le son chante sur une note, ou balaie comme un jet quand MOUVEMENT monte",
     params: [
       { key: "tune", label: "Note", min: 50, max: 1000, def: 220, fmt: hzr },
       { key: "reso", label: "Réso", min: 0, max: 0.95, def: 0.8, fmt: pct },
+      { key: "move", label: "Mouvement", min: 0, max: 1, def: 0, fmt: pct },
+      { key: "rate", label: "Vitesse", min: 0.05, max: 8, def: 0.5, fmt: hz },
+      divParam(0),
     ],
+    sync: { key: "rate", kind: "rate" },
   },
   {
     id: "gate",
@@ -253,7 +276,9 @@ export const RACK_MODULES: RackModuleDef[] = [
     params: [
       { key: "rate", label: "Vitesse", min: 0.5, max: 16, def: 8, fmt: hz },
       { key: "depth", label: "Profond.", min: 0, max: 1, def: 1, fmt: pct },
+      divParam(1),
     ],
+    sync: { key: "rate", kind: "rate" },
   },
   {
     id: "glitch",
@@ -262,8 +287,10 @@ export const RACK_MODULES: RackModuleDef[] = [
     params: [
       { key: "time", label: "Temps", min: 0.02, max: 0.5, def: 0.12, fmt: ms },
       { key: "fb", label: "Retour", min: 0, max: 0.95, def: 0.4, fmt: pct },
+      divParam(1),
     ],
     flags: [{ key: "repeat", label: "REPEAT" }],
+    sync: { key: "time", kind: "time" },
   },
   {
     id: "shimmer",
@@ -281,8 +308,10 @@ export const RACK_MODULES: RackModuleDef[] = [
     params: [
       { key: "time", label: "Temps", min: 0.02, max: 1.2, def: 0.38, fmt: ms },
       { key: "fb", label: "Retour", min: 0, max: 0.95, def: 0.55, fmt: pct },
+      divParam(3),
     ],
     flags: [{ key: "pingpong", label: "PING" }],
+    sync: { key: "time", kind: "time" },
   },
   {
     id: "reverb",
@@ -291,18 +320,13 @@ export const RACK_MODULES: RackModuleDef[] = [
     params: [{ key: "decay", label: "Taille", min: 0.3, max: 6, def: 3, fmt: (v) => `${v.toFixed(1)} s` }],
   },
   {
-    id: "limiter",
-    label: "LIMITEUR",
-    title: "Limiteur de sécurité — empêche l'écrêtage",
-    params: [{ key: "ceil", label: "Plafond", min: -24, max: 0, def: -1, fmt: (v) => `${v.toFixed(1)} dB` }],
-  },
-  {
     id: "loudness",
-    label: "LOUDNESS",
-    title: "Maximiseur de loudness — compression + gain + limiteur brick-wall",
+    label: "LOUDNESS · LIMITEUR",
+    title: "Plus fort et plus dense sans saturer ; CIBLE à 0 = simple limiteur de sécurité",
     params: [
-      { key: "target", label: "Cible", min: 0, max: 1, def: 0.5, fmt: (v) => `${Math.round(-14 + v * 8)} LUFS` },
+      { key: "target", label: "Cible", min: 0, max: 1, def: 0.5, fmt: (v) => (v < 0.02 ? "limiteur" : `${Math.round(-14 + v * 8)} LUFS`) },
       { key: "punch", label: "Punch", min: 0, max: 1, def: 0.5, fmt: pct },
+      { key: "ceil", label: "Plafond", min: -12, max: 0, def: -1, fmt: (v) => `${v.toFixed(1)} dB` },
     ],
   },
   {
@@ -358,21 +382,14 @@ export const RACK_MODULES: RackModuleDef[] = [
   {
     id: "phaser",
     label: "PHASER",
-    title: "Sweep modulation — effet spatial DJ classique",
+    title: "Phaser : le son tourne et se creuse en vagues, calé sur le tempo",
     params: [
-      { key: "rate", label: "Vitesse", min: 0.1, max: 10, def: 2, fmt: (v) => `${v.toFixed(1)} Hz` },
-      { key: "depth", label: "Profondeur", min: 0, max: 1, def: 0, fmt: pct },
+      { key: "rate", label: "Vitesse", min: 0.1, max: 8, def: 0.5, fmt: (v) => `${v.toFixed(2)} Hz` },
+      { key: "depth", label: "Profondeur", min: 0, max: 1, def: 0.6, fmt: pct },
+      { key: "fb", label: "Retour", min: 0, max: 0.9, def: 0.5, fmt: pct },
+      divParam(6),
     ],
-  },
-  {
-    id: "combfilter",
-    label: "COMB",
-    title: "Filtre à peigne — notches spectrales robotic/alien",
-    params: [
-      { key: "time", label: "Temps", min: 0.5, max: 50, def: 10, fmt: (v) => `${v.toFixed(1)} ms` },
-      { key: "fb", label: "Feedback", min: 0, max: 0.95, def: 0.5, fmt: pct },
-      { key: "lfoRate", label: "LFO", min: 0, max: 5, def: 0, fmt: (v) => `${v.toFixed(2)} Hz` },
-    ],
+    sync: { key: "rate", kind: "rate" },
   },
 ];
 
@@ -386,7 +403,7 @@ export interface MacroTarget {
 }
 export interface RackPreset {
   order: RackModuleId[];
-  modules: Record<string, { on: boolean; mix: number; params: Record<string, number>; flags?: Record<string, boolean> }>;
+  modules: Record<string, { on: boolean; mix: number; params: Record<string, number>; flags?: Record<string, boolean>; target?: number }>;
   macros: { value: number; targets: MacroTarget[] }[];
 }
 
@@ -413,6 +430,7 @@ class RackSlot {
   // module that overrides this to 1 in the constructor below: its bands
   // default to flat/0dB, so 0% mix would make raising a band do nothing.)
   mix = 0;
+  target = -1; // stem index this effect is aimed at (-1 = the whole deck)
   params: Record<string, number> = {};
   flags: Record<string, boolean> = {};
   // Web Audio is a *pull* graph: while the wet branch reaches the output, the
@@ -495,6 +513,7 @@ class RackSlot {
   }
   setOn(on: boolean) {
     this.on = on;
+    if (on && this.mix < 0.01) this.mix = START_MIX[this.id] ?? 0.5; // switching on is always heard
     if (on) {
       this.ensureBuilt();
       // reconnect the wet branch *before* the fade so the ramp is heard
@@ -541,6 +560,11 @@ export class Rack {
   private scope: AnalyserNode; // taps the rack output for the panel spectrum
   private levelBuf: Uint8Array<ArrayBuffer>;
   private slots = new Map<RackModuleId, RackSlot>();
+  // one insert point per stem: the deck wires stemOut[i] -> input and output -> its stem bus;
+  // the effects aimed at stem i sit in between (in rack order), the rest stay on the whole deck
+  private stemIns: { input: GainNode; output: GainNode }[] = [];
+  private stemsLive = 0; // stems playing right now (0 = the full mix plays, every effect is on the whole deck)
+  private bpm = 0;
   order: RackModuleId[] = [...DEFAULT_ORDER];
   macros: { value: number; targets: MacroTarget[] }[] = [
     { value: 0, targets: [] },
@@ -601,22 +625,93 @@ export class Rack {
     return !!this.macros[i]?.targets.some((t) => t.id === target.id && t.key === target.key);
   }
 
-  // (re)connect the slots in `order`: input -> slot0 -> ... -> dcBlock -> output.
+  // (re)connect the slots in `order`: input -> slot0 -> ... -> dcBlock -> output, except the
+  // slots aimed at a playing stem, which chain inside that stem's insert point instead.
   // Wrapped in a short output fade so reordering never pops.
   private rewire() {
     const t = this.ctx.currentTime;
-    this.output.gain.cancelScheduledValues(t);
-    this.output.gain.setTargetAtTime(0, t, 0.004);
+    const outs = [this.output, ...this.stemIns.map((x) => x.output)];
+    for (const o of outs) {
+      o.gain.cancelScheduledValues(t);
+      o.gain.setTargetAtTime(0, t, 0.004);
+    }
     this.input.disconnect();
+    for (const x of this.stemIns) x.input.disconnect();
     for (const s of this.slots.values()) s.output.disconnect();
     let prev: AudioNode = this.input;
+    const stemPrev: AudioNode[] = this.stemIns.map((x) => x.input);
     for (const id of this.order) {
       const s = this.slots.get(id)!;
-      prev.connect(s.input);
-      prev = s.output;
+      const w = this.placeOf(s);
+      if (w < 0) {
+        prev.connect(s.input);
+        prev = s.output;
+      } else {
+        stemPrev[w].connect(s.input);
+        stemPrev[w] = s.output;
+      }
     }
     prev.connect(this.dcBlock);
-    this.output.gain.setTargetAtTime(1, t + 0.02, 0.004);
+    this.stemIns.forEach((x, i) => stemPrev[i].connect(x.output));
+    for (const o of outs) o.gain.setTargetAtTime(1, t + 0.02, 0.004);
+  }
+
+  // where a slot plays: its stem when that stem is playing, else the whole deck (-1)
+  private placeOf(s: RackSlot): number {
+    return s.target >= 0 && s.target < this.stemsLive && this.stemIns[s.target] ? s.target : -1;
+  }
+
+  stemInsert(i: number): { input: GainNode; output: GainNode } {
+    while (this.stemIns.length <= i) {
+      const x = { input: this.ctx.createGain(), output: this.ctx.createGain() };
+      x.input.connect(x.output);
+      this.stemIns.push(x);
+    }
+    return this.stemIns[i];
+  }
+  // the deck tells how many stems play (0 = the full mix): aimed effects move in or out of the stems
+  setStemsLive(n: number) {
+    if (n === this.stemsLive) return;
+    this.stemsLive = n;
+    this.rewire();
+  }
+  getTarget(id: RackModuleId): number {
+    return this.slots.get(id)?.target ?? -1;
+  }
+  // aim one effect at stem i (-1 = the whole deck)
+  setTarget(id: RackModuleId, i: number) {
+    const s = this.slots.get(id);
+    if (!s || s.id === "eq" || s.target === i) return;
+    s.target = i;
+    this.rewire();
+  }
+  get hasTargets(): boolean {
+    for (const s of this.slots.values()) if (s.target >= 0) return true;
+    return false;
+  }
+  clearTargets() {
+    if (!this.hasTargets) return;
+    for (const s of this.slots.values()) s.target = -1;
+    this.rewire();
+  }
+
+  // the synced modules follow the deck tempo: polled, a tempo change re-times them
+  setClock(bpm: () => number) {
+    setInterval(() => {
+      const b = bpm();
+      if (b > 0 && Math.abs(b - this.bpm) > 0.05) this.setTempo(b);
+    }, 250);
+  }
+  setTempo(bpm: number) {
+    this.bpm = bpm;
+    for (const id of this.slots.keys()) this.applyDiv(id);
+  }
+  private applyDiv(id: RackModuleId) {
+    const def = RACK_DEF.get(id);
+    const s = this.slots.get(id);
+    if (!def?.sync || !s) return;
+    const v = divValue(def, s.params.div ?? 0, this.bpm);
+    if (v !== null) s.setParam(def.sync.key, v);
   }
 
   setEnabled(id: RackModuleId, on: boolean) {
@@ -627,6 +722,7 @@ export class Rack {
   }
   setParam(id: RackModuleId, key: string, v: number) {
     this.slots.get(id)?.setParam(key, v);
+    if (key === "div") this.applyDiv(id);
   }
   setFlag(id: RackModuleId, key: string, on: boolean) {
     this.slots.get(id)?.setFlag(key, on);
@@ -684,7 +780,7 @@ export class Rack {
   export(): RackPreset {
     const modules: RackPreset["modules"] = {};
     for (const [id, s] of this.slots) {
-      modules[id] = { on: s.on, mix: s.mix, params: { ...s.params }, flags: { ...s.flags } };
+      modules[id] = { on: s.on, mix: s.mix, params: { ...s.params }, flags: { ...s.flags }, target: s.target };
     }
     return {
       order: [...this.order],
@@ -707,7 +803,10 @@ export class Rack {
         for (const f of def.flags ?? []) slot.setFlag(f.key, !!m.flags?.[f.key]);
         slot.setMix(typeof m.mix === "number" ? m.mix : 1);
         slot.setOn(!!m.on);
+        slot.target = typeof m.target === "number" ? m.target : -1;
+        this.applyDiv(id as RackModuleId);
       }
+      this.rewire();
     }
     if (Array.isArray(p.macros)) {
       for (let i = 0; i < this.macros.length; i++) {
@@ -724,15 +823,27 @@ export class Rack {
 
 // load the auto-tune AudioWorklet once per context (shared with the deck's loader;
 // addModule is idempotent for the same URL)
-const autotuneWorklet = new WeakMap<BaseAudioContext, Promise<void>>();
-function ensureAutotuneWorklet(c: AudioContext): Promise<void> {
-  let p = autotuneWorklet.get(c);
+const worklets = new WeakMap<BaseAudioContext, Map<string, Promise<void>>>();
+function ensureWorklet(c: AudioContext, url: string): Promise<void> {
+  const m = worklets.get(c) ?? new Map<string, Promise<void>>();
+  worklets.set(c, m);
+  let p = m.get(url);
   if (!p) {
-    p = c.audioWorklet.addModule("/autotune-worklet.js");
-    autotuneWorklet.set(c, p);
+    p = c.audioWorklet.addModule(url);
+    m.set(url, p);
   }
   return p;
 }
+const ensureAutotuneWorklet = (c: AudioContext) => ensureWorklet(c, "/autotune-worklet.js");
+
+// linear interpolation in a [x, y] table sorted by x
+function interp(t: [number, number][], x: number): number {
+  if (x <= t[0][0]) return t[0][1];
+  for (let i = 1; i < t.length; i++) if (x <= t[i][0]) return t[i - 1][1] + ((x - t[i - 1][0]) / (t[i][0] - t[i - 1][0])) * (t[i][1] - t[i - 1][1]);
+  return t[t.length - 1][1];
+}
+// drive makeup (dB) for its amount, measured on a full mix (We Are Family, -18 dB RMS)
+const DRIVE_MAKEUP_DB: [number, number][] = [[0, 0], [0.1, -0.8], [0.4, 0.8], [0.7, 9.8], [1, 10.8]];
 
 // ---- per-type DSP graph builders ----
 function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
@@ -837,10 +948,10 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
       const setCurve = (amount: number) => {
         const n = 1024;
         const curve = new Float32Array(n);
-        const k = 1 + amount * 60; // drive amount -> tanh hardness
+        const k = 1 + amount * amount * 30; // drive amount -> tanh hardness, unity gain for quiet signals
         for (let i = 0; i < n; i++) {
           const x = (i / (n - 1)) * 2 - 1;
-          curve[i] = Math.tanh(k * x) / Math.tanh(k);
+          curve[i] = Math.tanh(k * x) / k;
         }
         shaper.curve = curve;
       };
@@ -850,9 +961,9 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
         fxOut: makeup,
         onParam: (key, v) => {
           if (key === "drive") {
-            at(pre.gain, 1 + v * 3);
+            at(pre.gain, 1 + v * 2);
             setCurve(v);
-            at(makeup.gain, 1 / (1 + v * 0.7)); // level-match so bypass A/B is honest
+            at(makeup.gain, Math.pow(10, interp(DRIVE_MAKEUP_DB, v) / 20)); // level-match so bypass A/B is honest
           } else if (key === "tone") {
             at(tone.frequency, 600 * Math.pow(20, v)); // 600 Hz .. 12 kHz
           }
@@ -892,48 +1003,81 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
       };
     }
     case "crush": {
-      const shaper = c.createWaveShaper();
-      shaper.oversample = "4x";
-      const setBits = (bits: number) => {
-        const n = 1024;
-        const curve = new Float32Array(n);
-        const step = Math.pow(2, Math.max(1, bits));
-        for (let i = 0; i < n; i++) {
-          const x = (i / (n - 1)) * 2 - 1;
-          curve[i] = Math.round(x * step) / step;
-        }
-        shaper.curve = curve;
-      };
-      setBits(4);
-      return { fxIn: shaper, fxOut: shaper, onParam: (k, v) => k === "bits" && setBits(v) };
-    }
-    case "robot": {
-      // bitcrush + frequency shift + mid bandpass -> robotic timbre
       const fxIn = c.createGain();
-      const fxOut = c.createGain();
-      const crusher = new Tone.BitCrusher({ bits: 4 });
-      crusher.wet.value = 1;
+      const quantizer = c.createWaveShaper();
+      const plain = c.createGain();
+      const robot = c.createGain();
       const shifter = new Tone.FrequencyShifter({ frequency: 0, wet: 1 });
       const band = c.createBiquadFilter();
-      band.type = "bandpass";
-      band.frequency.value = 1200;
-      band.Q.value = 1.2;
+      const makeup = c.createGain();
       const lp = c.createBiquadFilter();
+      const fxOut = c.createGain();
+
+      quantizer.curve = new Float32Array(1024).map((_, i) => {
+        const x = (i - 512) / 512;
+        const step = Math.pow(2, 4);
+        return Math.round(x * step) / step;
+      });
+      quantizer.oversample = "4x";
+
+      band.type = "bandpass";
+      band.Q.value = 1.2;
+      at(band.frequency, 1200);
+
+      makeup.gain.value = 2.2;
+
       lp.type = "lowpass";
-      lp.frequency.value = 16000; // tame the ring-mod aliasing
-      Tone.connect(fxIn, crusher);
-      crusher.connect(shifter);
-      Tone.connect(shifter, band);
-      band.connect(lp);
+      lp.frequency.value = 16000;
+
+      fxIn.connect(quantizer);
+      // sample-rate reduction (the real lo-fi sound) once its worklet is loaded
+      let hold: AudioWorkletNode | null = null;
+      let down = 6;
+      ensureWorklet(c, "/crush-worklet.js").then(() => {
+        hold = new AudioWorkletNode(c, "crush", { channelCount: 2, channelCountMode: "explicit", outputChannelCount: [2] });
+        hold.parameters.get("bits")!.value = 16;
+        hold.parameters.get("down")!.value = down;
+        fxIn.disconnect(quantizer);
+        fxIn.connect(hold);
+        hold.connect(quantizer);
+      }).catch(() => { /* keep the plain bit crusher */ });
+      quantizer.connect(plain);
+      Tone.connect(quantizer, shifter);
+      shifter.connect(band);
+      band.connect(makeup);
+      makeup.connect(robot);
+      plain.connect(lp);
+      robot.connect(lp);
       lp.connect(fxOut);
+
       return {
         fxIn,
         fxOut,
         onParam: (k, v) => {
-          if (k === "carrier") shifter.frequency.rampTo(v, 0.03);
-          else if (k === "grit") crusher.bits.value = Math.max(1, Math.round(v));
-          else if (k === "tone") at(band.frequency, v);
-        },
+          switch (k) {
+            case "bits":
+              quantizer.curve = new Float32Array(1024).map((_, i) => {
+                const x = (i - 512) / 512;
+                const step = Math.pow(2, Math.max(1, Math.round(v)));
+                return Math.round(x * step) / step;
+              });
+              break;
+            case "down":
+              down = Math.max(1, v);
+              hold?.parameters.get("down")!.setValueAtTime(down, c.currentTime);
+              break;
+            case "robot":
+              plain.gain.value = Math.cos(v * Math.PI / 2);
+              robot.gain.value = Math.sin(v * Math.PI / 2);
+              break;
+            case "shift":
+              shifter.frequency.rampTo(v, 0.03);
+              break;
+            case "tone":
+              at(band.frequency, v);
+              break;
+          }
+        }
       };
     }
     case "ringmod": {
@@ -965,7 +1109,7 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
       let morph = 0.3;
       let size = 1;
       let sweep: ReturnType<typeof setInterval> | null = null;
-      fxOut.gain.value = 3.2; // makeup: parallel formant bandpasses lose a lot of level
+      fxOut.gain.value = 5.6; // makeup: parallel formant bandpasses lose a lot of level
       const bands = [0, 1, 2].map((i) => {
         const bp = c.createBiquadFilter();
         bp.type = "bandpass";
@@ -1035,19 +1179,56 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
       };
     }
     case "resonator": {
-      // tuned feedback comb -> makes the signal "sing" a note
       const fxIn = c.createGain();
+      const d = c.createDelay(0.1);
+      const fb = c.createGain();
+      const lfo = c.createOscillator();
+      const lfoAmt = c.createGain();
+      const outGain = c.createGain();
       const fxOut = c.createGain();
-      const comb = new Tone.FeedbackCombFilter({ delayTime: 1 / 220, resonance: 0.8 });
-      Tone.connect(fxIn, comb);
-      Tone.connect(comb, fxOut);
+
+      let base = 1 / 220;
+      let move = 0;
+      d.delayTime.value = base;
+      fb.gain.value = Math.min(0.92, 0.8);
+      outGain.gain.value = 1 - 0.8 * 0.85;
+
+      lfo.type = "sine";
+      lfo.frequency.value = 0.5;
+      lfoAmt.gain.value = 0;
+      lfo.start();
+
+      fxIn.connect(d);
+      d.connect(fb);
+      fb.connect(d);
+      d.connect(outGain);
+      outGain.connect(fxOut);
+      lfo.connect(lfoAmt);
+      lfoAmt.connect(d.delayTime);
+
       return {
         fxIn,
         fxOut,
         onParam: (k, v) => {
-          if (k === "tune") comb.delayTime.rampTo(1 / Math.max(20, v), 0.03);
-          else if (k === "reso") comb.resonance.rampTo(Math.min(0.9, v), 0.03); // <0.95 avoids self-oscillation/howl
-        },
+          switch (k) {
+            case "tune":
+              base = 1 / Math.max(20, v);
+              at(d.delayTime, base);
+              at(lfoAmt.gain, move * base * 0.5);
+              break;
+            case "reso":
+              fb.gain.value = Math.min(0.92, v);
+              outGain.gain.value = 1 - 0.85 * v;
+              break;
+            case "move":
+              move = v;
+              at(lfoAmt.gain, move * base * 0.5);
+              break;
+            case "rate":
+              at(lfo.frequency, v);
+              break;
+          }
+        }
       };
     }
     case "gate": {
@@ -1220,15 +1401,19 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
       rG.connect(sideR);
       sideL.connect(side);
       sideR.connect(side);
-      const bp = c.createBiquadFilter();
-      bp.type = "bandpass";
-      bp.frequency.value = 1400;
+      const bp = c.createBiquadFilter(); // high-pass: the bass and kick leave, the voice stays
+      bp.type = "highpass";
+      bp.frequency.value = 310;
       bp.Q.value = 0.7;
+      const bpTop = c.createBiquadFilter();
+      bpTop.type = "lowpass";
+      bpTop.frequency.value = 6200;
       mid.connect(bp);
+      bp.connect(bpTop);
       const keepGain = c.createGain(); // bandpassed centre (vocal kept)
       const sideKill = c.createGain(); // sides (vocal removed)
       sideKill.gain.value = 0;
-      bp.connect(keepGain);
+      bpTop.connect(keepGain);
       keepGain.connect(fxOut);
       side.connect(sideKill);
       sideKill.connect(fxOut);
@@ -1239,7 +1424,7 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
           at(keepGain.gain, 0, 0.01);
           at(sideKill.gain, 1, 0.01);
         } else {
-          at(keepGain.gain, 0.6 + curFocus, 0.01);
+          at(keepGain.gain, 1.6 + curFocus * 1.2, 0.01);
           at(sideKill.gain, 0, 0.01);
         }
       };
@@ -1250,7 +1435,8 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
         onParam: (k, v) => {
           if (k === "focus") {
             curFocus = v;
-            at(bp.Q, 0.5 + v * 3);
+            at(bp.frequency, 100 + v * 300);
+            at(bpTop.frequency, 9000 - v * 4000);
             apply();
           }
         },
@@ -1262,50 +1448,50 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
         },
       };
     }
-    case "limiter": {
-      const lim = c.createDynamicsCompressor();
-      lim.threshold.value = -1;
-      lim.knee.value = 0;
-      lim.ratio.value = 20;
-      lim.attack.value = 0.002;
-      lim.release.value = 0.1;
-      return { fxIn: lim, fxOut: lim, onParam: (k, v) => k === "ceil" && at(lim.threshold, v) };
-    }
     case "loudness": {
-      // 2-stage loudness maximizer: fast compressor + makeup gain + brick-wall limiter
       const fxIn = c.createGain();
-      const fxOut = c.createGain();
       const comp = c.createDynamicsCompressor();
-      comp.threshold.value = -30;
-      comp.knee.value = 8;
-      comp.ratio.value = 8;
-      comp.attack.value = 0.003;
-      comp.release.value = 0.15;
       const makeup = c.createGain();
-      makeup.gain.value = 3;
       const lim = c.createDynamicsCompressor();
-      lim.threshold.value = -2;
+      const fxOut = c.createGain();
+
+      comp.knee.value = 8;
+      at(comp.threshold, -10 - 0.5 * 28);
+      at(comp.ratio, 1 + 0.5 * 11);
+      at(comp.attack, 0.003);
+      at(comp.release, 0.15);
+      makeup.gain.value = 1 + 0.5 * 1.0;
+
       lim.knee.value = 0;
-      lim.ratio.value = 20;
-      lim.attack.value = 0.001;
-      lim.release.value = 0.06;
+      at(lim.ratio, 20);
+      at(lim.attack, 0.001);
+      at(lim.release, 0.06);
+      at(lim.threshold, -1);
+
       fxIn.connect(comp);
       comp.connect(makeup);
       makeup.connect(lim);
       lim.connect(fxOut);
+
       return {
-        fxIn, fxOut,
+        fxIn,
+        fxOut,
         onParam: (k, v) => {
-          if (k === "target") {
-            at(comp.threshold, -40 + v * 18);
-            at(comp.ratio, 4 + v * 12);
-            at(makeup.gain, 1 + v * 6);
-            at(lim.threshold, -1 - v * 3);
-          } else if (k === "punch") {
-            at(comp.attack, 0.001 + (1 - v) * 0.05);
-            at(comp.release, 0.05 + v * 0.35);
+          switch (k) {
+            case "target":
+              at(comp.threshold, -10 - v * 28);
+              at(comp.ratio, 1 + v * 11);
+              at(makeup.gain, 1 + v * 1.0); // switching on stays a few dB louder, not a jump
+              break;
+            case "punch":
+              at(comp.attack, 0.001 + (1 - v) * 0.05);
+              at(comp.release, 0.05 + v * 0.35);
+              break;
+            case "ceil":
+              at(lim.threshold, v);
+              break;
           }
-        },
+        }
       };
     }
     case "surround": {
@@ -1379,7 +1565,7 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
       return {
         fxIn, fxOut,
         onParam: (k, v) => {
-          if (k === "harm") { setCurve(v); at(excGain.gain, 0.1 + v * 0.9); }
+          if (k === "harm") { setCurve(v); at(excGain.gain, 0.1 + v * 0.9); at(fxOut.gain, 1 / (1 + 1.2 * (0.1 + v * 0.9))); } // level-matched
           else if (k === "freq") at(hp.frequency, v);
         },
       };
@@ -1410,11 +1596,14 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
       fxIn.connect(sustComp);
       sustComp.connect(sustGain);
       sustGain.connect(fxOut);
+      let a = 1.75, su = 0.45;
+      const level = () => at(fxOut.gain, 0.95 / (a + su)); // the parallel sum is level-matched, only the balance changes
       return {
         fxIn, fxOut,
         onParam: (k, v) => {
-          if (k === "attack") at(transGain.gain, 0.5 + v * 2.5);
-          else if (k === "sustain") at(sustGain.gain, v * 1.5);
+          if (k === "attack") at(transGain.gain, (a = 0.5 + v * 2.5));
+          else if (k === "sustain") at(sustGain.gain, (su = v * 1.5));
+          level();
         },
       };
     }
@@ -1630,75 +1819,42 @@ function buildModule(c: AudioContext, id: RackModuleId): BuiltModule {
       };
     }
     case "phaser": {
-      // LFO-modulated allpass filter for spatial sweep. fxOut carries the fully
-      // processed (100% wet) signal — like every other module, the RackSlot's
-      // own dry/wet crossfade (the "INT" fader) is what controls how much of
-      // it blends in. An internal dry mix here would fight that outer control
-      // and make "depth" look like it does nothing.
       const fxIn = c.createGain();
-      const allPass = c.createBiquadFilter();
-      allPass.type = "allpass";
-      allPass.frequency.value = 1000;
       const fxOut = c.createGain();
-      const lfoAmp = new Tone.Gain(0);
-      const lfo = new Tone.LFO({ frequency: 2, amplitude: 1 });
-      lfo.connect(lfoAmp);
-      lfoAmp.connect(allPass.frequency);
-      lfo.start();
-      fxIn.connect(allPass);
-      allPass.connect(fxOut);
+      const ph = new Tone.Phaser({ frequency: 0.5, octaves: 3, stages: 8, Q: 6, baseFrequency: 350, wet: 1 });
+
+      Tone.connect(fxIn, ph);
+      ph.connect(fxOut);
+
       return {
-        fxIn, fxOut,
+        fxIn,
+        fxOut,
         onParam: (k, v) => {
-          if (k === "rate") {
-            // rate: LFO frequency 0.1→10 Hz
-            lfo.frequency.value = 0.1 * Math.pow(100, v);
-          } else if (k === "depth") {
-            // depth: how wide the allpass sweeps (0 = static filter — still
-            // audibly colours the tone once mixed in — up to a ±600 Hz sweep)
-            lfoAmp.gain.value = v * 600;
+          switch (k) {
+            case "rate":
+              ph.frequency.rampTo(v, 0.05);
+              break;
+            case "depth":
+              ph.octaves = 1 + v * 4;
+              break;
+            case "fb":
+              ph.Q.value = 2 + v * 14;
+              break;
           }
-        },
-      };
-    }
-    case "combfilter": {
-      // Delay+feedback creates spectral notches, optional LFO sweep. fxOut is
-      // 100% the comb-filtered signal (same pattern as reverb/phaser above) —
-      // the outer "INT" fader controls how much blends with the dry signal.
-      const fxIn = c.createGain();
-      const delay = c.createDelay(0.5);
-      const feedback = c.createGain();
-      const fxOut = c.createGain();
-      const lfoAmp = new Tone.Gain(0);
-      const lfo = new Tone.LFO({ frequency: 1, amplitude: 1 });
-      lfo.connect(lfoAmp);
-      lfoAmp.connect(delay.delayTime);
-      lfo.start();
-      delay.delayTime.value = 0.01;
-      feedback.gain.value = 0.5;
-      fxIn.connect(delay);
-      delay.connect(feedback);
-      feedback.connect(delay);
-      delay.connect(fxOut);
-      return {
-        fxIn, fxOut,
-        onParam: (k, v) => {
-          if (k === "time") {
-            // time: delay 0.5→50ms (logarithmic)
-            const t = 0.0005 * Math.pow(100, v);
-            at(delay.delayTime, Math.max(0.0005, Math.min(0.5, t)));
-          } else if (k === "fb") {
-            // fb: feedback 0→0.95
-            at(feedback.gain, v * 0.95);
-          } else if (k === "lfoRate") {
-            // lfoRate: LFO sweep 0→5Hz, with sweep depth 0.005 (±0.5ms)
-            lfo.frequency.value = v * 5;
-            lfoAmp.gain.value = v > 0 ? 0.005 : 0; // ±0.5ms sweep when enabled
-          }
-        },
+        }
       };
     }
     default:
       throw new Error(`unknown rack module: ${id}`);
   }
+}
+
+// musical times: 1/8 pointé at 120 BPM is 0.375 s, a 1/16 gate at 120 BPM chops 8 times a second, free returns null
+export function rackDivTest(): void {
+  const delay = RACK_DEF.get("delay")!;
+  const gate = RACK_DEF.get("gate")!;
+  if (Math.abs((divValue(delay, 3, 120) ?? 0) - 0.375) > 1e-9) throw new Error("rack div delay");
+  if (Math.abs((divValue(gate, 1, 120) ?? 0) - 8) > 1e-9) throw new Error("rack div gate");
+  if (divValue(delay, 0, 120) !== null || divValue(delay, 3, 0) !== null) throw new Error("rack div free");
+  if (divValue(delay, 7, 60) !== 1.2) throw new Error("rack div clamp");
 }

@@ -284,7 +284,7 @@ export const DJKeyboard = ({ engine }: Props) => {
           {renderLCD()}
           {renderMeasureBar()}
 
-          <div className="relative h-44 w-full overflow-hidden rounded-b-md">
+          <div className="relative h-44 w-full overflow-hidden rounded-b-md" style={{ maxWidth: 430 }}>
             {Array.from({ length: PAD_SLICES }, (_, i) => renderKey(i))}
           </div>
 

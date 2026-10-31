@@ -540,7 +540,7 @@ export function MiniKeys({
             </div>
           )}
 
-          <div className="flex gap-1">
+          <div className="flex gap-1" style={{ maxWidth: (octs * 7 + 1) * 40 + 36 }}>
             <div className="hw-cheek w-[14px] shrink-0" />
             <div
               className="hw-keybed relative flex-1 select-none touch-none"

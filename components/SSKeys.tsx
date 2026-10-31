@@ -126,6 +126,7 @@ export function SSKeys({ baseNote, activeMask, onDown, onUp, onOctave }: SSKeysP
       style={{
         position: "relative",
         width: "100%",
+        maxWidth: 450, // keys keep their real size on a wide module
         height: "220px",
         background: "linear-gradient(to bottom, #101114, #0a0b0e)",
         borderRadius: "8px",

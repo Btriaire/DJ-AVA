@@ -21,14 +21,14 @@ const RECORDED: Record<Target, string[]> = {
   deck: [
     "setTrim", "setVolume", "setEQ", "setFilter", "setHold", "rampFilter", "setPitch", "toggleKeyLock", "setKeyShift",
     "setCrowd", "setAudience", "setAutotune", "setAutotuneAmount", "setAutotuneRetune", "setAutotuneScale",
-    "setStemsActive", "setStemVol", "toggleStemFxTarget", "resetStemFx", "setStemReverbSend", "setStemDelaySend",
+    "setStemsActive", "setStemVol", "resetStemFx", "setStemReverbSend", "setStemDelaySend",
     "setStemFxVol", "setStemReverbDecay", "setStemDelayTime", "setStemDelayFeedback", "setStemFilter", "setStemDrive",
     "setStemMakeup", "setStemPump", "setFxWet", "setFxParam", "setBeatLoop", "setLoopRange", "clearLoop",
     "setStemBeatLoop", "clearStemLoop", "clearAllStemLoops", "resizeStemLoop", "shiftStemLoop", "setStemLoopSmooth",
     "setStemLoopRoll", "recallStemLoop",
   ],
   fx: ["setWet", "setBeat", "setParam"],
-  rack: ["setEnabled", "setMix", "setParam", "setFlag", "move", "setOrder", "setMacro", "toggleMacroTarget"],
+  rack: ["setEnabled", "setMix", "setParam", "setFlag", "setTarget", "move", "setOrder", "setMacro", "toggleMacroTarget"],
   retouch: ["setParam", "setBypass", "applyPreset"],
 };
 // bulk operations whose inner setter calls must not be recorded one by one

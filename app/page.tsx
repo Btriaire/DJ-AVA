@@ -312,7 +312,6 @@ export default function Home() {
     drive: boolean;
     wavefold: boolean;
     crush: boolean;
-    robot: boolean;
     ringmod: boolean;
     voyelle: boolean;
     isolator: boolean;
@@ -323,7 +322,6 @@ export default function Home() {
     shimmer: boolean;
     delay: boolean;
     reverb: boolean;
-    limiter: boolean;
     autotune: boolean;
   };
   const DEFAULT_MODULES: Modules = {
@@ -357,7 +355,6 @@ export default function Home() {
     drive: false,
     wavefold: false,
     crush: false,
-    robot: false,
     ringmod: false,
     voyelle: false,
     isolator: false,
@@ -368,7 +365,6 @@ export default function Home() {
     shimmer: false,
     delay: false,
     reverb: false,
-    limiter: false,
     autotune: false,
   };
   const [modules, setModules] = useState<Modules>(() => {
@@ -468,15 +464,13 @@ const [showModulePicker, setShowModulePicker] = useState(false);
     // Dynamique & Filtrage
     { key: "comp", label: "Compresseur", scope: "deck", category: "Dynamique & Filtrage" },
     { key: "gate", label: "Noise Gate", scope: "deck", category: "Dynamique & Filtrage" },
-    { key: "limiter", label: "Limiter", scope: "deck", category: "Dynamique & Filtrage" },
-    { key: "loudness", label: "Loudness Maximizer", scope: "deck", category: "Dynamique & Filtrage" },
+    { key: "loudness", label: "Loudness · Limiteur", scope: "deck", category: "Dynamique & Filtrage" },
     { key: "multiband", label: "Comp Multi-bandes", scope: "deck", category: "Dynamique & Filtrage" },
     { key: "transient", label: "Transient Shaper", scope: "deck", category: "Dynamique & Filtrage" },
     // Distorsion & Caractère
     { key: "drive", label: "Overdrive", scope: "deck", category: "Distorsion & Caractère" },
     { key: "wavefold", label: "Wavefolder", scope: "deck", category: "Distorsion & Caractère" },
-    { key: "crush", label: "Bitcrusher", scope: "deck", category: "Distorsion & Caractère" },
-    { key: "robot", label: "Robot Vocoder", scope: "deck", category: "Distorsion & Caractère" },
+    { key: "crush", label: "Bitcrusher · Robot", scope: "deck", category: "Distorsion & Caractère" },
     { key: "ringmod", label: "Ring Modulator", scope: "deck", category: "Distorsion & Caractère" },
     { key: "exciter", label: "Exciter Harmonique", scope: "deck", category: "Distorsion & Caractère" },
     // Espace & Modulation
@@ -486,7 +480,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
     { key: "surround", label: "Surround Panner", scope: "deck", category: "Espace & Modulation" },
     { key: "glitch", label: "Glitch Repeater", scope: "deck", category: "Espace & Modulation" },
     { key: "autowah", label: "Auto-Wah", scope: "deck", category: "Espace & Modulation" },
-    { key: "resonator", label: "Resonateur", scope: "deck", category: "Espace & Modulation" },
+    { key: "resonator", label: "Résonateur · Peigne", scope: "deck", category: "Espace & Modulation" },
     { key: "voyelle", label: "Filtre Formants Voyelle", scope: "deck", category: "Espace & Modulation" },
     { key: "autotune", label: "Auto-Tune Pitch", scope: "deck", category: "Espace & Modulation" },
     // Performance DJ
@@ -1397,7 +1391,6 @@ const [showModulePicker, setShowModulePicker] = useState(false);
                 drive: modules.drive,
                 wavefold: modules.wavefold,
                 crush: modules.crush,
-                robot: modules.robot,
                 ringmod: modules.ringmod,
                 voyelle: modules.voyelle,
                 isolator: modules.isolator,
@@ -1408,7 +1401,6 @@ const [showModulePicker, setShowModulePicker] = useState(false);
                 shimmer: modules.shimmer,
                 delay: modules.delay,
                 reverb: modules.reverb,
-                limiter: modules.limiter,
                 autotune: modules.autotune,
               }}
             />
@@ -1559,7 +1551,6 @@ const [showModulePicker, setShowModulePicker] = useState(false);
                 drive: modules.drive,
                 wavefold: modules.wavefold,
                 crush: modules.crush,
-                robot: modules.robot,
                 ringmod: modules.ringmod,
                 voyelle: modules.voyelle,
                 isolator: modules.isolator,
@@ -1570,7 +1561,6 @@ const [showModulePicker, setShowModulePicker] = useState(false);
                 shimmer: modules.shimmer,
                 delay: modules.delay,
                 reverb: modules.reverb,
-                limiter: modules.limiter,
                 autotune: modules.autotune,
               }}
             />

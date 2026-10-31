@@ -2,7 +2,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Deck } from "@/lib/audio/Deck";
 import { subscribeAutomation, getAutomationVersion } from "@/lib/audio/deckAutomation";
-import { Rack, RACK_MODULES, RackModuleId, RackPreset, XY_TARGETS, XY_FILTER_TYPES } from "@/lib/audio/Rack";
+import { Rack, RACK_DEF, RACK_MODULES, RackModuleId, RackPreset, START_MIX, XY_TARGETS, XY_FILTER_TYPES } from "@/lib/audio/Rack";
+import { RackGuideBlock, stemLabel } from "./RackGuideBlock";
 import { applyModule, deleteModulePreset, getModulePreset, listModulePresets, saveModulePreset, snapshotModule } from "@/lib/modulePresets";
 import { levelColor } from "./EqVisuals";
 import { Knob } from "./Knob";
@@ -26,11 +27,12 @@ const FACTORY: { name: string; apply: (r: Rack) => void }[] = [
   {
     name: "Robot",
     apply: (r) => {
-      r.setEnabled("robot", true);
-      r.setParam("robot", "carrier", 0);
-      r.setParam("robot", "grit", 4);
-      r.setParam("robot", "tone", 1200);
-      r.setMix("robot", 1);
+      r.setEnabled("crush", true);
+      r.setParam("crush", "bits", 4);
+      r.setParam("crush", "robot", 1);
+      r.setParam("crush", "shift", 0);
+      r.setParam("crush", "tone", 1200);
+      r.setMix("crush", 1);
     },
   },
   {
@@ -255,7 +257,7 @@ function curveFor(id: RackModuleId, p: Record<string, number>): ((x: number) => 
         return Math.sign(x) * out;
       };
     }
-    case "limiter": {
+    case "loudness": {
       const ceil = Math.pow(10, (p.ceil ?? -1) / 20);
       return (x) => Math.max(-ceil, Math.min(ceil, x));
     }
@@ -403,9 +405,6 @@ function SlotVU({ rack, on, color }: { rack: Rack; on: boolean; color: string })
   return <canvas ref={canvasRef} width={50} height={8} className="shrink-0 rounded-sm" />;
 }
 
-function syncButtons(id: RackModuleId): boolean {
-  return id === "delay" || id === "glitch" || id === "gate";
-}
 
 function RackModuleDetail({
   rack,
@@ -437,12 +436,6 @@ function RackModuleDetail({
   const yTarget = isXyMatrix ? Math.round(rack.getParam(id, "yTarget")) : 0;
   const FILTER_ABBR = ["LP", "HP", "BP", "CB"];
 
-  const syncValue = (id: RackModuleId, frac: number): [string, number] => {
-    const beat = deck.bpm > 0 ? 60 / deck.bpm : 0.5;
-    const t = beat * frac;
-    if (id === "gate") return ["rate", Math.min(16, 1 / t)];
-    return ["time", Math.min(id === "glitch" ? 0.5 : 1.2, t)];
-  };
 
   return (
     <div className="hw-recess flex flex-col gap-2 p-3" style={{ borderLeft: `3px solid ${color}` }}>
@@ -507,7 +500,7 @@ function RackModuleDetail({
             title="Remet les paramètres de ce module à leurs valeurs par défaut"
             onClick={() => {
               def.params.forEach((p) => rack.setParam(id, p.key, p.def));
-              rack.setMix(id, 1);
+              rack.setMix(id, START_MIX[id] ?? 0.5);
               flashLcd(`${def.label} RÉINITIALISÉ`);
               onChanged();
             }}
@@ -534,6 +527,8 @@ function RackModuleDetail({
         </div>
       </div>
 
+      <RackGuideBlock rack={rack} deck={deck} id={id} color={color} flashLcd={flashLcd} onChanged={onChanged} />
+
       {!isXyMatrix && (
         <MiniCurve
           id={id}
@@ -548,7 +543,7 @@ function RackModuleDetail({
           value={rack.getMix(id)}
           min={0}
           max={1}
-          defaultValue={1}
+          defaultValue={START_MIX[id] ?? 0.5}
           size={52}
           color={color}
           led
@@ -560,7 +555,7 @@ function RackModuleDetail({
           }}
         />
 
-        {def.params.filter((p) => !isXyMatrix || !["x", "y", "xTarget", "yTarget", "xFilterType", "yFilterType"].includes(p.key)).map((p) => {
+        {def.params.filter((p) => p.key !== "div" && (!isXyMatrix || !["x", "y", "xTarget", "yTarget", "xFilterType", "yFilterType"].includes(p.key))).map((p) => {
           const isTarget = armed !== null && rack.isMacroTarget(armed, { id, key: p.key });
           return (
             <div
@@ -589,6 +584,7 @@ function RackModuleDetail({
                 led
                 format={p.fmt}
                 onChange={(v) => {
+                  if (RACK_DEF.get(id)?.sync?.key === p.key) rack.setParam(id, "div", 0); // turned by hand: free time
                   rack.setParam(id, p.key, v);
                   flashLcd(`${def.label} ${p.label.toUpperCase()} ${p.fmt ? p.fmt(v) : v.toFixed(2)}`);
                   onChanged();
@@ -621,30 +617,6 @@ function RackModuleDetail({
         </div>
       )}
 
-      {syncButtons(id) && deck.bpm > 0 && (
-        <div className="flex items-center gap-0.5">
-          {([
-            ["¼", 1],
-            ["⅛", 0.5],
-            ["1/16", 0.25],
-          ] as const).map(([lbl, frac]) => (
-            <button
-              key={lbl}
-              onClick={() => {
-                const [key, val] = syncValue(id, frac);
-                rack.setParam(id, key, val);
-                flashLcd(`${def.label} SYNC ${lbl}`);
-                onChanged();
-              }}
-              className="hw-btn px-2 py-1 text-[9px] font-bold"
-              style={{ ["--led" as string]: color, color }}
-              title={`Cale sur ${lbl} de noire (${deck.bpm.toFixed(0)} BPM)`}
-            >
-              {lbl}
-            </button>
-          ))}
-        </div>
-      )}
 
       {isXyMatrix && (() => {
         const xFilterType = Math.round(rack.getParam(id, "xFilterType"));
@@ -884,6 +856,7 @@ export function RackPanel({
             <button
               onClick={() => {
                 rack.import({ order: [...rack.order], modules: {}, macros: [] });
+                rack.clearTargets();
                 setPresetName("INIT");
                 force();
               }}
@@ -956,6 +929,9 @@ export function RackPanel({
                 <div className="flex h-full flex-col items-center justify-between p-1">
                   <span className="text-[9px] opacity-70">{pos + 1}</span>
                   <span className="text-[10px] font-bold uppercase truncate">{def.label}</span>
+                  {rack.getTarget(id) >= 0 && deck.stemNames[rack.getTarget(id)] && (
+                    <span className="text-[8px] font-bold uppercase leading-none text-neutral-300">{stemLabel(deck.stemNames[rack.getTarget(id)])}</span>
+                  )}
                   <SlotVU rack={rack} on={on} color={color} />
                   <span
                     role="switch"

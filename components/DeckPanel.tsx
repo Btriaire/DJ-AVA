@@ -1342,21 +1342,6 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
                       >
                         SYN
                       </button>
-                      <button
-                        className="min-w-[26px] rounded px-2 py-1 text-[11px] font-black leading-none"
-                        style={
-                          deck.stemFxTargets.has(i)
-                            ? { background: color, color: "#0a0a0a" }
-                            : { background: "rgba(255,255,255,0.08)", color: "#b0b0b0" }
-                        }
-                        title="Route ce stem à travers le Rack DSP en bas — pense à aussi ALLUMER un module ET monter son fader INT là-bas, sinon rien ne s'entend (le Rack démarre à 0%)"
-                        onClick={() => {
-                          deck.toggleStemFxTarget(i);
-                          rerender();
-                        }}
-                      >
-                        RACK
-                      </button>
                     </div>
                     <div className="relative w-full">
                       <button

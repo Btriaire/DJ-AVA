@@ -861,7 +861,7 @@ export function SynthPanel({ engine }: Props) {
           )}
         </div>
       )}
-      <div className="flex gap-[3px] select-none" data-keyver={keyVer}>
+      <div className="flex gap-[3px] select-none" style={{ maxWidth: KEYS.length * 46 }} data-keyver={keyVer}>
         {/* eslint-disable-next-line react-hooks/refs -- valeur d'animation ou d'horloge lue au rendu ; en faire un état re-rendrait à chaque frame */}
         {KEYS.map((k) => {
           const keyed = synth.hasKeySample(k.midi);

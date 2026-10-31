@@ -161,7 +161,12 @@ export class Deck {
   // aside and come back as soon as another track is loaded or the user changes a setting by hand.
   private preparedHash = "";
   private stemOptsSaved: { model: Deck["stemModel"]; ultra: boolean; lossless: boolean; denoise: boolean } | null = null;
-  stemsActive = false; // play the stems (with per-stem gain) instead of the full mix
+  private _stemsActive = false; // play the stems (with per-stem gain) instead of the full mix
+  get stemsActive(): boolean { return this._stemsActive; }
+  set stemsActive(on: boolean) {
+    this._stemsActive = on;
+    this.rack.setStemsLive(on ? this.stemNames.length : 0); // effects aimed at a stem move onto it
+  }
   // sticks across track loads (unlike stemsActive, which clearStems() resets) so
   // that once a DJ turns stems on for a deck, every track queued into it next —
   // e.g. the "cued" side during an A→B→A relay — gets separated ahead of time
@@ -179,13 +184,6 @@ export class Deck {
   stemNotes: StemNotes | null = null; // MIDI notes of the song (never played: they only time the effects)
   stemMap: StemMap | null = null; // peaks, slow parts and blanks of the song (made when its stems were prepared)
   stemHash = ""; // server content hash of the loaded track (for the library badge)
-  // when non-empty, the Rack DSP pedalboard is unhooked from the whole-mix
-  // chain and spliced onto ONLY these stems instead — every other stem stays
-  // dry and fully audible, un-plugged from the effects entirely. Empty set =
-  // normal (Rack processes the whole deck, as usual).
-  stemFxTargets: Set<number> = new Set();
-  private stemFxAnyActive = false; // tracks whether the whole-mix bypass wiring is engaged
-
   // shared per-stem effect SENDS (Reverb / Delay) — independent of the Rack
   // DSP splice above: every stem gets its own send amount into one shared
   // reverb bus and one shared delay bus, like sends on a real mixer, so e.g.
@@ -364,6 +362,7 @@ export class Deck {
     this.retouch = new Retouch(ctx);
     this.fx.setClock(() => this.fxClock());
     this.rack = new Rack(ctx);
+    this.rack.setClock(() => this.fxClock()?.bpm ?? 0);
 
     // per-stem gains (up to STEM_MAX) sum into a shared stem bus, which feeds
     // trim. The bus carries an automatic makeup gain: as you pull stem faders
@@ -402,7 +401,7 @@ export class Deck {
 
       // dedicated per-stem FX, always live: g -> filter -> drive -> stemBus
       // (or -> rack.input, if this stem is later targeted for the shared
-      // pedalboard — see toggleStemFxTarget, which re-splices AFTER this pair).
+      // pedalboard — the Rack effects aimed at this stem sit AFTER this pair).
       const filt = ctx.createBiquadFilter();
       filt.type = "allpass";
       filt.frequency.value = 20000;
@@ -413,7 +412,9 @@ export class Deck {
       filt.connect(drive);
       const out = C();
       drive.connect(out);
-      out.connect(this.stemBus);
+      const ins = this.rack.stemInsert(i); // the Rack effects aimed at this stem
+      out.connect(ins.input);
+      ins.output.connect(this.stemBus);
       this.stemOut.push(out);
       this.stemDjFx.push(null);
       const synthIn = C();
@@ -1279,7 +1280,6 @@ export class Deck {
     this.restoreStemOpts();
     this.preparedHash = "";
     this.releaseStemSynth(); // a new track: give the synth back to the master before the stem indices go stale
-    this.clearAllStemFxTargets(); // un-splice before the stem indices go stale
     this.stopStemProgressPoll();
     this.stemsActive = false;
     this.stemBuffers = [];
@@ -1689,54 +1689,6 @@ export class Deck {
     this.recomputeStemMakeup();
   }
 
-  // Route the Rack DSP pedalboard onto one or more stems, instead of the
-  // whole deck — every non-targeted stem stays dry, unplugged from the rack
-  // entirely, and fully audible. Call again on the same stem to un-target it;
-  // once no stems are targeted, routing reverts to normal whole-mix. Rack
-  // modules default their own intensity to 0% ("start silent"), so engaging
-  // this doesn't change anything audible until an FX is raised.
-  toggleStemFxTarget(i: number) {
-    if (i < 0 || i >= this.stemGains.length) return;
-    const disconnect = (from: AudioNode, to: AudioNode) => {
-      try {
-        from.disconnect(to);
-      } catch {
-        /* wasn't connected — fine */
-      }
-    };
-    // splice AFTER this stem's own dedicated filter/drive, not the raw gain —
-    // those always apply regardless of whether the stem is also routed through
-    // the shared Rack pedalboard
-    const node = this.stemOut[i];
-    if (this.stemFxTargets.has(i)) {
-      disconnect(node, this.rack.input);
-      node.connect(this.stemBus);
-      this.stemFxTargets.delete(i);
-    } else {
-      disconnect(node, this.stemBus);
-      node.connect(this.rack.input);
-      this.stemFxTargets.add(i);
-    }
-    // the whole-mix bypass wiring only needs to change when we cross the
-    // "any stem targeted at all" boundary — not on every individual toggle,
-    // which would otherwise double-connect the same edge.
-    const any = this.stemFxTargets.size > 0;
-    if (any !== this.stemFxAnyActive) {
-      this.stemFxAnyActive = any;
-      if (any) {
-        disconnect(this.fx.output, this.rack.input);
-        disconnect(this.rack.output, this.volume);
-        this.fx.output.connect(this.volume);
-        this.rack.output.connect(this.stemBus);
-      } else {
-        disconnect(this.fx.output, this.volume);
-        disconnect(this.rack.output, this.stemBus);
-        this.fx.output.connect(this.rack.input);
-        this.rack.output.connect(this.volume);
-      }
-    }
-  }
-
   // Per-stem DJ FX pedalboard. Created on first use and spliced between the stem's
   // drive and its output point, so stems that never use it cost nothing.
   stemFxRack(i: number): FXRack | null {
@@ -1760,10 +1712,6 @@ export class Deck {
     return !!r && FX_LIST.some((fx) => r.getWet(fx.id) > 0);
   }
 
-  private clearAllStemFxTargets() {
-    for (const i of Array.from(this.stemFxTargets)) this.toggleStemFxTarget(i);
-  }
-
   // every stem back to a dry sound: filter, drive, reverb/delay sends, DJ FX, Rack routing
   resetStemFx() {
     for (let i = 0; i < this.stemFilter.length; i++) {
@@ -1773,7 +1721,7 @@ export class Deck {
       this.setStemDelaySend(i, 0);
       this.stemDjFx[i]?.resetAll();
     }
-    this.clearAllStemFxTargets();
+    this.rack.clearTargets();
   }
 
   // whether any stem effect is on (drives the FX OFF button)
@@ -1783,7 +1731,7 @@ export class Deck {
       this.stemDriveAmt.some((v) => v > 0.01) ||
       this.stemReverbSend.some((v) => v > 0.01) ||
       this.stemDelaySend.some((v) => v > 0.01) ||
-      this.stemFxTargets.size > 0 ||
+      this.rack.hasTargets ||
       this.stemDjFx.some((_, i) => this.hasStemDjFx(i))
     );
   }
