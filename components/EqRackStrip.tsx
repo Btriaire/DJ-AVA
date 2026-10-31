@@ -295,7 +295,39 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
 
       {/* ── factory presets ── */}
       <div className="flex gap-1.5 overflow-x-auto pb-1 [contain:inline-size]">
-        {EQ_PRESETS.map((preset) => {
+        {EQ_PRESETS.filter((p) => !p.live).map((preset) => {
+          const g = presetGains(preset.pts, EQ_FREQS);
+          return (
+            <button
+              key={preset.id}
+              onClick={() => { applyPreset(preset.pts); flashLcd(`PRESET ${preset.name}`); }}
+              className={`hw-btn flex w-16 flex-col items-center justify-center gap-0.5 p-1 ${isPresetActive(preset.pts) ? "hw-btn-on" : ""}`}
+              style={{ ["--led" as string]: color, height: 44 }}
+              title={preset.title}
+            >
+              <svg viewBox="0 0 56 20" width={56} height={20}>
+                <path
+                  d={g.map((v, k) => {
+                    const x = 2 + k * (52 / 14);
+                    const y = 10 - (v / 18) * 8;
+                    return `${k === 0 ? "M" : "L"} ${x} ${y}`;
+                  }).join(" ")}
+                  stroke={color}
+                  strokeWidth={1.5}
+                  fill="none"
+                />
+                <line x1={0} y1={10} x2={56} y2={10} stroke="#ffffff22" strokeWidth={0.5} />
+              </svg>
+              <span className="text-[10px] font-bold">{preset.name}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── presets for live and concert recordings ── */}
+      <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-400" title="Préréglages pour les morceaux enregistrés en live ou en concert">En live / concert</span>
+      <div className="flex gap-1.5 overflow-x-auto pb-1 [contain:inline-size]">
+        {EQ_PRESETS.filter((p) => p.live).map((preset) => {
           const g = presetGains(preset.pts, EQ_FREQS);
           return (
             <button
