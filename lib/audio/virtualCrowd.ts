@@ -306,6 +306,8 @@ export class VirtualCrowd {
   private singGain: GainNode;
   private beds: AudioBufferSourceNode[] = [];
   private kit: CrowdKit | null = null;
+  private hypeKit: HypeKit | null = null; // real one-shots: shouts, woos, whistles, roars, a build-up
+  private lastBuild = -1; // the drop the build-up was last started for
   private kitFor: VenueId | null = null;
   private bedBuf: AudioBuffer | null = null; // synthesized fallback when the recordings cannot load
   private clapBufs: AudioBuffer[] = [];
@@ -384,6 +386,7 @@ export class VirtualCrowd {
     const v = this.opts.venue;
     if (this.kitFor === v) return;
     this.kitFor = v;
+    void loadHypeKit(this.ctx, v).then((h) => { if (this.opts.venue === v) this.hypeKit = h; });
     void loadCrowdKit(this.ctx, v).then((kit) => {
       if (this.opts.venue !== v) return;
       this.kit = kit;
@@ -431,7 +434,7 @@ export class VirtualCrowd {
     k = Math.min(1, Math.max(0, k));
     const was = this.level;
     this.level = k;
-    this.out.gain.setTargetAtTime(k * 0.6, this.ctx.currentTime, 0.1); // at 100 % about 3 dB under the music (was 10: too faint)
+    this.out.gain.setTargetAtTime(k * 0.4, this.ctx.currentTime, 0.1); // at 100 % about 4 dB under the music with the shouts (was 10: too faint)
     if (k > 0 && was === 0) {
       if (this.stopTimer) { clearTimeout(this.stopTimer); this.stopTimer = null; }
       if (!this.lfoOn) { this.lfos.forEach((o) => o.start()); this.lfoOn = true; }
@@ -488,8 +491,27 @@ export class VirtualCrowd {
     if (k?.cheers.length) {
       this.play(k.cheers[Math.floor(Math.random() * k.cheers.length)], at, v * 1.2, 0.97 + 0.06 * Math.random());
       this.play(k.applause, at, v * 0.8, 1, Math.random() * (k.applause.duration - 5), 4, 0.4);
+      const r = this.hypeKit?.roars;
+      if (r?.length) this.grain(this.pick(r), at, v * 1.1, 3 + 2 * Math.random(), 0); // a real roar of the room
     } else if (this.cheerBuf) this.play(this.cheerBuf, at, v);
   }
+
+  // a grain of a real recording, from one of its loud moments, placed in the stereo field
+  private grain(h: Hype, at: number, gain: number, len: number, pan: number, rate = 1, offset?: number): void {
+    const src = this.ctx.createBufferSource(), g = this.ctx.createGain(), p = this.ctx.createStereoPanner();
+    src.buffer = h.buf;
+    src.playbackRate.value = rate;
+    const off = offset ?? Math.max(0, h.spots[Math.floor(Math.random() * h.spots.length)] - 0.2);
+    const fade = Math.min(0.25, len / 4);
+    g.gain.setValueAtTime(0, at);
+    g.gain.linearRampToValueAtTime(gain, at + 0.03);
+    g.gain.setValueAtTime(gain, at + len - fade);
+    g.gain.linearRampToValueAtTime(0, at + len);
+    p.pan.value = pan;
+    src.connect(g).connect(p).connect(this.venueIn);
+    src.start(at, Math.min(off, Math.max(0, h.buf.duration - len)), len + 0.05);
+  }
+  private pick<T>(list: T[]): T { return list[Math.floor(Math.random() * list.length)]; }
 
   // one cheer now (the button)
   cheer(): void {
@@ -509,10 +531,32 @@ export class VirtualCrowd {
     const from = this.lastTo === null || this.lastTo < pos - 0.3 || this.lastTo > to ? pos : this.lastTo;
     this.lastTo = to;
     this.bedGain.gain.setTargetAtTime(bedLevel(d.stemMap, pos), now, 0.5);
+    this.liven(pos, rate, now);
     for (const e of crowdEvents(d.stemMap, d.bpm, d.beatGridOffset, from, to)) {
       const at = now + Math.max(0, (e.t - pos) / rate);
       if (e.kind === "clap") { if (this.opts.claps) this.clap(at, e.v); }
       else if (this.opts.cheers) this.shout(at, e.v);
+    }
+  }
+
+  // between the claps: shouts, woos and whistles sprinkled at random in the loud parts, and a build-up whose top lands on the next drop
+  private liven(pos: number, rate: number, now: number): void {
+    const h = this.hypeKit, map = this.deck.stemMap;
+    if (!h || !this.opts.cheers) return;
+    const e = map?.energy.length ? map.energy[Math.min(map.energy.length - 1, Math.max(0, Math.floor(pos / map.hop)))] : 0.6;
+    if (h.hype.length && Math.random() < hypeRate(e, this.opts.venue) * 0.03 * rate) {
+      this.grain(this.pick(h.hype), now + 0.03 * Math.random(), 0.45 + 0.5 * Math.random(), 0.7 + 1.1 * Math.random(), (Math.random() * 2 - 1) * 0.85, 0.96 + 0.08 * Math.random());
+    }
+    if (h.build && map) {
+      const next = crowdCurves(map).cheers.find((c) => c > pos);
+      if (next !== undefined && next !== this.lastBuild) {
+        const lead = Math.min(h.build.peak, 8); // the last 8 s of the crescendo, never a 40 s rumble
+        const wait = (next - pos) / rate - lead;
+        if (wait >= 0 && wait < 0.12) {
+          this.lastBuild = next;
+          this.grain(h.build, now + wait, 0.8, lead + 1.5, 0, 1, h.build.peak - lead);
+        }
+      }
     }
   }
 
@@ -673,4 +717,87 @@ export function kitTest(): void {
   normalizeRms(a, -20);
   if (Math.abs(Math.abs(a[0][0]) - 0.1) > 1e-6) throw new Error("rms");
   for (const v of VENUE_IDS.map((k) => VENUES[k])) if (v.layers < 1 || !v.beds.length || !v.cheers.length || v.wet < 0 || v.wet > 1) throw new Error("venue");
+}
+
+// ---- live one-shots from real recordings (Freesound CC0): shouts, woos, whistles, arena roars, a build-up ----
+// each file is read for its loud moments ("spots"): a grain is played from one of them, so a long recording gives many different shouts
+export interface Hype { buf: AudioBuffer; spots: number[]; peak: number }
+
+// loud moments of an envelope in dB (one value per `hop` s): local maxima within `range` dB of the loudest, at least `gap` s apart
+export function hotSpots(db: number[], hop: number, range = 9, gap = 0.4): number[] {
+  if (!db.length) return [];
+  const top = Math.max(...db), out: number[] = [];
+  for (let i = 1; i < db.length - 1; i++) {
+    if (db[i] < top - range || db[i] < db[i - 1] || db[i] < db[i + 1]) continue;
+    const t = Math.round(i * hop * 1000) / 1000;
+    if (out.length && t - out[out.length - 1] < gap) { if (db[i] > db[Math.round(out[out.length - 1] / hop)]) out[out.length - 1] = t; continue; }
+    out.push(t);
+  }
+  return out;
+}
+
+const hypeCache = new Map<string, Promise<Hype | null>>();
+export function loadHype(ctx: BaseAudioContext, id: string): Promise<Hype | null> {
+  let p = hypeCache.get(id);
+  if (!p) {
+    p = (async () => {
+      try {
+        const r = await fetch(`/api/crowd?id=${id}`);
+        if (!r.ok) return null;
+        const b = await ctx.decodeAudioData(await r.arrayBuffer());
+        const chs = Array.from({ length: b.numberOfChannels }, (_, i) => b.getChannelData(i));
+        const hop = 0.05, n = Math.floor(hop * b.sampleRate), db: number[] = [];
+        for (let i = 0; i + n <= b.length; i += n) {
+          let e = 0;
+          for (const c of chs) for (let k = i; k < i + n; k++) e += c[k] * c[k];
+          db.push(10 * Math.log10(e / (n * chs.length) + 1e-12));
+        }
+        const spots = hotSpots(db, hop);
+        // the loud moments at about -14 dB RMS, whatever the recording's own level
+        const loud = spots.map((t) => db[Math.round(t / hop)]).sort((a, c) => a - c);
+        const ref = loud.length ? loud[Math.floor(loud.length / 2)] : Math.max(...db);
+        const g = Math.pow(10, (-14 - ref) / 20);
+        const out = ctx.createBuffer(b.numberOfChannels, b.length, b.sampleRate);
+        chs.forEach((c, i) => { const o = out.getChannelData(i); for (let k = 0; k < c.length; k++) o[k] = Math.max(-1, Math.min(1, c[k] * g)); });
+        const top = db.indexOf(Math.max(...db)) * hop;
+        return { buf: out, spots: spots.length ? spots : [top], peak: top };
+      } catch {
+        return null;
+      }
+    })();
+    hypeCache.set(id, p);
+  }
+  return p;
+}
+
+// shouts, woos and whistles shared by every venue; the roars depend on the size of the place
+export const HYPE_IDS = ["fs182571", "fs182572", "fs353185", "fs852097", "fs365132", "fs397434", "fs397435", "fs84525", "fs333421", "fs455659", "fs187673"];
+export const ROAR_IDS: Record<VenueId, string[]> = {
+  club: ["fs397434", "fs242861", "fs365132"],
+  salle: ["fs645337", "fs455660", "fs242861"],
+  stade: ["fs348978", "fs629884", "fs480725", "fs160493"],
+  plein: ["fs242861", "fs455660", "fs645337"],
+};
+export const BUILD_ID = "fs730908";
+export type HypeKit = { hype: Hype[]; roars: Hype[]; build: Hype | null };
+export async function loadHypeKit(ctx: BaseAudioContext, v: VenueId): Promise<HypeKit> {
+  const [hype, roars, [build]] = await Promise.all([
+    Promise.all(HYPE_IDS.map((id) => loadHype(ctx, id))),
+    Promise.all(ROAR_IDS[v].map((id) => loadHype(ctx, id))),
+    Promise.all([loadHype(ctx, BUILD_ID)]),
+  ]);
+  return { hype: hype.filter((h): h is Hype => !!h), roars: roars.filter((h): h is Hype => !!h), build };
+}
+
+// how many shouts per second at this song energy (0 below the middle, up to 1.4 per second at full energy)
+export function hypeRate(energy: number, venue: VenueId): number {
+  const size = venue === "stade" ? 1.4 : venue === "club" ? 0.7 : 1;
+  return Math.max(0, energy - 0.5) * 2.8 * size;
+}
+
+export function hypeTest(): void {
+  const db = [-60, -20, -60, -60, -15, -60, -18, -60, -60, -50, -60];
+  const s = hotSpots(db, 0.1, 9, 0.15);
+  if (s.join() !== "0.1,0.4" && s.join() !== "0.1,0.4,0.6") throw new Error(`hype spots ${s.join()}`);
+  if (hypeRate(0.4, "salle") !== 0 || !(hypeRate(1, "stade") > hypeRate(1, "club"))) throw new Error("hype rate");
 }
