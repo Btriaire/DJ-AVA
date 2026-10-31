@@ -307,7 +307,6 @@ export function SetDetail(props: SetDetailProps) {
             </Metric>
           </div>
 
-          {list.length > 1 && <SetEnergyPanel list={list} />}
 
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -382,6 +381,7 @@ export function SetDetail(props: SetDetailProps) {
 
       {/* Work area: one tab per job */}
       <div className="prep-card overflow-hidden">
+        {list.length > 1 && <SetEnergyPanel list={list} />}
         <div className={props.view === "titles" ? "hidden" : "pl-tabs"} role="tablist" aria-label="Réglages du set" onKeyDown={onTabKey}>
           {tabs.map(t => (
             <button

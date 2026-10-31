@@ -1067,6 +1067,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
       {activeModules?.fxpad !== false && <div className="hw-recess p-3">
         <FxSection
           key={fxKey}
+          deck={deck}
           rack={deck.fxRack}
           retouch={deck.retouchFx}
           color={color}

@@ -2,14 +2,39 @@ import { useState } from "react";
 import { FxUnit } from "./FxUnit";
 import { RetouchPanel } from "./RetouchPanel";
 import { FXRack, DECK_FX } from "@/lib/audio/FXRack";
+import { STEM_FX } from "@/lib/audio/fxTypes";
 import { Retouch } from "@/lib/audio/Retouch";
+import type { Deck } from "@/lib/audio/Deck";
+import { stemLabel } from "./RackGuideBlock";
 
-export function FxSection({ rack, retouch, color, dsp, storageKey }: { rack: FXRack; retouch: Retouch; color: string; dsp: React.ReactNode; storageKey?: string }) {
+export function FxSection({ deck, rack, retouch, color, dsp, storageKey }: { deck?: Deck; rack: FXRack; retouch: Retouch; color: string; dsp: React.ReactNode; storageKey?: string }) {
   const [open, setOpen] = useState<"" | "retouch" | "dsp">("");
+  const [target, setTarget] = useState(-1); // -1 = the whole deck, i = stem i (each stem has its own DJ FX)
+  const stemRack = deck && target >= 0 ? deck.stemFxRack(target) : null;
+  const unitRack = stemRack ?? rack;
 
   return (
     <div className="flex flex-col gap-2">
-      <FxUnit rack={rack} ids={DECK_FX} color={color} storageKey={storageKey} />
+      {deck && deck.stemNames.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="w-16 shrink-0 text-[9px] font-bold uppercase tracking-wider text-neutral-400">Sur quoi</span>
+          {[-1, ...deck.stemNames.map((_, i) => i)].map((c) => (
+            <button
+              key={c}
+              type="button"
+              aria-pressed={target === c}
+              onClick={() => setTarget(c)}
+              className="rounded px-2 py-1 text-[10px] font-bold"
+              style={target === c ? { background: color, color: "#0a0a0a" } : { background: "rgba(255,255,255,0.08)", color: "#d4d4d4" }}
+              title={c < 0 ? "Les effets DJ sur tout le deck" : "Les effets DJ sur ce stem seul (les autres restent secs)"}
+            >
+              {c < 0 ? "Tout le morceau" : stemLabel(deck.stemNames[c])}
+            </button>
+          ))}
+          {target >= 0 && !deck.stemsActive && <span className="text-[10px] text-amber-300">Active les stems pour entendre l&apos;effet sur ce stem.</span>}
+        </div>
+      )}
+      <FxUnit key={target} rack={unitRack} ids={stemRack ? STEM_FX : DECK_FX} color={color} storageKey={storageKey && (target < 0 ? storageKey : `${storageKey}.stem${target}`)} />
       <div className="flex flex-wrap gap-1">
         <button
           type="button"

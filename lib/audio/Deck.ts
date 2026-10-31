@@ -1820,12 +1820,32 @@ export class Deck {
   // toggle stem playback on/off, seamlessly if currently playing
   setStemsActive(on: boolean) {
     this.stemsWanted = on; // remembers intent across the next track loaded here
+    this.scheduleStemRelease(on);
     if (on && !this.stemReady) return;
     if (on === this.stemsActive) return;
     const resume = this._playing;
     if (resume) this.pause(); // captures position into pausedAt
     this.stemsActive = on;
     if (resume) this.play();
+  }
+
+  // stems switched off for 2 minutes give their memory back (a 4-minute song: about 85 MB per stem);
+  // switching them on again reloads them from the disk cache in a few seconds (ensureStems, prepared path)
+  private releaseTimer: ReturnType<typeof setTimeout> | null = null;
+  static STEM_RELEASE_MS = 120_000;
+  private scheduleStemRelease(on: boolean) {
+    if (this.releaseTimer) clearTimeout(this.releaseTimer);
+    this.releaseTimer = null;
+    if (on || !this.stemReady || !this.stemHash) return;
+    const gen = this.loadGen;
+    this.releaseTimer = setTimeout(() => {
+      this.releaseTimer = null;
+      if (gen !== this.loadGen || this.stemsActive || !this.stemReady) return;
+      this.preparedHash = this.stemHash; // the stems are on the server's disk: the fast path reloads them
+      this.stemCached = true;
+      this.stemBuffers = [];
+      this.stemStatus = "none";
+    }, Deck.STEM_RELEASE_MS);
   }
 
   // separate the loaded track into stems (count per the chosen model) via the

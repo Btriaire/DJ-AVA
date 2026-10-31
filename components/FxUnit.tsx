@@ -138,7 +138,7 @@ export function FxUnit({ rack, ids, color, storageKey }: { rack: FXRack; ids: Fx
         <div className="flex min-w-[200px] flex-1 flex-col gap-2">
           <div className="flex min-w-0 items-baseline gap-2">
             <span className="shrink-0 text-sm font-black uppercase tracking-[0.15em]" style={{ color: meta.color }}>{meta.label}</span>
-            <span className="truncate text-[10px] text-neutral-500">{meta.title}</span>
+            <span className="text-[11px] leading-snug text-neutral-300">Tu entends : {meta.title.charAt(0).toLowerCase() + meta.title.slice(1)}</span>
           </div>
           {meta.beat !== null && (
             <div className="flex items-center gap-1.5">
