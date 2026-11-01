@@ -218,7 +218,8 @@ def stem_samples(name, y, sr, bpm, offset):
     # Loops
     loop_cands_1 = loop_candidates(bar_starts, feats, rep, beats, 1)
     loop_cands_2 = loop_candidates(bar_starts, feats, rep, beats, 2)
-    loop_cands = loop_cands_1 + loop_cands_2
+    loop_cands_4 = loop_candidates(bar_starts, feats, rep, beats, 4)  # 4-bar phrases
+    loop_cands = loop_cands_1 + loop_cands_2 + loop_cands_4
     loops = []
     for cand in loop_cands:
         if loud_enough(env, cand["start"], cand["end"]):
@@ -236,16 +237,16 @@ def stem_samples(name, y, sr, bpm, offset):
 
     # Pick diverse samples
     if name == "vocals":
-        loops_picked = pick_diverse(loops, 2, 8 * 4 * 60 / bpm)  # loops 8 bars apart: from different parts of the song
-        shots_picked = pick_diverse(shots, 3, 8.0)
+        loops_picked = pick_diverse(loops, 4, 8 * 4 * 60 / bpm)  # loops 8 bars apart: from different parts of the song
+        shots_picked = pick_diverse(shots, 8, 8.0)
     else:
-        loops_picked = pick_diverse(loops, 3, 8 * 4 * 60 / bpm)  # loops 8 bars apart: from different parts of the song
-        shots_picked = pick_diverse(shots, 2, 8.0)
+        loops_picked = pick_diverse(loops, 9, 8 * 4 * 60 / bpm)  # loops 8 bars apart: from different parts of the song
+        shots_picked = pick_diverse(shots, 6, 8.0)
 
     # Fill to 5: when a family is short, take more of the other one (each sample keeps its own kind)
     quota_l = len(loops_picked)
     quota_s = len(shots_picked)
-    if quota_l + quota_s < 5:
+    if quota_l + quota_s < 5:  # a pool of up to 15 for REFRESH; at least 5 when the stem allows
         if len(loops) > quota_l:
             loops_picked = pick_diverse(loops, 5 - quota_s, 8 * 4 * 60 / bpm)  # loops 8 bars apart: from different parts of the song
         if len(loops_picked) + quota_s < 5 and len(shots) > quota_s:
@@ -254,7 +255,7 @@ def stem_samples(name, y, sr, bpm, offset):
     # Prepare output
     samples = []
     for loop in loops_picked:
-        label = "Boucle 1 mes." if loop["bars"] == 1 else "Boucle 2 mes."
+        label = f"Boucle {loop['bars']} mes."
         samples.append({
             "start": float(round(loop["start"], 3)),
             "end": float(round(loop["end"], 3)),

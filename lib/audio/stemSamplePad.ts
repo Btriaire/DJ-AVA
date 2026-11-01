@@ -2,6 +2,20 @@ import type { DJEngine } from "./engine";
 import type { Deck } from "./Deck";
 import { nextGrid } from "./stemJam";
 import type { PadSample } from "@/lib/stemSamples";
+import { pageCount, poolPage } from "@/lib/padPages";
+import { PadFx, type PadFxId } from "./padFx";
+
+// a sample played backwards (cached per stem buffer)
+const reversed = new WeakMap<AudioBuffer, AudioBuffer>();
+function reverseOf(ctx: BaseAudioContext, b: AudioBuffer): AudioBuffer {
+  let r = reversed.get(b);
+  if (!r) {
+    r = ctx.createBuffer(b.numberOfChannels, b.length, b.sampleRate);
+    for (let c = 0; c < b.numberOfChannels; c++) r.getChannelData(c).set(b.getChannelData(c).slice().reverse());
+    reversed.set(b, r);
+  }
+  return r;
+}
 
 export const PAD_COLS = 5;
 
@@ -12,10 +26,42 @@ export class StemSamplePad {
   level = 0.9;
   samples: Record<string, PadSample[]> | null = null;
   status: "idle" | "loading" | "ready" | "error" = "idle";
+  deep = false; // the samples come from the in-depth analysis (Préparation > Stems Pad)
+  private pages: Record<string, number> = {}; // the page of each stem's pool shown on its 5 pads
   private key = "";
   private voices = new Map<string, { src: AudioBufferSourceNode; gain: GainNode }>();
 
+  // per row (stem): its effects chain, where it plays, and its playback modifiers
+  private fx = new Map<string, PadFx>();
+  private routed = new Map<string, AudioNode>();
+  mods: Record<string, { reverse: boolean; half: boolean }> = {};
+  fxOf(stem: string): PadFx {
+    let f = this.fx.get(stem);
+    if (!f) {
+      const d = () => this.deck();
+      f = new PadFx(this.engine.ctx, () => (d().bpm > 0 ? d().bpm * d().playRate : 0));
+      this.fx.set(stem, f);
+    }
+    return f;
+  }
+  modsOf(stem: string): { reverse: boolean; half: boolean } { return (this.mods[stem] ??= { reverse: false, half: false }); }
+  setMod(stem: string, m: "reverse" | "half", on: boolean) { this.modsOf(stem)[m] = on; }
+  setFx(stem: string, id: PadFxId, on: boolean) { this.fxOf(stem).setFx(id, on); }
+  setFxAmount(stem: string, id: PadFxId, a: number) { this.fxOf(stem).setAmount(id, a); }
+  resetFx(stem: string) { this.fxOf(stem).reset(); this.mods[stem] = { reverse: false, half: false }; }
+  // the row's chain input, its output (re)plugged where the row plays (the stem's chain, or the master without stems)
+  private rowIn(stem: string, out: AudioNode): AudioNode {
+    const f = this.fxOf(stem);
+    if (this.routed.get(stem) !== out) {
+      try { f.output.disconnect(); } catch { /* not connected yet */ }
+      f.output.connect(out);
+      this.routed.set(stem, out);
+    }
+    return f.input;
+  }
+
   constructor(private engine: DJEngine) {
+    setInterval(() => { for (const f of this.fx.values()) f.tick(); }, 30); // gate pattern and tempo-synced delays
     setInterval(() => this.watch(), 500);
   }
 
@@ -25,7 +71,10 @@ export class StemSamplePad {
 
   private async watch(): Promise<void> {
     const d = this.deck();
-    for (const v of this.voices.values()) v.src.playbackRate.setTargetAtTime(d.playRate, d.ctx.currentTime, 0.05); // loops follow a tempo change
+    for (const [k, v] of this.voices) { // loops follow a tempo change (half speed kept)
+      const half = this.modsOf(k.slice(0, k.lastIndexOf(":"))).half;
+      v.src.playbackRate.setTargetAtTime(d.playRate * (half ? 0.5 : 1), d.ctx.currentTime, 0.05);
+    }
     if (!d.stemHash || d.bpm <= 0) {
       this.samples = null;
       this.status = "idle";
@@ -45,6 +94,8 @@ export class StemSamplePad {
       const data = await response.json();
       if (this.key === newKey) {
         this.samples = data.samples?.stems || null;
+        this.deep = !!data.deep;
+        this.pages = {};
         this.status = this.samples ? "ready" : "error";
       }
     } catch (error) {
@@ -61,8 +112,19 @@ export class StemSamplePad {
     return d.stemNames
       .map((stem, index) => ({ stem, index, pads: this.samples?.[stem] || [] }))
       .filter(({ pads }) => pads.length > 0)
-      .map(({ stem, index, pads }) => ({ stem, index, pads: pads.slice(0, PAD_COLS) }));
+      .map(({ stem, index, pads }) => ({ stem, index, pads: poolPage(pads, this.pages[stem] ?? 0, PAD_COLS) }));
   }
+
+  // REFRESH: the next 5 samples of the pool on a stem's pads (every stem when none is given); what plays keeps playing
+  refresh(stem?: string): void {
+    for (const r of this.rows()) {
+      if (stem && r.stem !== stem) continue;
+      this.pages[r.stem] = (this.pages[r.stem] ?? 0) + 1;
+    }
+  }
+  // how many different pages a stem's pool gives (1 = REFRESH brings nothing new)
+  pagesOf(stem: string): number { return pageCount(this.samples?.[stem] ?? []); }
+  pageOf(stem: string): number { const n = this.pagesOf(stem); return n ? ((this.pages[stem] ?? 0) % n) + 1 : 0; }
 
   isOn(stem: string, col: number): boolean {
     return this.voices.has(`${stem}:${col}`);
@@ -78,7 +140,7 @@ export class StemSamplePad {
     if (!buf) return;
 
     const key = `${stem}:${col}`;
-    const out = (d.stemsActive ? d.stemInput(row.index) : null) ?? this.engine.masterIn;
+    const out = this.rowIn(stem, (d.stemsActive ? d.stemInput(row.index) : null) ?? this.engine.masterIn);
     // the next grid line of `beats` beats, or right now when the deck is stopped or the grid is off
     const when = (beats: number) => (beats > 0 && d.playing && d.bpm > 0 ? nextGrid(d, beats).at : this.engine.ctx.currentTime + 0.01);
 
@@ -108,11 +170,15 @@ export class StemSamplePad {
 
   private start(key: string, s: PadSample, buf: AudioBuffer, at: number, out: AudioNode): void {
     const src = this.engine.ctx.createBufferSource();
-    src.buffer = buf;
+    const mod = this.modsOf(key.slice(0, key.lastIndexOf(":")));
+    const dur = buf.duration;
+    // backwards: the same slice read from the reversed buffer; half speed: twice as long, an octave down
+    const a = mod.reverse ? dur - s.end : s.start, b = mod.reverse ? dur - s.start : s.end;
+    src.buffer = mod.reverse ? reverseOf(this.engine.ctx, buf) : buf;
     src.loop = s.kind === "loop";
-    src.loopStart = s.start;
-    src.loopEnd = s.end;
-    src.playbackRate.value = this.deck().playRate;
+    src.loopStart = a;
+    src.loopEnd = b;
+    src.playbackRate.value = this.deck().playRate * (mod.half ? 0.5 : 1);
 
     const gain = this.engine.ctx.createGain();
     gain.gain.setValueAtTime(0, at);
@@ -121,7 +187,7 @@ export class StemSamplePad {
     src.connect(gain);
     gain.connect(out);
 
-    src.start(at, s.start, s.kind === "loop" ? undefined : s.end - s.start);
+    src.start(at, a, s.kind === "loop" ? undefined : b - a); // a duration in the sample's own time, whatever the speed
 
     if (this.voices.has(key)) {
       this.stop(key, at);

@@ -9,7 +9,7 @@ export const PREP_STEMS: readonly string[] = ["drums", "bass", "other", "vocals"
 // quality of the prepared stems; a deck must ask for the SAME variant to find them in the server cache
 // (cache folder <hash>/<model>[_ultra][_wav]), see Deck.adoptPreparedStems()
 export const PREP_OPTS = { ultra: true, lossless: true } as const;
-const PREP_QS = `${PREP_OPTS.ultra ? "&ultra=1" : ""}${PREP_OPTS.lossless ? "&wav=1" : ""}`;
+export const PREP_QS = `${PREP_OPTS.ultra ? "&ultra=1" : ""}${PREP_OPTS.lossless ? "&wav=1" : ""}`;
 
 export type PrepStatus = "queued" | "running" | "done" | "error";
 

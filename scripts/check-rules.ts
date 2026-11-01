@@ -166,3 +166,5 @@ settingsBackupTest(); console.log("check-rules settings backup ok");
 setEnergyTest(); console.log("check-rules set energy ok");
 hypeTest(); console.log("check-rules crowd hype ok");
 searchMoreTest(); console.log("check-rules search more ok");
+import { padPagesTest } from "../lib/padPages";
+padPagesTest(); console.log("check-rules pad pages ok");

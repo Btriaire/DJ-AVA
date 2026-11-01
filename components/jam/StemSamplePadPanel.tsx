@@ -4,6 +4,7 @@ import type { DJEngine } from "@/lib/audio/engine";
 import { PAD_COLS, stemSamplePad } from "@/lib/audio/stemSamplePad";
 import { Knob } from "../Knob";
 import { PAD_KEYS, PAD_ROW_COLORS, SamplePadButton, usePadKeys } from "./SamplePadButton";
+import { PadFxPanel } from "./PadFxPanel";
 
 const C = "var(--jam-pad)";
 const STEM_FR: Record<string, string> = { drums: "Batterie", bass: "Basse", other: "Autre", vocals: "Voix", guitar: "Guitare", piano: "Piano" };
@@ -12,9 +13,10 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
   const m = stemSamplePad(engine);
   const [, bump] = useReducer((x: number) => x + 1, 0);
   const rows = m.rows();
-  const [keys, setKeys] = useState(false); // the computer keyboard plays the pads (rows 1-5, A-T, Q-G, W-B)
+  const [keys, setKeys] = useState(false);
+  const [fxRow, setFxRow] = useState(""); // the row whose effects are shown next to the pads // the computer keyboard plays the pads (rows 1-5, A-T, Q-G, W-B)
   usePadKeys(keys, rows.length, (r, col, down) => { const row = rows[r]; if (row?.pads[col]) { m.press(row.stem, col, down); bump(); } });
-  const total = rows.reduce((acc, row) => acc + row.pads.length, 0);
+  const total = Object.values(m.samples ?? {}).reduce((acc, pool) => acc + pool.length, 0); // the whole pool, not only the pads shown
 
   useEffect(() => {
     const interval = setInterval(bump, 250);
@@ -33,7 +35,7 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
   };
 
   return (
-    <section className="hw-panel flex flex-col gap-3 p-3" aria-label="Stem Sample Pad">
+    <section className="hw-panel @container flex flex-col gap-3 p-3" aria-label="Stem Sample Pad">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-[13px] font-black uppercase tracking-[0.2em]" style={{ color: C }}>Stem Sample Pad</h3>
         <button
@@ -56,7 +58,7 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
           {m.status === "idle" ? "Charge un morceau préparé (stems) sur la platine" :
            m.status === "loading" ? "Recherche des samples…" :
            m.status === "error" ? "Pas de samples : prépare les stems du morceau" :
-           `${rows.length} stems · ${total} samples`}
+           `${rows.length} stems · ${total} samples${m.deep ? " · analyse approfondie" : " · Préparation > Stems Pad pour une analyse approfondie"}`}
         </span>
       </div>
       <p className="text-[11px] leading-snug text-neutral-300">
@@ -127,6 +129,15 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
           />
         </div>
         <button
+          type="button"
+          className="rounded px-2 py-1 text-[11px] font-bold"
+          style={{ background: C, color: "#0a0a0a" }}
+          onClick={() => { m.refresh(); bump(); }}
+          title="Met d'autres boucles et coups trouvés dans le morceau sur tous les pads, en live (ce qui joue continue)"
+        >
+          RAFRAÎCHIR
+        </button>
+        <button
           className="rounded px-2 py-1 text-[11px] font-bold bg-[rgba(255,255,255,0.08)] text-[#d4d4d4]"
           onClick={() => m.stopAll()}
         >
@@ -144,6 +155,7 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
         </button>
       </div>
       
+      <div className="flex flex-col gap-3 @[900px]:flex-row @[900px]:items-start">
       <div className="flex flex-col gap-1.5">
         {rows.map((row, r) => (
           <div
@@ -151,8 +163,19 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
             className="grid items-stretch gap-1.5"
             style={{ gridTemplateColumns: `5.5rem repeat(${PAD_COLS}, minmax(64px, 120px))` }}
           >
-            <div className="text-[11px] font-bold uppercase text-neutral-300 self-center">
-              {STEM_FR[row.stem]}
+            <div className="flex flex-col items-start gap-1 self-center">
+              <span className="text-[11px] font-bold uppercase text-neutral-300">{STEM_FR[row.stem] ?? row.stem}</span>
+              {m.pagesOf(row.stem) > 1 && (
+                <button
+                  type="button"
+                  onClick={() => { m.refresh(row.stem); bump(); }}
+                  className="rounded px-1.5 py-0.5 text-[10px] font-bold"
+                  style={{ background: "rgba(255,255,255,0.08)", color: "#d4d4d4" }}
+                  title="Met d'autres boucles et coups de ce stem sur ses pads (ce qui joue continue)"
+                >
+                  ↻ {m.pageOf(row.stem)}/{m.pagesOf(row.stem)}
+                </button>
+              )}
             </div>
             {Array.from({ length: PAD_COLS }).map((_, col) => {
               const pad = row.pads[col];
@@ -175,6 +198,24 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
             })}
           </div>
         ))}
+      </div>
+      {rows.length > 0 && (() => {
+        const cur = rows.some((r) => r.stem === fxRow) ? fxRow : rows[0].stem;
+        const f = m.fxOf(cur);
+        return (
+          <PadFxPanel
+            stems={rows.map((r, i) => ({ stem: r.stem, label: STEM_FR[r.stem] ?? r.stem, color: PAD_ROW_COLORS[i % PAD_ROW_COLORS.length] }))}
+            current={cur}
+            onCurrent={(st) => setFxRow(st)}
+            fx={{ on: { ...f.on }, amount: { ...f.amount } }}
+            mods={{ ...m.modsOf(cur) }}
+            onFx={(id, on) => { m.setFx(cur, id, on); bump(); }}
+            onAmount={(id, a) => { m.setFxAmount(cur, id, a); bump(); }}
+            onMod={(k, on) => { m.setMod(cur, k, on); bump(); }}
+            onReset={() => { m.resetFx(cur); bump(); }}
+          />
+        );
+      })()}
       </div>
     </section>
   );

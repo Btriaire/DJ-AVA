@@ -55,3 +55,48 @@ export function makeStemSamples(hash: string, model: StemModel, opts: StemOpts |
   queue = run.catch(() => null);
   return run;
 }
+
+// PART 1
+export interface DeepSamples { version: 2; deep: true; bpm: number; bars: number[]; stems: Record<string, PadSample[]> }
+
+function deepFile(hash: string, model: StemModel, opts: StemOpts | undefined): string {
+  return join(dirname(stemPath(hash, model, "drums", opts)), "samples-deep.json");
+}
+
+export function readDeepSamples(hash: string, model: StemModel, opts: StemOpts | undefined): DeepSamples | null {
+  try {
+    const file = deepFile(hash, model, opts);
+    if (!existsSync(file)) return null;
+    const data = readFileSync(file, "utf8");
+    const samples = JSON.parse(data) as DeepSamples;
+    return samples.version === 2 && samples.deep ? samples : null;
+  } catch {
+    return null;
+  }
+}
+
+export function makeDeepSamples(hash: string, model: StemModel, opts: StemOpts | undefined, bpm?: number): Promise<DeepSamples | null> {
+  const cached = readDeepSamples(hash, model, opts);
+  if (cached) return Promise.resolve(cached);
+
+  const python = process.env.PITCH_PYTHON || join(homedir(), ".djsynth-pitch/bin/python");
+  if (!existsSync(python) || !existsSync(stemPath(hash, model, "drums", opts))) return Promise.resolve(null);
+
+  const job = queue.then(() => new Promise<DeepSamples | null>((resolve) => { // waits for the jobs before it
+    const stemsDir = dirname(stemPath(hash, model, "drums", opts));
+    const args = [stemsDir, deepFile(hash, model, opts)];
+    if (bpm && bpm > 40) args.push(String(bpm));
+
+    const child = spawn("nice", ["-n", "19", python, join(process.cwd(), "scripts", "stem_samples_deep.py"), ...args], {
+      timeout: 10 * 60 * 1000,
+      stdio: "ignore",
+      env: { ...process.env, PYTHONPATH: "" }
+    });
+
+    child.on("close", () => resolve(readDeepSamples(hash, model, opts)));
+    child.on("error", () => resolve(null));
+  }));
+
+  queue = job.catch(() => null);
+  return job;
+}
