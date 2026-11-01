@@ -1,8 +1,9 @@
 "use client";
-import { useEffect, useReducer } from "react";
+import { useEffect, useReducer, useState } from "react";
 import type { DJEngine } from "@/lib/audio/engine";
 import { PAD_COLS, stemSamplePad } from "@/lib/audio/stemSamplePad";
 import { Knob } from "../Knob";
+import { PAD_KEYS, PAD_ROW_COLORS, SamplePadButton, usePadKeys } from "./SamplePadButton";
 
 const C = "var(--jam-pad)";
 const STEM_FR: Record<string, string> = { drums: "Batterie", bass: "Basse", other: "Autre", vocals: "Voix", guitar: "Guitare", piano: "Piano" };
@@ -11,6 +12,8 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
   const m = stemSamplePad(engine);
   const [, bump] = useReducer((x: number) => x + 1, 0);
   const rows = m.rows();
+  const [keys, setKeys] = useState(false); // the computer keyboard plays the pads (rows 1-5, A-T, Q-G, W-B)
+  usePadKeys(keys, rows.length, (r, col, down) => { const row = rows[r]; if (row?.pads[col]) { m.press(row.stem, col, down); bump(); } });
   const total = rows.reduce((acc, row) => acc + row.pads.length, 0);
 
   useEffect(() => {
@@ -129,14 +132,24 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
         >
           TOUT ARRÊTER
         </button>
+        <button
+          type="button"
+          aria-pressed={keys}
+          onClick={() => setKeys((k) => !k)}
+          className="rounded px-2 py-1 text-[11px] font-bold"
+          style={keys ? { background: C, color: "#0a0a0a" } : { background: "rgba(255,255,255,0.08)", color: "#d4d4d4" }}
+          title="Joue les pads au clavier de l'ordinateur : rangées 1 à 5, A à T, Q à G, W à B"
+        >
+          CLAVIER
+        </button>
       </div>
       
       <div className="flex flex-col gap-1.5">
-        {rows.map((row) => (
+        {rows.map((row, r) => (
           <div
             key={row.stem}
             className="grid items-stretch gap-1.5"
-            style={{ gridTemplateColumns: `5.5rem repeat(${PAD_COLS}, minmax(0, 1fr))` }}
+            style={{ gridTemplateColumns: `5.5rem repeat(${PAD_COLS}, minmax(64px, 120px))` }}
           >
             <div className="text-[11px] font-bold uppercase text-neutral-300 self-center">
               {STEM_FR[row.stem]}
@@ -145,41 +158,19 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
               const pad = row.pads[col];
               const on = m.isOn(row.stem, col);
               if (!pad) {
-                return <div key={col} className="rounded border border-dashed border-white/10" />;
+                return <div key={col} className="aspect-square w-full min-w-[64px] max-w-[120px] rounded-[10px] border border-dashed border-white/10" />;
               }
               return (
-                <button
+                <SamplePadButton
                   key={col}
-                  type="button"
-                  aria-pressed={on}
-                  className="relative flex h-16 flex-col items-start justify-between rounded p-1.5 text-left select-none touch-none"
-                  style={on ? { background: C, color: "#0a0a0a" } : { background: "linear-gradient(180deg,#202024,#0f0f12)", color: "#e5e5e5", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)" }}
-                  onPointerDown={(e) => {
-                    try {
-                      e.currentTarget.setPointerCapture(e.pointerId);
-                    } catch {}
-                    m.press(row.stem, col, true);
-                    bump();
-                  }}
-                  onPointerUp={() => {
-                    m.press(row.stem, col, false);
-                    bump();
-                  }}
-                  onPointerCancel={() => {
-                    m.press(row.stem, col, false);
-                    bump();
-                  }}
-                  title={pad.kind === "loop" ? "Boucle : clic = démarre ou arrête sur la grille" : "Coup : joue une fois"}
-                >
-                  <span className="text-[11px] font-black">{pad.label}</span>
-                  <span className="text-[10px] opacity-80">
-                    {pad.kind === "loop" ? `${pad.bars} mes. · ${fmt(pad.start)}` : `${(pad.end - pad.start).toFixed(1)} s · ${fmt(pad.start)}`}
-                  </span>
-                  <div
-                    className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-sm"
-                    style={{ background: pad.kind === "loop" ? (on ? "#0a0a0a" : C) : (on ? "#0a0a0a" : "#fbbf24") }}
-                  />
-                </button>
+                  label={pad.label}
+                  info={pad.kind === "loop" ? `${pad.bars} mes. · ${fmt(pad.start)}` : `${(pad.end - pad.start).toFixed(1)} s · ${fmt(pad.start)}`}
+                  kind={pad.kind}
+                  color={PAD_ROW_COLORS[r % PAD_ROW_COLORS.length]}
+                  on={on}
+                  keyLabel={keys ? PAD_KEYS[r]?.[col]?.label : undefined}
+                  onPress={(down) => { m.press(row.stem, col, down); bump(); }}
+                />
               );
             })}
           </div>
