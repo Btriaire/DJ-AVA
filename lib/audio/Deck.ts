@@ -1456,6 +1456,9 @@ export class Deck {
         .then((x) => x.json() as Promise<{ fx: FxMap | null }>)
         .then((x) => { if (gen === this.loadGen) this.fxMap = x.fx; })
         .catch(() => undefined);
+      // the Stem Sample Pad's samples, found once in the background while the song is ready (cached on the server)
+      if (this.bpm > 0)
+        void fetch(`/api/stems/samples?hash=${hash}&model=${this.stemModel}${this.stemOptsQS()}&bpm=${this.bpm.toFixed(1)}&offset=${this.beatGridOffset.toFixed(2)}`).catch(() => undefined);
       let p = { pitch: null as { contour: number[]; hop: number } | null };
       let nj = { notes: null as StemNotes | null };
       try {

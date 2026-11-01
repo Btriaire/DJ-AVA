@@ -15,6 +15,7 @@ import { SynthPanel } from "@/components/SynthPanel";
 import { SamplerPanel } from "@/components/SamplerPanel";
 import { Dx7LabPanel } from "@/components/jam/Dx7LabPanel";
 import { VoiceLabPanel } from "@/components/jam/VoiceLabPanel";
+import { StemSamplePadPanel } from "@/components/jam/StemSamplePadPanel";
 import { ConsolePanel } from "@/components/ConsolePanel";
 import { SettingsBackup } from "@/components/SettingsBackup";
 import { SolarLabPanel } from "@/components/jam/SolarLabPanel";
@@ -287,6 +288,7 @@ export default function Home() {
     synth: boolean;
     dx7: boolean;
     voicelab: boolean;
+    samplepad: boolean;
     solar42: boolean;
     sampler: boolean;
     soundfx: boolean;
@@ -332,6 +334,7 @@ export default function Home() {
     synth: false,
     dx7: false,
     voicelab: false,
+    samplepad: false,
     solar42: false,
     sampler: false,
     soundfx: false,
@@ -456,6 +459,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
     { key: "drums", label: "Boîte à rythmes", scope: "global", category: "Instruments & Sources" },
     { key: "dance", label: "Montée & Drop · Build-up sur 4, 8 ou 16 temps, drop sur le temps, pompe des stems", scope: "global", category: "Performance DJ" },
     { key: "jambass", label: "Bass Lab · Sub sur les notes de basse, pompe sur les kicks, wobble, drop", scope: "global", category: "Stems en live" },
+    { key: "samplepad", label: "Stem Sample Pad · 5 samples par stem trouvés à la préparation (boucles qui se répètent, coups coupés dans les blancs)", scope: "global", category: "Stems en live" },
     { key: "voicelab", label: "Voix humaines · Doublage, harmonies, octave, voix femme, homme, enfant, chuchoté, foule (préparées à l'avance)", scope: "global", category: "Stems en live" },
     { key: "jamvox", label: "Vox FX · Jets en rythme sur la voix, harmonie à la tierce", scope: "global", category: "Stems en live" },
     { key: "jamsynth", label: "Synth · Arpèges, stabs et nappes dans la tonalité du morceau", scope: "global", category: "Stems en live" },
@@ -1624,6 +1628,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
                 <RackRow onClose={closeRackModule} left={[["dx7", modules.dx7 && <Dx7LabPanel key={`dx7-${resetKey}`} engine={engine} />]]} right={[]} />
                 <RackRow onClose={closeRackModule} left={[["solar42", modules.solar42 && <SolarLabPanel key={`solar42-${resetKey}`} engine={engine} />]]} right={[]} />
                 <RackRow onClose={closeRackModule} left={[["voicelab", modules.voicelab && <VoiceLabPanel key={`voicelab-${resetKey}`} engine={engine} />]]} right={[]} />
+                <RackRow onClose={closeRackModule} left={[["samplepad", modules.samplepad && <StemSamplePadPanel key={`samplepad-${resetKey}`} engine={engine} />]]} right={[]} />
               </div>
             )}
 
