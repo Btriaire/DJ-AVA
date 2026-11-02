@@ -898,8 +898,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
         <span className="flex items-center justify-center gap-2 @4xl:justify-start">
           <span className="hidden @4xl:inline-flex"><StemQuad state={stemOf(track.id).state} pct={stemOf(track.id).pct} /></span>
           <StemPill info={stemOf(track.id)} onPrepare={() => queueStems([track])} />
-          {padPill(track)}
-          {eqPill(track)}
+          <span className="inline-flex shrink-0 items-center gap-1 align-middle">{padPill(track)}{eqPill(track)}</span>
         </span>
         <span className="hidden items-center gap-2 @4xl:flex">
           <QualityBars level={track.quality} />
@@ -980,8 +979,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
         <div className="flex min-w-0 items-center gap-2">
           <StemQuad state={stemOf(track.id).state} pct={stemOf(track.id).pct} />
           <StemPill info={stemOf(track.id)} onPrepare={() => queueStems([track])} />
-          {padPill(track)}
-          {eqPill(track)}
+          <span className="inline-flex shrink-0 items-center gap-1 align-middle">{padPill(track)}{eqPill(track)}</span>
         </div>
         <div className="flex min-w-0 items-center gap-1.5">
           <QualityBars level={track.quality} />

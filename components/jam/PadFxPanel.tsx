@@ -30,7 +30,7 @@ export function PadFxPanel(props: { stems: { stem: string; label: string; color:
         <p className="text-[11px] text-neutral-400">Choisis une rangée.</p>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-3 gap-1.5">
             {PAD_FX.map((f) => (
               <div key={f.id} className="flex flex-col items-center gap-1 rounded p-1.5" style={{ background: fx.on[f.id] ? "rgba(255,255,255,0.08)" : "transparent" }}>
                 <button

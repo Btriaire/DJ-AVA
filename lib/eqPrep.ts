@@ -44,7 +44,7 @@ export function buildRecipes(fx: FxMap): EqRecipe[] {
   const bassMax = Math.max(...bassRef.slice(0, 5));
   const bassGains = bassRef.map((val, i) => {
     if (i < 5) {
-      const base = [5, 4, 3, 1, 0][i];
+      const base = [9, 8, 7, 4, 2][i];  // audible: the sub and the kick lift
       return clampGain(base + 0.15 * (val - bassMax));
     } else if (i < 8) {
       return -1.5;
@@ -80,7 +80,7 @@ export function buildRecipes(fx: FxMap): EqRecipe[] {
 
   if ("vocals" in fx.spectra) {
     const devantGains = mix.map((_, i) => {
-      if (i >= 10 && i <= 11) return 2.5;
+      if (i >= 10 && i <= 11) return 5;  // voice presence
       if (i >= 6 && i <= 7) return -2;
       if (i >= 1 && i <= 2) return -2;
       return 0;
@@ -95,7 +95,7 @@ export function buildRecipes(fx: FxMap): EqRecipe[] {
   }
 
   const clairGains = mix.map((_, i) => {
-    if (i === 12 || i === 13) return 2;
+    if (i === 12 || i === 13) return 4;  // clarity
     if (i === 11) return -1.5;
     return 0;
   });

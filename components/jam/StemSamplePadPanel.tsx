@@ -204,7 +204,7 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
         const cur = rows.some((r) => r.stem === fxRow) ? fxRow : rows[0].stem;
         const f = m.fxOf(cur);
         return (
-          <div className="w-[320px] max-w-full shrink-0">
+          <div className="w-[380px] max-w-full shrink-0">
           <PadFxPanel
             stems={rows.map((r, i) => ({ stem: r.stem, label: STEM_FR[r.stem] ?? r.stem, color: PAD_ROW_COLORS[i % PAD_ROW_COLORS.length] }))}
             current={cur}
