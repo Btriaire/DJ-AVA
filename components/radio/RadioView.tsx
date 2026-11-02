@@ -43,6 +43,7 @@ import { CatalogPanel } from "./CatalogPanel";
 import { TopicBox } from "./TopicBox";
 import { curatedFor } from "@/lib/styles";
 import { PrepDock, type PrepRow } from "./PrepDock";
+import { padJob, padReady, runStemsPad, subscribePadJob } from "@/lib/stemsPadPrep";
 import { findComposer } from "@/lib/classical";
 import { pickTech } from "@/lib/stemMix";
 import { useStemsShared } from "@/lib/stemsShared";
@@ -387,6 +388,9 @@ export default function RadioView({
 
   // stems made anywhere (the preparation, a deck of the Console, the Playlist) count here too
   const shared = useStemsShared();
+  const padRun = useSyncExternalStore(subscribePadJob, padJob, padJob);
+  const [padSet, setPadSet] = useState<Set<string>>(() => new Set());
+  const [padTick, setPadTick] = useState(0);
   const stemReady = (id: string) => shared.has(byId.get(id));
   // state of the stems of a song, from the preparation queue
   const stemOf = (id: string) => {
@@ -473,6 +477,37 @@ export default function RadioView({
             : "Tous les stems sont prêts",
     });
   }
+  // Stems Pad: the in-depth samples of the pads, made by itself after the stems (the button runs the ones still missing)
+  const stemTracks = allIds.filter(stemReady).map((id) => byId.get(id)).filter((t): t is NonNullable<typeof t> => !!t?.stemHash);
+  if (stemTracks.length) {
+    const ready = stemTracks.filter((t) => padSet.has(t.stemHash!)).length;
+    const left = stemTracks.length - ready;
+    dockRows.push({
+      key: "stemspad",
+      label: "Stems Pad (samples des pads)",
+      done: padRun.running ? Math.max(ready, padRun.ok) : ready,
+      total: stemTracks.length,
+      state: padRun.running ? "running" : "done",
+      color: "#5ef2ff",
+      detail: padRun.running
+        ? `Recherche en profondeur : ${padRun.done}/${padRun.total} titre(s)`
+        : left > 0
+          ? `${left} titre(s) sans samples de pads : ils se font tout seuls après les stems, ou lance-les maintenant`
+          : "Tous les titres ont leurs boucles et coups pour le Stems Pad",
+      action: left > 0 && !padRun.running
+        ? { label: "Stems Pad", title: "Cherche en profondeur les boucles (1, 2 et 4 mesures) et les coups de chaque titre dont les stems sont prêts", onClick: () => void runStemsPad(stemTracks.filter((t) => !padSet.has(t.stemHash!))).then(() => setPadTick((n) => n + 1)) }
+        : undefined,
+    });
+  }
+  const padKey = stemTracks.map((t) => t.stemHash).join(",");
+  useEffect(() => {
+    // which songs already have their pad samples, checked again every 10 s (they are made in the background)
+    let live = true;
+    const check = () => { if (padKey) void padReady(padKey.split(",")).then((r) => { if (live) setPadSet(r); }); };
+    check();
+    const t = setInterval(check, 10000);
+    return () => { live = false; clearInterval(t); };
+  }, [padKey, padTick, padRun.done]);
   const dockTotal = dockRows.reduce((n, r) => n + r.total, 0);
   const dockPct = dockTotal
     ? Math.round(

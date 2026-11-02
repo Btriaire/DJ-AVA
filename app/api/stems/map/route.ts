@@ -5,6 +5,7 @@ import { backfillStemNotes } from "@/lib/stemNotes";
 import { analyseStems } from "@/lib/stemAnalysis";
 import { analyseFx } from "@/lib/fxAnalysis";
 import { backfillVoiceLayers } from "@/lib/vocalLayers";
+import { backfillDeepSamples } from "@/lib/stemSamples";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +24,7 @@ export async function GET(req: NextRequest) {
     backfillVocalPitch(hash, m, opts);
     void analyseFx(hash, m, opts).catch(() => null); // effects analyses, made once in the background
     backfillVoiceLayers(hash, m, opts); // human voice layers, once the vocal pitch exists
+    backfillDeepSamples(hash, m, opts); // Stems Pad: the in-depth samples of the pads
   }
   return NextResponse.json({ map });
 }

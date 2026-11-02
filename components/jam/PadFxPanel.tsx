@@ -1,8 +1,9 @@
 "use client";
 import { Knob } from "../Knob";
 import { PAD_FX, harmonyInterval, transSemis, type PadFxId } from "@/lib/audio/padFx";
+import { PadEqSection } from "./PadEqSection";
 
-export function PadFxPanel(props: { stems: { stem: string; label: string; color: string }[]; current: string; onCurrent: (stem: string) => void; fx: { on: Record<PadFxId, boolean>; amount: Record<PadFxId, number> } | null; mods: { reverse: boolean; half: boolean } | null; onFx: (id: PadFxId, on: boolean) => void; onAmount: (id: PadFxId, a: number) => void; onMod: (m: "reverse" | "half", on: boolean) => void; onReset: () => void }) {
+export function PadFxPanel(props: { stems: { stem: string; label: string; color: string }[]; current: string; onCurrent: (stem: string) => void; fx: { on: Record<PadFxId, boolean>; amount: Record<PadFxId, number> } | null; mods: { reverse: boolean; half: boolean } | null; onFx: (id: PadFxId, on: boolean) => void; onAmount: (id: PadFxId, a: number) => void; onMod: (m: "reverse" | "half", on: boolean) => void; onReset: () => void; eq?: { gains: number[]; onGain: (i: number, db: number) => void; onAuto: () => Promise<number[] | null>; onEqReset: () => void } }) {
   const { fx, mods } = props;
   const color = props.stems.find((s) => s.stem === props.current)?.color ?? "#38bdf8";
   return (
@@ -64,6 +65,9 @@ export function PadFxPanel(props: { stems: { stem: string; label: string; color:
               </div>
             ))}
           </div>
+          {props.eq && (
+            <PadEqSection gains={props.eq.gains} color={color} onGain={props.eq.onGain} onAuto={props.eq.onAuto} onReset={props.eq.onEqReset} />
+          )}
           <div className="flex items-center gap-2">
             <span className="text-[9px] uppercase text-neutral-400">Lecture</span>
             <button

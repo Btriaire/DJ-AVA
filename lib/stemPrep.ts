@@ -258,6 +258,8 @@ async function monitorSeparation(trackId: string, hash: string): Promise<void> {
           },
         ],
       });
+      // the analyses made once on the server from the new stems: notes, voice, effects, human voices, Stems Pad samples
+      void fetch(`/api/stems/map?hash=${hash}&model=${PREP_MODEL}${PREP_QS}`).catch(() => undefined);
       return;
     }
 

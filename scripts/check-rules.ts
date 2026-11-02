@@ -168,3 +168,5 @@ hypeTest(); console.log("check-rules crowd hype ok");
 searchMoreTest(); console.log("check-rules search more ok");
 import { padPagesTest } from "../lib/padPages";
 padPagesTest(); console.log("check-rules pad pages ok");
+import { padEqTest } from "../lib/padEq";
+padEqTest(); console.log("check-rules pad eq ok");

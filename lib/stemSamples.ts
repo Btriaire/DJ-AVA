@@ -100,3 +100,9 @@ export function makeDeepSamples(hash: string, model: StemModel, opts: StemOpts |
   queue = job.catch(() => null);
   return job;
 }
+
+// the in-depth analysis made by itself once a song's stems are on disk (the map route calls this for every prepared song)
+export function backfillDeepSamples(hash: string, model: StemModel, opts?: StemOpts): void {
+  if (readDeepSamples(hash, model, opts)) return;
+  void makeDeepSamples(hash, model, opts).catch(() => null);
+}

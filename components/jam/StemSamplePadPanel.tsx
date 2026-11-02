@@ -5,6 +5,7 @@ import { PAD_COLS, stemSamplePad } from "@/lib/audio/stemSamplePad";
 import { Knob } from "../Knob";
 import { PAD_KEYS, PAD_ROW_COLORS, SamplePadButton, usePadKeys } from "./SamplePadButton";
 import { PadFxPanel } from "./PadFxPanel";
+import { smartEqGains } from "@/lib/padEq";
 
 const C = "var(--jam-pad)";
 const STEM_FR: Record<string, string> = { drums: "Batterie", bass: "Basse", other: "Autre", vocals: "Voix", guitar: "Guitare", piano: "Piano" };
@@ -213,6 +214,19 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
             onAmount={(id, a) => { m.setFxAmount(cur, id, a); bump(); }}
             onMod={(k, on) => { m.setMod(cur, k, on); bump(); }}
             onReset={() => { m.resetFx(cur); bump(); }}
+            eq={{
+              gains: m.fxOf(cur).eqGains(),
+              onGain: (i, db) => { m.fxOf(cur).setEq(i, db); bump(); },
+              onAuto: async () => {
+                const bands = await m.fxOf(cur).measureBands(1500);
+                if (!bands.some((b) => Number.isFinite(b) && b > -90)) return null; // nothing plays on this row yet
+                const g = smartEqGains(cur, bands);
+                g.forEach((db, i) => m.fxOf(cur).setEq(i, db));
+                bump();
+                return g;
+              },
+              onEqReset: () => { m.fxOf(cur).resetEq(); bump(); },
+            }}
           />
         );
       })()}

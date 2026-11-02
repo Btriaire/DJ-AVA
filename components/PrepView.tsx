@@ -5,7 +5,8 @@ import { splitTitle } from "@/lib/trackTitle";
 import { dedupeOnline, rankOnline } from "@/lib/trackRank";
 import { useState, useRef, useMemo, useSyncExternalStore, useEffect } from "react";
 import { loadLibrary, saveLibrary, uid, idbGetBlob } from "@/lib/library";
-import { enqueuePrep, getPrepState, subscribePrep, forgetPrep, cancelPrep, PREP_MODEL, PREP_QS } from "@/lib/stemPrep";
+import { enqueuePrep, getPrepState, subscribePrep, forgetPrep, cancelPrep } from "@/lib/stemPrep";
+import { padJob, runStemsPad, subscribePadJob } from "@/lib/stemsPadPrep";
 import { queueAnalysis } from "@/lib/analyze";
 import { analyzeLibraryTrack } from "@/lib/analyzeTrack";
 import { Journey, buildJourney } from "./prep/Journey";
@@ -221,26 +222,15 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
 
   // tracks over 20 min take hours to download and split: the first click warns,
   // a second click on the same tracks starts them (window.confirm is always "no" in the Mac app)
-  // STEMS PAD: the in-depth sample search of every song whose stems are ready (one at a time on the server, cached)
-  const [padJob, setPadJob] = useState<{ done: number; total: number } | null>(null);
+  // STEMS PAD: the in-depth sample search of every song whose stems are ready (also made by itself after each preparation)
+  const padState = useSyncExternalStore(subscribePadJob, padJob, padJob);
+  const padJobView = padState.running ? padState : null;
   const deepPads = async (tracks: LibTrack[]) => {
     const list = tracks.filter((t) => t.stemHash && stemOf(t.id).state === "done");
     if (!list.length) return flash("Stems Pad : prépare d'abord les stems de ces titres.");
-    setPadJob({ done: 0, total: list.length });
-    let ok = 0;
-    for (let i = 0; i < list.length; i++) {
-      const t = list[i];
-      try {
-        const r = await fetch(`/api/stems/samples?deep=1&hash=${t.stemHash}&model=${PREP_MODEL}${PREP_QS}${t.bpm ? `&bpm=${t.bpm}` : ""}`) // the folder the prepared stems live in;
-        const j = (await r.json()) as { deep?: boolean };
-        if (j.deep) ok++;
-      } catch {
-        /* the next song still runs */
-      }
-      setPadJob({ done: i + 1, total: list.length });
-    }
-    setPadJob(null);
-    flash(`Stems Pad : ${ok} titre${ok > 1 ? "s" : ""} analysé${ok > 1 ? "s" : ""} en profondeur (boucles de 1, 2 et 4 mesures, coups coupés sur l'attaque, réserve pour RAFRAÎCHIR).`);
+    if (!(await runStemsPad(list))) return;
+    const j = padJob();
+    flash(`Stems Pad : ${j.ok} titre${j.ok > 1 ? "s" : ""} analysé${j.ok > 1 ? "s" : ""} en profondeur (boucles de 1, 2 et 4 mesures, coups coupés sur l'attaque, réserve pour RAFRAÎCHIR).`);
   };
   const queueStems = (tracks: LibTrack[]) => {
     const longTracks = tracks.filter(t => t.durationSec && t.durationSec > LONG_TRACK_SEC);
@@ -1394,12 +1384,12 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
                 </button>
                 <button
                   onClick={() => void deepPads(laterTracks)}
-                  disabled={!!padJob || stemsReady === 0}
-                  className="prep-btn-ghost prep-tap flex items-center gap-1.5 px-3 py-1.5 text-xs"
+                  disabled={!!padJobView || stemsReady === 0}
+                  className="prep-btn-accent prep-tap flex items-center gap-1.5 px-3 py-1.5 text-xs"
                   title="Stems Pad : recherche en profondeur des samples de chaque titre dont les stems sont prêts (temps suivis, boucles de 1, 2 et 4 mesures qui bouclent sans clic, coups coupés sur l'attaque, une réserve d'une vingtaine par stem pour RAFRAÎCHIR)"
                 >
                   <Icon name="stems" size={13} />
-                  {padJob ? `Stems Pad ${padJob.done}/${padJob.total}…` : `Stems Pad${stemsReady > 0 ? ` (${stemsReady})` : ""}`}
+                  {padJobView ? `Stems Pad ${padJobView.done}/${padJobView.total}…` : `Stems Pad${stemsReady > 0 ? ` (${stemsReady})` : ""}`}
                 </button>
                 <details className="prep-menu relative">
                   <summary className="prep-btn-ghost prep-tap flex items-center gap-1.5 px-2.5 py-1.5 text-[11px]" title="Analyser le BPM et la tonalité, vérifier la qualité">
@@ -1557,7 +1547,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
             Créer un set
           </button>
           <button onClick={() => queueStems(selectedTracks)} className="prep-btn-ghost prep-tap flex items-center gap-1 px-3 py-1 text-xs"><Icon name="stems" size={12} />Préparer les stems</button>
-          <button onClick={() => void deepPads(selectedTracks)} disabled={!!padJob} className="prep-btn-ghost prep-tap flex items-center gap-1 px-3 py-1 text-xs" title="Recherche en profondeur des samples des titres cochés (stems prêts)"><Icon name="stems" size={12} />Stems Pad</button>
+          <button onClick={() => void deepPads(selectedTracks)} disabled={!!padJobView} className="prep-btn-ghost prep-tap flex items-center gap-1 px-3 py-1 text-xs" title="Recherche en profondeur des samples des titres cochés (stems prêts)"><Icon name="stems" size={12} />Stems Pad</button>
           <select value="" onChange={(e) => { if (e.target.value) addCheckedToPlaylist(e.target.value); }} className="prep-input prep-tap px-2 py-1 text-xs" aria-label="Ajouter les titres cochés à un set">
             <option value="">Ajouter à un set…</option>
             {lib.playlists.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}

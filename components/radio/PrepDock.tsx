@@ -12,6 +12,7 @@ export interface PrepRow {
   state: "running" | "done" | "warn";
   color: string;
   detail: string; // what is happening now, in a sentence
+  action?: { label: string; title: string; onClick: () => void; disabled?: boolean }; // a button on the row (Stems Pad)
 }
 
 export interface PrepDockProps {
@@ -78,7 +79,14 @@ export function PrepDock({ rows, wait, canPrepare, onPrepareAll, queuedStems, on
                     style={{ width: `${Math.max(share * 100, r.state === "running" ? 4 : 0)}%`, background: col }}
                   />
                 </div>
-                <div className="text-[11px]" style={{ color: r.state === "warn" ? "#f87171" : "#9ca3af" }}>{r.detail}</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="text-[11px]" style={{ color: r.state === "warn" ? "#f87171" : "#9ca3af" }}>{r.detail}</div>
+                  {r.action && (
+                    <button type="button" onClick={r.action.onClick} disabled={r.action.disabled} title={r.action.title} className="prep-btn-accent prep-tap ml-auto px-2.5 py-1 text-[11px] disabled:opacity-40">
+                      {r.action.label}
+                    </button>
+                  )}
+                </div>
               </li>
             );
           })}
