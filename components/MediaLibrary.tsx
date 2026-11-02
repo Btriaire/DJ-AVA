@@ -3323,7 +3323,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           // the decks, found none and silently did nothing)
           onToggleRelay: () => {
             if (relay) stopRelay();
-            else if (ap && ap.trackIds.length >= 2) playPlaylistRelay(ap.id);
+            else if (ap && ap.trackIds.length >= 1) playPlaylistRelay(ap.id);
             else flash("Relais : ouvre un set d'au moins 2 titres, puis relance");
           },
         }}
@@ -3448,7 +3448,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                 }
               : st.key === "set"
                 ? () => setWizard((w) => ({ nonce: (w?.nonce ?? 0) + 1 }))
-                : st.key === "play" && ap && ap.trackIds.length >= 2
+                : st.key === "play" && ap && ap.trackIds.length >= 1
                   ? () => sendSet("relay", ap.id)
                   : undefined,
         }))}

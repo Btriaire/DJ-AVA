@@ -107,6 +107,38 @@ export function buildRecipes(fx: FxMap): EqRecipe[] {
     bars: 4
   });
 
+  recipes.push({
+    id: "sous-marin",
+    label: "Sous-marin",
+    title: "Étouffe le son comme sous l'eau : coupe les aigus, relève un peu le grave",
+    gains: [
+      clampGain(1.5), clampGain(1.5), clampGain(1.5), clampGain(1.5),
+      clampGain(0), clampGain(0), clampGain(0), clampGain(0), clampGain(0),
+      clampGain(-4), clampGain(-4), clampGain(-4),
+      clampGain(-8), clampGain(-8), clampGain(-8)
+    ],
+    bars: 4
+  });
+  recipes.push({
+    id: "radio",
+    label: "Radio",
+    title: "Son de poste : coupe les graves et les aigus, garde le médium",
+    gains: [
+      clampGain(-8), clampGain(-8), clampGain(-8), clampGain(-8),
+      clampGain(-3), clampGain(-3),
+      clampGain(1.5), clampGain(1.5), clampGain(1.5), clampGain(1.5), clampGain(1.5),
+      clampGain(2),
+      clampGain(-8), clampGain(-8), clampGain(-8)
+    ],
+    bars: 2
+  });
+  recipes.push({
+    id: "respire",
+    label: "Respire",
+    title: "Retire la lourdeur sans perdre l'énergie : cuvette douce dans 400 Hz et 2,5 kHz",
+    gains: [clampGain(1), clampGain(1), clampGain(0), clampGain(0), clampGain(0), clampGain(0), clampGain(-2.5), clampGain(0), clampGain(0), clampGain(0), clampGain(-2), clampGain(0), clampGain(0), clampGain(0), clampGain(0)],
+    bars: 8
+  });
   return recipes;
 }
 

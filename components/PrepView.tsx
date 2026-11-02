@@ -1004,7 +1004,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
         <div className="flex flex-wrap items-center gap-1.5 border-t border-[var(--prep-line)] px-3 py-2">
           <button
             onClick={() => onLaunchSet?.("relay", playlist.id)}
-            disabled={tracks.length < 2 || !onLaunchSet}
+            disabled={tracks.length < 1 || !onLaunchSet}
             className="prep-btn-accent prep-tap flex items-center gap-1 px-2.5 py-1 text-[11px]"
             title="Lance ce set tel quel en automix A→B→A"
           >
@@ -1202,9 +1202,9 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   const laterBpms = laterTracks.map((t) => t.bpm).filter((b): b is number => !!b);
   const trayMedianBpm = laterBpms.length ? [...laterBpms].sort((a, b) => a - b)[Math.floor(laterBpms.length / 2)] : undefined;
   const playFirstSet = () => {
-    const set = lib.playlists.find((p) => p.trackIds.length >= 2);
+    const set = lib.playlists.find((p) => p.trackIds.length >= 1);
     if (set) onLaunchSet?.("relay", set.id);
-    else flash("Crée d'abord un set d'au moins deux titres.");
+    else flash("Crée d'abord un set avec au moins un titre.");
   };
   const newEmptySet = () => {
     setSetsOpen(true);
@@ -1227,7 +1227,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
         subtitle={`${laterTracks.length} titre(s) mis de côté${totalLaterSec ? ` · ${formatDuration(totalLaterSec)}` : ""}${laterBpms.length ? ` · ${Math.round(Math.min(...laterBpms))}–${Math.round(Math.max(...laterBpms))} BPM` : ""}`}
         actions={
           <>
-            <PlayDisc label="Jouer le premier set" onClick={playFirstSet} disabled={!onLaunchSet || !lib.playlists.some((p) => p.trackIds.length >= 2)} />
+            <PlayDisc label="Jouer le premier set" onClick={playFirstSet} disabled={!onLaunchSet || !lib.playlists.some((p) => p.trackIds.length >= 1)} />
             <span className="text-[11px] text-neutral-400">Jouer le premier set</span>
           </>
         }
