@@ -170,3 +170,5 @@ import { padPagesTest } from "../lib/padPages";
 padPagesTest(); console.log("check-rules pad pages ok");
 import { padEqTest } from "../lib/padEq";
 padEqTest(); console.log("check-rules pad eq ok");
+import { eqPrepTest } from "../lib/eqPrep";
+eqPrepTest(); console.log("check-rules 15 band prep ok");

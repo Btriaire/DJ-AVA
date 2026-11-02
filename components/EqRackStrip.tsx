@@ -9,6 +9,7 @@ import { Knob } from "./Knob";
 import { EqGraph } from "./EqGraph";
 import { EqLabControls } from "./EqLabControls";
 import { eqLabFor, linkedMove, measure, otherDeckOf } from "@/lib/audio/eqLab";
+import { buildRecipes } from "@/lib/eqPrep";
 import { stemLabel } from "./RackGuideBlock";
 import { DigitalVU } from "./EqVisuals";
 
@@ -268,6 +269,37 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
           <button onClick={() => setLinked(new Set())} className="rounded px-2 py-1 text-[10px] font-bold" style={{ background: "rgba(255,255,255,0.08)", color: "#d4d4d4" }}>
             DÉLIER
           </button>
+        )}
+      </div>
+
+      {/* ── 15 bandes Prep: recipes computed at preparation from the song's own spectra ── */}
+      <div className="flex flex-wrap items-center gap-1">
+        <span className="w-20 shrink-0 text-[9px] font-bold uppercase tracking-wider text-neutral-400" title="Recettes calculées à la préparation, à partir des spectres réels du morceau">15 bandes Prep</span>
+        {deck.fxMap ? (
+          buildRecipes(deck.fxMap).map((rc) => {
+            const idx = rc.stem ? deck.stemNames.indexOf(rc.stem) : curve;
+            const target = rc.stem ? idx : curve;
+            const disabled = rc.stem ? idx < 0 : false;
+            return (
+              <button
+                key={rc.id}
+                type="button"
+                disabled={disabled}
+                title={rc.title}
+                onClick={() => {
+                  lab.morph(target, rc.gains, rc.bars);
+                  flashLcd(`${rc.label.toUpperCase()} · ${rc.bars} mes.`);
+                  rerender();
+                }}
+                className="rounded px-2 py-1 text-[10px] font-bold disabled:opacity-40"
+                style={{ background: "rgba(255,255,255,0.08)", color: "#d4d4d4" }}
+              >
+                {rc.label}
+              </button>
+            );
+          })
+        ) : (
+          <span className="text-[10px] text-neutral-400">Analyse du morceau pas encore prête : prépare ses stems, ou lance « 15 bandes Prep » dans Préparation.</span>
         )}
       </div>
 

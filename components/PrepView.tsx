@@ -5,7 +5,7 @@ import { splitTitle } from "@/lib/trackTitle";
 import { dedupeOnline, rankOnline } from "@/lib/trackRank";
 import { useState, useRef, useMemo, useSyncExternalStore, useEffect } from "react";
 import { loadLibrary, saveLibrary, uid, idbGetBlob } from "@/lib/library";
-import { enqueuePrep, getPrepState, subscribePrep, forgetPrep, cancelPrep } from "@/lib/stemPrep";
+import { enqueuePrep, getPrepState, subscribePrep, forgetPrep, cancelPrep, PREP_MODEL, PREP_QS } from "@/lib/stemPrep";
 import { padJob, padReady, runPadNow, runStemsPad, subscribePadJob } from "@/lib/stemsPadPrep";
 import { PadPill } from "./prep/PadPill";
 import { queueAnalysis } from "@/lib/analyze";
@@ -265,6 +265,25 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
       return flash("Stems Pad : les fichiers de stems de ce titre ne sont plus sur le disque. Relance « + stems » pour les refaire, puis « + pads ».", 12000);
     }
     flash(`Stems Pad : ${j.ok} titre${j.ok > 1 ? "s" : ""} analysé${j.ok > 1 ? "s" : ""} en profondeur (boucles de 1, 2 et 4 mesures, coups coupés sur l'attaque, réserve pour RAFRAÎCHIR).`);
+  };
+  // 15 bandes Prep: the spectra of every prepared song (the recipes of the EQ come from them), computed once and kept
+  const [eqPrepBusy, setEqPrepBusy] = useState(false);
+  const eqPrepAll = async (tracks: LibTrack[]) => {
+    const list = tracks.filter((t) => t.stemHash && stemOf(t.id).state === "done");
+    if (!list.length) return flash("15 bandes Prep : prépare d'abord les stems de ces titres.");
+    setEqPrepBusy(true);
+    let ready = 0;
+    for (const t of list) {
+      try {
+        const r = await fetch(`/api/stems/fx?hash=${t.stemHash}&model=${PREP_MODEL}${PREP_QS}`);
+        const j = (await r.json()) as { fx?: unknown };
+        if (j.fx) ready++;
+      } catch {
+        /* the next song still runs */
+      }
+    }
+    setEqPrepBusy(false);
+    flash(`15 bandes Prep : ${ready}/${list.length} titre${list.length > 1 ? "s" : ""} avec leur analyse spectrale : les recettes sont prêtes dans l'égaliseur.`, 8000);
   };
   const queueStems = (tracks: LibTrack[]) => {
     const longTracks = tracks.filter(t => t.durationSec && t.durationSec > LONG_TRACK_SEC);
@@ -1417,6 +1436,14 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
                 >
                   <Icon name="stems" size={13} />
                   Préparer les stems{stemsMissing.length > 0 ? ` (${stemsMissing.length})` : ""}
+                </button>
+                <button
+                  onClick={() => void eqPrepAll(laterTracks)}
+                  disabled={eqPrepBusy || stemsReady === 0}
+                  className="prep-btn-ghost prep-tap flex items-center gap-1.5 px-3 py-1.5 text-xs"
+                  title="15 bandes Prep : mesure le spectre réel de chaque titre préparé (batterie, basse, voix, autres, mix). L'égaliseur 15 bandes en tire ses recettes : isoler, boost basse, surround, voix devant"
+                >
+                  {eqPrepBusy ? "15 bandes Prep…" : "15 bandes Prep"}
                 </button>
                 <button
                   onClick={() => void deepPads(laterTracks)}
