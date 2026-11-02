@@ -75,14 +75,15 @@ export function readDeepSamples(hash: string, model: StemModel, opts: StemOpts |
   }
 }
 
-export function makeDeepSamples(hash: string, model: StemModel, opts: StemOpts | undefined, bpm?: number): Promise<DeepSamples | null> {
+// urgent: one title asked from Préparation runs at once, beside the batch (it does not wait in the queue)
+export function makeDeepSamples(hash: string, model: StemModel, opts: StemOpts | undefined, bpm?: number, urgent = false): Promise<DeepSamples | null> {
   const cached = readDeepSamples(hash, model, opts);
   if (cached) return Promise.resolve(cached);
 
   const python = process.env.PITCH_PYTHON || join(homedir(), ".djsynth-pitch/bin/python");
   if (!existsSync(python) || !existsSync(stemPath(hash, model, "drums", opts))) return Promise.resolve(null);
 
-  const job = queue.then(() => new Promise<DeepSamples | null>((resolve) => { // waits for the jobs before it
+  const job = (urgent ? Promise.resolve() : queue).then(() => new Promise<DeepSamples | null>((resolve) => { // a batch job waits for the jobs before it
     const stemsDir = dirname(stemPath(hash, model, "drums", opts));
     const args = [stemsDir, deepFile(hash, model, opts)];
     if (bpm && bpm > 40) args.push(String(bpm));
@@ -97,7 +98,7 @@ export function makeDeepSamples(hash: string, model: StemModel, opts: StemOpts |
     child.on("error", () => resolve(null));
   }));
 
-  queue = job.catch(() => null);
+  if (!urgent) queue = job.catch(() => null);
   return job;
 }
 

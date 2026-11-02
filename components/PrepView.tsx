@@ -6,7 +6,7 @@ import { dedupeOnline, rankOnline } from "@/lib/trackRank";
 import { useState, useRef, useMemo, useSyncExternalStore, useEffect } from "react";
 import { loadLibrary, saveLibrary, uid, idbGetBlob } from "@/lib/library";
 import { enqueuePrep, getPrepState, subscribePrep, forgetPrep, cancelPrep } from "@/lib/stemPrep";
-import { padJob, padReady, runStemsPad, subscribePadJob } from "@/lib/stemsPadPrep";
+import { padJob, padReady, runPadNow, runStemsPad, subscribePadJob } from "@/lib/stemsPadPrep";
 import { PadPill } from "./prep/PadPill";
 import { queueAnalysis } from "@/lib/analyze";
 import { analyzeLibraryTrack } from "@/lib/analyzeTrack";
@@ -235,10 +235,10 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
     check();
     const t = setInterval(check, 10000);
     return () => { live = false; clearInterval(t); };
-  }, [padHashes, padState.done, padState.running]);
+  }, [padHashes, padState.done, padState.running, padState.urgent?.length]);
   const padPill = (track: LibTrack) => {
     const hasStems = stemOf(track.id).state === "done";
-    const running = padState.running && !!track.stemHash && padState.current === track.stemHash;
+    const running = !!track.stemHash && (padState.current === track.stemHash || (padState.urgent ?? []).includes(track.stemHash));
     return (
       <PadPill
         hasStems={hasStems}
@@ -251,6 +251,14 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   const deepPads = async (tracks: LibTrack[]) => {
     const list = tracks.filter((t) => t.stemHash && stemOf(t.id).state === "done");
     if (!list.length) return flash("Stems Pad : prépare d'abord les stems de ces titres.");
+    if (list.length === 1) {
+      // one title: runs at once, even while a batch is going
+      const one = list[0];
+      const ok = await runPadNow({ stemHash: one.stemHash, bpm: one.bpm });
+      return flash(ok
+        ? `Stems Pad : « ${one.name} » est prêt (boucles et coups pour les pads).`
+        : "Stems Pad : les fichiers de stems de ce titre ne sont plus sur le disque. Relance « + stems ».", ok ? 6000 : 12000);
+    }
     if (!(await runStemsPad(list))) return;
     const j = padJob();
     if (j.ok === 0) {

@@ -1,116 +1,90 @@
 "use client";
-import { useRef } from "react";
+import { Knob } from "../Knob";
 import { PAD_FX, harmonyInterval, transSemis, type PadFxId } from "@/lib/audio/padFx";
 import { PadEqSection } from "./PadEqSection";
 
-interface Props {
-  stems: { stem: string; label: string; color: string }[];
-  current: string;
-  onCurrent: (stem: string) => void;
-  fx: { on: Record<PadFxId, boolean>; amount: Record<PadFxId, number> } | null;
-  mods: { reverse: boolean; half: boolean } | null;
-  onFx: (id: PadFxId, on: boolean) => void;
-  onAmount: (id: PadFxId, a: number) => void;
-  onMod: (m: "reverse" | "half", on: boolean) => void;
-  onReset: () => void;
-  eq?: { gains: number[]; onGain: (i: number, db: number) => void; onAuto: () => Promise<number[] | null>; onEqReset: () => void };
-}
-
-export function PadFxPanel(props: Props) {
-  const color = props.stems.find(s => s.stem === props.current)?.color ?? "#38bdf8";
+export function PadFxPanel(props: { stems: { stem: string; label: string; color: string }[]; current: string; onCurrent: (stem: string) => void; fx: { on: Record<PadFxId, boolean>; amount: Record<PadFxId, number> } | null; mods: { reverse: boolean; half: boolean } | null; onFx: (id: PadFxId, on: boolean) => void; onAmount: (id: PadFxId, a: number) => void; onMod: (m: "reverse" | "half", on: boolean) => void; onReset: () => void; eq?: { gains: number[]; onGain: (i: number, db: number) => void; onAuto: () => Promise<number[] | null>; onEqReset: () => void } }) {
   const { fx, mods } = props;
-  const gestureState = useRef<Record<string, { x: number; moved: boolean }>>({});
-
+  const color = props.stems.find((s) => s.stem === props.current)?.color ?? "#38bdf8";
   return (
-    <aside className="flex w-full min-w-0 flex-col gap-1.5 rounded-lg p-1.5 ring-1 ring-white/10 max-h-[28rem] overflow-y-auto" aria-label="Effets des pads">
+    <aside className="flex w-full flex-col gap-3 rounded-lg p-3 ring-1 ring-white/10" aria-label="Effets des pads">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-200">Effets</span>
-        <button className="rounded px-1.5 py-0.5 text-[9px] font-bold"
-          style={{ background: "#404040", color: "#e5e5e5" }} title="Coupe tous les effets de cette rangée" onClick={props.onReset}>AUCUN</button>
+        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-200">Effets</span>
+        <button onClick={props.onReset} title="Coupe tous les effets de cette rangée" className="rounded px-2 py-1 text-[10px] font-bold bg-neutral-700 text-neutral-200">AUCUN</button>
       </div>
-      <div className="flex flex-wrap gap-1">
-        {props.stems.map(({ stem, label, color }) => (
+      <div className="flex items-center gap-2">
+        <span className="text-[9px] uppercase text-neutral-400">Rangée</span>
+        {props.stems.map((s) => (
           <button
-            key={stem}
-            className="rounded px-1.5 py-0.5 text-[10px] font-bold"
-            style={props.current === stem ? { background: color, color: "#0a0a0a" } : { background: "rgba(255,255,255,0.08)", color: "#d4d4d4" }}
-            aria-pressed={props.current === stem}
-            onClick={() => props.onCurrent(stem)}
+            key={s.stem}
+            onClick={() => props.onCurrent(s.stem)}
+            aria-pressed={s.stem === props.current}
+            className="rounded px-2 py-1 text-[10px] font-bold"
+            style={s.stem === props.current ? { background: s.color, color: "#0a0a0a" } : { background: "rgba(255,255,255,0.08)", color: "#d4d4d4" }}
           >
-            {label}
+            {s.label}
           </button>
         ))}
       </div>
       {fx === null || mods === null ? (
-        <p className="text-[10px] text-neutral-400">Choisis une rangée.</p>
+        <p className="text-[11px] text-neutral-400">Choisis une rangée.</p>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-1">
-            {PAD_FX.map(f => {
-              const on = fx.on[f.id];
-              const v = fx.amount[f.id];
-              return (
+          <div className="grid grid-cols-2 gap-1.5">
+            {PAD_FX.map((f) => (
+              <div key={f.id} className="flex flex-col items-center gap-1 rounded p-1.5" style={{ background: fx.on[f.id] ? "rgba(255,255,255,0.08)" : "transparent" }}>
                 <button
-                  key={f.id}
-                  type="button"
-                  aria-pressed={on}
+                  onClick={() => props.onFx(f.id, !fx.on[f.id])}
+                  aria-pressed={fx.on[f.id]}
                   title={f.title}
-                  className="relative h-6 w-full overflow-hidden rounded px-1.5 text-left text-[10px] font-bold leading-6 select-none touch-none"
-                  style={on ? { background: "rgba(255,255,255,0.10)", color: "#f5f5f5", boxShadow: `inset 0 0 0 1px ${color}` } : { background: "rgba(255,255,255,0.05)", color: "#a3a3a3" }}
-                  onClick={() => {
-                    if (!gestureState.current[f.id]?.moved) {
-                      props.onFx(f.id, !on);
-                    }
-                  }}
-                  onPointerDown={e => {
-                    gestureState.current[f.id] = { x: e.clientX, moved: false };
-                    e.currentTarget.setPointerCapture(e.pointerId);
-                  }}
-                  onPointerMove={e => {
-                    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                      const dx = e.clientX - gestureState.current[f.id].x;
-                      if (Math.abs(dx) > 3) {
-                        gestureState.current[f.id].moved = true;
-                      }
-                      if (gestureState.current[f.id].moved) {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        const a = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1);
-                        props.onAmount(f.id, a);
-                        if (!on) props.onFx(f.id, true);
-                      }
-                    }
-                  }}
-                  onPointerUp={e => {
-                    e.currentTarget.releasePointerCapture(e.pointerId);
-                  }}
+                  className="w-full rounded px-2 py-1 text-[10px] font-bold"
+                  style={fx.on[f.id] ? { background: color, color: "#0a0a0a" } : { background: "rgba(255,255,255,0.08)", color: "#d4d4d4" }}
                 >
-                  {on && <div className="absolute inset-y-0 left-0 pointer-events-none" style={{ width: `${Math.round(v * 100)}%`, background: color, opacity: 0.35 }} />}
-                  <span className="relative pointer-events-none">
-                    {f.label}
-                    {on && f.id === "harmony" && <span className="ml-1 text-[8px] text-neutral-400">{harmonyInterval(v)}</span>}
-                    {on && f.id === "trans" && <span className="ml-1 text-[8px] text-neutral-400">{`${transSemis(v) > 0 ? "+" : ""}${transSemis(v)}`}</span>}
-                  </span>
+                  {f.label}
                 </button>
-              );
-            })}
+                <Knob
+                  size={32}
+                  min={0}
+                  max={1}
+                  defaultValue={f.def}
+                  led
+                  color={color}
+                  label=""
+                  value={fx.amount[f.id]}
+                  format={(v: number) => {
+                    if (f.id === "harmony") {
+                      return ({ 3: "tierce", 5: "quarte", 7: "quinte" } as Record<number, string>)[harmonyInterval(v)];
+                    } else if (f.id === "trans") {
+                      return `${transSemis(v) > 0 ? "+" : ""}${transSemis(v)} dt`;
+                    } else {
+                      return `${Math.round(v * 100)} %`;
+                    }
+                  }}
+                  onChange={(v: number) => props.onAmount(f.id, v)}
+                />
+              </div>
+            ))}
           </div>
-          {props.eq && <PadEqSection gains={props.eq.gains} color={color} onGain={props.eq.onGain} onAuto={props.eq.onAuto} onReset={props.eq.onEqReset} />}
-          <div className="flex gap-1">
+          {props.eq && (
+            <PadEqSection gains={props.eq.gains} color={color} onGain={props.eq.onGain} onAuto={props.eq.onAuto} onReset={props.eq.onEqReset} />
+          )}
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] uppercase text-neutral-400">Lecture</span>
             <button
-              className="rounded px-1.5 py-0.5 text-[10px] font-bold"
-              style={mods.reverse ? { background: color, color: "#0a0a0a" } : { background: "rgba(255,255,255,0.08)", color: "#d4d4d4" }}
+              onClick={() => props.onMod("reverse", !mods.reverse)}
               aria-pressed={mods.reverse}
               title="La boucle jouée à l'envers"
-              onClick={() => props.onMod("reverse", !mods.reverse)}
+              className="rounded px-2 py-1 text-[10px] font-bold"
+              style={mods.reverse ? { background: color, color: "#0a0a0a" } : { background: "rgba(255,255,255,0.08)", color: "#d4d4d4" }}
             >
               Inverse
             </button>
             <button
-              className="rounded px-1.5 py-0.5 text-[10px] font-bold"
-              style={mods.half ? { background: color, color: "#0a0a0a" } : { background: "rgba(255,255,255,0.08)", color: "#d4d4d4" }}
+              onClick={() => props.onMod("half", !mods.half)}
               aria-pressed={mods.half}
               title="Deux fois plus lent, une octave plus grave"
-              onClick={() => props.onMod("half", !mods.half)}
+              className="rounded px-2 py-1 text-[10px] font-bold"
+              style={mods.half ? { background: color, color: "#0a0a0a" } : { background: "rgba(255,255,255,0.08)", color: "#d4d4d4" }}
             >
               Demi-vitesse
             </button>

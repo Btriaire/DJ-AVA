@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   // Stems Pad (Préparation): the in-depth analysis, asked once per song; afterwards it is served first
   if (q.get("deep") === "1") {
     if (!hash || !/^[0-9a-f]{8,64}$/.test(hash) || !isModel(model)) return NextResponse.json({ samples: null }, { status: 400 });
-    const deep = await makeDeepSamples(hash, model, opts, isFinite(bpm) && bpm >= 40 && bpm <= 250 ? bpm : undefined);
+    const deep = await makeDeepSamples(hash, model, opts, isFinite(bpm) && bpm >= 40 && bpm <= 250 ? bpm : undefined, q.get("urgent") === "1");
     return NextResponse.json({ samples: deep, deep: !!deep });
   }
   if (hash && /^[0-9a-f]{8,64}$/.test(hash) && isModel(model)) {
