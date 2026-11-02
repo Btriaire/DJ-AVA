@@ -15,3 +15,14 @@ export async function GET(req: NextRequest) {
   const fx = q.get("read") === "1" ? readFx(hash, m, opts) : await analyseFx(hash, m, opts).catch(() => null);
   return NextResponse.json({ fx });
 }
+
+// which songs already have their spectral analysis (the 15-band recipes): POST ?status=1&model&(ultra, wav) { hashes }
+export async function POST(request: NextRequest) {
+  const q = request.nextUrl.searchParams;
+  const model = q.get("model") ?? "htdemucs";
+  if (q.get("status") !== "1" || !isModel(model)) return NextResponse.json({ ready: [] }, { status: 400 });
+  const opts = { ultra: q.get("ultra") === "1", lossless: q.get("wav") === "1", denoiseVocals: q.get("denoise") === "1" };
+  const body = (await request.json().catch(() => ({}))) as { hashes?: unknown };
+  const hashes = Array.isArray(body.hashes) ? body.hashes.filter((h): h is string => typeof h === "string" && /^[0-9a-f]{8,64}$/.test(h)).slice(0, 2000) : [];
+  return NextResponse.json({ ready: hashes.filter((h) => readFx(h, model, opts) !== null) });
+}

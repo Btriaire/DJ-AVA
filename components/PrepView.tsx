@@ -8,6 +8,7 @@ import { loadLibrary, saveLibrary, uid, idbGetBlob } from "@/lib/library";
 import { enqueuePrep, getPrepState, subscribePrep, forgetPrep, cancelPrep, PREP_MODEL, PREP_QS } from "@/lib/stemPrep";
 import { padJob, padReady, runPadNow, runStemsPad, subscribePadJob } from "@/lib/stemsPadPrep";
 import { PadPill } from "./prep/PadPill";
+import { EqPill } from "./prep/EqPill";
 import { queueAnalysis } from "@/lib/analyze";
 import { analyzeLibraryTrack } from "@/lib/analyzeTrack";
 import { Journey, buildJourney } from "./prep/Journey";
@@ -236,6 +237,37 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
     const t = setInterval(check, 10000);
     return () => { live = false; clearInterval(t); };
   }, [padHashes, padState.done, padState.running, padState.urgent?.length]);
+  // 15 bandes: which songs already have their spectral analysis (one request for all the tracks shown)
+  const [eqReadySet, setEqReadySet] = useState<Set<string>>(() => new Set());
+  const [eqRunning, setEqRunning] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    const hashes = laterTracks.map((t) => t.stemHash).filter((h): h is string => !!h);
+    const check = () => {
+      if (!hashes.length) return;
+      fetch(`/api/stems/fx?status=1&model=${PREP_MODEL}${PREP_QS}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ hashes }) })
+        .then((r) => r.json() as Promise<{ ready?: string[] }>)
+        .then((j) => { if (live) setEqReadySet(new Set(j.ready ?? [])); })
+        .catch(() => undefined);
+    };
+    check();
+    const t = setInterval(check, 10000);
+    return () => { live = false; clearInterval(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [laterTracks.length, eqRunning]);
+  const eqPill = (track: LibTrack) => (
+    <EqPill
+      hasStems={stemOf(track.id).state === "done"}
+      ready={!!track.stemHash && eqReadySet.has(track.stemHash)}
+      running={!!track.stemHash && eqRunning === track.stemHash}
+      onRun={() => {
+        if (!track.stemHash) return;
+        setEqRunning(track.stemHash);
+        fetch(`/api/stems/fx?hash=${track.stemHash}&model=${PREP_MODEL}${PREP_QS}`)
+          .finally(() => setEqRunning(null));
+      }}
+    />
+  );
   const padPill = (track: LibTrack) => {
     const hasStems = stemOf(track.id).state === "done";
     const running = !!track.stemHash && (padState.current === track.stemHash || (padState.urgent ?? []).includes(track.stemHash));
@@ -867,6 +899,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
           <span className="hidden @4xl:inline-flex"><StemQuad state={stemOf(track.id).state} pct={stemOf(track.id).pct} /></span>
           <StemPill info={stemOf(track.id)} onPrepare={() => queueStems([track])} />
           {padPill(track)}
+          {eqPill(track)}
         </span>
         <span className="hidden items-center gap-2 @4xl:flex">
           <QualityBars level={track.quality} />
@@ -948,6 +981,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
           <StemQuad state={stemOf(track.id).state} pct={stemOf(track.id).pct} />
           <StemPill info={stemOf(track.id)} onPrepare={() => queueStems([track])} />
           {padPill(track)}
+          {eqPill(track)}
         </div>
         <div className="flex min-w-0 items-center gap-1.5">
           <QualityBars level={track.quality} />

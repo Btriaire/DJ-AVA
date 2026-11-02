@@ -10,6 +10,7 @@ import { EqGraph } from "./EqGraph";
 import { EqLabControls } from "./EqLabControls";
 import { eqLabFor, linkedMove, measure, otherDeckOf } from "@/lib/audio/eqLab";
 import { buildRecipes } from "@/lib/eqPrep";
+import { buildPlan, planAt, type EqStep } from "@/lib/eqPlan";
 import { stemLabel } from "./RackGuideBlock";
 import { DigitalVU } from "./EqVisuals";
 
@@ -88,6 +89,37 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
   const lab = eqLabFor(deck);
   const view = rack.eqView(curve);
   const other = otherDeckOf(deck);
+  // the plan: the song's sections, each step applied when playback reaches it (a glide over the recipe's bars)
+  const planRef = useRef<{ steps: EqStep[]; done: Set<number>; timer: ReturnType<typeof setInterval> } | null>(null);
+  const [planOn, setPlanOn] = useState(false);
+  const stopPlan = () => {
+    if (planRef.current) clearInterval(planRef.current.timer);
+    planRef.current = null;
+    setPlanOn(false);
+  };
+  useEffect(() => () => { if (planRef.current) clearInterval(planRef.current.timer); }, []);
+  const startPlan = () => {
+    if (!deck.fxMap || !deck.stemMap) return flashLcd("PLAN : analyse du morceau pas prête");
+    const recipes = buildRecipes(deck.fxMap);
+    const steps = buildPlan(deck.stemMap.sections, recipes, deck.bpm, deck.duration);
+    if (!steps.length) return flashLcd("PLAN : rien à planifier sur ce morceau");
+    stopPlan();
+    const done = new Set<number>();
+    const timer = setInterval(() => {
+      const step = planAt(steps, deck.position(), done);
+      if (!step) return;
+      done.add(steps.indexOf(step));
+      const rc = recipes.find((r) => r.id === step.recipeId);
+      if (!rc) return;
+      const target = rc.stem ? deck.stemNames.indexOf(rc.stem) : curve;
+      if (target < 0) return;
+      lab.morph(target, rc.gains, rc.bars);
+      flashLcd(`PLAN · ${step.reason}`);
+    }, 250);
+    planRef.current = { steps, done, timer };
+    setPlanOn(true);
+    flashLcd(`PLAN · ${steps.length} étape${steps.length > 1 ? "s" : ""}`);
+  };
   const lcdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abMem = useRef<{ A: number[] | null; B: number[] | null }>({ A: null, B: null });
 
@@ -273,6 +305,21 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
       </div>
 
       {/* ── 15 bandes Prep: recipes computed at preparation from the song's own spectra ── */}
+      {deck.fxMap && deck.stemMap && (
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="w-20 shrink-0 text-[9px] font-bold uppercase tracking-wider text-neutral-400" title="Suit les sections du morceau : drop, break, partie chantée">Plan</span>
+          <button
+            type="button"
+            onClick={() => (planOn ? stopPlan() : startPlan())}
+            aria-pressed={planOn}
+            className="rounded px-2 py-1 text-[10px] font-bold"
+            style={planOn ? { background: "#fbbf24", color: "#0a0a0a" } : { background: "rgba(255,255,255,0.08)", color: "#d4d4d4" }}
+            title="Applique les recettes au fil du morceau : grave au drop, stéréo au break, voix devant dans les parties chantées"
+          >
+            {planOn ? "PLAN ON · arrêter" : "Planifier le morceau"}
+          </button>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-1">
         <span className="w-20 shrink-0 text-[9px] font-bold uppercase tracking-wider text-neutral-400" title="Recettes calculées à la préparation, à partir des spectres réels du morceau">15 bandes Prep</span>
         {deck.fxMap ? (
