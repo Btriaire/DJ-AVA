@@ -6,7 +6,8 @@ import { dedupeOnline, rankOnline } from "@/lib/trackRank";
 import { useState, useRef, useMemo, useSyncExternalStore, useEffect } from "react";
 import { loadLibrary, saveLibrary, uid, idbGetBlob } from "@/lib/library";
 import { enqueuePrep, getPrepState, subscribePrep, forgetPrep, cancelPrep } from "@/lib/stemPrep";
-import { padJob, runStemsPad, subscribePadJob } from "@/lib/stemsPadPrep";
+import { padJob, padReady, runStemsPad, subscribePadJob } from "@/lib/stemsPadPrep";
+import { PadPill } from "./prep/PadPill";
 import { queueAnalysis } from "@/lib/analyze";
 import { analyzeLibraryTrack } from "@/lib/analyzeTrack";
 import { Journey, buildJourney } from "./prep/Journey";
@@ -225,11 +226,36 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   // STEMS PAD: the in-depth sample search of every song whose stems are ready (also made by itself after each preparation)
   const padState = useSyncExternalStore(subscribePadJob, padJob, padJob);
   const padJobView = padState.running ? padState : null;
+  // per-track pad state: which songs already have their pad samples (one request for all the tracks shown)
+  const [padReadySet, setPadReadySet] = useState<Set<string>>(() => new Set());
+  const padHashes = laterTracks.map((t) => t.stemHash).filter((h): h is string => !!h).join(",");
+  useEffect(() => {
+    let live = true;
+    const check = () => { if (padHashes) void padReady(padHashes.split(",")).then((r) => { if (live) setPadReadySet(r); }); };
+    check();
+    const t = setInterval(check, 10000);
+    return () => { live = false; clearInterval(t); };
+  }, [padHashes, padState.done, padState.running]);
+  const padPill = (track: LibTrack) => {
+    const hasStems = stemOf(track.id).state === "done";
+    const running = padState.running && !!track.stemHash && padState.current === track.stemHash;
+    return (
+      <PadPill
+        hasStems={hasStems}
+        ready={!!track.stemHash && padReadySet.has(track.stemHash)}
+        running={running}
+        onRun={() => void deepPads([track])}
+      />
+    );
+  };
   const deepPads = async (tracks: LibTrack[]) => {
     const list = tracks.filter((t) => t.stemHash && stemOf(t.id).state === "done");
     if (!list.length) return flash("Stems Pad : prépare d'abord les stems de ces titres.");
     if (!(await runStemsPad(list))) return;
     const j = padJob();
+    if (j.ok === 0) {
+      return flash("Stems Pad : les fichiers de stems de ce titre ne sont plus sur le disque. Relance « + stems » pour les refaire, puis « + pads ».", 12000);
+    }
     flash(`Stems Pad : ${j.ok} titre${j.ok > 1 ? "s" : ""} analysé${j.ok > 1 ? "s" : ""} en profondeur (boucles de 1, 2 et 4 mesures, coups coupés sur l'attaque, réserve pour RAFRAÎCHIR).`);
   };
   const queueStems = (tracks: LibTrack[]) => {
@@ -813,6 +839,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
         <span className="flex items-center justify-center gap-2 @4xl:justify-start">
           <span className="hidden @4xl:inline-flex"><StemQuad state={stemOf(track.id).state} pct={stemOf(track.id).pct} /></span>
           <StemPill info={stemOf(track.id)} onPrepare={() => queueStems([track])} />
+          {padPill(track)}
         </span>
         <span className="hidden items-center gap-2 @4xl:flex">
           <QualityBars level={track.quality} />
@@ -893,6 +920,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
         <div className="flex min-w-0 items-center gap-2">
           <StemQuad state={stemOf(track.id).state} pct={stemOf(track.id).pct} />
           <StemPill info={stemOf(track.id)} onPrepare={() => queueStems([track])} />
+          {padPill(track)}
         </div>
         <div className="flex min-w-0 items-center gap-1.5">
           <QualityBars level={track.quality} />

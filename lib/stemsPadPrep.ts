@@ -1,7 +1,7 @@
 import { PREP_MODEL, PREP_QS } from "@/lib/stemPrep";
 
 export interface PadSong { stemHash?: string; bpm?: number }
-export interface PadJob { done: number; total: number; ok: number; running: boolean }
+export interface PadJob { done: number; total: number; ok: number; running: boolean; current?: string }
 
 let job: PadJob = { done: 0, total: 0, ok: 0, running: false };
 const listeners = new Set<() => void>();
@@ -30,6 +30,7 @@ export async function runStemsPad(songs: PadSong[]): Promise<boolean> {
   set({ done: 0, total: list.length, ok: 0, running: true });
 
   for (const { stemHash: h, bpm } of list) {
+    set({ ...job, current: h }); // the song being searched right now (its pill shows it)
     try {
       const response = await fetch(`/api/stems/samples?deep=1&hash=${h}&model=${PREP_MODEL}${PREP_QS}${bpm ? `&bpm=${bpm}` : ""}`);
       const { deep } = await response.json();
@@ -39,7 +40,7 @@ export async function runStemsPad(songs: PadSong[]): Promise<boolean> {
     }
   }
 
-  set({ ...job, running: false });
+  set({ ...job, running: false, current: undefined });
   return true;
 }
 
