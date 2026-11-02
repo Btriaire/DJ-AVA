@@ -24,7 +24,7 @@ export function SamplePadButton({ label, info, kind, color, on, keyLabel, onPres
       type="button"
       aria-pressed={on}
       title={kind === "loop" ? "Boucle : frappe pour lancer ou arrêter, calée sur la grille" : "Coup : joue une fois"}
-      className={`hw-pad ${on ? "hw-pad-loaded" : ""} ${hit ? "hw-pad-hit" : ""} relative flex aspect-square w-full min-w-[64px] max-w-[120px] flex-col items-center justify-center gap-0.5 p-1.5 text-center select-none touch-none`}
+      className={`hw-pad ${on ? "hw-pad-loaded" : ""} ${hit ? "hw-pad-hit" : ""} relative flex aspect-square w-full min-w-[48px] flex-col items-center justify-center gap-0.5 p-1.5 text-center select-none touch-none`}
       style={{ ["--rgb" as string]: color }}
       onPointerDown={(e) => {
         try {

@@ -156,13 +156,13 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
         </button>
       </div>
       
-      <div className="flex flex-col gap-3 @[900px]:flex-row @[900px]:items-start">
+      <div className="flex flex-col gap-3 @[560px]:flex-row @[560px]:items-start">
       <div className="flex flex-col gap-1.5">
         {rows.map((row, r) => (
           <div
             key={row.stem}
             className="grid items-stretch gap-1.5"
-            style={{ gridTemplateColumns: `5.5rem repeat(${PAD_COLS}, minmax(64px, 120px))` }}
+            style={{ gridTemplateColumns: `5.5rem repeat(${PAD_COLS}, minmax(48px, 1fr))` }}
           >
             <div className="flex flex-col items-start gap-1 self-center">
               <span className="text-[11px] font-bold uppercase text-neutral-300">{STEM_FR[row.stem] ?? row.stem}</span>
@@ -182,7 +182,7 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
               const pad = row.pads[col];
               const on = m.isOn(row.stem, col);
               if (!pad) {
-                return <div key={col} className="aspect-square w-full min-w-[64px] max-w-[120px] rounded-[10px] border border-dashed border-white/10" />;
+                return <div key={col} className="aspect-square w-full min-w-[48px] rounded-[10px] border border-dashed border-white/10" />;
               }
               return (
                 <SamplePadButton
@@ -204,6 +204,7 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
         const cur = rows.some((r) => r.stem === fxRow) ? fxRow : rows[0].stem;
         const f = m.fxOf(cur);
         return (
+          <div className="w-full @[560px]:w-[220px] @[560px]:shrink-0">
           <PadFxPanel
             stems={rows.map((r, i) => ({ stem: r.stem, label: STEM_FR[r.stem] ?? r.stem, color: PAD_ROW_COLORS[i % PAD_ROW_COLORS.length] }))}
             current={cur}
@@ -228,6 +229,7 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
               onEqReset: () => { m.fxOf(cur).resetEq(); bump(); },
             }}
           />
+          </div>
         );
       })()}
       </div>
