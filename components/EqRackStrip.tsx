@@ -11,6 +11,7 @@ import { EqLabControls } from "./EqLabControls";
 import { eqLabFor, linkedMove, measure, otherDeckOf } from "@/lib/audio/eqLab";
 import { buildRecipes } from "@/lib/eqPrep";
 import { buildPlan, planAt, type EqStep } from "@/lib/eqPlan";
+import { setDeckPlan } from "@/lib/planStore";
 import { stemLabel } from "./RackGuideBlock";
 import { DigitalVU } from "./EqVisuals";
 
@@ -96,6 +97,7 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
     if (planRef.current) clearInterval(planRef.current.timer);
     planRef.current = null;
     setPlanOn(false);
+    setDeckPlan(deck, null);
   };
   useEffect(() => () => { if (planRef.current) clearInterval(planRef.current.timer); }, []);
   const startPlan = () => {
@@ -118,6 +120,7 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
     }, 250);
     planRef.current = { steps, done, timer };
     setPlanOn(true);
+    setDeckPlan(deck, steps);
     flashLcd(`PLAN · ${steps.length} étape${steps.length > 1 ? "s" : ""}`);
   };
   const lcdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

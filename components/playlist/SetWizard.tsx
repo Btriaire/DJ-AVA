@@ -135,7 +135,7 @@ export function SetWizard({
     if (!order) return;
     const newOrder = [...order];
     newOrder.splice(i, 1);
-    if (newOrder.length < 2) {
+    if (newOrder.length < 1) {
       setOrder(null);
       setStep(2);
     } else {
@@ -172,8 +172,8 @@ export function SetWizard({
   };
 
   const blockReason =
-    step === 1 ? (source === "list" && !listId ? "Choisis un set" : known.length < 2 ? "Il faut au moins 2 titres avec un tempo" : "")
-    : step === 2 ? (known.length < 2 ? "Il faut au moins 2 titres avec un tempo" : "")
+    step === 1 ? (source === "list" && !listId ? "Choisis un set" : known.length < 1 ? "Il faut au moins 1 titre avec un tempo" : "")
+    : step === 2 ? (known.length < 1 ? "Il faut au moins 1 titre avec un tempo" : "")
     : step === 3 ? (order === null ? "Rien à envoyer : reviens à la forme" : "")
     : "";
 

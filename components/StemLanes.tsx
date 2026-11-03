@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useRef } from "react";
 import type { Deck } from "@/lib/audio/Deck";
+import { LANE_H, RULER_H, PLAN_H, drawRuler, drawLane, type PlanStep } from "@/lib/audio/stemLaneDraw";
+import { usePlanSteps } from "@/lib/planStore";
 
 const STEM_COLORS: Record<string, string> = {
   vocals: "#fdba74",
@@ -11,8 +13,20 @@ const STEM_COLORS: Record<string, string> = {
   piano: "#facc15",
 };
 
-export function StemLanes({ deck, color }: { deck: Deck; color: string }) {
+const STEM_LABELS: Record<string, string> = {
+  vocals: "Voix",
+  drums: "Batterie",
+  bass: "Basse",
+  other: "Reste",
+  guitar: "Guitare",
+  piano: "Piano",
+};
+
+export function StemLanes({ deck, color, plan: planProp }: { deck: Deck; color: string; plan?: PlanStep[] }) {
+  const storedPlan = usePlanSteps(deck);
+  const plan = planProp ?? storedPlan;
   const canvases = useRef<(HTMLCanvasElement | null)[]>([]);
+  const rulerCanvas = useRef<HTMLCanvasElement | null>(null);
   const lastTime = useRef(0);
   const dirty = useRef(true);
   const lastState = useRef<{
@@ -34,7 +48,7 @@ export function StemLanes({ deck, color }: { deck: Deck; color: string }) {
 
         const dpr = window.devicePixelRatio || 1;
         const cssW = canvas.clientWidth;
-        const cssH = 26;
+        const cssH = canvas === rulerCanvas.current ? RULER_H + PLAN_H + 4 : LANE_H;
 
         canvas.width = Math.round(cssW * dpr);
         canvas.height = Math.round(cssH * dpr);
@@ -43,6 +57,7 @@ export function StemLanes({ deck, color }: { deck: Deck; color: string }) {
       });
     });
 
+    if (rulerCanvas.current) resizeObserver.observe(rulerCanvas.current);
     canvases.current.forEach((canvas) => {
       if (canvas) resizeObserver.observe(canvas);
     });
@@ -77,6 +92,17 @@ export function StemLanes({ deck, color }: { deck: Deck; color: string }) {
         volumes: [...deck.stemVol],
       };
 
+      if (rulerCanvas.current) {
+        const ctx = rulerCanvas.current.getContext("2d");
+        if (ctx) {
+          drawRuler(ctx, {
+            w: rulerCanvas.current.width,
+            duration: deck.duration,
+            plan,
+          });
+        }
+      }
+
       canvases.current.forEach((canvas, i) => {
         if (!canvas) return;
 
@@ -85,74 +111,60 @@ export function StemLanes({ deck, color }: { deck: Deck; color: string }) {
 
         const dpr = window.devicePixelRatio || 1;
         const cssW = canvas.clientWidth;
-        const cssH = 26;
         const peaks = deck.getStemPeaks(i);
         const loopState = deck.getStemLoopState(i);
         const volume = deck.stemVol[i];
         const progress = deck.duration > 0 ? deck.position() / deck.duration : 0;
-
-        ctx.clearRect(0, 0, cssW * dpr, cssH * dpr);
-
-        if (!peaks || volume <= 0.001) {
-          ctx.globalAlpha = 0.25;
-        } else {
-          ctx.globalAlpha = 1;
-        }
-
         const stemColor = STEM_COLORS[deck.stemNames[i]] || color;
 
-        // Draw waveform
-        ctx.fillStyle = stemColor;
-        for (let x = 0; x < cssW; x++) {
-          const peak = peaks?.[Math.floor((x / cssW) * (peaks?.length || 0))] || 0;
-          const height = peak * (cssH / 2 - 2);
-          const isPlayed = x < progress * cssW;
-
-          ctx.globalAlpha = isPlayed ? 1 : 0.35;
-          ctx.fillRect(x, cssH / 2 - height, 1, height * 2);
-        }
-
-        // Draw loop
-        if (loopState?.active) {
-          ctx.globalAlpha = 0.18;
-          const startX = (loopState.start / deck.duration) * cssW;
-          const endX = (loopState.end / deck.duration) * cssW;
-          ctx.fillStyle = stemColor;
-          ctx.fillRect(startX, 0, endX - startX, cssH);
-        }
-
-        // Draw playhead
-        if (deck.playing) {
-          ctx.globalAlpha = 1;
-          ctx.fillStyle = "#fff";
-          ctx.fillRect(progress * cssW, 0, 1.5, cssH);
-        }
+        drawLane(ctx, {
+          w: cssW * dpr,
+          h: LANE_H * dpr,
+          duration: deck.duration,
+          progress,
+          color: stemColor,
+          peaks,
+          muted: volume <= 0.001,
+          playing: deck.playing,
+          loop: loopState,
+        });
       });
       dirty.current = false;
 
       rafId = requestAnimationFrame(draw);
     };
 
-    // first frame drawn synchronously: animation frames may not run while the page is hidden
     draw(performance.now());
     rafId = requestAnimationFrame(draw);
     return () => {
       cancelAnimationFrame(rafId);
       resizeObserver.disconnect();
     };
-  }, [deck, color]);
+  }, [deck, color, plan]);
 
   return (
     <div className="flex flex-col gap-1">
+      <canvas
+        ref={rulerCanvas}
+        className="block w-full rounded bg-neutral-950"
+        style={{ height: `${RULER_H + PLAN_H + 4}px`, cursor: "pointer" }}
+        onPointerDown={(e) => {
+          const canvas = e.currentTarget;
+          const r = canvas.getBoundingClientRect();
+          const f = (e.clientX - r.left) / r.width;
+          deck.seek(Math.max(0, Math.min(1, f)) * deck.duration);
+        }}
+        title="Clique pour te placer dans le stem"
+      />
       {deck.stemNames.map((name, i) => (
         <div key={i} className="flex items-center gap-1">
           <span className="w-14 text-[10px] font-bold uppercase">
-            {name}
+            {STEM_LABELS[name] || name}{deck.stemVol[i] <= 0.001 ? " (coupé)" : ""}
           </span>
           <canvas
             ref={(el) => { canvases.current[i] = el; }}
             className="block w-full rounded bg-neutral-950"
-            style={{ height: "26px", cursor: "pointer" }}
+            style={{ height: `${LANE_H}px`, cursor: "pointer" }}
             onPointerDown={(e) => {
               const canvas = e.currentTarget;
               const r = canvas.getBoundingClientRect();
