@@ -8,6 +8,7 @@ import { DeckStrip, type DeckStripProps } from "./DeckStrip";
 import { LibraryPane, type LibraryPaneProps } from "./LibraryPane";
 import { SetDetail, type SetDetailProps } from "./SetDetail";
 import { SetRail, type SetRailProps } from "./SetRail";
+import { SetPoster, SetTitle } from "./SetPoster";
 import { TRANSITION_LABEL } from "@/lib/transitions";
 import type { AudiusTrack } from "@/lib/audius";
 import ArtistSearch from "./ArtistSearch";
@@ -168,8 +169,14 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
         label="Sets"
         ambient={ambient ?? undefined}
         overline={detail.playlist ? "Set ouvert" : "Tes sets"}
-        title={detail.playlist?.name ?? "Sets"}
-        cover={<Mosaic tracks={setTracks} size={112} accent="var(--prep-accent)" />}
+        title={detail.playlist ? <SetTitle key={detail.playlist.id} name={detail.playlist.name} onRename={detail.onRename} /> : "Sets"}
+        cover={
+          detail.playlist ? (
+            <SetPoster key={detail.playlist.id} tracks={setTracks} cover={detail.playlist.cover} onCover={detail.onCover} />
+          ) : (
+            <Mosaic tracks={setTracks} size={112} accent="var(--prep-accent)" />
+          )
+        }
         subtitle={detail.playlist ? `${setTracks.length} titre(s) · ${Math.round(totalSec / 60)} min · ${bpmRange} · stems ${readyCount}/${setTracks.length}` : "Composez vos sets, réglez leurs enchaînements, lancez-les sur les platines."}
         actions={
           selectedSet ? (

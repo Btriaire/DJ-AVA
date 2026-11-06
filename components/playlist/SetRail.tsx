@@ -169,7 +169,7 @@ export function SetRail(props: SetRailProps) {
                   aria-pressed={active}
                   onClick={() => props.onSelect(p.id)}
                 >
-                  <Mosaic tracks={tracks.slice(0, 4)} size={44} accent={LIST_ACCENTS[i % 6]} />
+                  <Mosaic tracks={tracks.slice(0, 4)} size={44} accent={LIST_ACCENTS[i % 6]} cover={p.cover} />
 
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[13px] font-bold text-neutral-100" title={p.name}>

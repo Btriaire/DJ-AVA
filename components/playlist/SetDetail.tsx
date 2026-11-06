@@ -23,6 +23,7 @@ export interface SetDetailProps {
   stemOf: (trackId: string) => StemInfo;
   driving: { A: boolean; B: boolean; relay: boolean };
   onRename: (name: string) => void;
+  onCover: (cover: string | undefined) => void; // the set's poster; undefined = back to the mosaic
   onDuplicate: () => void;
   onClear: () => void;
   onDelete: () => void;

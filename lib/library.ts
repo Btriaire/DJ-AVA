@@ -39,6 +39,7 @@ export interface Playlist {
   id: string;
   name: string;
   trackIds: string[];
+  cover?: string; // the set's poster: a small JPEG data URL (an image chosen by the DJ, or a track's art); none = mosaic of the first four titles
   transitionSec?: number; // crossfade length (s) used between tracks when this set auto-mixes
   transitionType?: TransitionType; // crossfade curve/style — see TRANSITION_TYPES in MediaLibrary
   preloadSec?: number; // seconds before a track ends to start warming the next one (fewer gaps)

@@ -920,6 +920,10 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   function renameNow(id: string, name: string) {
     persist((d) => ({ ...d, playlists: d.playlists.map((pl) => (pl.id === id ? { ...pl, name } : pl)) }));
   }
+  function setCoverNow(id: string, cover: string | undefined) {
+    persist((d) => ({ ...d, playlists: d.playlists.map((pl) => (pl.id === id ? { ...pl, cover } : pl)) }));
+    flash(cover ? "Affichette du set mise à jour" : "Affichette : retour à la mosaïque des titres");
+  }
   function clearNow(id: string) {
     persist((d) => ({ ...d, playlists: d.playlists.map((pl) => (pl.id === id ? { ...pl, trackIds: [] } : pl)) }));
     flash("Set vidé");
@@ -3354,6 +3358,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           stemOf,
           driving: ap ? driving(ap.id) : { A: false, B: false, relay: false },
           onRename: (name) => ap && renameNow(ap.id, name),
+          onCover: (cover) => ap && setCoverNow(ap.id, cover),
           onDuplicate: () => ap && duplicatePlaylist(ap.id),
           onClear: () => ap && clearNow(ap.id),
           onDelete: () => ap && delPlaylist(ap.id),

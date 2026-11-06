@@ -1021,7 +1021,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
         style={{ boxShadow: `inset 3px 0 0 ${accent}` }}
       >
         <div className="flex items-center gap-3 p-2.5 pl-3.5">
-          <Mosaic tracks={tracks} accent={accent} />
+          <Mosaic tracks={tracks} accent={accent} cover={playlist.cover} />
           <button onClick={toggle} aria-expanded={isOpen} className="prep-tap min-w-0 flex-1 text-left">
             <p className="truncate text-[13px] font-bold text-neutral-100">{playlist.name}</p>
             <p className="text-[11px] text-neutral-500">
