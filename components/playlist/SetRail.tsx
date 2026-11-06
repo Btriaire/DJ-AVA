@@ -17,6 +17,7 @@ export interface SetRailProps {
   driving: (id: string) => { A: boolean; B: boolean; relay: boolean };
   onSelect: (id: string) => void;
   onCreate: (name: string) => void;
+  onRename: (id: string, name: string) => void;
   onDropTracks: (playlistId: string, ids: string[]) => void;
   onPlay: (dest: SendDest, id: string) => void;
   stemReady: (trackId: string) => boolean;
@@ -42,6 +43,15 @@ export function SetRail(props: SetRailProps) {
   const [overId, setOverId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [showTrash, setShowTrash] = useState(false);
+  const [renaming, setRenaming] = useState<{ id: string; draft: string } | null>(null); // the set whose name is being edited in the list
+
+  const saveRename = () => {
+    if (!renaming) return;
+    const v = renaming.draft.trim();
+    const cur = props.playlists.find((p) => p.id === renaming.id);
+    if (v && cur && v !== cur.name) props.onRename(renaming.id, v);
+    setRenaming(null);
+  };
 
   const trackMap = new Map(props.tracks.map(t => [t.id, t]));
 
@@ -163,11 +173,30 @@ export function SetRail(props: SetRailProps) {
                   } catch {}
                 }}
               >
+                {renaming?.id === p.id ? (
+                  <div className="flex min-h-12 min-w-0 flex-1 items-center gap-2.5 p-1">
+                    <Mosaic tracks={tracks.slice(0, 4)} size={44} accent={LIST_ACCENTS[i % 6]} cover={p.cover} />
+                    <input
+                      className="prep-input min-h-9 min-w-0 flex-1 px-2 text-[13px] font-bold"
+                      value={renaming.draft}
+                      onChange={(e) => setRenaming({ id: p.id, draft: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") saveRename();
+                        if (e.key === "Escape") setRenaming(null);
+                      }}
+                      onBlur={saveRename}
+                      autoFocus
+                      maxLength={80}
+                      aria-label={`Nouveau nom pour « ${p.name} »`}
+                    />
+                  </div>
+                ) : (
                 <button
                   type="button"
                   className="flex min-h-12 min-w-0 flex-1 items-center gap-2.5 rounded-lg p-1 text-left"
                   aria-pressed={active}
                   onClick={() => props.onSelect(p.id)}
+                  onDoubleClick={() => setRenaming({ id: p.id, draft: p.name })}
                 >
                   <Mosaic tracks={tracks.slice(0, 4)} size={44} accent={LIST_ACCENTS[i % 6]} cover={p.cover} />
 
@@ -190,7 +219,17 @@ export function SetRail(props: SetRailProps) {
                     </span>
                   </span>
                 </button>
+                )}
 
+                <button
+                  type="button"
+                  className="pl-icon-btn"
+                  aria-label={`Renommer « ${p.name} »`}
+                  title="Renommer le set (ou double-clic sur son nom)"
+                  onClick={() => setRenaming({ id: p.id, draft: p.name })}
+                >
+                  <Icon name="edit" size={14} />
+                </button>
                 <button
                   type="button"
                   className="pl-icon-btn"

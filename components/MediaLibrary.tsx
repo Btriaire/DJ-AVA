@@ -3339,6 +3339,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           driving,
           onSelect: (id) => setActivePl(id),
           onCreate: createSetNamed,
+          onRename: renameNow,
           onDropTracks: (id, ids) => addTracksAt(id, ids),
           onPlay: (dest, id) => sendSet(dest, id),
           stemReady: (id) => stemOf(id).state === "done",
