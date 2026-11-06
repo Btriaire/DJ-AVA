@@ -13,6 +13,7 @@ import { StemLiveMeter } from "./StemLiveMeter";
 import { Waveform } from "./Waveform";
 import { FxSection } from "./FxSection";
 import { DeckTransport } from "./DeckTransport";
+import { deckStep } from "@/lib/deckStep";
 import { DeckHotCues } from "./DeckHotCues";
 import { DeckLoopPads } from "./DeckLoopPads";
 import { HoldButton } from "./HoldButton";
@@ -325,6 +326,21 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
   // looping the queue, and load+play the prev/next one. Position is taken from
   // the deck's current origin, so it works no matter how the track was loaded.
   const [stepping, setStepping] = useState(false);
+  // ⏮ ⏭: the library follows the set sent to this deck (or the singles filed on it); this local walk is the fallback
+  const [stepNote, setStepNote] = useState<string | null>(null);
+  function stepTrack(dir: 1 | -1) {
+    if (stepping) return;
+    const asked = deckStep(side, dir);
+    if (!asked) {
+      void stepSingle(dir);
+      return;
+    }
+    void asked.then((found) => {
+      if (found) return;
+      setStepNote("Rien en file : envoie un set ou classe des singles");
+      setTimeout(() => setStepNote(null), 3500);
+    });
+  }
   async function stepSingle(dir: 1 | -1) {
     const q = loadLibrary().tracks.filter((t) => t.deck === side);
     if (!q.length || stepping) return;
@@ -630,9 +646,31 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
           >
             DECK {side}
           </span>
-          <span className="max-w-[180px] truncate text-sm text-neutral-200">
-            {deck.name || "— vide —"}
+          <button
+            type="button"
+            className="hw-btn flex h-8 w-8 items-center justify-center text-base font-black"
+            style={{ color }}
+            disabled={stepping}
+            onClick={() => { stepTrack(-1); rerender(); }}
+            title="Morceau précédent (le set envoyé sur ce deck, sinon les singles classés)"
+            aria-label={`Morceau précédent sur le deck ${side}`}
+          >
+            ◀
+          </button>
+          <span className="max-w-[180px] truncate text-sm text-neutral-200" title={deck.name || undefined}>
+            {stepNote ? <span className="whitespace-normal text-[11px] leading-tight text-amber-300">{stepNote}</span> : deck.name || "— vide —"}
           </span>
+          <button
+            type="button"
+            className="hw-btn flex h-8 w-8 items-center justify-center text-base font-black"
+            style={{ color }}
+            disabled={stepping}
+            onClick={() => { stepTrack(1); rerender(); }}
+            title="Morceau suivant (le set envoyé sur ce deck, sinon les singles classés)"
+            aria-label={`Morceau suivant sur le deck ${side}`}
+          >
+            ▶
+          </button>
         </div>
         <div className="flex items-center gap-3">
           {deck.streamOnly && (
@@ -919,8 +957,7 @@ export function DeckPanel({ deck, side, color, tick, onLoaded, onSync, onSendToC
         color={color}
         side={side}
         stepping={stepping}
-        // eslint-disable-next-line react-hooks/immutability -- objet audio externe mutable, hors état React
-        onStep={stepSingle}
+        onStep={stepTrack}
         onSync={onSync}
         autoSync={autoSync}
         autoReset={autoReset}

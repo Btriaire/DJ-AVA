@@ -43,6 +43,7 @@ import { playLines, speak, stopSpeaking } from "@/lib/djVoice";
 import { INTRO_LINE, OUTRO_LINE, djLineFor } from "@/lib/djLines";
 import { prepareSet, useSetPrep, wantsStems } from "@/lib/setPrep";
 import { useStemsShared } from "@/lib/stemsShared";
+import { registerDeckStep } from "@/lib/deckStep";
 import { type QueueTrack, getRelayHost, publishRelayHost, registerRelayHost, relayHostStart, relayHostStop, subscribeRelayHost } from "@/lib/relayHost";
 import { cachedLoudness, loudnessFor, matchTrimDb } from "@/lib/audio/levelMatch";
 import { getDjLive, setDjStems, showDjAction, useDjLive } from "@/lib/djLive";
@@ -1705,6 +1706,15 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       },
     };
   });
+  // the Console's ⏮ ⏭ go through here: they follow the set sent to the deck, like the decks strip of the Sets view
+  const stepRef = useRef<(side: "A" | "B", dir: 1 | -1) => Promise<boolean>>(async () => false);
+  useEffect(() => {
+    stepRef.current = stepSingle;
+  });
+  useEffect(() => {
+    if (!splitLayout) return;
+    return registerDeckStep((side, dir) => stepRef.current(side, dir));
+  }, [splitLayout]);
   useEffect(() => {
     if (!splitLayout) return;
     return registerRelayHost({ start: (id, idx) => hostApi.current.start(id, idx), stop: () => hostApi.current.stop(), zap: (k) => hostApi.current.zap(k), swap: (a, b) => hostApi.current.swap(a, b), skipNow: () => hostApi.current.skipNow() });
@@ -2177,11 +2187,11 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   // Jump a deck to the previous / next single filed for it (loops the queue).
   // Works standalone and keeps the LIVE / relay indices in sync so an active
   // auto-loop continues from where you skipped to. Preserves play/pause state.
-  async function stepSingle(side: "A" | "B", dir: 1 | -1) {
+  async function stepSingle(side: "A" | "B", dir: 1 | -1): Promise<boolean> {
     const q = liveQueue(side);
     if (!q.length) {
       flash(`Deck ${side} : aucun single classé`);
-      return;
+      return false;
     }
     const deck = side === "A" ? engine.deckA : engine.deckB;
     let cur = liveIdx.current[side];
@@ -2195,6 +2205,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     const wasPlay = deck.playing;
     await loadToDeck(q[ni], side);
     if (wasPlay) deck.play();
+    return true;
   }
 
   const COLOR_A = "#ffcc00";
