@@ -22,6 +22,7 @@ import {
   type LibraryAudit,
   type Playlist,
 } from "@/lib/library";
+import { drawPoster, posterSubtitle } from "@/lib/setPoster";
 import { enqueuePrep, getPrepState, getPreparedStems, PREP_OPTS, subscribePrep } from "@/lib/stemPrep";
 import { queueAnalysis } from "@/lib/analyze";
 import { pickNext, type Cue } from "@/lib/setPicker";
@@ -855,7 +856,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   function duplicatePlaylist(id: string) {
     const original = dataRef.current.playlists.find((pl) => pl.id === id);
     if (!original) return;
-    const copy = { id: uid(), name: `${original.name} (copie)`, trackIds: [...original.trackIds] };
+    const copy = redrawn({ id: uid(), name: `${original.name} (copie)`, trackIds: [...original.trackIds], cover: original.cover, posterLook: original.posterLook, posterLine: original.posterLine });
     persist((d) => ({ ...d, playlists: [...d.playlists, copy] }));
     setActivePl(copy.id);
     flash(`Set dupliqué : ${original.name}`);
@@ -917,11 +918,21 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     persist((d) => ({ ...d, playlists: d.playlists.map((p) => (p.id === plId ? { ...p, dj, mixPlan: on ? planMix(tracks, "flow", dj, p.mixPlan) : p.mixPlan } : p)) }));
     flash(on ? "Plan DJ calculé : le relais suit ces enchaînements" : "Plan DJ désactivé : un seul style pour tout le set");
   }
-  function renameNow(id: string, name: string) {
-    persist((d) => ({ ...d, playlists: d.playlists.map((pl) => (pl.id === id ? { ...pl, name } : pl)) }));
+  // a poster drawn at the set's name is redrawn when its name or its line changes
+  function redrawn(pl: Playlist): Playlist {
+    if (!pl.posterLook) return pl;
+    const byId = new Map(dataRef.current.tracks.map((t) => [t.id, t]));
+    const tracks = pl.trackIds.map((tid) => byId.get(tid)).filter((t): t is LibTrack => !!t);
+    return { ...pl, cover: drawPoster(pl.posterLook, pl.name, posterSubtitle(tracks, pl.posterLine)) || pl.cover };
   }
-  function setCoverNow(id: string, cover: string | undefined) {
-    persist((d) => ({ ...d, playlists: d.playlists.map((pl) => (pl.id === id ? { ...pl, cover } : pl)) }));
+  function renameNow(id: string, name: string) {
+    persist((d) => ({ ...d, playlists: d.playlists.map((pl) => (pl.id === id ? redrawn({ ...pl, name }) : pl)) }));
+  }
+  function setPosterLine(id: string, line: string) {
+    persist((d) => ({ ...d, playlists: d.playlists.map((pl) => (pl.id === id ? redrawn({ ...pl, posterLine: line || undefined }) : pl)) }));
+  }
+  function setCoverNow(id: string, cover: string | undefined, look?: string) {
+    persist((d) => ({ ...d, playlists: d.playlists.map((pl) => (pl.id === id ? { ...pl, cover, posterLook: cover ? look : undefined } : pl)) }));
     flash(cover ? "Affichette du set mise à jour" : "Affichette : retour à la mosaïque des titres");
   }
   function clearNow(id: string) {
@@ -3359,7 +3370,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           stemOf,
           driving: ap ? driving(ap.id) : { A: false, B: false, relay: false },
           onRename: (name) => ap && renameNow(ap.id, name),
-          onCover: (cover) => ap && setCoverNow(ap.id, cover),
+          onCover: (cover, look) => ap && setCoverNow(ap.id, cover, look),
+          onPosterLine: (line) => ap && setPosterLine(ap.id, line),
           onDuplicate: () => ap && duplicatePlaylist(ap.id),
           onClear: () => ap && clearNow(ap.id),
           onDelete: () => ap && delPlaylist(ap.id),

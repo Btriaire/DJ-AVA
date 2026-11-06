@@ -1,13 +1,14 @@
 "use client";
 
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import type { LibTrack } from "@/lib/library";
 import { Icon, Mosaic } from "../prep/parts";
+import { HD_SIDE, LOOKS, SIDE, drawPoster, posterSubtitle } from "@/lib/setPoster";
 
 // The set's poster in the Sets header: click it to choose an image, take a title's art, or go back to the mosaic.
 // Images are cut square and shrunk to 320 px JPEG (about 20-40 KB), so they fit in the sets' own small storage key.
-const SIDE = 320;
+
 
 function squareJpeg(src: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -42,129 +43,27 @@ function readFile(file: File): Promise<string> {
 }
 
 
-// ---- posters drawn from the set itself: its name in big letters on a few looks ----------------------------
-type Look = { key: string; label: string; draw: (g: CanvasRenderingContext2D) => { ink: string; sub: string } };
-
-const LOOKS: Look[] = [
-  {
-    key: "neon",
-    label: "Néon",
-    draw: (g) => {
-      g.fillStyle = "#07080c";
-      g.fillRect(0, 0, SIDE, SIDE);
-      for (const [x, y, c] of [[60, 60, "rgba(34,211,238,.55)"], [270, 250, "rgba(217,70,239,.55)"]] as const) {
-        const r = g.createRadialGradient(x, y, 0, x, y, 220);
-        r.addColorStop(0, c);
-        r.addColorStop(1, "rgba(0,0,0,0)");
-        g.fillStyle = r;
-        g.fillRect(0, 0, SIDE, SIDE);
-      }
-      g.shadowColor = "#22d3ee";
-      g.shadowBlur = 18;
-      return { ink: "#ffffff", sub: "#a5f3fc" };
-    },
-  },
-  {
-    key: "sunset",
-    label: "Coucher de soleil",
-    draw: (g) => {
-      const l = g.createLinearGradient(0, 0, 0, SIDE);
-      l.addColorStop(0, "#f97316");
-      l.addColorStop(0.55, "#db2777");
-      l.addColorStop(1, "#3b0764");
-      g.fillStyle = l;
-      g.fillRect(0, 0, SIDE, SIDE);
-      g.fillStyle = "rgba(255,237,160,.9)";
-      g.beginPath();
-      g.arc(SIDE / 2, SIDE * 0.78, 70, Math.PI, 0);
-      g.fill();
-      return { ink: "#ffffff", sub: "#fde68a" };
-    },
-  },
-  {
-    key: "vinyl",
-    label: "Vinyle",
-    draw: (g) => {
-      g.fillStyle = "#facc15";
-      g.fillRect(0, 0, SIDE, SIDE);
-      g.fillStyle = "#0a0a0a";
-      g.beginPath();
-      g.arc(SIDE * 0.72, SIDE * 0.72, 150, 0, Math.PI * 2);
-      g.fill();
-      g.strokeStyle = "rgba(255,255,255,.08)";
-      for (let r = 60; r < 150; r += 7) {
-        g.beginPath();
-        g.arc(SIDE * 0.72, SIDE * 0.72, r, 0, Math.PI * 2);
-        g.stroke();
-      }
-      g.fillStyle = "#facc15";
-      g.beginPath();
-      g.arc(SIDE * 0.72, SIDE * 0.72, 28, 0, Math.PI * 2);
-      g.fill();
-      return { ink: "#0a0a0a", sub: "#3f3f46" };
-    },
-  },
-  {
-    key: "mono",
-    label: "Minimal",
-    draw: (g) => {
-      g.fillStyle = "#f5f5f4";
-      g.fillRect(0, 0, SIDE, SIDE);
-      g.fillStyle = "#ef4444";
-      g.fillRect(24, 24, 10, SIDE - 48);
-      return { ink: "#0a0a0a", sub: "#57534e" };
-    },
-  },
-];
-
-// splits the name into at most 3 lines that fit the width, at the biggest size that works
-function fitLines(g: CanvasRenderingContext2D, text: string, maxW: number): { lines: string[]; size: number } {
-  const words = text.split(/\s+/).filter(Boolean);
-  for (let size = 64; size >= 22; size -= 2) {
-    g.font = `900 ${size}px system-ui, -apple-system, "Segoe UI", sans-serif`;
-    const lines: string[] = [];
-    let cur = "";
-    let ok = true;
-    for (const w of words) {
-      const next = cur ? `${cur} ${w}` : w;
-      if (g.measureText(next).width <= maxW) cur = next;
-      else {
-        if (!cur || g.measureText(w).width > maxW) { ok = false; break; }
-        lines.push(cur);
-        cur = w;
-      }
-    }
-    if (cur) lines.push(cur);
-    if (ok && lines.length <= 3) return { lines, size };
-  }
-  g.font = `900 22px system-ui, sans-serif`;
-  return { lines: [text.slice(0, 40)], size: 22 };
+export interface SetPosterProps {
+  tracks: LibTrack[];
+  name: string;
+  cover?: string;
+  look?: string; // the generated look the cover was drawn with (it follows renames and is downloaded in HD)
+  line?: string; // the DJ's line under the name (date, place); empty = the set's figures
+  size?: number;
+  onCover: (cover: string | undefined, look?: string) => void;
+  onLine: (line: string) => void;
 }
 
-export function drawPoster(look: Look, name: string, subtitle: string): string {
-  const c = document.createElement("canvas");
-  c.width = c.height = SIDE;
-  const g = c.getContext("2d");
-  if (!g) return "";
-  const { ink, sub } = look.draw(g);
-  const left = look.key === "mono" ? 50 : 26;
-  const { lines, size } = fitLines(g, name.toUpperCase(), SIDE - left - 26);
-  g.fillStyle = ink;
-  g.textBaseline = "alphabetic";
-  const lineH = size * 1.02;
-  const top = look.key === "vinyl" || look.key === "sunset" ? 40 + size : SIDE - 64 - lineH * (lines.length - 1);
-  lines.forEach((l, i) => g.fillText(l, left, top + i * lineH));
-  g.shadowBlur = 0;
-  g.font = `700 15px system-ui, sans-serif`;
-  g.fillStyle = sub;
-  g.fillText(subtitle, left, top + (lines.length - 1) * lineH + 30);
-  return c.toDataURL("image/jpeg", 0.85);
-}
-
-export function SetPoster({ tracks, cover, name, subtitle, size = 112, onCover }: { tracks: LibTrack[]; cover?: string; name: string; subtitle: string; size?: number; onCover: (cover: string | undefined) => void }) {
+export function SetPoster({ tracks, cover, name, look, line, size = 112, onCover, onLine }: SetPosterProps) {
   const [dropping, setDropping] = useState(false);
-  const [designs, setDesigns] = useState<{ key: string; label: string; src: string }[]>([]);
   const [open, setOpen] = useState(false);
+  const [lineDraft, setLineDraft] = useState(line ?? "");
+  const subtitle = posterSubtitle(tracks, lineDraft);
+  // the four looks, redrawn as the line is typed (only while the panel is open: it needs a canvas)
+  const designs = useMemo(
+    () => (open ? LOOKS.map((l) => ({ key: l.key, label: l.label, src: drawPoster(l.key, name, subtitle) })) : []),
+    [name, subtitle, open]
+  );
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -230,7 +129,7 @@ export function SetPoster({ tracks, cover, name, subtitle, size = 112, onCover }
             const r = boxRef.current?.getBoundingClientRect();
             if (r) setAt({ left: Math.max(8, Math.min(r.left, window.innerWidth - 296)), top: Math.min(r.bottom + 8, window.innerHeight - 440) });
           }
-          if (!open) setDesigns(LOOKS.map((l) => ({ key: l.key, label: l.label, src: drawPoster(l, name, subtitle) })));
+          if (!open) setLineDraft(line ?? "");
           setOpen(!open);
         }}
         className="group relative block rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prep-accent)]"
@@ -271,9 +170,18 @@ export function SetPoster({ tracks, cover, name, subtitle, size = 112, onCover }
           />
           <p className="-mt-1 text-[10px] text-neutral-500">ou glisse une image sur l&apos;affichette, ou colle-la (Ctrl/⌘ V)</p>
           <p className="text-[10px] font-black uppercase tracking-[0.15em] text-neutral-500">Affichette au nom du set</p>
+          <input
+            className="prep-input min-h-9 px-2.5 text-xs"
+            value={lineDraft}
+            onChange={(e) => setLineDraft(e.target.value)}
+            onBlur={() => lineDraft.trim() !== (line ?? "") && onLine(lineDraft.trim())}
+            placeholder="Date, lieu… (sinon : titres et BPM)"
+            maxLength={48}
+            aria-label="Ligne sous le nom de l'affichette"
+          />
           <div className="grid grid-cols-4 gap-1.5">
             {designs.map((d) => (
-              <button key={d.key} type="button" onClick={() => { onCover(d.src); setOpen(false); }} title={d.label} aria-label={`Affichette « ${d.label} »`} className="overflow-hidden rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prep-accent)]">
+              <button key={d.key} type="button" onClick={() => { if (lineDraft.trim() !== (line ?? "")) onLine(lineDraft.trim()); onCover(d.src, d.key); setOpen(false); }} title={d.label} aria-label={`Affichette « ${d.label} »`} className="overflow-hidden rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--prep-accent)]">
                 {/* eslint-disable-next-line @next/next/no-img-element -- generated data URL */}
                 <img src={d.src} alt="" className="aspect-square w-full object-cover" />
               </button>
@@ -294,14 +202,30 @@ export function SetPoster({ tracks, cover, name, subtitle, size = 112, onCover }
           )}
           {cover && (
             <div className="flex gap-1.5">
-              <a
-                href={cover}
-                download={`${name.replace(/[\\/:*?"<>|]+/g, "-")}.jpg`}
+              <button
+                type="button"
                 className="prep-btn-ghost flex min-h-9 flex-1 items-center justify-center px-2 text-xs"
-                title="Enregistrer l'affichette en image (pour la partager)"
+                title={look ? `Enregistrer l'affichette en ${HD_SIDE}×${HD_SIDE} (pour la partager)` : "Enregistrer l'affichette en image"}
+                onClick={async () => {
+                  const src = look ? drawPoster(look, name, posterSubtitle(tracks, line), HD_SIDE) : cover;
+                  // through a blob URL: the file keeps the set's name (a data URL link is saved as "download")
+                  let href = src;
+                  try {
+                    href = URL.createObjectURL(await (await fetch(src)).blob());
+                  } catch {
+                    // a remote cover that cannot be fetched: let the browser handle the link itself
+                  }
+                  const a = document.createElement("a");
+                  a.href = href;
+                  a.download = `${name.replace(/[\\/:*?"<>|]+/g, "-")}.jpg`;
+                  document.body.appendChild(a);
+                  a.click();
+                  a.remove();
+                  if (href !== src) setTimeout(() => URL.revokeObjectURL(href), 1000);
+                }}
               >
-                Télécharger
-              </a>
+                Télécharger{look ? " (HD)" : ""}
+              </button>
               <button type="button" className="prep-btn-ghost flex min-h-9 flex-1 items-center justify-center px-2 text-xs" onClick={() => { onCover(undefined); setOpen(false); }}>
                 Mosaïque
               </button>

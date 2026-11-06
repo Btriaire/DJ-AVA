@@ -172,7 +172,7 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
         title={detail.playlist ? <SetTitle key={detail.playlist.id} name={detail.playlist.name} onRename={detail.onRename} /> : "Sets"}
         cover={
           detail.playlist ? (
-            <SetPoster key={detail.playlist.id} tracks={setTracks} cover={detail.playlist.cover} name={detail.playlist.name} subtitle={`${setTracks.length} titre(s)${bpmRange !== "0–0 BPM" ? ` · ${bpmRange}` : ""}`} onCover={detail.onCover} />
+            <SetPoster key={detail.playlist.id} tracks={setTracks} name={detail.playlist.name} cover={detail.playlist.cover} look={detail.playlist.posterLook} line={detail.playlist.posterLine} onCover={detail.onCover} onLine={detail.onPosterLine} />
           ) : (
             <Mosaic tracks={setTracks} size={112} accent="var(--prep-accent)" />
           )
