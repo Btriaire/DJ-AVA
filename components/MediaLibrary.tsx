@@ -3433,7 +3433,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
             { key: "youtube", label: "YouTube", color: "#ef4444" },
             { key: "soundcloud", label: "SoundCloud", color: "#ff7700" },
             { key: "deezer", label: "Deezer", color: "#a238ff" },
-            { key: "spotify", label: "Spotify", color: "#1ed760" },
+            { key: "spotify", label: "Spotify (spotDL)", color: "#1ed760" },
             { key: "auto", label: "Auto-IA", color: "#fbbf24" },
           ],
           tab,
@@ -3766,7 +3766,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                 ["youtube", "▶ YouTube", "#ef4444"],
                 ["soundcloud", "☁ SoundCloud", "#ff7700"],
                 ["deezer", "◆ Deezer", "#a238ff"],
-                ["spotify", "● Spotify", "#1ed760"],
+                ["spotify", "● Spotify (spotDL)", "#1ed760"],
                 ["auto", "✨ Auto-IA", "#fbbf24"],
               ] as const
             ).map(([key, label, color]) => (
