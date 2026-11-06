@@ -6,7 +6,7 @@ import type { QualityLevel } from "@/lib/quality";
 // - The actual audio for imported files lives in IndexedDB (blobs, survives reload).
 import { DeckSettings } from "./audio/Deck";
 
-export type TrackSource = "local" | "youtube" | "audius" | "soundcloud" | "deezer";
+export type TrackSource = "local" | "youtube" | "audius" | "soundcloud" | "deezer" | "spotify";
 
 export interface LibTrack {
   id: string;

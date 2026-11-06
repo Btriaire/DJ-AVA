@@ -1,5 +1,5 @@
 // "PLUS DE TITRES": an online catalogue asked for more results, page after page
-export type MoreSource = "audius" | "youtube" | "soundcloud" | "deezer";
+export type MoreSource = "audius" | "youtube" | "soundcloud" | "deezer" | "spotify";
 export const PAGE = 60;
 export const MAX_PAGES = 5;
 
