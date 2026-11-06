@@ -149,8 +149,14 @@ export function StatTile({ label, value, sub, color, meter }: { label: string; v
 // ---- lists ------------------------------------------------------------------------
 
 // 2×2 mosaic of the first covers of a list
-export function Mosaic({ tracks, size = 52, accent }: { tracks: LibTrack[]; size?: number; accent: string }) {
+export function Mosaic({ tracks, size = 52, accent, cover }: { tracks: LibTrack[]; size?: number; accent: string; cover?: string }) {
   const cell = size / 2;
+  if (cover) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- a data URL or a remote thumbnail chosen as the set's poster
+      <img src={cover} alt="" width={size} height={size} className="shrink-0 rounded-md object-cover" style={{ width: size, height: size, boxShadow: `0 0 0 1px color-mix(in srgb, ${accent} 50%, transparent)` }} />
+    );
+  }
   const four = tracks.slice(0, 4);
   return (
     <div className="grid shrink-0 grid-cols-2 overflow-hidden rounded-md" style={{ width: size, height: size, boxShadow: `0 0 0 1px color-mix(in srgb, ${accent} 50%, transparent)` }}>

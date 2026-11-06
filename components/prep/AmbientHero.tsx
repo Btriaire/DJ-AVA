@@ -23,7 +23,7 @@ export function AmbientHero({
   ambient?: string;
   cover?: ReactNode;
   overline: string;
-  title: string;
+  title: ReactNode;
   subtitle?: ReactNode;
   actions?: ReactNode;
   children?: ReactNode;
@@ -89,7 +89,7 @@ export function QuickSets({
               onFocus={() => onAmbient?.(AMBIENTS[i % AMBIENTS.length])}
               onBlur={() => onAmbient?.(null)}
             >
-              <Mosaic tracks={pTracks.slice(0, 4)} size={56} accent={AMBIENTS[i % AMBIENTS.length]} />
+              <Mosaic tracks={pTracks.slice(0, 4)} size={56} accent={AMBIENTS[i % AMBIENTS.length]} cover={p.cover} />
               <div className="min-w-0 flex-1">
                 <div className="text-[13px] font-bold text-white truncate">{p.name}</div>
                 <div className="text-[11px] text-neutral-400">{pTracks.length} titres</div>

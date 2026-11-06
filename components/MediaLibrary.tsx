@@ -22,6 +22,7 @@ import {
   type LibraryAudit,
   type Playlist,
 } from "@/lib/library";
+import { drawPoster, posterSubtitle } from "@/lib/setPoster";
 import { enqueuePrep, getPrepState, getPreparedStems, PREP_OPTS, subscribePrep } from "@/lib/stemPrep";
 import { queueAnalysis } from "@/lib/analyze";
 import { pickNext, type Cue } from "@/lib/setPicker";
@@ -42,6 +43,7 @@ import { playLines, speak, stopSpeaking } from "@/lib/djVoice";
 import { INTRO_LINE, OUTRO_LINE, djLineFor } from "@/lib/djLines";
 import { prepareSet, useSetPrep, wantsStems } from "@/lib/setPrep";
 import { useStemsShared } from "@/lib/stemsShared";
+import { registerDeckStep } from "@/lib/deckStep";
 import { type QueueTrack, getRelayHost, publishRelayHost, registerRelayHost, relayHostStart, relayHostStop, subscribeRelayHost } from "@/lib/relayHost";
 import { cachedLoudness, loudnessFor, matchTrimDb } from "@/lib/audio/levelMatch";
 import { getDjLive, setDjStems, showDjAction, useDjLive } from "@/lib/djLive";
@@ -858,7 +860,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   function duplicatePlaylist(id: string) {
     const original = dataRef.current.playlists.find((pl) => pl.id === id);
     if (!original) return;
-    const copy = { id: uid(), name: `${original.name} (copie)`, trackIds: [...original.trackIds] };
+    const copy = redrawn({ id: uid(), name: `${original.name} (copie)`, trackIds: [...original.trackIds], cover: original.cover, posterLook: original.posterLook, posterLine: original.posterLine });
     persist((d) => ({ ...d, playlists: [...d.playlists, copy] }));
     setActivePl(copy.id);
     flash(`Set dupliqué : ${original.name}`);
@@ -920,8 +922,22 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     persist((d) => ({ ...d, playlists: d.playlists.map((p) => (p.id === plId ? { ...p, dj, mixPlan: on ? planMix(tracks, "flow", dj, p.mixPlan) : p.mixPlan } : p)) }));
     flash(on ? "Plan DJ calculé : le relais suit ces enchaînements" : "Plan DJ désactivé : un seul style pour tout le set");
   }
+  // a poster drawn at the set's name is redrawn when its name or its line changes
+  function redrawn(pl: Playlist): Playlist {
+    if (!pl.posterLook) return pl;
+    const byId = new Map(dataRef.current.tracks.map((t) => [t.id, t]));
+    const tracks = pl.trackIds.map((tid) => byId.get(tid)).filter((t): t is LibTrack => !!t);
+    return { ...pl, cover: drawPoster(pl.posterLook, pl.name, posterSubtitle(tracks, pl.posterLine)) || pl.cover };
+  }
   function renameNow(id: string, name: string) {
-    persist((d) => ({ ...d, playlists: d.playlists.map((pl) => (pl.id === id ? { ...pl, name } : pl)) }));
+    persist((d) => ({ ...d, playlists: d.playlists.map((pl) => (pl.id === id ? redrawn({ ...pl, name }) : pl)) }));
+  }
+  function setPosterLine(id: string, line: string) {
+    persist((d) => ({ ...d, playlists: d.playlists.map((pl) => (pl.id === id ? redrawn({ ...pl, posterLine: line || undefined }) : pl)) }));
+  }
+  function setCoverNow(id: string, cover: string | undefined, look?: string) {
+    persist((d) => ({ ...d, playlists: d.playlists.map((pl) => (pl.id === id ? { ...pl, cover, posterLook: cover ? look : undefined } : pl)) }));
+    flash(cover ? "Affichette du set mise à jour" : "Affichette : retour à la mosaïque des titres");
   }
   function clearNow(id: string) {
     persist((d) => ({ ...d, playlists: d.playlists.map((pl) => (pl.id === id ? { ...pl, trackIds: [] } : pl)) }));
@@ -1693,6 +1709,15 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       },
     };
   });
+  // the Console's ⏮ ⏭ go through here: they follow the set sent to the deck, like the decks strip of the Sets view
+  const stepRef = useRef<(side: "A" | "B", dir: 1 | -1) => Promise<boolean>>(async () => false);
+  useEffect(() => {
+    stepRef.current = stepSingle;
+  });
+  useEffect(() => {
+    if (!splitLayout) return;
+    return registerDeckStep((side, dir) => stepRef.current(side, dir));
+  }, [splitLayout]);
   useEffect(() => {
     if (!splitLayout) return;
     return registerRelayHost({ start: (id, idx) => hostApi.current.start(id, idx), stop: () => hostApi.current.stop(), zap: (k) => hostApi.current.zap(k), swap: (a, b) => hostApi.current.swap(a, b), skipNow: () => hostApi.current.skipNow() });
@@ -2165,11 +2190,11 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   // Jump a deck to the previous / next single filed for it (loops the queue).
   // Works standalone and keeps the LIVE / relay indices in sync so an active
   // auto-loop continues from where you skipped to. Preserves play/pause state.
-  async function stepSingle(side: "A" | "B", dir: 1 | -1) {
+  async function stepSingle(side: "A" | "B", dir: 1 | -1): Promise<boolean> {
     const q = liveQueue(side);
     if (!q.length) {
       flash(`Deck ${side} : aucun single classé`);
-      return;
+      return false;
     }
     const deck = side === "A" ? engine.deckA : engine.deckB;
     let cur = liveIdx.current[side];
@@ -2183,6 +2208,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     const wasPlay = deck.playing;
     await loadToDeck(q[ni], side);
     if (wasPlay) deck.play();
+    return true;
   }
 
   const COLOR_A = "#ffcc00";
@@ -3354,6 +3380,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           driving,
           onSelect: (id) => setActivePl(id),
           onCreate: createSetNamed,
+          onRename: renameNow,
           onDropTracks: (id, ids) => addTracksAt(id, ids),
           onPlay: (dest, id) => sendSet(dest, id),
           stemReady: (id) => stemOf(id).state === "done",
@@ -3373,6 +3400,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           stemOf,
           driving: ap ? driving(ap.id) : { A: false, B: false, relay: false },
           onRename: (name) => ap && renameNow(ap.id, name),
+          onCover: (cover, look) => ap && setCoverNow(ap.id, cover, look),
+          onPosterLine: (line) => ap && setPosterLine(ap.id, line),
           onDuplicate: () => ap && duplicatePlaylist(ap.id),
           onClear: () => ap && clearNow(ap.id),
           onDelete: () => ap && delPlaylist(ap.id),
