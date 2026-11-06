@@ -4,7 +4,7 @@
 // and transcode to MP3 with ffmpeg, streaming the bytes same-origin.
 import { spawn } from "node:child_process";
 import { existsSync, copyFileSync, readdirSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 export interface YTTrack {
@@ -24,7 +24,7 @@ export function parseViews(text: string | undefined): number | undefined {
 
 // resolve a binary, preferring Homebrew/usr-local locations (PATH may be slim
 // when Next is launched outside an interactive shell)
-function bin(name: string, envKey: string): string {
+export function bin(name: string, envKey: string): string {
   const fromEnv = process.env[envKey];
   if (fromEnv && existsSync(fromEnv)) return fromEnv;
   for (const p of [
@@ -32,6 +32,7 @@ function bin(name: string, envKey: string): string {
     `/opt/homebrew/bin/${name}`,
     `/usr/local/bin/${name}`,
     `/usr/bin/${name}`,
+    join(homedir(), ".local", "bin", name), // pipx (spotdl, yt-dlp)
   ]) {
     if (existsSync(p)) return p;
   }
@@ -50,7 +51,7 @@ const FFMPEG = bin("ffmpeg", "FFMPEG_PATH");
 // we copy the (read-only mounted) source to a writable temp once and hand that
 // to yt-dlp — the original secret file stays pristine and can't be corrupted.
 let cookieFile: string | null | undefined; // undefined = not yet resolved
-function cookiePath(): string | null {
+export function cookiePath(): string | null {
   if (cookieFile === undefined) {
     const src = process.env.YT_DLP_COOKIES;
     if (src && existsSync(src)) {

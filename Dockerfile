@@ -23,11 +23,11 @@ ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 ENV STEMS_CACHE_DIR=/data/stems-cache
 
-# ffmpeg + yt-dlp (pip), et Demucs en option (séparation de stems = torch CPU)
+# ffmpeg + yt-dlp et spotDL (pip : recherche Spotify et téléchargement des titres), et Demucs en option (séparation de stems = torch CPU)
 ARG WITH_STEMS=1
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ffmpeg python3 python3-pip ca-certificates \
-  && pip3 install --no-cache-dir --break-system-packages yt-dlp \
+  && pip3 install --no-cache-dir --break-system-packages yt-dlp spotdl \
   && if [ "$WITH_STEMS" = "1" ]; then \
        pip3 install --no-cache-dir --break-system-packages demucs \
          basic-pitch onnxruntime pretty_midi librosa scipy soundfile; \

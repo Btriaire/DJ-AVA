@@ -120,6 +120,7 @@ const SRC_BADGE: Record<TrackSource, { label: string; color: string }> = {
   youtube: { label: "YT", color: "#ef4444" },
   soundcloud: { label: "SC", color: "#ff7700" },
   deezer: { label: "DEEZER", color: "#a238ff" },
+  spotify: { label: "SPOTIFY", color: "#1ed760" },
 };
 
 // transition styles for the A→B→A auto-mix — inspired by the crossfade curves
@@ -148,7 +149,7 @@ const TRANSITION_TYPES = TRANSITIONS;
 // worth resurrecting, but "I just searched, then tapped over to Playlist" is.
 const SEARCH_STATE_KEY = "djsynth.searchState.v1";
 interface SearchState {
-  tab: "files" | "playlists" | "audius" | "youtube" | "soundcloud" | "deezer" | "auto";
+  tab: "files" | "playlists" | "audius" | "youtube" | "soundcloud" | "deezer" | "spotify" | "auto";
   q: string;
   durKey: string;
   results: AudiusTrack[];
@@ -181,7 +182,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   const [initialSearch] = useState(loadSearchState);
   const [pending] = useState(readPendingSet); // read-only here: the effect below consumes the key
   const [tab, setTab] = useState<
-    "files" | "playlists" | "audius" | "youtube" | "soundcloud" | "deezer" | "auto"
+    "files" | "playlists" | "audius" | "youtube" | "soundcloud" | "deezer" | "spotify" | "auto"
   >(pending?.side === "open" ? "playlists" : initialSearch?.tab ?? "files");
   const [q, setQ] = useState(initialSearch?.q ?? "");
   const [durKey, setDurKey] = useState<string>(initialSearch?.durKey ?? "all"); // YouTube duration filter
@@ -478,7 +479,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
 
   // --- import local files into the collection (blob → IndexedDB) ---
   // "à jouer plus tard": file a YouTube/Audius search result in the library, flagged for later
-  function markLater(t: AudiusTrack, source: "youtube" | "audius") {
+  function markLater(t: AudiusTrack, source: "youtube" | "audius" | "spotify") {
     persist((d) => {
       if (d.tracks.some((x) => x.later && x.url === t.id)) return d;
       const track: LibTrack = {
@@ -629,7 +630,9 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
             ? `https://www.youtube.com/watch?v=${t.url}`
             : t.source === "soundcloud"
               ? t.url ?? ""
-              : "";
+              : t.source === "spotify"
+                ? `https://open.spotify.com/track/${t.url}`
+                : "";
       }
       const fx = side === "A" ? t.fxA : t.fxB;
       if (fx) deck.applySettings(fx);
@@ -2788,7 +2791,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   const onlineSources = (
     <>
           {/* ===== ONLINE catalogue search (Audius / YouTube / SoundCloud / Deezer) ===== */}
-          {(tab === "audius" || tab === "youtube" || tab === "soundcloud" || tab === "deezer") && (
+          {(tab === "audius" || tab === "youtube" || tab === "soundcloud" || tab === "deezer" || tab === "spotify") && (
             <div className="flex flex-col gap-2">
               <div className="flex gap-2">
                 <input
@@ -2802,6 +2805,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                         ? "Rechercher un titre sur SoundCloud…"
                         : tab === "deezer"
                           ? "Rechercher sur Deezer (aperçu 30s)…"
+                          : tab === "spotify"
+                            ? "Rechercher un titre Spotify (via spotDL)…"
                           : "Rechercher un titre, un artiste…"
                   }
                   className="flex-1 rounded bg-neutral-800 px-3 py-2 text-sm outline-none ring-1 ring-neutral-700 focus:ring-[#ffcc00]"
@@ -2844,6 +2849,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                         ? "L'audio SoundCloud est importé et passe dans le mixeur."
                         : tab === "deezer"
                           ? "Deezer ne fournit qu'un aperçu de 30s (catalogue protégé)."
+                          : tab === "spotify"
+                            ? "Le catalogue Spotify, via spotDL : il trouve l'audio du titre et le passe dans le mixeur, ou le télécharge en MP3 avec ses tags."
                           : "Explore le catalogue libre Audius."}
                   </p>
                 )}
@@ -2865,8 +2872,20 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                         {t.bpm ? ` · ${t.bpm} BPM` : ""}
                       </div>
                     </div>
+                    {tab === "spotify" && (
+                      <a
+                        href={`/api/spotify/stream?id=${encodeURIComponent(t.id)}&dl=1`}
+                        download
+                        onClick={() => flash(`Téléchargement de « ${t.title} » : spotDL prépare le MP3 (quelques secondes)…`)}
+                        className="hw-btn shrink-0 px-2 py-1 text-xs"
+                        style={{ ["--led" as string]: "#1ed760", color: "#1ed760" }}
+                        title="Télécharger le MP3 (320 kb/s, avec titre, artiste, album et pochette), fait par spotDL"
+                      >
+                        ⬇ MP3
+                      </a>
+                    )}
                     <button
-                      onClick={() => markLater(t, tab === "youtube" ? "youtube" : "audius")}
+                      onClick={() => markLater(t, tab === "youtube" || tab === "spotify" ? tab : "audius")}
                       className="hw-btn shrink-0 px-2 py-1 text-xs"
                       title="Garder ce morceau pour plus tard (préparer ses stems en lot)"
                     >
@@ -3414,6 +3433,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
             { key: "youtube", label: "YouTube", color: "#ef4444" },
             { key: "soundcloud", label: "SoundCloud", color: "#ff7700" },
             { key: "deezer", label: "Deezer", color: "#a238ff" },
+            { key: "spotify", label: "Spotify (spotDL)", color: "#1ed760" },
             { key: "auto", label: "Auto-IA", color: "#fbbf24" },
           ],
           tab,
@@ -3746,6 +3766,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                 ["youtube", "▶ YouTube", "#ef4444"],
                 ["soundcloud", "☁ SoundCloud", "#ff7700"],
                 ["deezer", "◆ Deezer", "#a238ff"],
+                ["spotify", "● Spotify (spotDL)", "#1ed760"],
                 ["auto", "✨ Auto-IA", "#fbbf24"],
               ] as const
             ).map(([key, label, color]) => (

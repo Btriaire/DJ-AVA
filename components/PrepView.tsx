@@ -55,8 +55,12 @@ const SRC_BADGE: Record<string, { label: string; color: string }> = {
   audius: { label: "AUDIUS", color: "#ffcc00" },
   youtube: { label: "YT", color: "#ef4444" },
   soundcloud: { label: "SC", color: "#ff7700" },
-  deezer: { label: "DEEZER", color: "#a238ff" }
+  deezer: { label: "DEEZER", color: "#a238ff" },
+  spotify: { label: "SPOTIFY", color: "#1ed760" },
 };
+
+// the audio quality is read from the YouTube page: not for local files, nor for Spotify titles (spotDL picks the audio)
+const qualityCheckable = (t: LibTrack) => t.source !== "local" && t.source !== "spotify";
 
 const QUALITY_COLORS: Record<QualityLevel | "unknown", string> = {
   HR: "#a78bfa",
@@ -518,7 +522,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   };
 
   const checkQuality = async (track: LibTrack) => {
-    if (!track.id || track.source === "local") return;
+    if (!track.id || !qualityCheckable(track)) return;
 
     setCheckingQualityIds(prev => new Set(prev).add(track.id));
 
@@ -928,7 +932,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
     const hasMeta = !!track.meta && Object.keys(track.meta).length > 0;
     // a card only offers what is still missing; the rest appears on hover
     const showAnalyze = track.bpm === undefined || analyzing;
-    const showQuality = track.source !== "local" && (!track.quality || checking);
+    const showQuality = qualityCheckable(track) && (!track.quality || checking);
     const showActions = gridSize !== "S" && (showAnalyze || showQuality || hasMeta);
     return (
       <div
@@ -1203,7 +1207,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   const stemsFailed = stemStates.filter((s) => s === "error").length;
   const stemsMissing = laterTracks.filter((_, i) => stemStates[i] === "none" || stemStates[i] === "error");
   const analysisMissing = laterTracks.filter((t) => t.bpm === undefined && !analyzingIds.has(t.id) && !failedIds.has(t.id)).length;
-  const qualityMissing = laterTracks.filter((t) => t.source !== "local" && !t.quality && !checkingQualityIds.has(t.id)).length;
+  const qualityMissing = laterTracks.filter((t) => qualityCheckable(t) && !t.quality && !checkingQualityIds.has(t.id)).length;
   const selectedTracks = laterTracks.filter((t) => selectedLaterIds.has(t.id));
   const selectedSec = selectedTracks.reduce((sum, t) => sum + (t.durationSec ?? 0), 0);
   const allShownChecked = filteredTracks.length > 0 && filteredTracks.every((t) => selectedLaterIds.has(t.id));

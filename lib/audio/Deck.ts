@@ -298,7 +298,7 @@ export class Deck {
   // null when the audio was loaded directly via the deck's own file picker.
   origin: {
     id: string;
-    source: "local" | "youtube" | "audius" | "soundcloud" | "deezer";
+    source: "local" | "youtube" | "audius" | "soundcloud" | "deezer" | "spotify";
     url?: string;
     art?: string;
   } | null = null;
