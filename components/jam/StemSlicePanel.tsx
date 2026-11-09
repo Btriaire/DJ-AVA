@@ -8,6 +8,7 @@ import { JamHelp } from "./JamHelp";
 import { VoicePadGrid } from "./VoicePadGrid";
 import { RepeatSwitch } from "./RepeatSwitch";
 import { LevelPicker } from "./LevelPicker";
+import { ReleasePicker } from "./ReleasePicker";
 import { KEY_ROWS } from "./jamKeys";
 import { PHRASE_NAMES } from "@/lib/audio/loopLevels";
 
@@ -36,6 +37,7 @@ export function StemSlicePanel({ engine, role }: { engine: DJEngine; role: Slice
         <RepeatSwitch label={SAMPLES[role]} on={m.source === "samples"} color={C} onChange={(v) => { m.setSource(v ? "samples" : "notes"); bump(); }} />
         <RepeatSwitch on={m.repeat} color={C} onChange={(v) => { m.setRepeat(v); bump(); }} />
         <RepeatSwitch label="Normaliser" on={m.normalize} color={C} onChange={(v) => { m.setNormalize(v); bump(); }} />
+        <ReleasePicker value={m.release} color={C} onChange={(v) => { m.setRelease(v); bump(); }} />
         <LevelPicker label="Niveau de boucle" names={PHRASE_NAMES} index={m.fracIdx} color={C} onChange={(i) => { m.setFrac(i); bump(); }} />
         <RepeatSwitch label="Boucle verrouillée" on={m.latch} color={C} onChange={(v) => { m.setLatch(v); bump(); }} />
         <JamSwap m={m} color={C} what={NEW_SOUND[role]} onChange={bump} />

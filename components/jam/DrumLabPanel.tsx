@@ -9,6 +9,7 @@ import { DrumPadGrid } from "./DrumPadGrid";
 import { KEY_ROWS } from "./jamKeys";
 import { RepeatSwitch } from "./RepeatSwitch";
 import { LevelPicker } from "./LevelPicker";
+import { ReleasePicker } from "./ReleasePicker";
 import { HIT_NAMES } from "@/lib/audio/loopLevels";
 const C = "var(--jam-drum)";
 const pct = (v: number) => `${Math.round(v * 100)} %`;
@@ -47,6 +48,7 @@ export function DrumLabPanel({ engine }: { engine: DJEngine }) {
       <div className="flex flex-wrap items-center gap-4">
         <Knob label="NIVEAU" value={m.level} min={0} max={1.2} defaultValue={0.9} color={C} size={46} led format={pct} onChange={(v) => { m.setLevel(v); bump(); }} />
         <RepeatSwitch on={m.repeat} color={C} onChange={(v) => { m.setRepeat(v); bump(); }} />
+        <ReleasePicker value={m.release} color={C} onChange={(v) => { m.setRelease(v); bump(); }} />
         <LevelPicker label="Niveau de boucle" names={HIT_NAMES} index={m.divIdx} color={C} onChange={(i) => { m.setDiv(i); bump(); }} />
         <RepeatSwitch label="Boucle verrouillée" on={m.latch} color={C} onChange={(v) => { m.setLatch(v); bump(); }} />
         <Knob label="FEEL" value={m.feel} min={0} max={1} defaultValue={0.35} color={C} size={46} led format={pct} onChange={(v) => { m.setFeel(v); bump(); }} />

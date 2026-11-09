@@ -8,6 +8,7 @@ import { pickSlices, poolSlices, type Slice } from "./stemSlices";
 import { stemSamplePad } from "./stemSamplePad";
 import type { PadSample } from "@/lib/stemSamples";
 import { normGain } from "./padLoudness";
+import { fadeOut, type ReleaseSec } from "./padRelease";
 
 export type SliceTag = "bass" | "other" | "guitar" | "piano";
 const PREFIX: Record<SliceTag, string> = { bass: "BAS", other: "AUT", guitar: "GUI", piano: "PNO" };
@@ -26,6 +27,7 @@ export class StemSlicer extends JamModule {
   fracIdx = 0;
   source: "notes" | "samples" = "notes";
   normalize = true; // every pad at the same loudness (lib/audio/padLoudness.ts)
+  release: ReleaseSec = 0; // RELEASE: the note keeps sounding and fades out over this time (lib/audio/padRelease.ts)
   liveBeats: (typeof LIVE_BEATS)[number] = 4; // a LIVE capture: the last beats played of this stem, on the grid
   private liveAll: Record<string, (Slice | null)[]> = (() => {
     try { return JSON.parse(localStorage.getItem(LIVE_STORE) ?? "{}") ?? {}; } catch { return {}; }
@@ -141,11 +143,7 @@ export class StemSlicer extends JamModule {
     const ctx = this.engine.ctx;
     const when = at ?? (d.playing && d.bpm > 0 ? nextGrid(d, 0.25).at : ctx.currentTime + 0.01);
 
-    if (this.cur) {
-      this.cur.gain.cancelScheduledValues(when);
-      this.cur.gain.setValueAtTime(this.cur.gain.value, when);
-      this.cur.gain.linearRampToValueAtTime(0, when + 0.015);
-    }
+    if (this.cur) fadeOut(this.cur, when, this.release, 0.015); // the previous note: cut, or its release under the new one
 
     const len = Math.max(0.06, seg.dur * frac);
     const lvl = this.level * (this.normalize && this.lastBuf ? normGain(this.lastBuf, seg.t, seg.dur) : 1); // measured on the whole slice
@@ -153,8 +151,13 @@ export class StemSlicer extends JamModule {
     g.gain.value = 0;
     g.gain.setValueAtTime(0, when);
     g.gain.linearRampToValueAtTime(lvl, when + 0.003);
-    g.gain.setValueAtTime(lvl, when + len - 0.03);
-    g.gain.linearRampToValueAtTime(0, when + len);
+    if (this.release > 0) {
+      g.gain.setValueAtTime(lvl, when + len);
+      g.gain.setTargetAtTime(0, when + len, this.release / 4.6); // the stem's own tail, fading out
+    } else {
+      g.gain.setValueAtTime(lvl, when + len - 0.03);
+      g.gain.linearRampToValueAtTime(0, when + len);
+    }
 
     const src = ctx.createBufferSource();
     src.buffer = this.lastBuf;
@@ -162,7 +165,7 @@ export class StemSlicer extends JamModule {
     src.connect(g);
     g.connect(this.bus);
 
-    src.start(when, Math.max(0, seg.t - 0.003), len + 0.04);
+    src.start(when, Math.max(0, seg.t - 0.003), len + this.release + 0.04);
 
     this.hit(when);
     this.cur = g;
@@ -227,6 +230,11 @@ export class StemSlicer extends JamModule {
 
   setLevel(v: number): void {
     this.level = v;
+    jamChanged();
+  }
+
+  setRelease(v: ReleaseSec): void {
+    this.release = v;
     jamChanged();
   }
 
@@ -315,7 +323,7 @@ export class StemSlicer extends JamModule {
   }
 
   protected keep(): string[] {
-    return ["level", "repeat", "latch", "fracIdx", "source", "liveBeats", "normalize"];
+    return ["level", "repeat", "latch", "fracIdx", "source", "liveBeats", "normalize", "release"];
   }
 
   protected resetFields(): void {
@@ -327,6 +335,7 @@ export class StemSlicer extends JamModule {
     this.source = "notes";
     this.liveBeats = 4;
     this.normalize = true;
+    this.release = 0;
   }
 
   warning(): string | null {

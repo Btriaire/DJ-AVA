@@ -3,6 +3,7 @@ import type { Deck } from "./Deck";
 import { JamModule, jamChanged, type PadDef } from "./jamModules";
 import { nextGrid } from "./stemJam";
 import { PHRASE_FRACS } from "./loopLevels";
+import { fadeOut, type ReleaseSec } from "./padRelease";
 import { slicePeaks } from "../drumPrep";
 import type { VoicePrep, VoiceSeg } from "../voicePrep";
 
@@ -15,6 +16,7 @@ export class VoiceChop extends JamModule {
   fracIdx = 0; // index in PHRASE_FRACS: the share of the phrase that loops
   latch = false; // a chop pad keeps looping after release until pressed again
   reverse = false;
+  release: ReleaseSec = 0; // RELEASE: the syllable keeps sounding and fades out (lib/audio/padRelease.ts)
   private revs = new Map<number, AudioBuffer>();
   private loadedFor = "";
   private waves = new Map<number, number[]>();
@@ -138,22 +140,18 @@ export class VoiceChop extends JamModule {
     const src = ctx.createBufferSource();
     if (rev) {
         src.buffer = rev;
-        src.start(startAt, 0, dur + pre + 0.18);
+        src.start(startAt, 0, dur + pre + 0.18 + this.release);
     } else {
         src.buffer = buf;
-        src.start(startAt, offset, dur + pre + 0.18);
+        src.start(startAt, offset, dur + pre + 0.18 + this.release);
     }
     src.playbackRate.value = d.playRate;
     const g = ctx.createGain();
-    if (this.cur) {
-        this.cur.gain.cancelScheduledValues(startAt);
-        this.cur.gain.setValueAtTime(this.cur.gain.value, startAt);
-        this.cur.gain.linearRampToValueAtTime(0, when + 0.025);
-    }
+    if (this.cur) fadeOut(this.cur, startAt, this.release, when + 0.025 - startAt); // the previous syllable: cut, or its release
     g.gain.setValueAtTime(0, startAt);
     g.gain.linearRampToValueAtTime(this.level, startAt + 0.008);
     g.gain.setValueAtTime(this.level, when + dur);
-    g.gain.setTargetAtTime(0, when + dur, 0.05);
+    g.gain.setTargetAtTime(0, when + dur, Math.max(0.05, this.release / 4.6)); // the voice's own tail with a RELEASE
     src.connect(g);
     if (!this.hp) {
         this.hp = new BiquadFilterNode(ctx, { type: "highpass", frequency: 90, Q: 0.7 });
@@ -272,6 +270,7 @@ export class VoiceChop extends JamModule {
   }
 
   setLevel(v: number) { this.level = v; jamChanged(); }
+  setRelease(v: ReleaseSec) { this.release = v; jamChanged(); }
   setEchoEnds(on: boolean) { this.echoEnds = on; jamChanged(); }
 
   pads(): PadDef[] {
@@ -313,8 +312,8 @@ export class VoiceChop extends JamModule {
     return pads;
   }
 
-  protected keep(): string[] { return ["level", "echoEnds", "repeat", "fracIdx", "latch", "reverse"]; }
-  protected resetFields() { this.stopReps(); this.stutter(false); this.level = 0.9; this.echoEnds = false; this.repeat = true; this.fracIdx = 0; this.latch = false; this.reverse = false; }
+  protected keep(): string[] { return ["level", "echoEnds", "repeat", "fracIdx", "latch", "reverse", "release"]; }
+  protected resetFields() { this.stopReps(); this.stutter(false); this.level = 0.9; this.echoEnds = false; this.repeat = true; this.fracIdx = 0; this.latch = false; this.reverse = false; this.release = 0; }
 
   warning(): string | null {
     if (!this.deck().stemHash) return "Prépare les stems du morceau pour jouer sa voix.";
