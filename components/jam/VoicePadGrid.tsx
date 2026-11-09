@@ -2,6 +2,8 @@
 
 import type { PadDef } from "@/lib/audio/jamModules";
 import { keyLabel } from "./jamKeys";
+import { PadTrim } from "./PadTrim";
+import type { Trim } from "@/lib/audio/padTrim";
 
 const padColors: Record<string, string> = {
   chop: "oklch(0.80 0.10 280)",
@@ -11,18 +13,20 @@ const padColors: Record<string, string> = {
 
 const FALLBACK = "oklch(0.76 0.12 255)";
 
-export function VoicePadGrid({ m, list, keys, tint }: { m: { press: (id: string, on: boolean, list?: PadDef[]) => void; padActive: (p: PadDef) => boolean; isRepeating?: (id: string) => boolean; waveOf?: (i: number) => number[] | null }; list: PadDef[]; keys: string[]; tint?: string }) {
+export function VoicePadGrid({ m, list, keys, tint }: { m: { press: (id: string, on: boolean, list?: PadDef[]) => void; padActive: (p: PadDef) => boolean; isRepeating?: (id: string) => boolean; waveOf?: (i: number) => number[] | null; padIndex?: (id: string) => number; trimOf?: (i: number) => Trim | null; setTrimOf?: (i: number, t: Trim) => void }; list: PadDef[]; keys: string[]; tint?: string }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px", maxWidth: "600px" }}>
       {list.map((p, i) => {
         const color = (p.id.startsWith("chop") && tint) || padColors[p.id.startsWith("chop") ? "chop" : p.id] || FALLBACK;
         const active = m.padActive(p);
         // LIVE pads of the stem slicers are slots 100.. (the found notes are 0..)
+        const slot = m.padIndex?.(p.id) ?? -1;
+        const trim = slot >= 0 ? m.trimOf?.(slot) ?? null : null; // the pads holding a note get the TRIM slider
         const wave = p.id.startsWith("chop") ? m.waveOf?.(parseInt(p.id.slice(4), 10)) : p.id.startsWith("live") ? m.waveOf?.(100 + parseInt(p.id.slice(4), 10)) : null;
 
         return (
+          <div key={p.id} className="flex flex-col">
           <button
-            key={p.id}
             type="button"
             aria-pressed={active}
             aria-label={p.label}
@@ -109,6 +113,10 @@ export function VoicePadGrid({ m, list, keys, tint }: { m: { press: (id: string,
               background: `color-mix(in oklab, ${color} 60%, transparent)`,
             }} />
           </button>
+          {trim && m.setTrimOf && (
+            <PadTrim value={trim} steps={16} color={color} label={p.label} onChange={(t) => m.setTrimOf!(slot, t)} />
+          )}
+          </div>
         );
       })}
     </div>
