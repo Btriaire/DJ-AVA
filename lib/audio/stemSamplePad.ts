@@ -5,6 +5,7 @@ import { nextGrid } from "./stemJam";
 import type { PadSample } from "@/lib/stemSamples";
 import { pageCount, poolPage } from "@/lib/padPages";
 import { PadFx, type PadFxId } from "./padFx";
+import { normGain } from "./padLoudness";
 
 // a sample played backwards (cached per stem buffer)
 const reversed = new WeakMap<AudioBuffer, AudioBuffer>();
@@ -53,7 +54,8 @@ export class StemSamplePad {
   deep = false; // the samples come from the in-depth analysis (Préparation > Stems Pad)
   private pages: Record<string, number> = {}; // the page of each stem's pool shown on its 5 pads
   private key = "";
-  private voices = new Map<string, { src: AudioBufferSourceNode; gain: GainNode }>();
+  private voices = new Map<string, { src: AudioBufferSourceNode; gain: GainNode; norm: number }>();
+  normalize = true; // every pad at the same loudness, whatever its stem (lib/audio/padLoudness.ts)
   liveBars: (typeof LIVE_BARS)[number] = 1; // how many bars a LIVE capture takes
   private liveAll: Record<string, LiveSlots> = typeof window === "undefined" ? {} : loadLive();
 
@@ -258,9 +260,10 @@ export class StemSamplePad {
     src.loopEnd = b;
     src.playbackRate.value = this.deck().playRate * (mod.half ? 0.5 : 1);
 
+    const norm = normGain(buf, s.start, s.end - s.start); // measured on the slice as it is in the stem
     const gain = this.engine.ctx.createGain();
     gain.gain.setValueAtTime(0, at);
-    gain.gain.linearRampToValueAtTime(this.level, at + 0.005);
+    gain.gain.linearRampToValueAtTime(this.level * (this.normalize ? norm : 1), at + 0.005);
 
     src.connect(gain);
     gain.connect(out);
@@ -271,7 +274,7 @@ export class StemSamplePad {
       this.stop(key, at);
     }
 
-    this.voices.set(key, { src, gain });
+    this.voices.set(key, { src, gain, norm });
 
     if (s.kind === "shot") {
       src.onended = () => {
@@ -299,8 +302,15 @@ export class StemSamplePad {
 
   setLevel(v: number): void {
     this.level = v;
+    this.applyGains();
+  }
+  setNormalize(on: boolean): void {
+    this.normalize = on;
+    this.applyGains();
+  }
+  private applyGains(): void {
     const now = this.engine.ctx.currentTime;
-    this.voices.forEach(({ gain }) => gain.gain.setTargetAtTime(v, now, 0.02));
+    this.voices.forEach(({ gain, norm }) => gain.gain.setTargetAtTime(this.level * (this.normalize ? norm : 1), now, 0.02));
   }
 }
 

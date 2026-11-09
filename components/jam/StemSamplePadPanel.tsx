@@ -186,6 +186,16 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
         </div>
         <button
           type="button"
+          aria-pressed={m.normalize}
+          className="rounded px-2 py-1 text-[11px] font-bold"
+          style={m.normalize ? { background: C, color: "#0a0a0a" } : { background: "rgba(255,255,255,0.08)", color: "#d4d4d4" }}
+          onClick={() => { m.setNormalize(!m.normalize); bump(); }}
+          title="Tous les pads au même volume, quel que soit leur stem (la batterie ne couvre plus les nappes) ; écart corrigé jusqu'à ±12 dB"
+        >
+          NORMALISER
+        </button>
+        <button
+          type="button"
           className="rounded px-2 py-1 text-[11px] font-bold"
           style={{ background: C, color: "#0a0a0a" }}
           onClick={() => { m.refresh(); bump(); }}

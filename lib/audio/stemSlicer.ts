@@ -7,6 +7,7 @@ import { PHRASE_FRACS } from "./loopLevels";
 import { pickSlices, poolSlices, type Slice } from "./stemSlices";
 import { stemSamplePad } from "./stemSamplePad";
 import type { PadSample } from "@/lib/stemSamples";
+import { normGain } from "./padLoudness";
 
 export type SliceTag = "bass" | "other" | "guitar" | "piano";
 const PREFIX: Record<SliceTag, string> = { bass: "BAS", other: "AUT", guitar: "GUI", piano: "PNO" };
@@ -24,6 +25,7 @@ export class StemSlicer extends JamModule {
   latch = false;
   fracIdx = 0;
   source: "notes" | "samples" = "notes";
+  normalize = true; // every pad at the same loudness (lib/audio/padLoudness.ts)
   liveBeats: (typeof LIVE_BEATS)[number] = 4; // a LIVE capture: the last beats played of this stem, on the grid
   private liveAll: Record<string, (Slice | null)[]> = (() => {
     try { return JSON.parse(localStorage.getItem(LIVE_STORE) ?? "{}") ?? {}; } catch { return {}; }
@@ -146,11 +148,12 @@ export class StemSlicer extends JamModule {
     }
 
     const len = Math.max(0.06, seg.dur * frac);
+    const lvl = this.level * (this.normalize && this.lastBuf ? normGain(this.lastBuf, seg.t, seg.dur) : 1); // measured on the whole slice
     const g = ctx.createGain();
     g.gain.value = 0;
     g.gain.setValueAtTime(0, when);
-    g.gain.linearRampToValueAtTime(this.level, when + 0.003);
-    g.gain.setValueAtTime(this.level, when + len - 0.03);
+    g.gain.linearRampToValueAtTime(lvl, when + 0.003);
+    g.gain.setValueAtTime(lvl, when + len - 0.03);
     g.gain.linearRampToValueAtTime(0, when + len);
 
     const src = ctx.createBufferSource();
@@ -224,6 +227,16 @@ export class StemSlicer extends JamModule {
 
   setLevel(v: number): void {
     this.level = v;
+    jamChanged();
+  }
+
+  setNormalize(v: boolean): void {
+    this.normalize = v;
+    jamChanged();
+  }
+
+  setLiveBeats(n: (typeof LIVE_BEATS)[number]): void {
+    this.liveBeats = n;
     jamChanged();
   }
 
@@ -302,7 +315,7 @@ export class StemSlicer extends JamModule {
   }
 
   protected keep(): string[] {
-    return ["level", "repeat", "latch", "fracIdx", "source", "liveBeats"];
+    return ["level", "repeat", "latch", "fracIdx", "source", "liveBeats", "normalize"];
   }
 
   protected resetFields(): void {
@@ -313,6 +326,7 @@ export class StemSlicer extends JamModule {
     this.fracIdx = 0;
     this.source = "notes";
     this.liveBeats = 4;
+    this.normalize = true;
   }
 
   warning(): string | null {
