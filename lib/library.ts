@@ -7,7 +7,7 @@ import type { QualityLevel } from "@/lib/quality";
 // - The actual audio for imported files lives in IndexedDB (blobs, survives reload).
 import { DeckSettings } from "./audio/Deck";
 
-export type TrackSource = "local" | "youtube" | "audius" | "soundcloud" | "deezer";
+export type TrackSource = "local" | "youtube" | "audius" | "soundcloud" | "deezer" | "spotify";
 
 export interface LibTrack {
   id: string;
@@ -40,6 +40,8 @@ export interface Playlist {
   id: string;
   name: string;
   trackIds: string[];
+  posterLook?: string; // the cover was drawn by lib/setPoster.ts with this look: it is redrawn when the set is renamed
+  posterLine?: string; // the line under the name on a drawn poster (date, place)
   transitionSec?: number; // crossfade length (s) used between tracks when this set auto-mixes
   transitionType?: TransitionType; // crossfade curve/style — see TRANSITION_TYPES in MediaLibrary
   preloadSec?: number; // seconds before a track ends to start warming the next one (fewer gaps)

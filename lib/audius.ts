@@ -29,7 +29,7 @@ export interface AudiusTrack {
   artwork: string | null;
   genre?: string;
   bpm?: number | null;
-  source?: "audius" | "youtube" | "soundcloud" | "deezer"; // which catalog the result came from
+  source?: "audius" | "youtube" | "soundcloud" | "deezer" | "spotify"; // which catalog the result came from
 }
 
 interface RawTrack {

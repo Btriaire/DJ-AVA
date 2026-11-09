@@ -1,6 +1,19 @@
 import type { Playlist, LibTrack } from "@/lib/library";
-import { Icon, fmtDur } from "../prep/parts";
+import { Icon, Mosaic, fmtDur } from "../prep/parts";
 import { DECK_COLOR } from "./types";
+
+// Step 4 of the Sets view: the set's poster and name, then the three ways to send it to the decks.
+// The decks strip above it plays, pauses and stops what was sent.
+function Playing({ colors }: { colors: string[] }) {
+  return (
+    <span className="mt-2 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider">
+      {colors.map((c) => (
+        <span key={c} className="h-2 w-2 rounded-full motion-safe:animate-pulse" style={{ background: c }} />
+      ))}
+      <span className="ml-1">En cours</span>
+    </span>
+  );
+}
 
 export function LaunchPanel(props: {
   playlist: Playlist | null;
@@ -14,97 +27,53 @@ export function LaunchPanel(props: {
 }) {
   const { playlist, tracks, driving, ready, totalSec, bpmRange, onPlay, onBack } = props;
   const hasEnoughTracks = tracks.length >= 2;
-  const isDriving = driving.A || driving.B || driving.relay;
+  const card = "flex h-36 flex-col items-center justify-center rounded-xl p-4 text-center disabled:cursor-not-allowed disabled:opacity-50";
 
   return (
-    <div className="prep-card p-6 space-y-6">
-      <div className="space-y-2">
-        <h2 className="text-xl font-bold">Lancer le set</h2>
-        <p className="text-sm text-gray-600">
-          {ready} sur {tracks.length} titres prêts • Durée totale : {fmtDur(totalSec)} •
-          Gamme de tempos : {bpmRange}
-        </p>
+    <div className="prep-card space-y-6 p-6">
+      <div className="flex items-center gap-4">
+        <Mosaic tracks={tracks} size={96} accent="var(--prep-accent)" cover={playlist?.cover} />
+        <div className="min-w-0 space-y-1">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500">Lancer le set</p>
+          <h2 className="truncate text-2xl font-black text-white" title={playlist?.name}>{playlist?.name ?? "Aucun set"}</h2>
+          <p className="text-sm text-neutral-400">
+            {ready}/{tracks.length} titres prêts · {fmtDur(totalSec)} · {bpmRange}
+          </p>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <button
-          className={`prep-btn-accent h-32 flex flex-col items-center justify-center p-4 ${
-            !hasEnoughTracks ? "opacity-50 cursor-not-allowed" : ""
-          }`}
-          onClick={() => hasEnoughTracks && onPlay("relay")}
-          disabled={!hasEnoughTracks}
-        >
-          <Icon name="swap" className="h-8 w-8 mb-2" />
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <button type="button" className={`prep-btn-accent ${card}`} onClick={() => onPlay("relay")} disabled={!hasEnoughTracks}>
+          <Icon name="swap" size={28} className="mb-2" />
           <span className="font-bold">Relais automatique</span>
-          <p className="text-xs text-center mt-1">
-            Les deux platines s&apos;enchaînent seules (A→B→A) avec les enchaînements du set.
-          </p>
-          {driving.relay && (
-            <div className="mt-2 flex space-x-1">
-              <span className={`h-2 w-2 rounded-full bg-${DECK_COLOR.A}`} />
-              <span className={`h-2 w-2 rounded-full bg-${DECK_COLOR.B}`} />
-            </div>
-          )}
+          <span className="mt-1 text-xs">Les deux platines s&apos;enchaînent seules (A→B→A) avec les enchaînements du set.</span>
+          {driving.relay && <Playing colors={[DECK_COLOR.A, DECK_COLOR.B]} />}
         </button>
 
-        <button
-          className={`prep-btn-ghost h-32 flex flex-col items-center justify-center p-4 ${
-            !hasEnoughTracks ? "opacity-50 cursor-not-allowed" : ""
-          }`}
-          onClick={() => hasEnoughTracks && onPlay("A")}
-          disabled={!hasEnoughTracks}
-        >
-          <Icon name="disc" className={`h-8 w-8 mb-2 text-${DECK_COLOR.A}`} />
-          <span className="font-bold">Charger sur platine A</span>
-          <p className="text-xs text-center mt-1">
-            Le set se met en file sur la platine A, en boucle.
-          </p>
-          {driving.A && (
-            <div className="mt-2">
-              <span className={`h-2 w-2 rounded-full bg-${DECK_COLOR.A}`} />
-            </div>
-          )}
-        </button>
-
-        <button
-          className={`prep-btn-ghost h-32 flex flex-col items-center justify-center p-4 ${
-            !hasEnoughTracks ? "opacity-50 cursor-not-allowed" : ""
-          }`}
-          onClick={() => hasEnoughTracks && onPlay("B")}
-          disabled={!hasEnoughTracks}
-        >
-          <Icon name="disc" className={`h-8 w-8 mb-2 text-${DECK_COLOR.B}`} />
-          <span className="font-bold">Charger sur platine B</span>
-          <p className="text-xs text-center mt-1">
-            Le set se met en file sur la platine B, en boucle.
-          </p>
-          {driving.B && (
-            <div className="mt-2">
-              <span className={`h-2 w-2 rounded-full bg-${DECK_COLOR.B}`} />
-            </div>
-          )}
-        </button>
+        {(["A", "B"] as const).map((side) => (
+          <button key={side} type="button" className={`prep-btn-ghost ${card}`} onClick={() => onPlay(side)} disabled={!hasEnoughTracks}>
+            <span style={{ color: DECK_COLOR[side] }}>
+              <Icon name="disc" size={28} className="mb-2" />
+            </span>
+            <span className="font-bold">Charger sur platine {side}</span>
+            <span className="mt-1 text-xs text-neutral-400">Le set se met en file sur la platine {side}, en boucle.</span>
+            {driving[side] && <Playing colors={[DECK_COLOR[side]]} />}
+          </button>
+        ))}
       </div>
 
       {!hasEnoughTracks && (
-        <div className="text-sm text-yellow-600 flex items-center">
-          <Icon name="bolt" className="h-4 w-4 mr-2" />
-          <span>Ajoutez au moins 2 titres pour lancer le set.</span>
-        </div>
+        <p className="flex items-center gap-2 text-sm text-amber-400">
+          <Icon name="bolt" size={16} />
+          Ajoutez au moins 2 titres pour lancer le set.
+        </p>
       )}
 
-      <div className="flex justify-between pt-4 border-t border-gray-200">
-        <button className="prep-btn-ghost" onClick={onBack}>
-          Retour aux titres
+      <div className="flex items-center justify-between border-t border-[var(--prep-line)] pt-4">
+        <button type="button" className="prep-btn-ghost min-h-9 px-3 text-xs" onClick={onBack}>
+          Retour au mix
         </button>
-        <div className="flex space-x-2">
-          {isDriving && (
-            <button className="prep-btn-ghost" onClick={() => {}}>
-              <Icon name="pause" className="h-4 w-4 mr-1" />
-              Arrêter
-            </button>
-          )}
-        </div>
+        <span className="text-[11px] text-neutral-500">La barre des platines, au-dessus, met chaque platine en pause et coupe l&apos;automix.</span>
       </div>
     </div>
   );

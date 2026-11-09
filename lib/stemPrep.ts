@@ -2,10 +2,51 @@ import { getMemLevel } from "@/lib/memoryGovernor";
 import { requestFreeMemory } from "@/lib/memory";
 import { idbGetBlob, idbPutBlob, loadLibrary, saveLibrary, uid, extractCover, type LibTrack, type TrackSource } from "@/lib/library";
 
-// htdemucs_ft overruns the Metal GPU watchdog on MLX; htdemucs stays reliable
-export const PREP_MODEL = "htdemucs";
+// The prepared stems: 4 tracks (htdemucs) or 6 (htdemucs_6s: + guitar and piano), chosen in Préparation and remembered.
+// htdemucs_ft overruns the Metal GPU watchdog on MLX; htdemucs and htdemucs_6s (one model each) stay reliable.
+export type PrepModel = "htdemucs" | "htdemucs_6s";
+export const PREP_MODEL: PrepModel = "htdemucs"; // the model of entries prepared before the choice existed
 export const PREP_SHIFTS = 2;
-export const PREP_STEMS: readonly string[] = ["drums", "bass", "other", "vocals"];
+export const PREP_STEMS_BY_MODEL: Record<PrepModel, readonly string[]> = {
+  htdemucs: ["drums", "bass", "other", "vocals"],
+  htdemucs_6s: ["drums", "bass", "other", "vocals", "guitar", "piano"],
+};
+export const PREP_STEMS: readonly string[] = PREP_STEMS_BY_MODEL.htdemucs;
+const MODEL_KEY = "djsynth.stemprep.model.v1";
+let prepModel: PrepModel | null = null;
+export function getPrepModel(): PrepModel {
+  if (prepModel) return prepModel;
+  try {
+    const v = localStorage.getItem(MODEL_KEY);
+    prepModel = v === "htdemucs" || v === "htdemucs_6s" ? v : "htdemucs_6s";
+  } catch {
+    prepModel = "htdemucs_6s";
+  }
+  return prepModel;
+}
+export function setPrepModel(m: PrepModel): void {
+  prepModel = m;
+  try {
+    localStorage.setItem(MODEL_KEY, m);
+  } catch {
+    // private window: the choice holds for this visit
+  }
+  subscribers.forEach((cb) => cb());
+}
+// the model a prepared song was made with (by its stems hash): 4-track entries from before keep working
+export function prepModelOf(hash: string | undefined): PrepModel {
+  const r = hash ? state.ready.find((x) => x.hash === hash) : undefined;
+  return r?.model === "htdemucs_6s" ? "htdemucs_6s" : "htdemucs";
+}
+// several hashes asked to the server in one call per model (their stems live in different cache folders)
+export function hashesByModel(hashes: string[]): [PrepModel, string[]][] {
+  const by = new Map<PrepModel, string[]>();
+  for (const h of hashes) {
+    const m = prepModelOf(h);
+    by.set(m, [...(by.get(m) ?? []), h]);
+  }
+  return [...by.entries()];
+}
 // quality of the prepared stems; a deck must ask for the SAME variant to find them in the server cache
 // (cache folder <hash>/<model>[_ultra][_wav]), see Deck.adoptPreparedStems()
 export const PREP_OPTS = { ultra: true, lossless: true } as const;
@@ -24,6 +65,7 @@ export interface PrepJob {
   error?: string;
   addedAt: number;
   hash?: string;
+  model?: PrepModel; // missing on jobs queued before the 4/6 choice = htdemucs
 }
 
 export interface PrepReady {
@@ -134,7 +176,7 @@ async function processQueue(): Promise<void> {
         ),
       });
       try {
-        await monitorSeparation(job.trackId, job.hash);
+        await monitorSeparation(job.trackId, job.hash, job.model ?? PREP_MODEL);
       } catch (error) {
         saveState({
           ...state,
@@ -172,7 +214,7 @@ async function processQueue(): Promise<void> {
               : j
           ),
         });
-        const { hash } = await startSeparation(bytes);
+        const { hash } = await startSeparation(bytes, job.model ?? PREP_MODEL);
         saveState({
           ...state,
           jobs: state.jobs.map(j =>
@@ -181,7 +223,7 @@ async function processQueue(): Promise<void> {
               : j
           ),
         });
-        await monitorSeparation(job.trackId, hash);
+        await monitorSeparation(job.trackId, hash, job.model ?? PREP_MODEL);
       } catch (error) {
         saveState({
           ...state,
@@ -214,9 +256,9 @@ async function fetchTrackBytes(job: PrepJob): Promise<ArrayBuffer> {
   }
 }
 
-async function startSeparation(bytes: ArrayBuffer): Promise<{ hash: string }> {
+async function startSeparation(bytes: ArrayBuffer, model: PrepModel): Promise<{ hash: string }> {
   const res = await fetch(
-    `/api/stems/separate?prefetch=1&model=${PREP_MODEL}&shifts=${PREP_SHIFTS}${PREP_QS}`,
+    `/api/stems/separate?prefetch=1&model=${model}&shifts=${PREP_SHIFTS}${PREP_QS}`,
     { method: "POST", body: bytes }
   );
   if (!res.ok) {
@@ -227,14 +269,14 @@ async function startSeparation(bytes: ArrayBuffer): Promise<{ hash: string }> {
   return await res.json() as { hash: string };
 }
 
-async function monitorSeparation(trackId: string, hash: string): Promise<void> {
+async function monitorSeparation(trackId: string, hash: string, model: PrepModel): Promise<void> {
   let idlePolls = 0; // consecutive polls with nothing running on the server
   while (true) {
     const job = state.jobs.find(j => j.trackId === trackId);
     if (!job) return; // Job was canceled
 
     const s = await (await fetch(
-      `/api/stems/status?hash=${hash}&model=${PREP_MODEL}${PREP_QS}`
+      `/api/stems/status?hash=${hash}&model=${model}${PREP_QS}`
     )).json() as { cached?: boolean; progress?: number | null; error?: string | null };
 
     if (s.cached) {
@@ -243,14 +285,14 @@ async function monitorSeparation(trackId: string, hash: string): Promise<void> {
       saveState({
         jobs: state.jobs.filter(j => j.trackId !== trackId),
         ready: [
-          ...state.ready,
+          ...state.ready.filter((r) => r.trackId !== trackId), // prepared again (in 6 tracks): the new stems replace the old
           {
             trackId,
             name: job.name,
             source: job.source,
             url: job.url,
             hash,
-            model: PREP_MODEL,
+            model,
             ultra: PREP_OPTS.ultra,
             lossless: PREP_OPTS.lossless,
             preparedAt: Date.now(),
@@ -259,7 +301,7 @@ async function monitorSeparation(trackId: string, hash: string): Promise<void> {
         ],
       });
       // the analyses made once on the server from the new stems: notes, voice, effects, human voices, Stems Pad samples
-      void fetch(`/api/stems/map?hash=${hash}&model=${PREP_MODEL}${PREP_QS}`).catch(() => undefined);
+      void fetch(`/api/stems/map?hash=${hash}&model=${model}${PREP_QS}`).catch(() => undefined);
       return;
     }
 
@@ -295,9 +337,11 @@ export function subscribePrep(cb: () => void): () => void {
 
 export function enqueuePrep(tracks: LibTrack[]): number {
   // a job that failed is not "in progress": it can be queued again (its old error is replaced)
+  // a song already prepared with the chosen model is skipped; prepared in 4 tracks while 6 are asked, it is done again
+  const model = getPrepModel();
   const existingIds = new Set([
     ...state.jobs.filter(j => j.status !== "error").map(j => j.trackId),
-    ...state.ready.map(r => r.trackId),
+    ...state.ready.filter(r => r.model === model).map(r => r.trackId),
   ]);
 
   const newJobs = tracks
@@ -310,6 +354,7 @@ export function enqueuePrep(tracks: LibTrack[]): number {
       status: "queued" as const,
       progress: 0,
       addedAt: Date.now(),
+      model,
     }));
 
   if (newJobs.length > 0) {

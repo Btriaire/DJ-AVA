@@ -22,6 +22,7 @@ import {
   type LibraryAudit,
   type Playlist,
 } from "@/lib/library";
+import { drawPoster, posterSubtitle } from "@/lib/setPoster";
 import { enqueuePrep, getPrepState, getPreparedStems, PREP_OPTS, subscribePrep } from "@/lib/stemPrep";
 import { queueAnalysis } from "@/lib/analyze";
 import { pickNext, type Cue } from "@/lib/setPicker";
@@ -42,6 +43,7 @@ import { playLines, speak, stopSpeaking } from "@/lib/djVoice";
 import { INTRO_LINE, OUTRO_LINE, djLineFor } from "@/lib/djLines";
 import { prepareSet, useSetPrep, wantsStems } from "@/lib/setPrep";
 import { useStemsShared } from "@/lib/stemsShared";
+import { registerDeckStep } from "@/lib/deckStep";
 import { type QueueTrack, getRelayHost, publishRelayHost, registerRelayHost, relayHostStart, relayHostStop, subscribeRelayHost } from "@/lib/relayHost";
 import { cachedLoudness, loudnessFor, matchTrimDb } from "@/lib/audio/levelMatch";
 import { getDjLive, setDjStems, showDjAction, useDjLive } from "@/lib/djLive";
@@ -118,6 +120,7 @@ const SRC_BADGE: Record<TrackSource, { label: string; color: string }> = {
   youtube: { label: "YT", color: "#ef4444" },
   soundcloud: { label: "SC", color: "#ff7700" },
   deezer: { label: "DEEZER", color: "#a238ff" },
+  spotify: { label: "SPOTIFY", color: "#1ed760" },
 };
 
 // transition styles for the A→B→A auto-mix — inspired by the crossfade curves
@@ -146,7 +149,7 @@ const TRANSITION_TYPES = TRANSITIONS;
 // worth resurrecting, but "I just searched, then tapped over to Playlist" is.
 const SEARCH_STATE_KEY = "djsynth.searchState.v1";
 interface SearchState {
-  tab: "files" | "playlists" | "audius" | "youtube" | "soundcloud" | "deezer" | "spotdl" | "auto";
+  tab: "files" | "playlists" | "audius" | "youtube" | "soundcloud" | "deezer" | "spotdl" | "spotify" | "auto";
   q: string;
   durKey: string;
   results: AudiusTrack[];
@@ -179,7 +182,7 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   const [initialSearch] = useState(loadSearchState);
   const [pending] = useState(readPendingSet); // read-only here: the effect below consumes the key
   const [tab, setTab] = useState<
-    "files" | "playlists" | "audius" | "youtube" | "soundcloud" | "deezer" | "spotdl" | "auto"
+    "files" | "playlists" | "audius" | "youtube" | "soundcloud" | "deezer" | "spotdl" | "spotify" | "auto"
   >(pending?.side === "open" ? "playlists" : initialSearch?.tab ?? "files");
   const [q, setQ] = useState(initialSearch?.q ?? "");
   // spotDL keeps a Python worker: start it as soon as the tab opens, the first search is then as fast as the next ones
@@ -478,7 +481,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
 
   // --- import local files into the collection (blob → IndexedDB) ---
   // "à jouer plus tard": file a YouTube/Audius search result in the library, flagged for later
-  function markLater(t: AudiusTrack, source: "youtube" | "audius") {
+  function markLater(t: AudiusTrack, source: "youtube" | "audius" | "spotify") {
     persist((d) => {
       if (d.tracks.some((x) => x.later && x.url === t.id)) return d;
       const track: LibTrack = {
@@ -629,7 +632,9 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
             ? `https://www.youtube.com/watch?v=${t.url}`
             : t.source === "soundcloud"
               ? t.url ?? ""
-              : "";
+              : t.source === "spotify"
+                ? `https://open.spotify.com/track/${t.url}`
+                : "";
       }
       const fx = side === "A" ? t.fxA : t.fxB;
       if (fx) deck.applySettings(fx);
@@ -857,7 +862,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   function duplicatePlaylist(id: string) {
     const original = dataRef.current.playlists.find((pl) => pl.id === id);
     if (!original) return;
-    const copy = { id: uid(), name: `${original.name} (copie)`, trackIds: [...original.trackIds] };
+    const copy = redrawn({ id: uid(), name: `${original.name} (copie)`, trackIds: [...original.trackIds], cover: original.cover, posterLook: original.posterLook, posterLine: original.posterLine });
     persist((d) => ({ ...d, playlists: [...d.playlists, copy] }));
     setActivePl(copy.id);
     flash(`Set dupliqué : ${original.name}`);
@@ -919,8 +924,22 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     persist((d) => ({ ...d, playlists: d.playlists.map((p) => (p.id === plId ? { ...p, dj, mixPlan: on ? planMix(tracks, "flow", dj, p.mixPlan) : p.mixPlan } : p)) }));
     flash(on ? "Plan DJ calculé : le relais suit ces enchaînements" : "Plan DJ désactivé : un seul style pour tout le set");
   }
+  // a poster drawn at the set's name is redrawn when its name or its line changes
+  function redrawn(pl: Playlist): Playlist {
+    if (!pl.posterLook) return pl;
+    const byId = new Map(dataRef.current.tracks.map((t) => [t.id, t]));
+    const tracks = pl.trackIds.map((tid) => byId.get(tid)).filter((t): t is LibTrack => !!t);
+    return { ...pl, cover: drawPoster(pl.posterLook, pl.name, posterSubtitle(tracks, pl.posterLine)) || pl.cover };
+  }
   function renameNow(id: string, name: string) {
-    persist((d) => ({ ...d, playlists: d.playlists.map((pl) => (pl.id === id ? { ...pl, name } : pl)) }));
+    persist((d) => ({ ...d, playlists: d.playlists.map((pl) => (pl.id === id ? redrawn({ ...pl, name }) : pl)) }));
+  }
+  function setPosterLine(id: string, line: string) {
+    persist((d) => ({ ...d, playlists: d.playlists.map((pl) => (pl.id === id ? redrawn({ ...pl, posterLine: line || undefined }) : pl)) }));
+  }
+  function setCoverNow(id: string, cover: string | undefined, look?: string) {
+    persist((d) => ({ ...d, playlists: d.playlists.map((pl) => (pl.id === id ? { ...pl, cover, posterLook: cover ? look : undefined } : pl)) }));
+    flash(cover ? "Affichette du set mise à jour" : "Affichette : retour à la mosaïque des titres");
   }
   function clearNow(id: string) {
     persist((d) => ({ ...d, playlists: d.playlists.map((pl) => (pl.id === id ? { ...pl, trackIds: [] } : pl)) }));
@@ -1692,6 +1711,15 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       },
     };
   });
+  // the Console's ⏮ ⏭ go through here: they follow the set sent to the deck, like the decks strip of the Sets view
+  const stepRef = useRef<(side: "A" | "B", dir: 1 | -1) => Promise<boolean>>(async () => false);
+  useEffect(() => {
+    stepRef.current = stepSingle;
+  });
+  useEffect(() => {
+    if (!splitLayout) return;
+    return registerDeckStep((side, dir) => stepRef.current(side, dir));
+  }, [splitLayout]);
   useEffect(() => {
     if (!splitLayout) return;
     return registerRelayHost({ start: (id, idx) => hostApi.current.start(id, idx), stop: () => hostApi.current.stop(), zap: (k) => hostApi.current.zap(k), swap: (a, b) => hostApi.current.swap(a, b), skipNow: () => hostApi.current.skipNow() });
@@ -2164,11 +2192,11 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   // Jump a deck to the previous / next single filed for it (loops the queue).
   // Works standalone and keeps the LIVE / relay indices in sync so an active
   // auto-loop continues from where you skipped to. Preserves play/pause state.
-  async function stepSingle(side: "A" | "B", dir: 1 | -1) {
+  async function stepSingle(side: "A" | "B", dir: 1 | -1): Promise<boolean> {
     const q = liveQueue(side);
     if (!q.length) {
       flash(`Deck ${side} : aucun single classé`);
-      return;
+      return false;
     }
     const deck = side === "A" ? engine.deckA : engine.deckB;
     let cur = liveIdx.current[side];
@@ -2182,6 +2210,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     const wasPlay = deck.playing;
     await loadToDeck(q[ni], side);
     if (wasPlay) deck.play();
+    return true;
   }
 
   const COLOR_A = "#ffcc00";
@@ -2764,7 +2793,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   const onlineSources = (
     <>
           {/* ===== ONLINE catalogue search (Audius / YouTube / SoundCloud / Deezer) ===== */}
-          {(tab === "audius" || tab === "youtube" || tab === "soundcloud" || tab === "deezer" || tab === "spotdl") && (
+          {(tab === "audius" || tab === "youtube" || tab === "soundcloud" || tab === "deezer" || tab === "spotdl" || tab === "spotify") && (
             <div className="flex flex-col gap-2">
               <div className="flex gap-2">
                 <input
@@ -2779,6 +2808,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                         ? "Rechercher un titre sur SoundCloud…"
                         : tab === "deezer"
                           ? "Rechercher sur Deezer (aperçu 30s)…"
+                          : tab === "spotify"
+                            ? "Rechercher un titre Spotify (via spotDL)…"
                           : "Rechercher un titre, un artiste…"
                   }
                   className="flex-1 rounded bg-neutral-800 px-3 py-2 text-sm outline-none ring-1 ring-neutral-700 focus:ring-[#ffcc00]"
@@ -2821,6 +2852,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                         ? "L'audio SoundCloud est importé et passe dans le mixeur."
                         : tab === "deezer"
                           ? "Deezer ne fournit qu'un aperçu de 30s (catalogue protégé)."
+                          : tab === "spotify"
+                            ? "Le catalogue Spotify, via spotDL : il trouve l'audio du titre et le passe dans le mixeur, ou le télécharge en MP3 avec ses tags."
                           : "Explore le catalogue libre Audius."}
                   </p>
                 )}
@@ -2842,8 +2875,20 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                         {t.bpm ? ` · ${t.bpm} BPM` : ""}
                       </div>
                     </div>
+                    {tab === "spotify" && (
+                      <a
+                        href={`/api/spotify/stream?id=${encodeURIComponent(t.id)}&dl=1`}
+                        download
+                        onClick={() => flash(`Téléchargement de « ${t.title} » : spotDL prépare le MP3 (quelques secondes)…`)}
+                        className="hw-btn shrink-0 px-2 py-1 text-xs"
+                        style={{ ["--led" as string]: "#1ed760", color: "#1ed760" }}
+                        title="Télécharger le MP3 (320 kb/s, avec titre, artiste, album et pochette), fait par spotDL"
+                      >
+                        ⬇ MP3
+                      </a>
+                    )}
                     <button
-                      onClick={() => markLater(t, (tab === "youtube" || tab === "spotdl") ? "youtube" : "audius")}
+                      onClick={() => markLater(t, tab === "youtube" || tab === "spotdl" ? "youtube" : tab === "spotify" ? "spotify" : "audius")}
                       className="hw-btn shrink-0 px-2 py-1 text-xs"
                       title="Garder ce morceau pour plus tard (préparer ses stems en lot)"
                     >
@@ -3358,6 +3403,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           stemOf,
           driving: ap ? driving(ap.id) : { A: false, B: false, relay: false },
           onRename: (name) => ap && renameNow(ap.id, name),
+          onCover: (cover, look) => ap && setCoverNow(ap.id, cover, look),
+          onPosterLine: (line) => ap && setPosterLine(ap.id, line),
           onDuplicate: () => ap && duplicatePlaylist(ap.id),
           onClear: () => ap && clearNow(ap.id),
           onDelete: () => ap && delPlaylist(ap.id),
@@ -3390,6 +3437,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
             { key: "soundcloud", label: "SoundCloud", color: "#ff7700" },
             { key: "deezer", label: "Deezer", color: "#a238ff" },
             { key: "spotdl", label: "spotDL", color: "#84cc16" },
+            { key: "spotify", label: "Spotify", color: "#1ed760" },
             { key: "auto", label: "Auto-IA", color: "#fbbf24" },
           ],
           tab,
@@ -3723,6 +3771,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                 ["soundcloud", "☁ SoundCloud", "#ff7700"],
                 ["deezer", "◆ Deezer", "#a238ff"],
                 ["spotdl", "spotDL", "#84cc16"],
+                ["spotify", "● Spotify", "#1ed760"],
                 ["auto", "✨ Auto-IA", "#fbbf24"],
               ] as const
             ).map(([key, label, color]) => (

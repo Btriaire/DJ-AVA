@@ -6,7 +6,19 @@ const http = require("node:http");
 const net = require("node:net");
 const fs = require("node:fs");
 
-const PROJECT = process.env.DJSYNTH_HOME || "/Users/bruno/dj-app";
+// The project folder the app serves: DJSYNTH_HOME, else the folder mac/install.sh built it from (written into the app
+// as project-path.txt), else the historical default. A wrong folder made the server spawn fail with a bare ENOENT.
+function projectDir() {
+  if (process.env.DJSYNTH_HOME) return process.env.DJSYNTH_HOME;
+  try {
+    const p = fs.readFileSync(path.join(__dirname, "project-path.txt"), "utf8").trim();
+    if (p) return p;
+  } catch {
+    /* an app built before project-path.txt existed */
+  }
+  return "/Users/bruno/dj-app";
+}
+const PROJECT = projectDir();
 
 // More memory for the page: by default V8 caps the JavaScript heap of a window at about a quarter of the RAM
 // (2 GB on an 8 GB Mac). Half the RAM, up to 8 GB, leaves room for long sets and stems. Decoded audio lives
@@ -76,6 +88,14 @@ function waitForServer(url, timeoutMs) {
   });
 }
 
+// what the local server needs before it can start: the project folder, its compiled build, its modules
+function missingForServer() {
+  if (!fs.existsSync(PROJECT)) return `Le dossier du projet est introuvable :\n${PROJECT}\n\nRelance « sh mac/install.sh » depuis le dossier du projet (ou règle DJSYNTH_HOME).`;
+  if (!fs.existsSync(path.join(PROJECT, ".next", "BUILD_ID"))) return `Le projet n'est pas compilé :\n${PROJECT}\n\nLance « sh mac/install.sh » depuis ce dossier.`;
+  if (!fs.existsSync(path.join(PROJECT, "node_modules", "next"))) return `Les modules du projet manquent :\n${PROJECT}\n\nLance « npm install » puis « sh mac/install.sh » depuis ce dossier.`;
+  return null;
+}
+
 function startServer(port) {
   // server.cjs stops the server by itself if this app dies without cleaning up
   server = spawn(process.execPath, [path.join(PROJECT, "mac", "server.cjs"), PROJECT, String(port)], {
@@ -91,7 +111,16 @@ function startServer(port) {
     },
     stdio: ["ignore", "ignore", "pipe"],
   });
-  fs.writeFileSync(pidFile, String(server.pid));
+  // a spawn that fails (no folder, no binary) must not become an uncaught exception: say what is wrong and quit
+  server.on("error", (e) => {
+    logCrash(`server spawn error: ${e.message} (project ${PROJECT})`);
+    // ENOENT names the executable even when it is the working folder that is missing: say which one is gone
+    const exe = fs.existsSync(process.execPath) ? "présent" : "ABSENT (l'app a été remplacée pendant qu'elle tournait : relance-la)";
+    const dir = fs.existsSync(PROJECT) ? "présent" : "ABSENT";
+    dialog.showErrorBox("DJSynth", `Le serveur local n'a pas pu démarrer : ${e.message}\n\nExécutable : ${exe}\nDossier du projet (${PROJECT}) : ${dir}`);
+    app.quit();
+  });
+  if (server.pid) fs.writeFileSync(pidFile, String(server.pid));
   server.stderr.on("data", (d) => process.stderr.write(d));
   server.on("exit", () => {
     server = null;
@@ -172,6 +201,13 @@ app.whenReady().then(async () => {
     await event.sender.session.clearCache();
     return true;
   });
+  const missing = missingForServer();
+  if (missing) {
+    logCrash(`cannot start: ${missing.split("\n")[0]} (project ${PROJECT})`);
+    dialog.showErrorBox("DJSynth", missing);
+    app.quit();
+    return;
+  }
   const port = await freePort(3217);
   startServer(port);
   const url = `http://localhost:${port}`;

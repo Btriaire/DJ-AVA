@@ -24,7 +24,7 @@ export function AmbientHero({
   ambient?: string;
   cover?: ReactNode;
   overline: string;
-  title: string;
+  title: ReactNode;
   subtitle?: ReactNode;
   actions?: ReactNode;
   children?: ReactNode;

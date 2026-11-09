@@ -4,6 +4,8 @@ set -e
 cd "$(dirname "$0")/.."
 # .next may point outside the project (caches on another volume): the build needs the project modules on its path
 NODE_PATH="$(pwd -P)/node_modules" npx next build --webpack
+# the app serves THIS folder (where it was built), wherever the project was cloned
+pwd -P > mac/project-path.txt
 npx @electron/packager mac DJSynth --platform=darwin --arch=arm64 --out=/tmp/djsynth-pkg --overwrite --extend-info=mac/extend-info.plist
 # quit cleanly (the app stops its own server), then clear any server left behind by an older version
 osascript -e 'tell application "DJSynth" to quit' 2>/dev/null || true

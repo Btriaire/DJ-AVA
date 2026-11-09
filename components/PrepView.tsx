@@ -7,7 +7,8 @@ import { splitTitle } from "@/lib/trackTitle";
 import { dedupeOnline, rankOnline } from "@/lib/trackRank";
 import { useState, useRef, useMemo, useSyncExternalStore, useEffect, useCallback } from "react";
 import { loadLibrary, saveLibrary, uid, idbGetBlob } from "@/lib/library";
-import { enqueuePrep, getPrepState, subscribePrep, forgetPrep, cancelPrep, PREP_MODEL, PREP_QS } from "@/lib/stemPrep";
+import { enqueuePrep, getPrepState, subscribePrep, forgetPrep, cancelPrep, PREP_QS, hashesByModel, prepModelOf, getPrepModel, type PrepModel } from "@/lib/stemPrep";
+import { PrepModelSwitch } from "./prep/PrepModelSwitch";
 import { padJob, padReady, runPadNow, runStemsPad, subscribePadJob } from "@/lib/stemsPadPrep";
 import { PadPill } from "./prep/PadPill";
 import { EqPill } from "./prep/EqPill";
@@ -60,8 +61,12 @@ const SRC_BADGE: Record<string, { label: string; color: string }> = {
   audius: { label: "AUDIUS", color: "#ffcc00" },
   youtube: { label: "YT", color: "#ef4444" },
   soundcloud: { label: "SC", color: "#ff7700" },
-  deezer: { label: "DEEZER", color: "#a238ff" }
+  deezer: { label: "DEEZER", color: "#a238ff" },
+  spotify: { label: "SPOTIFY", color: "#1ed760" },
 };
+
+// the audio quality is read from the YouTube page: not for local files, nor for Spotify titles (spotDL picks the audio)
+const qualityCheckable = (t: LibTrack) => t.source !== "local" && t.source !== "spotify";
 
 const QUALITY_COLORS: Record<QualityLevel | "unknown", string> = {
   HR: "#a78bfa",
@@ -150,6 +155,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   };
   const libRef = useRef(lib);
   const prepState = useSyncExternalStore(subscribePrep, getPrepState, getPrepState);
+  const prepModel = useSyncExternalStore(subscribePrep, getPrepModel, () => "htdemucs_6s" as PrepModel); // 4 or 6 tracks for the next preparations
   const sharedStems = useStemsShared();
   const setPreps = useSetPrep();
 
@@ -255,9 +261,15 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
     const hashes = laterTracks.map((t) => t.stemHash).filter((h): h is string => !!h);
     const check = () => {
       if (!hashes.length) return;
-      fetch(`/api/stems/fx?status=1&model=${PREP_MODEL}${PREP_QS}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ hashes }) })
-        .then((r) => r.json() as Promise<{ ready?: string[] }>)
-        .then((j) => { if (live) setEqReadySet(new Set(j.ready ?? [])); })
+      // one call per model: 4- and 6-track stems live in different cache folders
+      Promise.all(
+        hashesByModel(hashes).map(([model, list]) =>
+          fetch(`/api/stems/fx?status=1&model=${model}${PREP_QS}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ hashes: list }) })
+            .then((r) => r.json() as Promise<{ ready?: string[] }>)
+            .then((j) => j.ready ?? [])
+        )
+      )
+        .then((parts) => { if (live) setEqReadySet(new Set(parts.flat())); })
         .catch(() => undefined);
     };
     check();
@@ -273,7 +285,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
       onRun={() => {
         if (!track.stemHash) return;
         setEqRunning(track.stemHash);
-        fetch(`/api/stems/fx?hash=${track.stemHash}&model=${PREP_MODEL}${PREP_QS}`)
+        fetch(`/api/stems/fx?hash=${track.stemHash}&model=${prepModelOf(track.stemHash)}${PREP_QS}`)
           .finally(() => setEqRunning(null));
       }}
     />
@@ -316,9 +328,15 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
     const hashes = laterTracks.map((t) => t.stemHash).filter((h): h is string => !!h);
     const check = () => {
       if (!hashes.length) return;
-      fetch(`/api/stems/drums?status=1&model=${PREP_MODEL}${PREP_QS}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ hashes }) })
-        .then((r) => r.json() as Promise<{ ready?: string[] }>)
-        .then((j) => { if (live) setDrumReadySet(new Set(j.ready ?? [])); })
+      // one call per model: 4- and 6-track stems live in different cache folders
+      Promise.all(
+        hashesByModel(hashes).map(([model, list]) =>
+          fetch(`/api/stems/drums?status=1&model=${model}${PREP_QS}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ hashes: list }) })
+            .then((r) => r.json() as Promise<{ ready?: string[] }>)
+            .then((j) => j.ready ?? [])
+        )
+      )
+        .then((parts) => { if (live) setDrumReadySet(new Set(parts.flat())); })
         .catch(() => undefined);
     };
     check();
@@ -334,7 +352,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
       onRun={() => {
         if (!track.stemHash) return;
         setDrumRunning(track.stemHash);
-        fetch(`/api/stems/drums?hash=${track.stemHash}&model=${PREP_MODEL}${PREP_QS}&bpm=${track.bpm ?? 0}`)
+        fetch(`/api/stems/drums?hash=${track.stemHash}&model=${prepModelOf(track.stemHash)}${PREP_QS}&bpm=${track.bpm ?? 0}`)
           .finally(() => setDrumRunning(null));
       }}
     />
@@ -347,9 +365,15 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
     const hashes = laterTracks.map((t) => t.stemHash).filter((h): h is string => !!h);
     const check = () => {
       if (!hashes.length) return;
-      fetch(`/api/stems/voice?status=1&model=${PREP_MODEL}${PREP_QS}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ hashes }) })
-        .then((r) => r.json() as Promise<{ ready?: string[] }>)
-        .then((j) => { if (live) setVoiceReadySet(new Set(j.ready ?? [])); })
+      // one call per model: 4- and 6-track stems live in different cache folders
+      Promise.all(
+        hashesByModel(hashes).map(([model, list]) =>
+          fetch(`/api/stems/voice?status=1&model=${model}${PREP_QS}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ hashes: list }) })
+            .then((r) => r.json() as Promise<{ ready?: string[] }>)
+            .then((j) => j.ready ?? [])
+        )
+      )
+        .then((parts) => { if (live) setVoiceReadySet(new Set(parts.flat())); })
         .catch(() => undefined);
     };
     check();
@@ -365,7 +389,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
       onRun={() => {
         if (!track.stemHash) return;
         setVoiceRunning(track.stemHash);
-        fetch(`/api/stems/voice?hash=${track.stemHash}&model=${PREP_MODEL}${PREP_QS}`)
+        fetch(`/api/stems/voice?hash=${track.stemHash}&model=${prepModelOf(track.stemHash)}${PREP_QS}`)
           .finally(() => setVoiceRunning(null));
       }}
     />
@@ -374,19 +398,19 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   const PREP_KINDS: Record<PrepKind, { label: string; url: (t: LibTrack) => string; field: string; done: (ready: number, total: number) => string }> = {
     eq: {
       label: "15 bandes Prep",
-      url: (t) => `/api/stems/fx?hash=${t.stemHash}&model=${PREP_MODEL}${PREP_QS}`,
+      url: (t) => `/api/stems/fx?hash=${t.stemHash}&model=${prepModelOf(t.stemHash)}${PREP_QS}`,
       field: "fx",
       done: (ready, total) => `15 bandes Prep : ${ready}/${total} titre${total > 1 ? "s" : ""} avec leur analyse spectrale : les recettes sont prêtes dans l'égaliseur.`,
     },
     drum: {
       label: "Prépa batterie",
-      url: (t) => `/api/stems/drums?hash=${t.stemHash}&model=${PREP_MODEL}${PREP_QS}&bpm=${t.bpm ?? 0}`,
+      url: (t) => `/api/stems/drums?hash=${t.stemHash}&model=${prepModelOf(t.stemHash)}${PREP_QS}&bpm=${t.bpm ?? 0}`,
       field: "drums",
       done: (ready, total) => `Prépa batterie : ${ready}/${total} titre${total > 1 ? "s" : ""} avec leur analyse de batterie (kick, caisse, charley, groove, fills).`,
     },
     voice: {
       label: "Prépa voix",
-      url: (t) => `/api/stems/voice?hash=${t.stemHash}&model=${PREP_MODEL}${PREP_QS}`,
+      url: (t) => `/api/stems/voice?hash=${t.stemHash}&model=${prepModelOf(t.stemHash)}${PREP_QS}`,
       field: "voice",
       done: (ready, total) => `Prépa voix : ${ready}/${total} titre${total > 1 ? "s" : ""} avec leur analyse de voix (phrases, syllabes, sifflantes, souffles).`,
     },
@@ -645,7 +669,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   };
 
   const checkQuality = async (track: LibTrack) => {
-    if (!track.id || track.source === "local") return;
+    if (!track.id || !qualityCheckable(track)) return;
 
     setCheckingQualityIds(prev => new Set(prev).add(track.id));
 
@@ -1062,7 +1086,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
     const hasMeta = !!track.meta && Object.keys(track.meta).length > 0;
     // a card only offers what is still missing; the rest appears on hover
     const showAnalyze = track.bpm === undefined || analyzing;
-    const showQuality = track.source !== "local" && (!track.quality || checking);
+    const showQuality = qualityCheckable(track) && (!track.quality || checking);
     const showActions = gridSize !== "S" && (showAnalyze || showQuality || hasMeta);
     return (
       <div
@@ -1359,8 +1383,10 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   const stemsWaiting = stemStates.filter((s) => s === "queued").length;
   const stemsFailed = stemStates.filter((s) => s === "error").length;
   const stemsMissing = laterTracks.filter((_, i) => stemStates[i] === "none" || stemStates[i] === "error");
+  // prepared in 4 tracks while 6 are chosen: they can be prepared again (their 4-track stems stay usable until then)
+  const in4Only = prepModel === "htdemucs_6s" ? laterTracks.filter((t) => prepState.ready.some((r) => r.trackId === t.id && r.model !== "htdemucs_6s")) : [];
   const analysisMissing = laterTracks.filter((t) => t.bpm === undefined && !analyzingIds.has(t.id) && !failedIds.has(t.id)).length;
-  const qualityMissing = laterTracks.filter((t) => t.source !== "local" && !t.quality && !checkingQualityIds.has(t.id)).length;
+  const qualityMissing = laterTracks.filter((t) => qualityCheckable(t) && !t.quality && !checkingQualityIds.has(t.id)).length;
   const selectedTracks = laterTracks.filter((t) => selectedLaterIds.has(t.id));
   const selectedSec = selectedTracks.reduce((sum, t) => sum + (t.durationSec ?? 0), 0);
   const allShownChecked = filteredTracks.length > 0 && filteredTracks.every((t) => selectedLaterIds.has(t.id));
@@ -1628,11 +1654,21 @@ const playOne = (track: LibTrack) => {
                   onClick={() => queueStems(stemsMissing)}
                   disabled={stemsMissing.length === 0}
                   className="prep-btn-accent prep-tap flex items-center gap-1.5 px-3 py-1.5 text-xs"
-                  title={stemsMissing.length === 0 ? "Tous les stems sont prêts, en cours ou en attente" : "Sépare la voix, la batterie, la basse et le reste de chaque titre sans stems, pour les mixer séparément"}
+                  title={stemsMissing.length === 0 ? "Tous les stems sont prêts, en cours ou en attente" : prepModel === "htdemucs_6s" ? "Sépare la voix, la batterie, la basse, la guitare, le piano et le reste de chaque titre sans stems (6 pistes), pour les mixer séparément" : "Sépare la voix, la batterie, la basse et le reste de chaque titre sans stems (4 pistes), pour les mixer séparément"}
                 >
                   <Icon name="stems" size={13} />
                   Préparer les stems{stemsMissing.length > 0 ? ` (${stemsMissing.length})` : ""}
                 </button>
+                <PrepModelSwitch />
+                {in4Only.length > 0 && (
+                  <button
+                    onClick={() => queueStems(in4Only)}
+                    className="prep-btn-ghost prep-tap flex items-center gap-1.5 px-3 py-1.5 text-xs"
+                    title="Ces titres ont des stems en 4 pistes : les préparer à nouveau en 6 pistes (guitare et piano séparés). Les 4 pistes restent utilisables pendant ce temps."
+                  >
+                    Passer en 6 pistes ({in4Only.length})
+                  </button>
+                )}
                 <button
                   onClick={() => void prepEverything(laterTracks)}
                   disabled={anyPrepBusy || stemsReady === 0}
