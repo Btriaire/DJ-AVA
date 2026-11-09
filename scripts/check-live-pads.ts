@@ -52,4 +52,14 @@ deck.bpm = 120;
 (pad as unknown as { stop: () => void }).stop = () => {};
 pad.clearLive("guitar", 4);
 assert.equal(pad.rows().find((r) => r.stem === "guitar")!.pads[4], undefined);
+// the usual case: the 5 found pads are full, the 3 LIVE pads after them still take a capture
+const found = Array.from({ length: 6 }, (_, i) => ({ start: i * 2, end: i * 2 + 2, kind: "loop" as const, bars: 1, score: 1, label: `B${i}` }));
+pad.samples = { bass: found };
+const bassRow = () => pad.rows().find((r) => r.stem === "bass")!;
+assert.equal(bassRow().pads.length, 8);
+assert.ok(bassRow().pads.slice(0, 5).every((p) => p && p.label.startsWith("B")));
+deck.pos = 50; pad.liveBars = 1;
+assert.equal(pad.captureLive("bass", 5), null);
+assert.equal(bassRow().pads[5]!.label, "Live 1 mes.");
+assert.ok(pad.isLive("bass", 5) && !pad.isLive("bass", 0));
 console.log("live pads: ok");

@@ -18,6 +18,7 @@ function reverseOf(ctx: BaseAudioContext, b: AudioBuffer): AudioBuffer {
 }
 
 export const PAD_COLS = 5;
+export const LIVE_COLS = 3; // pads kept for LIVE samples after the found ones: the 5 found pads are nearly always full
 export const LIVE_BARS = [1, 2, 4] as const;
 
 // samples taken LIVE from a stem onto an empty pad, kept per song (stems hash) and per stem: slot -> sample
@@ -137,7 +138,7 @@ export class StemSamplePad {
     return d.stemNames
       .map((stem, index) => {
         const found = poolPage(this.samples?.[stem] ?? [], this.pages[stem] ?? 0, PAD_COLS);
-        const pads = Array.from({ length: PAD_COLS }, (_, col) => found[col] ?? live?.[stem]?.[col] ?? undefined);
+        const pads = Array.from({ length: PAD_COLS + LIVE_COLS }, (_, col) => found[col] ?? live?.[stem]?.[col] ?? undefined);
         return { stem, index, pads, loaded: !!d.getStemBuffer(index) };
       })
       .filter(({ pads, loaded }) => loaded || pads.some(Boolean))
@@ -176,7 +177,8 @@ export class StemSamplePad {
     if (end > d.duration) return "Trop près de la fin du morceau";
     const slots = this.liveOf();
     if (!slots) return "Morceau sans stems";
-    const row = (slots[stem] ??= Array(PAD_COLS).fill(null));
+    const row = (slots[stem] ??= []);
+    while (row.length < PAD_COLS + LIVE_COLS) row.push(null);
     row[col] = { start, end, kind: "loop", bars: this.liveBars, score: 1, label: `Live ${this.liveBars} mes.` };
     saveLive(this.liveAll);
     return null;
