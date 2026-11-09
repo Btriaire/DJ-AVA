@@ -35,6 +35,7 @@ export function StemSlicePanel({ engine, role }: { engine: DJEngine; role: Slice
         <Knob label="NIVEAU" value={m.level} min={0} max={1.2} defaultValue={0.9} color={C} size={46} led onChange={(v) => { m.setLevel(v); bump(); }} />
         <RepeatSwitch label={SAMPLES[role]} on={m.source === "samples"} color={C} onChange={(v) => { m.setSource(v ? "samples" : "notes"); bump(); }} />
         <RepeatSwitch on={m.repeat} color={C} onChange={(v) => { m.setRepeat(v); bump(); }} />
+        <RepeatSwitch label="Normaliser" on={m.normalize} color={C} onChange={(v) => { m.setNormalize(v); bump(); }} />
         <LevelPicker label="Niveau de boucle" names={PHRASE_NAMES} index={m.fracIdx} color={C} onChange={(i) => { m.setFrac(i); bump(); }} />
         <RepeatSwitch label="Boucle verrouillée" on={m.latch} color={C} onChange={(v) => { m.setLatch(v); bump(); }} />
         <JamSwap m={m} color={C} what={NEW_SOUND[role]} onChange={bump} />
@@ -45,7 +46,7 @@ export function StemSlicePanel({ engine, role }: { engine: DJEngine; role: Slice
               key={n}
               type="button"
               aria-pressed={m.liveBeats === n}
-              onClick={() => { m.liveBeats = n; bump(); }}
+              onClick={() => { m.setLiveBeats(n); bump(); }}
               className="rounded px-2 py-1 text-[11px] font-bold"
               style={m.liveBeats === n ? { background: C, color: "#0a0a0a" } : { background: "rgba(255,255,255,0.08)", color: "#d4d4d4" }}
             >
