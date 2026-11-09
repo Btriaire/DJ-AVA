@@ -227,7 +227,7 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
       
       {liveMsg && <p className="text-[11px] font-bold text-amber-300" aria-live="polite">{liveMsg}</p>}
       <div className="flex flex-col gap-3 @[1000px]:flex-row @[1000px]:items-start">
-      <div className="flex flex-col gap-4">
+      <div className="flex min-w-0 flex-1 flex-col gap-4">
         {rows.map((row, r) => (
           <div key={row.stem} className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
@@ -244,8 +244,9 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
                 </button>
               )}
             </div>
-            {/* the same pads as Basse / Voix du morceau: 4 a row, up to 600 px; the 5 found pads then the 3 LIVE ones */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px", maxWidth: "600px" }}>
+            {/* big pads over the whole width: the 8 of a stem (5 found, 3 LIVE) on one row when the module is wide,
+                else two rows of 4, always filling the space left by the effects */}
+            <div className="grid grid-cols-4 gap-3 @[1500px]:grid-cols-8">
               {Array.from({ length: PAD_COLS + LIVE_COLS }).map((_, col) => padCell(row, r, col))}
             </div>
           </div>
