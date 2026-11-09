@@ -114,7 +114,10 @@ function startServer(port) {
   // a spawn that fails (no folder, no binary) must not become an uncaught exception: say what is wrong and quit
   server.on("error", (e) => {
     logCrash(`server spawn error: ${e.message} (project ${PROJECT})`);
-    dialog.showErrorBox("DJSynth", `Le serveur local n'a pas pu démarrer : ${e.message}\n\nDossier du projet : ${PROJECT}`);
+    // ENOENT names the executable even when it is the working folder that is missing: say which one is gone
+    const exe = fs.existsSync(process.execPath) ? "présent" : "ABSENT (l'app a été remplacée pendant qu'elle tournait : relance-la)";
+    const dir = fs.existsSync(PROJECT) ? "présent" : "ABSENT";
+    dialog.showErrorBox("DJSynth", `Le serveur local n'a pas pu démarrer : ${e.message}\n\nExécutable : ${exe}\nDossier du projet (${PROJECT}) : ${dir}`);
     app.quit();
   });
   if (server.pid) fs.writeFileSync(pidFile, String(server.pid));
