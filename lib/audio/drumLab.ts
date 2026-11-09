@@ -3,6 +3,7 @@ import type { Deck } from "./Deck";
 import { JamModule, jamChanged, type PadDef } from "./jamModules";
 import { nextGrid } from "./stemJam";
 import { HIT_DIVS } from "./loopLevels";
+import type { ReleaseSec } from "./padRelease";
 import { pickHits, slicePeaks, type DrumHit, type DrumKind, type DrumPrep } from "../drumPrep";
 
 export class DrumLab extends JamModule {
@@ -12,6 +13,7 @@ export class DrumLab extends JamModule {
   divIdx = 0; // index in HIT_DIVS, 0 = auto
   latch = false; // a pad keeps looping after release until pressed again
   feel = 0.35; // 0..1 human touch
+  release: ReleaseSec = 0; // RELEASE: each hit rings on (its room, its cymbal) and fades out (lib/audio/padRelease.ts)
   private loadedFor = "";
   private pools: Partial<Record<DrumKind, DrumHit[]>> = {};
   private rr: Partial<Record<DrumKind, number>> = {};
@@ -96,10 +98,15 @@ export class DrumLab extends JamModule {
     const level = Math.min(1.2, this.level * (0.6 + 0.6 * hit.vel) * (1 + (Math.random() - 0.5) * 0.3 * f) * (accent ? 1 + 0.25 * f : 1));
     g.gain.setValueAtTime(0, when);
     g.gain.linearRampToValueAtTime(level, when + 0.002);
-    g.gain.linearRampToValueAtTime(0, when + dur);
+    if (this.release > 0) {
+      g.gain.setValueAtTime(level, when + dur * 0.5);
+      g.gain.setTargetAtTime(0, when + dur * 0.5, (dur * 0.5 + this.release) / 4.6); // the hit's own ring, fading
+    } else {
+      g.gain.linearRampToValueAtTime(0, when + dur);
+    }
     src.connect(g);
     g.connect(this.bus);
-    src.start(when, Math.max(0, hit.t - 0.003), dur);
+    src.start(when, Math.max(0, hit.t - 0.003), dur + this.release);
     this.hit(when);
   }
 
@@ -146,6 +153,11 @@ export class DrumLab extends JamModule {
 
   setLevel(v: number) {
     this.level = v;
+    jamChanged();
+  }
+
+  setRelease(v: ReleaseSec) {
+    this.release = v;
     jamChanged();
   }
 
@@ -203,7 +215,7 @@ export class DrumLab extends JamModule {
   }
 
   protected keep(): string[] {
-    return ["level", "repeat", "divIdx", "latch", "feel"];
+    return ["level", "repeat", "divIdx", "latch", "feel", "release"];
   }
 
   protected resetFields() {
@@ -213,6 +225,7 @@ export class DrumLab extends JamModule {
     this.divIdx = 0;
     this.latch = false;
     this.feel = 0.35;
+    this.release = 0;
   }
 
   warning(): string | null {

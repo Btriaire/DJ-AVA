@@ -6,6 +6,7 @@ import type { PadSample } from "@/lib/stemSamples";
 import { pageCount, poolPage } from "@/lib/padPages";
 import { PadFx, type PadFxId } from "./padFx";
 import { normGain } from "./padLoudness";
+import { fadeOut, type ReleaseSec } from "./padRelease";
 
 // a sample played backwards (cached per stem buffer)
 const reversed = new WeakMap<AudioBuffer, AudioBuffer>();
@@ -56,6 +57,7 @@ export class StemSamplePad {
   private key = "";
   private voices = new Map<string, { src: AudioBufferSourceNode; gain: GainNode; norm: number }>();
   normalize = true; // every pad at the same loudness, whatever its stem (lib/audio/padLoudness.ts)
+  release: ReleaseSec = 0; // RELEASE: a stopped loop or an ended shot keeps sounding and fades out (lib/audio/padRelease.ts)
   liveBars: (typeof LIVE_BARS)[number] = 1; // how many bars a LIVE capture takes
   private liveAll: Record<string, LiveSlots> = typeof window === "undefined" ? {} : loadLive();
 
@@ -190,7 +192,7 @@ export class StemSamplePad {
   clearLive(stem: string, col: number): void {
     const row = this.liveOf()?.[stem];
     if (!row) return;
-    this.stop(`${stem}:${col}`, this.engine.ctx.currentTime + 0.01);
+    this.stop(`${stem}:${col}`, this.engine.ctx.currentTime + 0.01, true);
     row[col] = null;
     saveLive(this.liveAll);
   }
@@ -268,7 +270,13 @@ export class StemSamplePad {
     src.connect(gain);
     gain.connect(out);
 
-    src.start(at, a, s.kind === "loop" ? undefined : b - a); // a duration in the sample's own time, whatever the speed
+    // a duration in the sample's own time, whatever the speed; a shot plays on past its end for the release, fading
+    src.start(at, a, s.kind === "loop" ? undefined : b - a + this.release);
+    if (s.kind === "shot" && this.release > 0) {
+      const end = at + (b - a) / Math.max(0.01, src.playbackRate.value);
+      gain.gain.setValueAtTime(this.level * (this.normalize ? norm : 1), end);
+      gain.gain.setTargetAtTime(0, end, this.release / 4.6);
+    }
 
     if (this.voices.has(key)) {
       this.stop(key, at);
@@ -285,24 +293,26 @@ export class StemSamplePad {
     }
   }
 
-  private stop(key: string, at: number): void {
+  private stop(key: string, at: number, cut = false): void {
     const voice = this.voices.get(key);
     if (!voice) return;
 
-    voice.gain.gain.setValueAtTime(voice.gain.gain.value, at);
-    voice.gain.gain.linearRampToValueAtTime(0, at + 0.01);
-    voice.src.stop(at + 0.02);
+    // released: the loop keeps sounding and fades out over the RELEASE (cut at once when it is off)
+    voice.src.stop(fadeOut(voice.gain, at, cut ? 0 : this.release, 0.01));
     this.voices.delete(key);
   }
 
   stopAll(): void {
     const now = this.engine.ctx.currentTime;
-    this.voices.forEach((_, key) => this.stop(key, now));
+    this.voices.forEach((_, key) => this.stop(key, now, true)); // TOUT ARRÊTER, another song: at once, no release
   }
 
   setLevel(v: number): void {
     this.level = v;
     this.applyGains();
+  }
+  setRelease(v: ReleaseSec): void {
+    this.release = v;
   }
   setNormalize(on: boolean): void {
     this.normalize = on;

@@ -5,6 +5,7 @@ import { LIVE_BARS, LIVE_COLS, PAD_COLS, stemSamplePad } from "@/lib/audio/stemS
 import { Knob } from "../Knob";
 import { PAD_KEYS, PAD_ROW_COLORS, SamplePadButton, usePadKeys } from "./SamplePadButton";
 import { PadFxPanel } from "./PadFxPanel";
+import { ReleasePicker } from "./ReleasePicker";
 import { smartEqGains } from "@/lib/padEq";
 
 const C = "var(--jam-pad)";
@@ -217,6 +218,7 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
             </button>
           ))}
         </div>
+        <ReleasePicker value={m.release} color={C} onChange={(v) => { m.setRelease(v); bump(); }} />
         <button
           className="rounded px-2 py-1 text-[11px] font-bold bg-[rgba(255,255,255,0.08)] text-[#d4d4d4]"
           onClick={() => m.stopAll()}

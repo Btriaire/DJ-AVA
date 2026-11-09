@@ -8,6 +8,7 @@ import { JamHelp } from "./JamHelp";
 import { VoicePadGrid } from "./VoicePadGrid";
 import { RepeatSwitch } from "./RepeatSwitch";
 import { LevelPicker } from "./LevelPicker";
+import { ReleasePicker } from "./ReleasePicker";
 import { PHRASE_NAMES } from "@/lib/audio/loopLevels";
 import { KEY_ROWS } from "./jamKeys";
 const C = "var(--jam-voice)";
@@ -29,6 +30,7 @@ export function VoiceChopPanel({ engine }: { engine: DJEngine }) {
         <RepeatSwitch on={m.repeat} color={C} onChange={(v) => { m.setRepeat(v); bump(); }} />
         <LevelPicker label="Niveau de boucle" names={PHRASE_NAMES} index={m.fracIdx} color={C} onChange={(i) => { m.setFrac(i); bump(); }} />
         <RepeatSwitch label="Boucle verrouillée" on={m.latch} color={C} onChange={(v) => { m.setLatch(v); bump(); }} />
+        <ReleasePicker value={m.release} color={C} onChange={(v) => { m.setRelease(v); bump(); }} />
         <JamSwap m={m} color={C} what="la nouvelle voix" onChange={bump} />
       </div>
     </JamShell>
