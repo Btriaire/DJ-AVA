@@ -1,4 +1,4 @@
-import { PREP_MODEL, PREP_QS } from "@/lib/stemPrep";
+import { PREP_QS, hashesByModel, prepModelOf } from "@/lib/stemPrep";
 
 export interface PadSong { stemHash?: string; bpm?: number }
 export interface PadJob { done: number; total: number; ok: number; running: boolean; current?: string; urgent?: string[] }
@@ -29,7 +29,7 @@ export async function runPadNow(song: PadSong): Promise<boolean> {
   let ok = false;
   try {
     const bpm = song.bpm;
-    const response = await fetch(`/api/stems/samples?deep=1&urgent=1&hash=${h}&model=${PREP_MODEL}${PREP_QS}${bpm ? `&bpm=${bpm}` : ""}`);
+    const response = await fetch(`/api/stems/samples?deep=1&urgent=1&hash=${h}&model=${prepModelOf(h)}${PREP_QS}${bpm ? `&bpm=${bpm}` : ""}`);
     ok = !!(await response.json()).deep;
   } catch {
     ok = false;
@@ -49,7 +49,7 @@ export async function runStemsPad(songs: PadSong[]): Promise<boolean> {
   for (const { stemHash: h, bpm } of list) {
     set({ ...job, current: h }); // the song being searched right now (its pill shows it)
     try {
-      const response = await fetch(`/api/stems/samples?deep=1&hash=${h}&model=${PREP_MODEL}${PREP_QS}${bpm ? `&bpm=${bpm}` : ""}`);
+      const response = await fetch(`/api/stems/samples?deep=1&hash=${h}&model=${prepModelOf(h)}${PREP_QS}${bpm ? `&bpm=${bpm}` : ""}`);
       const { deep } = await response.json();
       set({ ...job, ok: job.ok + (deep ? 1 : 0), done: job.done + 1 });
     } catch {
@@ -63,13 +63,18 @@ export async function runStemsPad(songs: PadSong[]): Promise<boolean> {
 
 export async function padReady(hashes: string[]): Promise<Set<string>> {
   try {
-    const response = await fetch(`/api/stems/samples?status=1&model=${PREP_MODEL}${PREP_QS}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ hashes })
-    });
-    const { ready } = await response.json();
-    return new Set(ready);
+    // one call per model: 4- and 6-track stems live in different cache folders
+    const parts = await Promise.all(
+      hashesByModel(hashes).map(async ([model, list]) => {
+        const response = await fetch(`/api/stems/samples?status=1&model=${model}${PREP_QS}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ hashes: list })
+        });
+        return ((await response.json()).ready ?? []) as string[];
+      })
+    );
+    return new Set(parts.flat());
   } catch {
     return new Set();
   }
