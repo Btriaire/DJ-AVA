@@ -5,7 +5,8 @@ import { splitTitle } from "@/lib/trackTitle";
 import { dedupeOnline, rankOnline } from "@/lib/trackRank";
 import { useState, useRef, useMemo, useSyncExternalStore, useEffect } from "react";
 import { loadLibrary, saveLibrary, uid, idbGetBlob } from "@/lib/library";
-import { enqueuePrep, getPrepState, subscribePrep, forgetPrep, cancelPrep, PREP_MODEL, PREP_QS } from "@/lib/stemPrep";
+import { enqueuePrep, getPrepState, subscribePrep, forgetPrep, cancelPrep, PREP_QS, hashesByModel, prepModelOf, getPrepModel, type PrepModel } from "@/lib/stemPrep";
+import { PrepModelSwitch } from "./prep/PrepModelSwitch";
 import { padJob, padReady, runPadNow, runStemsPad, subscribePadJob } from "@/lib/stemsPadPrep";
 import { PadPill } from "./prep/PadPill";
 import { EqPill } from "./prep/EqPill";
@@ -149,6 +150,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   };
   const libRef = useRef(lib);
   const prepState = useSyncExternalStore(subscribePrep, getPrepState, getPrepState);
+  const prepModel = useSyncExternalStore(subscribePrep, getPrepModel, () => "htdemucs_6s" as PrepModel); // 4 or 6 tracks for the next preparations
   const sharedStems = useStemsShared();
   const setPreps = useSetPrep();
 
@@ -249,9 +251,15 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
     const hashes = laterTracks.map((t) => t.stemHash).filter((h): h is string => !!h);
     const check = () => {
       if (!hashes.length) return;
-      fetch(`/api/stems/fx?status=1&model=${PREP_MODEL}${PREP_QS}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ hashes }) })
-        .then((r) => r.json() as Promise<{ ready?: string[] }>)
-        .then((j) => { if (live) setEqReadySet(new Set(j.ready ?? [])); })
+      // one call per model: 4- and 6-track stems live in different cache folders
+      Promise.all(
+        hashesByModel(hashes).map(([model, list]) =>
+          fetch(`/api/stems/fx?status=1&model=${model}${PREP_QS}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ hashes: list }) })
+            .then((r) => r.json() as Promise<{ ready?: string[] }>)
+            .then((j) => j.ready ?? [])
+        )
+      )
+        .then((parts) => { if (live) setEqReadySet(new Set(parts.flat())); })
         .catch(() => undefined);
     };
     check();
@@ -267,7 +275,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
       onRun={() => {
         if (!track.stemHash) return;
         setEqRunning(track.stemHash);
-        fetch(`/api/stems/fx?hash=${track.stemHash}&model=${PREP_MODEL}${PREP_QS}`)
+        fetch(`/api/stems/fx?hash=${track.stemHash}&model=${prepModelOf(track.stemHash)}${PREP_QS}`)
           .finally(() => setEqRunning(null));
       }}
     />
@@ -311,7 +319,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
     let ready = 0;
     for (const t of list) {
       try {
-        const r = await fetch(`/api/stems/fx?hash=${t.stemHash}&model=${PREP_MODEL}${PREP_QS}`);
+        const r = await fetch(`/api/stems/fx?hash=${t.stemHash}&model=${prepModelOf(t.stemHash)}${PREP_QS}`);
         const j = (await r.json()) as { fx?: unknown };
         if (j.fx) ready++;
       } catch {
@@ -1206,6 +1214,8 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   const stemsWaiting = stemStates.filter((s) => s === "queued").length;
   const stemsFailed = stemStates.filter((s) => s === "error").length;
   const stemsMissing = laterTracks.filter((_, i) => stemStates[i] === "none" || stemStates[i] === "error");
+  // prepared in 4 tracks while 6 are chosen: they can be prepared again (their 4-track stems stay usable until then)
+  const in4Only = prepModel === "htdemucs_6s" ? laterTracks.filter((t) => prepState.ready.some((r) => r.trackId === t.id && r.model !== "htdemucs_6s")) : [];
   const analysisMissing = laterTracks.filter((t) => t.bpm === undefined && !analyzingIds.has(t.id) && !failedIds.has(t.id)).length;
   const qualityMissing = laterTracks.filter((t) => qualityCheckable(t) && !t.quality && !checkingQualityIds.has(t.id)).length;
   const selectedTracks = laterTracks.filter((t) => selectedLaterIds.has(t.id));
@@ -1468,11 +1478,21 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
                   onClick={() => queueStems(stemsMissing)}
                   disabled={stemsMissing.length === 0}
                   className="prep-btn-accent prep-tap flex items-center gap-1.5 px-3 py-1.5 text-xs"
-                  title={stemsMissing.length === 0 ? "Tous les stems sont prêts, en cours ou en attente" : "Sépare la voix, la batterie, la basse et le reste de chaque titre sans stems, pour les mixer séparément"}
+                  title={stemsMissing.length === 0 ? "Tous les stems sont prêts, en cours ou en attente" : prepModel === "htdemucs_6s" ? "Sépare la voix, la batterie, la basse, la guitare, le piano et le reste de chaque titre sans stems (6 pistes), pour les mixer séparément" : "Sépare la voix, la batterie, la basse et le reste de chaque titre sans stems (4 pistes), pour les mixer séparément"}
                 >
                   <Icon name="stems" size={13} />
                   Préparer les stems{stemsMissing.length > 0 ? ` (${stemsMissing.length})` : ""}
                 </button>
+                <PrepModelSwitch />
+                {in4Only.length > 0 && (
+                  <button
+                    onClick={() => queueStems(in4Only)}
+                    className="prep-btn-ghost prep-tap flex items-center gap-1.5 px-3 py-1.5 text-xs"
+                    title="Ces titres ont des stems en 4 pistes : les préparer à nouveau en 6 pistes (guitare et piano séparés). Les 4 pistes restent utilisables pendant ce temps."
+                  >
+                    Passer en 6 pistes ({in4Only.length})
+                  </button>
+                )}
                 <button
                   onClick={() => void eqPrepAll(laterTracks)}
                   disabled={eqPrepBusy || stemsReady === 0}

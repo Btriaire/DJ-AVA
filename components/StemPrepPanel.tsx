@@ -1,10 +1,12 @@
 "use client";
 import { useSyncExternalStore, useState, useEffect } from "react";
 import type { DJEngine } from "@/lib/audio/engine";
-import { getPrepState, subscribePrep, cancelPrep, forgetPrep, enqueuePrep, PREP_MODEL, PREP_SHIFTS, PREP_STEMS, type PrepReady } from "@/lib/stemPrep";
+import { getPrepState, subscribePrep, cancelPrep, forgetPrep, enqueuePrep, PREP_SHIFTS, PREP_STEMS_BY_MODEL, type PrepReady } from "@/lib/stemPrep";
+import { PrepModelSwitch } from "./prep/PrepModelSwitch";
 import { loadLibrary, idbGetBlob, type LibTrack } from "@/lib/library";
 
-const STEM_FR: Record<string, string> = { vocals: "Voix", drums: "Batterie", bass: "Basse", other: "Autres" };
+const STEM_FR: Record<string, string> = { vocals: "Voix", drums: "Batterie", bass: "Basse", other: "Autres", guitar: "Guitare", piano: "Piano" };
+const is6 = (r: PrepReady) => r.model === "htdemucs_6s";
 
 export function StemPrepPanel({ engine }: { engine: DJEngine }) {
   const prep = useSyncExternalStore(subscribePrep, getPrepState, getPrepState);
@@ -32,7 +34,7 @@ export function StemPrepPanel({ engine }: { engine: DJEngine }) {
   const loadPrepared = async (r: PrepReady, side: "A" | "B") => {
     try {
       const deck = side === "A" ? engine.deckA : engine.deckB;
-      deck.setStemModel(PREP_MODEL as Parameters<typeof deck.setStemModel>[0]);
+      deck.setStemModel(is6(r) ? "htdemucs_6s" : "htdemucs"); // the model this song was prepared with
       deck.setStemUltra(true);
       deck.setStemLossless(true);
       deck.setStemsActive(true);
@@ -65,10 +67,11 @@ export function StemPrepPanel({ engine }: { engine: DJEngine }) {
         <div
           className="hw-btn px-2 py-1 text-[10px] font-bold hw-btn-on"
           style={{ ["--led" as string]: "#34d399" }}
-          title={`Modèle ${PREP_MODEL}, ${PREP_SHIFTS} passes de séparation, pistes WAV sans perte`}
+          title={`${PREP_SHIFTS} passes de séparation, pistes WAV sans perte`}
         >
           Qualité élevée · WAV
         </div>
+        <PrepModelSwitch compact />
         <span className="text-[10px] text-neutral-400 ml-auto">
           {prep.jobs.length} en file · {prep.ready.length} prêts
         </span>
@@ -175,7 +178,7 @@ export function StemPrepPanel({ engine }: { engine: DJEngine }) {
                         </span>
                       )}
                       <div className="flex gap-1">
-                        {PREP_STEMS.map((stem) => (
+                        {PREP_STEMS_BY_MODEL[is6(r) ? "htdemucs_6s" : "htdemucs"].map((stem) => (
                           <span
                             key={stem}
                             className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded"
@@ -184,6 +187,8 @@ export function StemPrepPanel({ engine }: { engine: DJEngine }) {
                                 stem === "drums" ? "#fb923c" :
                                 stem === "bass" ? "#a78bfa" :
                                 stem === "other" ? "#38bdf8" :
+                                stem === "guitar" ? "#f472b6" :
+                                stem === "piano" ? "#a3e635" :
                                 "#fdba74",
                             }}
                           >
