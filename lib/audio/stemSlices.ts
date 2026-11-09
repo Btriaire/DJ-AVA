@@ -7,7 +7,16 @@ export interface Slice {
   label?: string;
 }
 
-export function pickSlices(data: Float32Array, sr: number, n = 8, minLen = 0.2, maxLen = 1.6): Slice[] {
+// held parts (pads, chords, guitar, piano): a slice runs to the next STRONG onset only, lasts 1 beat to 1 bar,
+// and is rounded to whole beats so it loops in time. `beat` is the length of a beat in seconds (0 = tempo unknown).
+export interface HeldOpts { beat: number }
+
+export function pickSlices(data: Float32Array, sr: number, n = 8, minLen = 0.2, maxLen = 1.6, held?: HeldOpts): Slice[] {
+  if (held) {
+    const beat = held.beat > 0 ? held.beat : 0.5;
+    minLen = beat;
+    maxLen = beat * 4;
+  }
   const hopSize = Math.round(0.01 * sr); // 10 ms hop
   const env: number[] = [];
   const flux: number[] = [];
@@ -57,16 +66,19 @@ export function pickSlices(data: Float32Array, sr: number, n = 8, minLen = 0.2, 
     if (picks.length >= n) break;
     let overlap = false;
     for (const pick of picks) {
-      if (Math.abs(candidate.t - pick.t) < 0.35) {
+      // a held part: no new slice inside one already picked (its small attacks), nor just before it
+      const inside = held ? candidate.t > pick.t - minLen * 0.75 && candidate.t < pick.t + pick.dur : false;
+      if (inside || Math.abs(candidate.t - pick.t) < 0.35) {
         overlap = true;
         break;
       }
     }
     if (!overlap) {
-      // Find the next candidate onset
+      // Find the next candidate onset (for a held part: only a strong one, the small attacks inside a chord don't cut it)
       let nextOnset = Infinity;
       for (const c of candidates) {
-        if (c.t > candidate.t && c.t < nextOnset) {
+        if (held && c.score < 0.35 * candidate.score) continue;
+        if (c.t > candidate.t + (held ? minLen * 0.75 : 0) && c.t < nextOnset) {
           nextOnset = c.t;
         }
       }
@@ -81,9 +93,10 @@ export function pickSlices(data: Float32Array, sr: number, n = 8, minLen = 0.2, 
         }
       }
 
-      // Determine the duration
-      const maxEnd = Math.min(candidate.t + maxLen, endIdx * hopSize / sr, nextOnset);
-      const dur = Math.max(minLen, Math.min(maxLen, maxEnd - candidate.t));
+      // Determine the duration (a held part keeps sounding past its first fade: only the next strong onset ends it)
+      const maxEnd = Math.min(candidate.t + maxLen, held ? Infinity : endIdx * hopSize / sr, nextOnset);
+      let dur = Math.max(minLen, Math.min(maxLen, maxEnd - candidate.t));
+      if (held && held.beat > 0) dur = Math.max(1, Math.round(dur / held.beat)) * held.beat; // whole beats
 
       picks.push({ t: Math.max(0, candidate.t - 0.005), dur, score: candidate.score });
     }
@@ -136,6 +149,28 @@ export function stemSlicesTest(): string[] {
       if (slices[i].dur < 0.2 || slices[i].dur > 0.6) {
         failures.push(`Slice ${i} dur ${slices[i].dur} is not between 0.2 and 0.6`);
       }
+    }
+  }
+
+  // Test 1b: a held chord with small attacks inside it is not cut at each of them, and lasts whole beats
+  {
+    const beat = 0.5;
+    const held = new Float32Array(sr * 8);
+    const chords = [1, 3, 5];
+    for (const t of chords) {
+      const start = Math.round(t * sr);
+      for (let i = start; i < Math.min(held.length, start + 1.8 * sr); i++) { // 0.2 s of silence between chords
+        const k = i - start;
+        const flicker = 1 + 0.25 * (Math.floor(k / (0.15 * sr)) % 2); // little attacks every 150 ms
+        held[i] = 0.8 * Math.sin(2 * Math.PI * 220 * k / sr) * flicker;
+      }
+    }
+    const hs = pickSlices(held, sr, 8, 0.2, 1.6, { beat });
+    const main = hs.filter((x) => chords.some((c) => Math.abs(x.t - c) < 0.05));
+    if (main.length !== 3) failures.push(`held: expected the 3 chord starts, got ${hs.map((x) => x.t.toFixed(2)).join(",")}`);
+    for (const x of main) {
+      if (x.dur < 1.5 - 1e-6) failures.push(`held: slice at ${x.t.toFixed(2)} lasts ${x.dur.toFixed(2)} s, cut too early`);
+      if (Math.abs(x.dur / beat - Math.round(x.dur / beat)) > 1e-6) failures.push(`held: ${x.dur} s is not whole beats`);
     }
   }
 

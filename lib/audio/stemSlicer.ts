@@ -33,6 +33,7 @@ export class StemSlicer extends JamModule {
   private lastBuf: AudioBuffer | null = null;
   private lastDeck: Deck | null = null;
   private lastPool: PadSample[] | null = null;
+  private lastBeat = 0; // held parts are cut in whole beats: a tempo found after the stems recuts them
   private dirty = false;
   private waves = new Map<number, number[]>();
   private reps = new Map<number, { timer: ReturnType<typeof setInterval>; next: number }>();
@@ -56,14 +57,18 @@ export class StemSlicer extends JamModule {
     const buf = idx >= 0 ? d.getStemBuffer(idx) : null;
     const pool = this.source === "samples" ? this.samplePool(d) : null;
 
-    if (buf !== this.lastBuf || d !== this.lastDeck || pool !== this.lastPool || this.dirty) {
+    const beat = this.tag !== "bass" && d.bpm > 0 ? Math.round((60 / d.bpm) * 1000) / 1000 : 0;
+    if (buf !== this.lastBuf || d !== this.lastDeck || pool !== this.lastPool || beat !== this.lastBeat || this.dirty) {
+      this.lastBeat = beat;
       this.lastBuf = buf;
       this.lastDeck = d;
       this.lastPool = pool;
       this.dirty = false;
       this.waves.clear();
       this.stopReps();
-      this.slices = buf ? (this.source === "samples" ? poolSlices(pool ?? []) : pickSlices(buf.getChannelData(0), buf.sampleRate)) : [];
+      // the bass plays notes; the other parts (pads, chords, guitar, piano) are held: longer slices, in whole beats
+      const held = this.tag === "bass" ? undefined : { beat: d.bpm > 0 ? 60 / d.bpm : 0 }; // the exact beat (the rounded one only spots a change)
+      this.slices = buf ? (this.source === "samples" ? poolSlices(pool ?? []) : pickSlices(buf.getChannelData(0), buf.sampleRate, 8, 0.2, 1.6, held)) : [];
       this.state = !buf ? "idle" : this.slices.length > 0 ? "ready" : "none";
       jamChanged();
     }
