@@ -90,7 +90,7 @@ import {
 
 // One row of the instrument rack: up to two columns that share the row height (the last
 // module of each column stretches to it); a lone column takes the whole width.
-const RACK_SLOTS = ["samplepad", "drumlab", "voicechop", "session", "bassslice", "otherslice", "jambass", "jamvox", "vocoder", "jamsynth", "jambeat", "rhythm", "djkbd", "dance", "supersampler", "drums", "djsynth", "slicer", "harmony", "synth", "sampler", "soundfx", "dx7", "solar42", "voicelab"];
+const RACK_SLOTS = ["samplepad", "drumlab", "voicechop", "session", "bassslice", "otherslice", "guitarslice", "pianoslice", "jambass", "jamvox", "vocoder", "jamsynth", "jambeat", "rhythm", "djkbd", "dance", "supersampler", "drums", "djsynth", "slicer", "harmony", "synth", "sampler", "soundfx", "dx7", "solar42", "voicelab"];
 const RackCtx = createContext<Pick<ReturnType<typeof useRackSwap>, "grip" | "dragId" | "overId"> | null>(null);
 
 function RackRow({ left, right, onClose }: { left: [string, ReactNode][]; right: [string, ReactNode][]; onClose: (id: string) => void }) {
@@ -316,6 +316,8 @@ export default function Home() {
     voicechop: boolean;
     bassslice: boolean;
     otherslice: boolean;
+    guitarslice: boolean;
+    pianoslice: boolean;
     session: boolean;
     samplepad: boolean;
     solar42: boolean;
@@ -368,6 +370,8 @@ export default function Home() {
     voicechop: false,
     bassslice: false,
     otherslice: false,
+    guitarslice: false,
+    pianoslice: false,
     session: false,
     samplepad: false,
     solar42: false,
@@ -502,6 +506,8 @@ const [showModulePicker, setShowModulePicker] = useState(false);
     { key: "bassslice", label: "Basse du morceau · Les 8 notes les plus nettes de la basse en pads, boucles à plusieurs niveaux (détectées au chargement des stems)", scope: "global", category: "Stems en live" },
     { key: "session", label: "Acoustique · Ambiances, salle de concert, minuteur, dynamique et fondu entre morceaux pour piano, guitare, handpan, zen et classique", scope: "global", category: "Instruments & Sources" },
     { key: "otherslice", label: "Autres du morceau · Les 8 coups les plus nets des autres sons (synthés, guitares, nappes) en pads, boucles à plusieurs niveaux", scope: "global", category: "Stems en live" },
+    { key: "guitarslice", label: "Guitare du morceau · Les 8 notes les plus nettes de la guitare en pads, pads LIVE, boucles à plusieurs niveaux (morceaux préparés en 6 pistes)", scope: "global", category: "Stems en live" },
+    { key: "pianoslice", label: "Piano du morceau · Les 8 notes les plus nettes du piano en pads, pads LIVE, boucles à plusieurs niveaux (morceaux préparés en 6 pistes)", scope: "global", category: "Stems en live" },
     { key: "drumlab", label: "Batterie du morceau · Kick, caisse et charley du morceau en pads, roulements, roll, double, demi-tempo (préparés à l'avance)", scope: "global", category: "Stems en live" },
     { key: "voicelab", label: "Voix humaines · Doublage, harmonies, octave, voix femme, homme, enfant, chuchoté, foule (préparées à l'avance)", scope: "global", category: "Stems en live" },
     { key: "jamvox", label: "Vox FX · Jets en rythme sur la voix, harmonie à la tierce", scope: "global", category: "Stems en live" },
@@ -952,6 +958,8 @@ const [showModulePicker, setShowModulePicker] = useState(false);
     session: modules.session && <AcoustiquePanel key={`session-${resetKey}`} engine={engine} />,
     bassslice: modules.bassslice && <StemSlicePanel key={`bassslice-${resetKey}`} engine={engine} role="bass" />,
     otherslice: modules.otherslice && <StemSlicePanel key={`otherslice-${resetKey}`} engine={engine} role="other" />,
+    guitarslice: modules.guitarslice && <StemSlicePanel key={`guitarslice-${resetKey}`} engine={engine} role="guitar" />,
+    pianoslice: modules.pianoslice && <StemSlicePanel key={`pianoslice-${resetKey}`} engine={engine} role="piano" />,
     jambass: modules.jambass && <BassLabPanel engine={engine} />,
     jamvox: modules.jamvox && <VoxFxPanel engine={engine} />,
     vocoder: modules.vocoder && <VocoderPanel key={`vocoder-${resetKey}`} engine={engine} />,
@@ -1635,7 +1643,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
             )}
 
             {/* instrument rack: optional modules side by side, aligned and the same height per row */}
-            {(modules.jambass || modules.jamvox || modules.vocoder || modules.jamsynth || modules.jambeat || modules.djkbd || modules.dance || modules.supersampler || modules.drums || modules.djsynth || modules.rhythm || modules.slicer || modules.harmony || modules.synth || modules.sampler || modules.soundfx || modules.dx7 || modules.solar42 || modules.voicelab || modules.drumlab || modules.voicechop || modules.bassslice || modules.otherslice || modules.session || modules.samplepad) && (
+            {(modules.jambass || modules.jamvox || modules.vocoder || modules.jamsynth || modules.jambeat || modules.djkbd || modules.dance || modules.supersampler || modules.drums || modules.djsynth || modules.rhythm || modules.slicer || modules.harmony || modules.synth || modules.sampler || modules.soundfx || modules.dx7 || modules.solar42 || modules.voicelab || modules.drumlab || modules.voicechop || modules.bassslice || modules.otherslice || modules.guitarslice || modules.pianoslice || modules.session || modules.samplepad) && (
               <RackCtx.Provider value={{ grip: rack.grip, dragId: rack.dragId, overId: rack.overId }}><div className={`hw-rack @container flex flex-col gap-4 ${deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}`}>
                 <ConsoleNav watch={Object.entries(modules).filter(([, v]) => v === true).map(([k]) => k).join(",")} />
                 {(modules.jambass || modules.jamvox || modules.jamsynth || modules.jambeat) && <JamMacroBar engine={engine} />}
@@ -1644,6 +1652,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
                 <RackRow onClose={closeRackModule} left={[S("drumlab")]} right={[S("voicechop")]} />
                 <RackRow onClose={closeRackModule} left={[S("session")]} right={[]} />
                 <RackRow onClose={closeRackModule} left={[S("bassslice")]} right={[S("otherslice")]} />
+                <RackRow onClose={closeRackModule} left={[S("guitarslice")]} right={[S("pianoslice")]} />
                 <RackRow onClose={closeRackModule} left={[S("jambass")]} right={[S("jamvox")]} />
                 <RackRow onClose={closeRackModule} left={[S("vocoder")]} right={[]} />
                 <RackRow onClose={closeRackModule} left={[S("jamsynth")]} right={[S("jambeat")]} />

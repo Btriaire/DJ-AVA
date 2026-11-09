@@ -8,6 +8,14 @@ import { pickSlices, poolSlices, type Slice } from "./stemSlices";
 import { stemSamplePad } from "./stemSamplePad";
 import type { PadSample } from "@/lib/stemSamples";
 
+export type SliceTag = "bass" | "other" | "guitar" | "piano";
+const PREFIX: Record<SliceTag, string> = { bass: "BAS", other: "AUT", guitar: "GUI", piano: "PNO" };
+const NAME_FR: Record<SliceTag, string> = { bass: "basse", other: "autres sons", guitar: "guitare", piano: "piano" };
+export const LIVE_PADS = 3; // pads that take LIVE captures, after the 8 found notes (and after Frein / Demi-tempo, keys unchanged)
+export const LIVE_BEATS = [1, 2, 4, 8] as const; // how many beats a LIVE capture takes
+const LIVE_BASE = 100; // slot index of the first LIVE pad (the found notes use 0..)
+const LIVE_STORE = "djsynth.sliceLive.v1";
+
 export class StemSlicer extends JamModule {
   slices: Slice[] = [];
   state: "idle" | "ready" | "none" = "idle";
@@ -16,6 +24,10 @@ export class StemSlicer extends JamModule {
   latch = false;
   fracIdx = 0;
   source: "notes" | "samples" = "notes";
+  liveBeats: (typeof LIVE_BEATS)[number] = 4; // a LIVE capture: the last beats played of this stem, on the grid
+  private liveAll: Record<string, (Slice | null)[]> = (() => {
+    try { return JSON.parse(localStorage.getItem(LIVE_STORE) ?? "{}") ?? {}; } catch { return {}; }
+  })();
 
   private cur: GainNode | null = null;
   private lastBuf: AudioBuffer | null = null;
@@ -26,9 +38,9 @@ export class StemSlicer extends JamModule {
   private reps = new Map<number, { timer: ReturnType<typeof setInterval>; next: number }>();
 
   protected closed(): void { this.stopReps(); }
-  constructor(engine: DJEngine, private tag: "bass" | "other") {
+  constructor(engine: DJEngine, private tag: SliceTag) {
     super(engine, tag);
-    this.gateModule(tag === "bass" ? "bassslice" : "otherslice");
+    this.gateModule(`${tag}slice`);
     setInterval(() => this.tick(), 100);
   }
 
@@ -58,11 +70,64 @@ export class StemSlicer extends JamModule {
   }
 
   slice(i: number): Slice | null {
+    if (i >= LIVE_BASE) return this.liveSlots()?.[i - LIVE_BASE] ?? null;
     return this.slices[i] || null;
   }
 
+  // ---- LIVE: the last beats of this stem, cut on the grid at the playhead, onto one of the LIVE pads ----
+  private liveKey(): string | null {
+    const h = this.deck().stemHash;
+    return h ? `${h}:${this.tag}` : null;
+  }
+  private liveSlots(): (Slice | null)[] | null {
+    const k = this.liveKey();
+    return k ? (this.liveAll[k] ??= Array(LIVE_PADS).fill(null)) : null;
+  }
+  private saveLive(): void {
+    try {
+      const keys = Object.keys(this.liveAll);
+      for (const k of keys.slice(0, Math.max(0, keys.length - 120))) delete this.liveAll[k];
+      localStorage.setItem(LIVE_STORE, JSON.stringify(this.liveAll));
+    } catch { /* private window: kept for this visit */ }
+  }
+  // why a LIVE capture cannot be made now (null when it can)
+  liveBlocked(): string | null {
+    const d = this.deck();
+    if (!this.lastBuf) return `Le stem ${NAME_FR[this.tag]} de ce morceau n'est pas chargé`;
+    if (!(d.bpm > 0)) return "Tempo inconnu : analyse le morceau pour caler les temps";
+    return null;
+  }
+  // the last `liveBeats` whole beats before the playhead (the first ones when the song has barely started)
+  captureLive(k: number): string | null {
+    const why = this.liveBlocked();
+    if (why) return why;
+    const d = this.deck();
+    const beat = 60 / d.bpm;
+    const off = d.beatGridOffset;
+    const len = this.liveBeats * beat;
+    let end = off + Math.floor((d.position() - off) / beat) * beat;
+    if (end - len < Math.max(0, off - 1e-3)) end = Math.max(off, 0) + len;
+    if (end > d.duration) return "Trop près de la fin du morceau";
+    const slots = this.liveSlots();
+    if (!slots) return "Morceau sans stems";
+    slots[k] = { t: end - len, dur: len, score: 1, label: `Live ${this.liveBeats} t.` };
+    this.waves.delete(LIVE_BASE + k);
+    this.saveLive();
+    jamChanged();
+    return null;
+  }
+  clearLive(): void {
+    const slots = this.liveSlots();
+    if (!slots) return;
+    for (let k = 0; k < LIVE_PADS; k++) { this.repeatSlice(LIVE_BASE + k, false); slots[k] = null; this.waves.delete(LIVE_BASE + k); }
+    this.saveLive();
+    jamChanged();
+  }
+  hasLive(): boolean { return !!this.liveSlots()?.some(Boolean); }
+  liveNote: string | null = null; // why the last LIVE capture was refused (shown by the panel)
+
   playSlice(i: number, at?: number, frac = 1): void {
-    const seg = this.slices[i];
+    const seg = this.slice(i);
     if (!seg) return;
 
     const d = this.deck();
@@ -101,7 +166,7 @@ export class StemSlicer extends JamModule {
     if (on) {
       const d = this.deck();
       const ctx = this.engine.ctx;
-      const seg = this.slices[i];
+      const seg = this.slice(i);
       if (!seg) return;
 
       const r = {
@@ -123,6 +188,7 @@ export class StemSlicer extends JamModule {
   }
 
   isRepeating(id: string): boolean {
+    if (id.startsWith("live")) return this.reps.has(LIVE_BASE + parseInt(id.slice(4), 10));
     return id.startsWith("chop") && this.reps.has(parseInt(id.slice(4), 10));
   }
 
@@ -183,7 +249,7 @@ export class StemSlicer extends JamModule {
       const seg = this.slice(i);
       pads.push({
         id: `chop${i}`,
-        label: `${this.tag === "bass" ? "BAS" : "AUT"} ${i + 1}`,
+        label: `${PREFIX[this.tag]} ${i + 1}`,
         sub: seg ? (seg.label ?? `${seg.t.toFixed(1)} s`) : "vide",
         mode: this.latch ? "toggle" : "hold",
         isOn: this.latch ? () => this.reps.has(i) : undefined,
@@ -207,11 +273,31 @@ export class StemSlicer extends JamModule {
         run: (on) => this.fx("halftime", on),
       }
     );
+    // LIVE pads: empty, a press takes the last beats of the stem; filled, they play like the found notes
+    for (let k = 0; k < LIVE_PADS; k++) {
+      const i = LIVE_BASE + k;
+      const seg = this.slice(i);
+      pads.push({
+        id: `live${k}`,
+        label: seg ? `LIVE ${k + 1}` : "● LIVE",
+        sub: seg ? seg.label : `prend ${this.liveBeats} temps`,
+        mode: seg && this.latch ? "toggle" : "hold",
+        isOn: seg && this.latch ? () => this.reps.has(i) : undefined,
+        run: (on) => {
+          if (!this.slice(i)) {
+            if (on) { this.liveNote = this.captureLive(k); if (this.liveNote) setTimeout(() => { this.liveNote = null; jamChanged(); }, 3500); }
+            return;
+          }
+          if (this.repeat || this.latch) this.repeatSlice(i, on);
+          else if (on) this.playSlice(i);
+        },
+      });
+    }
     return pads;
   }
 
   protected keep(): string[] {
-    return ["level", "repeat", "latch", "fracIdx", "source"];
+    return ["level", "repeat", "latch", "fracIdx", "source", "liveBeats"];
   }
 
   protected resetFields(): void {
@@ -221,17 +307,17 @@ export class StemSlicer extends JamModule {
     this.latch = false;
     this.fracIdx = 0;
     this.source = "notes";
+    this.liveBeats = 4;
   }
 
   warning(): string | null {
-    if (!this.deck().stemHash) {
-      return this.tag === "bass"
-        ? "Prépare les stems du morceau pour jouer sa basse."
-        : "Prépare les stems du morceau pour jouer ses autres sons.";
+    if (!this.deck().stemHash) return `Prépare les stems du morceau pour jouer sa ${NAME_FR[this.tag] === "autres sons" ? "partie « autres »" : NAME_FR[this.tag]}.`;
+    if ((this.tag === "guitar" || this.tag === "piano") && !this.deck().stemNames.includes(this.tag)) {
+      return `Ce morceau n'a pas de stem ${NAME_FR[this.tag]} : prépare-le en 6 pistes (Préparation, 6 pistes).`;
     }
     if (this.state === "none") {
       if (this.source === "samples") {
-        return `Aucun sample de ${this.tag === "bass" ? "basse" : "ce stem"} : ouvre le Stem Sample Pad sur la platine ${this.deck() === this.engine.deckA ? "A" : "B"} (samples préparés dans Préparation).`;
+        return `Aucun sample de ${NAME_FR[this.tag]} : ouvre le Stem Sample Pad sur la platine ${this.deck() === this.engine.deckA ? "A" : "B"} (samples préparés dans Préparation).`;
       }
       return "Aucune note nette trouvée dans ce stem.";
     }
@@ -241,11 +327,13 @@ export class StemSlicer extends JamModule {
 
 const bassCache = new WeakMap<DJEngine, StemSlicer>();
 const otherCache = new WeakMap<DJEngine, StemSlicer>();
+const guitarCache = new WeakMap<DJEngine, StemSlicer>();
+const pianoCache = new WeakMap<DJEngine, StemSlicer>();
 
 function make(
   cache: WeakMap<DJEngine, StemSlicer>,
   engine: DJEngine,
-  tag: "bass" | "other",
+  tag: SliceTag,
   storeKey: string
 ): StemSlicer {
   if (cache.has(engine)) return cache.get(engine)!;
@@ -278,4 +366,16 @@ export function bassSlicer(engine: DJEngine): StemSlicer {
 
 export function otherSlicer(engine: DJEngine): StemSlicer {
   return make(otherCache, engine, "other", "djsynth.otherslice.v2");
+}
+
+export function guitarSlicer(engine: DJEngine): StemSlicer {
+  return make(guitarCache, engine, "guitar", "djsynth.guitarslice.v1");
+}
+
+export function pianoSlicer(engine: DJEngine): StemSlicer {
+  return make(pianoCache, engine, "piano", "djsynth.pianoslice.v1");
+}
+
+export function slicerFor(engine: DJEngine, tag: SliceTag): StemSlicer {
+  return tag === "bass" ? bassSlicer(engine) : tag === "other" ? otherSlicer(engine) : tag === "guitar" ? guitarSlicer(engine) : pianoSlicer(engine);
 }

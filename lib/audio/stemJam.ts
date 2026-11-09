@@ -4,7 +4,7 @@ import type { DJEngine } from "./engine";
 import type { Deck } from "./Deck";
 import { chordTrack } from "./jamChordTrack";
 
-export type JamRole = "bass" | "vocals" | "other" | "drums";
+export type JamRole = "bass" | "vocals" | "other" | "drums" | "guitar" | "piano"; // guitar and piano: songs prepared in 6 tracks
 export type JamDeckPref = "auto" | "A" | "B";
 
 const MAJOR = [0, 2, 4, 5, 7, 9, 11];

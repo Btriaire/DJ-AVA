@@ -17,7 +17,8 @@ export function VoicePadGrid({ m, list, keys, tint }: { m: { press: (id: string,
       {list.map((p, i) => {
         const color = (p.id.startsWith("chop") && tint) || padColors[p.id.startsWith("chop") ? "chop" : p.id] || FALLBACK;
         const active = m.padActive(p);
-        const wave = p.id.startsWith("chop") ? m.waveOf?.(parseInt(p.id.slice(4), 10)) : null;
+        // LIVE pads of the stem slicers are slots 100.. (the found notes are 0..)
+        const wave = p.id.startsWith("chop") ? m.waveOf?.(parseInt(p.id.slice(4), 10)) : p.id.startsWith("live") ? m.waveOf?.(100 + parseInt(p.id.slice(4), 10)) : null;
 
         return (
           <button

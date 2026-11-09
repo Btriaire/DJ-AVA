@@ -17,6 +17,8 @@ export const MODULE_THUMB: Record<string, ThumbKind> = {
   bassslice: "chop",
   session: "violin",
   otherslice: "chop",
+  guitarslice: "chop",
+  pianoslice: "chop",
   drumlab: "pads",
   voicelab: "mod",
   jamvox: "mod",
