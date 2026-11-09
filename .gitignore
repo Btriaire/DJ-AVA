@@ -64,3 +64,4 @@ __pycache__/
 
 # real instrument notes downloaded by /api/samples (FluidR3 GM, CC BY 3.0)
 /.samples-cache
+mac/project-path.txt
