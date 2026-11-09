@@ -9,6 +9,7 @@ import { stemSamplePad } from "./stemSamplePad";
 import type { PadSample } from "@/lib/stemSamples";
 import { normGain } from "./padLoudness";
 import { fadeOut, type ReleaseSec } from "./padRelease";
+import { getTrim, setTrim, trimKey, type Repeats, type Trim } from "./padTrim";
 
 export type SliceTag = "bass" | "other" | "guitar" | "piano";
 const PREFIX: Record<SliceTag, string> = { bass: "BAS", other: "AUT", guitar: "GUI", piano: "PNO" };
@@ -27,6 +28,7 @@ export class StemSlicer extends JamModule {
   fracIdx = 0;
   source: "notes" | "samples" = "notes";
   normalize = true; // every pad at the same loudness (lib/audio/padLoudness.ts)
+  loops: Repeats = 0; // how many times a repeated pad plays before stopping by itself (0 = endless)
   release: ReleaseSec = 0; // RELEASE: the note keeps sounding and fades out over this time (lib/audio/padRelease.ts)
   liveBeats: (typeof LIVE_BEATS)[number] = 4; // a LIVE capture: the last beats played of this stem, on the grid
   private liveAll: Record<string, (Slice | null)[]> = (() => {
@@ -40,7 +42,7 @@ export class StemSlicer extends JamModule {
   private lastBeat = 0; // held parts are cut in whole beats: a tempo found after the stems recuts them
   private dirty = false;
   private waves = new Map<number, number[]>();
-  private reps = new Map<number, { timer: ReturnType<typeof setInterval>; next: number }>();
+  private reps = new Map<number, { timer: ReturnType<typeof setInterval>; next: number; count: number }>();
 
   protected closed(): void { this.stopReps(); }
   constructor(engine: DJEngine, private tag: SliceTag) {
@@ -135,8 +137,37 @@ export class StemSlicer extends JamModule {
   hasLive(): boolean { return !!this.liveSlots()?.some(Boolean); }
   liveNote: string | null = null; // why the last LIVE capture was refused (shown by the panel)
 
-  playSlice(i: number, at?: number, frac = 1): void {
+  // ---- TRIM per pad: a later start and a sooner end, kept per song and per note (lib/audio/padTrim.ts) ----
+  private trimKeyOf(seg: Slice): string | null {
+    const h = this.deck().stemHash;
+    return h ? trimKey(h, `slice:${this.tag}`, seg.t) : null;
+  }
+  // the pad index of a pad id (chop0.. are the notes, live0.. the LIVE pads), -1 for the other pads
+  padIndex(id: string): number {
+    if (id.startsWith("chop")) return parseInt(id.slice(4), 10);
+    if (id.startsWith("live")) return LIVE_BASE + parseInt(id.slice(4), 10);
+    return -1;
+  }
+  trimOf(i: number): Trim | null {
     const seg = this.slice(i);
+    return seg ? getTrim(this.trimKeyOf(seg)) : null;
+  }
+  setTrimOf(i: number, t: Trim): void {
+    const seg = this.slice(i);
+    if (seg) setTrim(this.trimKeyOf(seg), t);
+    jamChanged();
+  }
+  // the slice as the pad plays it: its TRIM applied
+  private played(i: number): Slice | null {
+    const seg = this.slice(i);
+    if (!seg) return null;
+    const [a, b] = getTrim(this.trimKeyOf(seg));
+    return a <= 0 && b >= 1 ? seg : { ...seg, t: seg.t + a * seg.dur, dur: (b - a) * seg.dur };
+  }
+
+  playSlice(i: number, at?: number, frac = 1): void {
+    const whole = this.slice(i);
+    const seg = this.played(i);
     if (!seg) return;
 
     const d = this.deck();
@@ -146,7 +177,7 @@ export class StemSlicer extends JamModule {
     if (this.cur) fadeOut(this.cur, when, this.release, 0.015); // the previous note: cut, or its release under the new one
 
     const len = Math.max(0.06, seg.dur * frac);
-    const lvl = this.level * (this.normalize && this.lastBuf ? normGain(this.lastBuf, seg.t, seg.dur) : 1); // measured on the whole slice
+    const lvl = this.level * (this.normalize && this.lastBuf && whole ? normGain(this.lastBuf, whole.t, whole.dur) : 1); // measured on the whole slice
     const g = ctx.createGain();
     g.gain.value = 0;
     g.gain.setValueAtTime(0, when);
@@ -177,16 +208,24 @@ export class StemSlicer extends JamModule {
     if (on) {
       const d = this.deck();
       const ctx = this.engine.ctx;
-      const seg = this.slice(i);
+      const seg = this.played(i);
       if (!seg) return;
 
       const r = {
         timer: setInterval(() => {
           while (r.next < ctx.currentTime + 0.3) {
+            if (this.loops > 0 && r.count >= this.loops) { // REPEATS: played N times, it stops by itself
+              clearInterval(r.timer);
+              if (this.reps.get(i) === r) this.reps.delete(i);
+              jamChanged();
+              return;
+            }
             this.playSlice(i, r.next, PHRASE_FRACS[this.fracIdx]);
             r.next += seg.dur * PHRASE_FRACS[this.fracIdx];
+            r.count++;
           }
         }, 80),
+        count: 0,
         next: d.playing && d.bpm > 0 ? nextGrid(d, 0.25).at : ctx.currentTime + 0.01,
       };
 
@@ -230,6 +269,13 @@ export class StemSlicer extends JamModule {
 
   setLevel(v: number): void {
     this.level = v;
+    jamChanged();
+  }
+
+  // choosing a number of repeats turns Répéter on (that is what it counts)
+  setLoops(n: Repeats): void {
+    this.loops = n;
+    if (!this.repeat && !this.latch) this.repeat = true;
     jamChanged();
   }
 
@@ -323,7 +369,7 @@ export class StemSlicer extends JamModule {
   }
 
   protected keep(): string[] {
-    return ["level", "repeat", "latch", "fracIdx", "source", "liveBeats", "normalize", "release"];
+    return ["level", "repeat", "latch", "fracIdx", "source", "liveBeats", "normalize", "release", "loops"];
   }
 
   protected resetFields(): void {
@@ -336,6 +382,7 @@ export class StemSlicer extends JamModule {
     this.liveBeats = 4;
     this.normalize = true;
     this.release = 0;
+    this.loops = 0;
   }
 
   warning(): string | null {

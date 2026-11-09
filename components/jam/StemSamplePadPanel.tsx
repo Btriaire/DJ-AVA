@@ -6,6 +6,7 @@ import { Knob } from "../Knob";
 import { PAD_KEYS, PAD_ROW_COLORS, SamplePadButton, usePadKeys } from "./SamplePadButton";
 import { PadFxPanel } from "./PadFxPanel";
 import { ReleasePicker } from "./ReleasePicker";
+import { PadTrim, RepeatsPicker } from "./PadTrim";
 import { smartEqGains } from "@/lib/padEq";
 
 const C = "var(--jam-pad)";
@@ -75,6 +76,13 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
                   on={on}
                   keyLabel={keys ? PAD_KEYS[r]?.[col]?.label : undefined}
                   onPress={(down) => { m.press(row.stem, col, down); bump(); }}
+                />
+                <PadTrim
+                  value={m.trimOf(row.stem, col)}
+                  steps={m.trimSteps(row.stem, col)}
+                  color={PAD_ROW_COLORS[r % PAD_ROW_COLORS.length]}
+                  label={`${STEM_FR[row.stem] ?? row.stem} ${col + 1}`}
+                  onChange={(t) => { m.setTrimOf(row.stem, col, t); bump(); }}
                 />
                 {live && (
                   <button
@@ -244,6 +252,7 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
           <div key={row.stem} className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-bold uppercase text-neutral-300">{STEM_FR[row.stem] ?? row.stem}</span>
+              <RepeatsPicker compact value={m.repeatsOf(row.stem)} color={PAD_ROW_COLORS[r % PAD_ROW_COLORS.length]} onChange={(n) => { m.setRepeats(row.stem, n); bump(); }} />
               {m.pagesOf(row.stem) > 1 && (
                 <button
                   type="button"

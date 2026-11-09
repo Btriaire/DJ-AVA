@@ -7,6 +7,7 @@ import { pageCount, poolPage } from "@/lib/padPages";
 import { PadFx, type PadFxId } from "./padFx";
 import { normGain } from "./padLoudness";
 import { fadeOut, type ReleaseSec } from "./padRelease";
+import { getTrim, loopSteps, setTrim, trimKey, trimmed, type Repeats, type Trim } from "./padTrim";
 
 // a sample played backwards (cached per stem buffer)
 const reversed = new WeakMap<AudioBuffer, AudioBuffer>();
@@ -59,6 +60,7 @@ export class StemSamplePad {
   normalize = true; // every pad at the same loudness, whatever its stem (lib/audio/padLoudness.ts)
   release: ReleaseSec = 0; // RELEASE: a stopped loop or an ended shot keeps sounding and fades out (lib/audio/padRelease.ts)
   liveBars: (typeof LIVE_BARS)[number] = 1; // how many bars a LIVE capture takes
+  repeats: Record<string, Repeats> = {}; // per stem: how many times its loops play before stopping (0 = endless)
   private liveAll: Record<string, LiveSlots> = typeof window === "undefined" ? {} : loadLive();
 
   // per row (stem): its effects chain, where it plays, and its playback modifiers
@@ -208,6 +210,27 @@ export class StemSamplePad {
   pagesOf(stem: string): number { return pageCount(this.samples?.[stem] ?? []); }
   pageOf(stem: string): number { const n = this.pagesOf(stem); return n ? ((this.pages[stem] ?? 0) % n) + 1 : 0; }
 
+  // ---- TRIM (start later, end sooner) per pad, and REPEATS per stem ----
+  private trimKeyOf(stem: string, s: PadSample): string | null {
+    const h = this.deck().stemHash;
+    return h ? trimKey(h, `pad:${stem}`, s.start) : null;
+  }
+  trimOf(stem: string, col: number): Trim {
+    const s = this.rows().find((r) => r.stem === stem)?.pads[col];
+    return s ? getTrim(this.trimKeyOf(stem, s)) : [0, 1];
+  }
+  // a loop is trimmed in whole 16ths (it stays in time), a shot in 1 % steps
+  trimSteps(stem: string, col: number): number {
+    const s = this.rows().find((r) => r.stem === stem)?.pads[col];
+    return s?.kind === "loop" ? loopSteps(s.bars ?? 1) : 100;
+  }
+  setTrimOf(stem: string, col: number, t: Trim): void {
+    const s = this.rows().find((r) => r.stem === stem)?.pads[col];
+    if (s) setTrim(this.trimKeyOf(stem, s), t); // takes effect the next time the pad starts
+  }
+  repeatsOf(stem: string): Repeats { return this.repeats[stem] ?? 0; }
+  setRepeats(stem: string, n: Repeats): void { this.repeats[stem] = n; }
+
   isOn(stem: string, col: number): boolean {
     return this.voices.has(`${stem}:${col}`);
   }
@@ -254,8 +277,10 @@ export class StemSamplePad {
     const src = this.engine.ctx.createBufferSource();
     const mod = this.modsOf(key.slice(0, key.lastIndexOf(":")));
     const dur = buf.duration;
+    const stem = key.slice(0, key.lastIndexOf(":"));
+    const [s0, s1] = trimmed(s.start, s.end, getTrim(this.trimKeyOf(stem, s))); // the part of the slice kept by the TRIM
     // backwards: the same slice read from the reversed buffer; half speed: twice as long, an octave down
-    const a = mod.reverse ? dur - s.end : s.start, b = mod.reverse ? dur - s.start : s.end;
+    const a = mod.reverse ? dur - s1 : s0, b = mod.reverse ? dur - s0 : s1;
     src.buffer = mod.reverse ? reverseOf(this.engine.ctx, buf) : buf;
     src.loop = s.kind === "loop";
     src.loopStart = a;
@@ -264,8 +289,9 @@ export class StemSamplePad {
 
     const norm = normGain(buf, s.start, s.end - s.start); // measured on the slice as it is in the stem
     const gain = this.engine.ctx.createGain();
+    const lvl = this.level * (this.normalize ? norm : 1);
     gain.gain.setValueAtTime(0, at);
-    gain.gain.linearRampToValueAtTime(this.level * (this.normalize ? norm : 1), at + 0.005);
+    gain.gain.linearRampToValueAtTime(lvl, at + 0.005);
 
     src.connect(gain);
     gain.connect(out);
@@ -274,8 +300,17 @@ export class StemSamplePad {
     src.start(at, a, s.kind === "loop" ? undefined : b - a + this.release);
     if (s.kind === "shot" && this.release > 0) {
       const end = at + (b - a) / Math.max(0.01, src.playbackRate.value);
-      gain.gain.setValueAtTime(this.level * (this.normalize ? norm : 1), end);
+      gain.gain.setValueAtTime(lvl, end);
       gain.gain.setTargetAtTime(0, end, this.release / 4.6);
+    }
+    // REPEATS: a loop played N times stops by itself at the end of its last pass (with its release)
+    const n = this.repeatsOf(stem);
+    if (s.kind === "loop" && n > 0) {
+      const end = at + (n * (b - a)) / Math.max(0.01, src.playbackRate.value);
+      gain.gain.setValueAtTime(lvl, end);
+      if (this.release > 0) gain.gain.setTargetAtTime(0, end, this.release / 4.6);
+      else gain.gain.linearRampToValueAtTime(0, end + 0.012);
+      src.stop(end + this.release + 0.03);
     }
 
     if (this.voices.has(key)) {
@@ -284,7 +319,7 @@ export class StemSamplePad {
 
     this.voices.set(key, { src, gain, norm });
 
-    if (s.kind === "shot") {
+    if (s.kind === "shot" || n > 0) {
       src.onended = () => {
         if (this.voices.get(key)?.src === src) {
           this.voices.delete(key);
