@@ -24,8 +24,8 @@ export function SamplePadButton({ label, info, kind, color, on, keyLabel, onPres
       type="button"
       aria-pressed={on}
       title={kind === "loop" ? "Boucle : frappe pour lancer ou arrêter, calée sur la grille" : "Coup : joue une fois"}
-      className={`hw-pad ${on ? "hw-pad-loaded" : ""} ${hit ? "hw-pad-hit" : ""} relative flex aspect-square w-full min-w-[48px] flex-col items-center justify-center gap-0.5 p-1.5 text-center select-none touch-none`}
-      style={{ ["--rgb" as string]: color }}
+      className={`hw-pad ${on ? "hw-pad-loaded" : ""} ${hit ? "hw-pad-hit" : ""} relative flex aspect-square w-full min-w-[48px] flex-col items-center justify-center gap-1 p-2 text-center select-none touch-none`}
+      style={{ ["--rgb" as string]: color, borderRadius: 18 }} // as round as the pads of Basse / Voix du morceau
       onPointerDown={(e) => {
         try {
           e.currentTarget.setPointerCapture(e.pointerId);
@@ -38,13 +38,13 @@ export function SamplePadButton({ label, info, kind, color, on, keyLabel, onPres
       onPointerUp={() => onPress(false)}
       onPointerCancel={() => onPress(false)}
     >
-      <span className="text-[11px] font-black leading-tight">{label}</span>
-      <span className="text-[9px] leading-tight opacity-80">{info}</span>
-      <span className="absolute bottom-1 text-[8px] font-bold tracking-wider opacity-70">
+      <span className="text-[14px] font-black leading-tight">{label}</span>
+      <span className="text-[11px] leading-tight opacity-80">{info}</span>
+      <span className="absolute bottom-2 text-[10px] font-bold tracking-wider opacity-70">
         {kind === "loop" ? "BOUCLE" : "COUP"}
       </span>
       {keyLabel && (
-        <span className="absolute left-1.5 top-1 text-[9px] font-bold opacity-60">
+        <span className="absolute left-3 top-2 font-mono text-[12px] font-bold opacity-60">
           {keyLabel}
         </span>
       )}
