@@ -4,6 +4,7 @@ import type { DJEngine } from "@/lib/audio/engine";
 import { solarLab, type DroneWave } from "@/lib/audio/solarLab";
 import { Knob } from "../Knob";
 import { JamPads, JamSeg, JamShell, useJamRefresh, JamSwap } from "./JamKit";
+import { JamHelp } from "./JamHelp";
 const C = "var(--jam-solar)";
 const pct = (v: number) => `${Math.round(v * 100)} %`;
 const NAMES = ["Do","Do#","Ré","Ré#","Mi","Fa","Fa#","Sol","Sol#","La","La#","Si"];
@@ -13,7 +14,7 @@ export function SolarLabPanel({ engine }: { engine: DJEngine }) {
   const [, bump] = useReducer((x: number) => x + 1, 0);
   return (
     <JamShell title="Solar 42F" tag="nappe dans la tonalité du morceau" color={C} status={m.status()} deckName={m.deck() === engine.deckA ? "A" : "B"} pref={m.pref} onPref={(p) => { m.set("pref", p); bump(); }} lit={() => m.lit()} warning={m.warning()} onReset={() => { m.reset(); bump(); }} stemsOff={m.canEnableStems()} stemsLoading={m.stemsLoading()} onEnableStems={() => { void m.enableStems(); bump(); }}>
-      <p className="text-[11px] text-[var(--jam-text-2)]">Appuie sur JOUE : une nappe tenue dans la tonalité du morceau, qui change d&apos;accord avec lui et s&apos;efface quand la voix chante. GEL fige quelques secondes d&apos;un stem en nappe ; MONTÉE et DROP préparent les retours.</p>
+      <JamHelp>Appuie sur JOUE : une nappe tenue dans la tonalité du morceau, qui change d&apos;accord avec lui et s&apos;efface quand la voix chante. GEL fige quelques secondes d&apos;un stem en nappe ; MONTÉE et DROP préparent les retours.</JamHelp>
       {m.playing && <p aria-live="polite" className="text-[11px] font-bold" style={{ color: C }}>Joue : {m.drone.notes.map((n: number) => NAMES[((n % 12) + 12) % 12]).join(" · ")}</p>}
       <JamPads m={m} list={m.pads()} color={C} className="grid grid-cols-3 gap-2 sm:grid-cols-5" />
       <div className="flex flex-wrap justify-around gap-2">

@@ -14,9 +14,9 @@ export function StemPrepPanel({ engine }: { engine: DJEngine }) {
   const [msg, setMsg] = useState<string | null>(null);
   const [isFolded, setIsFolded] = useState<boolean>(() => {
     try {
-      return localStorage.getItem("djsynth.stemPrep.folded") === "1";
+      return localStorage.getItem("djsynth.stemPrep.folded") !== "0";
     } catch {
-      return false;
+      return true;
     }
   });
 

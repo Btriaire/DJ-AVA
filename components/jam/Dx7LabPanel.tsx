@@ -4,6 +4,7 @@ import type { DJEngine } from "@/lib/audio/engine";
 import { dx7Lab, FM_PATCHES, STAB_RHYTHMS, type FmPatchId, type StabRhythm } from "@/lib/audio/dx7Lab";
 import { Knob } from "../Knob";
 import { JamPads, JamSeg, JamShell, useJamRefresh, JamSwap } from "./JamKit";
+import { JamHelp } from "./JamHelp";
 const C = "var(--jam-dx7)";
 const pct = (v: number) => `${Math.round(v * 100)} %`;
 export function Dx7LabPanel({ engine }: { engine: DJEngine }) {
@@ -12,7 +13,7 @@ export function Dx7LabPanel({ engine }: { engine: DJEngine }) {
   const [, bump] = useReducer((x: number) => x + 1, 0);
   return (
     <JamShell title="DX7" tag="synthé FM sur les accords du morceau" color={C} status={m.status()} deckName={m.deck() === engine.deckA ? "A" : "B"} pref={m.pref} onPref={(p) => { m.set("pref", p); bump(); }} lit={() => m.lit()} warning={m.warning()} onReset={() => { m.reset(); bump(); }} stemsOff={m.canEnableStems()} stemsLoading={m.stemsLoading()} onEnableStems={() => { void m.enableStems(); bump(); }}>
-      <p className="text-[11px] text-[var(--jam-text-2)]">Choisis ce que joue le DX7 : des stabs en rythme sur les accords du morceau, les accords tenus, ou la basse du morceau doublée. Les pads jouent les accords de la tonalité à la main, en rythme, tant que tu les tiens.</p>
+      <JamHelp>Choisis ce que joue le DX7 : des stabs en rythme sur les accords du morceau, les accords tenus, ou la basse du morceau doublée. Les pads jouent les accords de la tonalité à la main, en rythme, tant que tu les tiens.</JamHelp>
       <JamPads m={m} list={m.pads()} color={C} className="grid grid-cols-4 gap-2 sm:grid-cols-7" />
       <div className="flex flex-wrap justify-around gap-2">
         <Knob label="NIVEAU" value={m.level} min={0} max={1.5} defaultValue={1} color={C} size={46} led format={pct} onChange={(v) => { m.setLevel(v); bump(); }} />

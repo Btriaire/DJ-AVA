@@ -1,5 +1,8 @@
 "use client";
 
+import { SetArt } from "../prep/SetArt";
+import { SetEditor } from "../prep/SetEditor";
+import { setAccent } from "@/lib/setLook";
 import { useState, type ReactNode } from "react";
 import { Icon, Mosaic } from "../prep/parts";
 import { AmbientHero, PlayDisc, QuickSets } from "../prep/AmbientHero";
@@ -8,7 +11,6 @@ import { DeckStrip, type DeckStripProps } from "./DeckStrip";
 import { LibraryPane, type LibraryPaneProps } from "./LibraryPane";
 import { SetDetail, type SetDetailProps } from "./SetDetail";
 import { SetRail, type SetRailProps } from "./SetRail";
-import { SetPoster, SetTitle } from "./SetPoster";
 import { TRANSITION_LABEL } from "@/lib/transitions";
 import type { AudiusTrack } from "@/lib/audius";
 import ArtistSearch from "./ArtistSearch";
@@ -45,6 +47,7 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
   // the titles of the open set (detail.tracks is the whole library)
   const setTracks = (detail.playlist?.trackIds ?? []).map((id) => detail.tracks.find((t) => t.id === id)).filter((t): t is NonNullable<typeof t> => !!t);
   const selectedSet = detail.playlist?.id ?? null; // the set that is open
+  const [editingLook, setEditingLook] = useState(false);
   const [ambient, setAmbient] = useState<string | null>(null); // colour of the hovered set in the header
 
   const handleSetSelect = (id: string) => {
@@ -96,9 +99,10 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
       case 1:
         return (
           <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
+            <div className="flex items-baseline gap-2.5">
               <h2 className="text-lg font-bold">Mes sets</h2>
-              <p className="text-sm text-neutral-400">Sélectionnez un set existant ou créez-en un nouveau</p>
+              <span className="rounded-full bg-white/10 px-2 py-px font-mono text-[11px] text-neutral-300">{rail.playlists.length}</span>
+              <p className="text-sm text-neutral-400">Ouvre un set, ou crée-en un nouveau</p>
             </div>
             <SetRail
               {...rail}
@@ -167,27 +171,22 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
       <AmbientHero
         level={1}
         label="Sets"
-        ambient={ambient ?? undefined}
+        ambient={ambient ?? detail.playlist?.look?.color ?? undefined}
         overline={detail.playlist ? "Set ouvert" : "Tes sets"}
-        title={detail.playlist ? <SetTitle key={detail.playlist.id} name={detail.playlist.name} onRename={detail.onRename} /> : "Sets"}
-        cover={
-          detail.playlist ? (
-            <SetPoster key={detail.playlist.id} tracks={setTracks} name={detail.playlist.name} cover={detail.playlist.cover} look={detail.playlist.posterLook} line={detail.playlist.posterLine} onCover={detail.onCover} onLine={detail.onPosterLine} />
-          ) : (
-            <Mosaic tracks={setTracks} size={112} accent="var(--prep-accent)" />
-          )
-        }
+        title={detail.playlist?.name ?? "Sets"}
+        cover={detail.playlist ? <SetArt set={detail.playlist} tracks={setTracks} accent={setAccent(detail.playlist, 0, ["#22d3ee"])} size={112} rounded={10} /> : <Mosaic tracks={setTracks} size={112} accent="var(--prep-accent)" />}
         subtitle={detail.playlist ? `${setTracks.length} titre(s) · ${Math.round(totalSec / 60)} min · ${bpmRange} · stems ${readyCount}/${setTracks.length}` : "Composez vos sets, réglez leurs enchaînements, lancez-les sur les platines."}
         actions={
           selectedSet ? (
             <>
               <PlayDisc label={`Lancer ${detail.playlist?.name ?? "le set"}`} onClick={() => rail.onPlay("relay", selectedSet)} disabled={setTracks.length < 2} />
               <span className="text-[11px] text-neutral-400">{setTracks.length >= 2 ? "Lancer en relais A et B" : "Il faut deux titres"}</span>
+              <button type="button" className="prep-btn-ghost prep-tap px-3 py-1.5 text-[12px]" aria-expanded={editingLook} onClick={() => setEditingLook((v) => !v)}>Personnaliser</button>
             </>
           ) : undefined
         }
       >
-        <QuickSets
+        {step !== 1 && <QuickSets
           tracks={rail.tracks}
           playlists={rail.playlists.filter((p) => p.id !== selectedSet)}
           onLaunch={(id) => {
@@ -196,8 +195,23 @@ export function PlaylistStudio({ tiles, decks, rail, detail, library, extras, jo
           }}
           onAmbient={setAmbient}
           title="Tes autres sets"
-        />
+        />}
       </AmbientHero>
+      {editingLook && detail.playlist && (
+        <div className="prep-card">
+          <SetEditor
+            key={detail.playlist.id}
+            name={detail.playlist.name}
+            cover={detail.playlist.cover}
+            look={detail.playlist.look}
+            tracks={setTracks}
+            accent={setAccent(detail.playlist, 0, ["#22d3ee"])}
+            taken={rail.playlists.filter((p) => p.id !== selectedSet).map((p) => p.name)}
+            onSave={(name, cover, look) => { if (selectedSet) rail.onUpdateSet(selectedSet, { name, cover, look }); setEditingLook(false); }}
+            onCancel={() => setEditingLook(false)}
+          />
+        </div>
+      )}
 
       <div className="flex flex-col gap-4">
         <nav aria-label="Étapes du set" className="flex items-stretch gap-1.5 overflow-x-auto pb-1">

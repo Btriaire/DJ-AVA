@@ -11,7 +11,7 @@ import { instrumentsOf } from "@/lib/sampleFont";
 const C = "var(--jam-vox)";
 const pct = (v: number) => `${Math.round(v * 100)} %`;
 
-// VOX FX: throws held on the vocal stem, space, radio filter, a sung harmony in key, a vocoder and the voice lane
+// VOX FX: throws held on the vocal stem, space, radio filter, a sung harmony in key and the voice lane
 export function VoxFxPanel({ engine }: { engine: DJEngine }) {
   const m = jamModules(engine).vox;
   useJamRefresh();
@@ -104,42 +104,6 @@ export function VoxFxPanel({ engine }: { engine: DJEngine }) {
         </span>
       </div>
       
-      <div className="flex flex-wrap items-center gap-3 rounded-lg bg-black/25 p-2">
-        <button
-          type="button"
-          aria-pressed={m.vocoderOn}
-          onClick={() => {
-            m.setVocoder(!m.vocoderOn);
-            bump();
-          }}
-          className={`h-9 rounded-md px-3 text-[11px] font-black tracking-[0.15em] ${
-            m.vocoderOn
-              ? "bg-[color-mix(in_srgb,_var(--jam-vox)_45%,_#111)] text-white ring-1 ring-inset ring-[var(--jam-vox)]"
-              : "bg-[rgba(255,255,255,0.06)] text-[var(--jam-text-2)]"
-          }`}
-          title="La voix fait parler un accord de synthé qui suit les accords du morceau"
-        >
-          VOCODER
-        </button>
-        <Knob
-          label="VOCODER"
-          value={m.vocoderLevel}
-          min={0}
-          max={1.5}
-          defaultValue={0.8}
-          color={C}
-          size={42}
-          led
-          format={pct}
-          onChange={(v) => {
-            m.setVocoderLevel(v);
-            bump();
-          }}
-        />
-        <span className="text-[10px] text-[var(--jam-text-3)]">
-          Accord de 7e du morceau, change à chaque temps
-        </span>
-      </div>
       <div className="flex flex-wrap items-center gap-3">
         <JamSwap m={m} color={C} what="la voix" onChange={bump} />
         <span className="text-[10px] text-[var(--jam-text-3)]">La chorale chante la mélodie à la place de la voix</span>
@@ -155,7 +119,7 @@ export function VoxFxPanel({ engine }: { engine: DJEngine }) {
         <span className="text-[10px] text-[var(--jam-text-3)]">{m.chop ? `Phrase de ${m.chop.beats} temps prise à ${Math.floor(m.chop.start / 60)}:${String(Math.floor(m.chop.start % 60)).padStart(2, "0")}` : "Aucune phrase capturée"}</span>
       </div>
       <JamPads m={m} list={m.chopPads()} color={C} className="grid grid-cols-8 gap-1.5" keys={KEY_ROWS.vox.map((k) => `maj ${k}`)} />
-      <p className="text-[10px] text-[var(--jam-text-3)]">Maintiens un jet : il part en rythme et s&apos;arrête au relâché. CAPTURER prend les dernières mesures chantées : rejoue-les en morceaux, toujours en rythme ; en MÉLODIE, le dernier morceau joué chante sur les 8 notes de la gamme. HARMONIE (bouton ou pad) chante une tierce, une quinte, un accord complet ou en dessous de la voix, dans la tonalité, dès que la voix chante ; choisir une voix l’allume aussi. VOCODER fait parler un accord de synthé avec la voix, même quand le curseur VOIX est baissé.</p>
+      <p className="text-[10px] text-[var(--jam-text-3)]">Maintiens un jet : il part en rythme et s&apos;arrête au relâché. CAPTURER prend les dernières mesures chantées : rejoue-les en morceaux, toujours en rythme ; en MÉLODIE, le dernier morceau joué chante sur les 8 notes de la gamme. HARMONIE (bouton ou pad) chante une tierce, une quinte, un accord complet ou en dessous de la voix, dans la tonalité, dès que la voix chante ; choisir une voix l’allume aussi.</p>
     </JamShell>
   );
 }

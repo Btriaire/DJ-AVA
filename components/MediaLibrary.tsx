@@ -149,7 +149,7 @@ const TRANSITION_TYPES = TRANSITIONS;
 // worth resurrecting, but "I just searched, then tapped over to Playlist" is.
 const SEARCH_STATE_KEY = "djsynth.searchState.v1";
 interface SearchState {
-  tab: "files" | "playlists" | "audius" | "youtube" | "soundcloud" | "deezer" | "spotify" | "auto";
+  tab: "files" | "playlists" | "audius" | "youtube" | "soundcloud" | "deezer" | "spotdl" | "spotify" | "auto";
   q: string;
   durKey: string;
   results: AudiusTrack[];
@@ -182,9 +182,11 @@ function MediaLibraryImpl({ engine, onLoaded, stemRefresh, libRefresh, splitLayo
   const [initialSearch] = useState(loadSearchState);
   const [pending] = useState(readPendingSet); // read-only here: the effect below consumes the key
   const [tab, setTab] = useState<
-    "files" | "playlists" | "audius" | "youtube" | "soundcloud" | "deezer" | "spotify" | "auto"
+    "files" | "playlists" | "audius" | "youtube" | "soundcloud" | "deezer" | "spotdl" | "spotify" | "auto"
   >(pending?.side === "open" ? "playlists" : initialSearch?.tab ?? "files");
   const [q, setQ] = useState(initialSearch?.q ?? "");
+  // spotDL keeps a Python worker: start it as soon as the tab opens, the first search is then as fast as the next ones
+  useEffect(() => { if (tab === "spotdl") void fetch("/api/spotdl/search?warm=1").catch(() => {}); }, [tab]);
   const [durKey, setDurKey] = useState<string>(initialSearch?.durKey ?? "all"); // YouTube duration filter
   const [results, setResults] = useState<AudiusTrack[]>(initialSearch?.results ?? []);
   const [morePage, setMorePage] = useState(0); // last page asked (PLUS DE TITRES)
@@ -1024,7 +1026,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
     const lt: LibTrack = {
       id: uid(),
       name: `${t.title} — ${t.artist}`,
-      source: tab,
+      source: (t.source ?? tab) as TrackSource,
       url: t.id,
       deck: null,
       art: t.artwork ?? undefined,
@@ -1041,7 +1043,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
       {
         id: t.id,
         name: `${t.title} — ${t.artist}`,
-        source: tab as TrackSource,
+        source: (t.source ?? tab) as TrackSource,
         url: t.id,
         deck: null,
         art: t.artwork ?? undefined,
@@ -2316,7 +2318,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
         <div className={`${inPl ? "h-24 w-24" : "h-16 w-16"} hw-cover shrink-0 rounded-md bg-neutral-900`}>
           {t.art ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img loading="lazy" decoding="async" src={thumbSrc(t.art, 120)} alt="" className="h-full w-full object-cover" />
+            <img loading="lazy" decoding="async" referrerPolicy="no-referrer" src={thumbSrc(t.art, 120)} alt="" className="h-full w-full object-cover" />
           ) : (
             <div
               className="hw-vinyl flex h-full w-full items-center justify-center text-base font-black text-white drop-shadow"
@@ -2791,7 +2793,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
   const onlineSources = (
     <>
           {/* ===== ONLINE catalogue search (Audius / YouTube / SoundCloud / Deezer) ===== */}
-          {(tab === "audius" || tab === "youtube" || tab === "soundcloud" || tab === "deezer" || tab === "spotify") && (
+          {(tab === "audius" || tab === "youtube" || tab === "soundcloud" || tab === "deezer" || tab === "spotdl" || tab === "spotify") && (
             <div className="flex flex-col gap-2">
               <div className="flex gap-2">
                 <input
@@ -2799,6 +2801,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                   onChange={(e) => setQ(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && search()}
                   placeholder={
+                    tab === "spotdl" ? "Rechercher un titre (spotDL · YouTube Music)…" :
                     tab === "youtube"
                       ? "Rechercher une chanson sur YouTube…"
                       : tab === "soundcloud"
@@ -2843,7 +2846,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
               <ul className={`flex flex-col gap-1 overflow-y-auto ${splitLayout ? "max-h-[34rem]" : "max-h-72"}`}>
                 {results.length === 0 && !loading && (
                   <p className="py-6 text-center text-sm text-neutral-600">
-                    {tab === "youtube"
+                    {tab === "spotdl" ? "Titres studio du catalogue YouTube Music via spotDL : l'audio complet passe dans le mixeur." : tab === "youtube"
                       ? "L'audio YouTube est importé (sans vidéo) et passe dans le mixeur."
                       : tab === "soundcloud"
                         ? "L'audio SoundCloud est importé et passe dans le mixeur."
@@ -2860,8 +2863,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                     className="flex items-center gap-3 rounded bg-neutral-800/50 p-2 hover:bg-neutral-800"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img loading="lazy" decoding="async"
-                      src={t.artwork ?? ""}
+                    <img loading="lazy" decoding="async" referrerPolicy="no-referrer"
+                      src={thumbSrc(t.artwork ?? undefined, 64) ?? ""}
                       alt=""
                       className="h-16 w-16 shrink-0 rounded bg-neutral-700 object-cover"
                     />
@@ -2885,7 +2888,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                       </a>
                     )}
                     <button
-                      onClick={() => markLater(t, tab === "youtube" || tab === "spotify" ? tab : "audius")}
+                      onClick={() => markLater(t, tab === "youtube" || tab === "spotdl" ? "youtube" : tab === "spotify" ? "spotify" : "audius")}
                       className="hw-btn shrink-0 px-2 py-1 text-xs"
                       title="Garder ce morceau pour plus tard (préparer ses stems en lot)"
                     >
@@ -3125,7 +3128,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                     return (
                       <li key={t.id} className="flex items-center gap-3 rounded bg-neutral-800/50 p-2 hover:bg-neutral-800">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img loading="lazy" decoding="async" src={t.artwork ?? ""} alt="" className="h-14 w-14 shrink-0 rounded bg-neutral-700 object-cover" />
+                        <img loading="lazy" decoding="async" referrerPolicy="no-referrer" src={t.artwork ?? ""} alt="" className="h-14 w-14 shrink-0 rounded bg-neutral-700 object-cover" />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
                             <span
@@ -3380,7 +3383,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
           driving,
           onSelect: (id) => setActivePl(id),
           onCreate: createSetNamed,
-          onRename: renameNow,
+          onUpdateSet: (id, patch) => persist((d) => ({ ...d, playlists: d.playlists.map((p) => (p.id === id ? { ...p, ...patch } : p)) })),
           onDropTracks: (id, ids) => addTracksAt(id, ids),
           onPlay: (dest, id) => sendSet(dest, id),
           stemReady: (id) => stemOf(id).state === "done",
@@ -3433,7 +3436,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
             { key: "youtube", label: "YouTube", color: "#ef4444" },
             { key: "soundcloud", label: "SoundCloud", color: "#ff7700" },
             { key: "deezer", label: "Deezer", color: "#a238ff" },
-            { key: "spotify", label: "Spotify (spotDL)", color: "#1ed760" },
+            { key: "spotdl", label: "spotDL", color: "#84cc16" },
+            { key: "spotify", label: "Spotify", color: "#1ed760" },
             { key: "auto", label: "Auto-IA", color: "#fbbf24" },
           ],
           tab,
@@ -3695,7 +3699,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                   >
                     {a?.art ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img loading="lazy" decoding="async" src={thumbSrc(a.art, 120)} alt="" className="h-full w-full object-cover" />
+                      <img loading="lazy" decoding="async" referrerPolicy="no-referrer" src={thumbSrc(a.art, 120)} alt="" className="h-full w-full object-cover" />
                     ) : (
                       <div
                         className="hw-vinyl flex h-full w-full items-center justify-center text-2xl font-black drop-shadow"
@@ -3734,7 +3738,7 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                       >
                         {nextT.art ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img loading="lazy" decoding="async" src={thumbSrc(nextT.art, 120)} alt="" className="h-full w-full object-cover" />
+                          <img loading="lazy" decoding="async" referrerPolicy="no-referrer" src={thumbSrc(nextT.art, 120)} alt="" className="h-full w-full object-cover" />
                         ) : (
                           <div
                             className="flex h-full w-full items-center justify-center text-base"
@@ -3766,7 +3770,8 @@ const [usage, setUsage] = useState<{ usedMb: number; quotaMb: number } | null>(n
                 ["youtube", "▶ YouTube", "#ef4444"],
                 ["soundcloud", "☁ SoundCloud", "#ff7700"],
                 ["deezer", "◆ Deezer", "#a238ff"],
-                ["spotify", "● Spotify (spotDL)", "#1ed760"],
+                ["spotdl", "spotDL", "#84cc16"],
+                ["spotify", "● Spotify", "#1ed760"],
                 ["auto", "✨ Auto-IA", "#fbbf24"],
               ] as const
             ).map(([key, label, color]) => (

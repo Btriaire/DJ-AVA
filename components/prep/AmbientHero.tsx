@@ -1,8 +1,9 @@
 // Spotify-like header of the main views: a colour that follows the hovered set, quick access to the latest sets (MaRuche/Falken)
 "use client";
 
+import { SetArt } from "./SetArt";
+import { setAccent } from "@/lib/setLook";
 import type { ReactNode } from "react";
-import { Mosaic } from "./parts";
 import type { LibTrack, Playlist } from "@/lib/library";
 
 export const AMBIENTS = ["#22d3ee", "#a78bfa", "#34d399", "#ffcc00", "#f97316", "#60a5fa"] as const;
@@ -84,12 +85,12 @@ export function QuickSets({
             <div
               key={p.id}
               className="group relative flex items-center gap-3 overflow-hidden rounded-md bg-white/[.06] pr-3 transition-colors hover:bg-white/[.12] motion-reduce:transition-none"
-              onMouseEnter={() => onAmbient?.(AMBIENTS[i % AMBIENTS.length])}
+              onMouseEnter={() => onAmbient?.(setAccent(p, i, AMBIENTS))}
               onMouseLeave={() => onAmbient?.(null)}
-              onFocus={() => onAmbient?.(AMBIENTS[i % AMBIENTS.length])}
+              onFocus={() => onAmbient?.(setAccent(p, i, AMBIENTS))}
               onBlur={() => onAmbient?.(null)}
             >
-              <Mosaic tracks={pTracks.slice(0, 4)} size={56} accent={AMBIENTS[i % AMBIENTS.length]} cover={p.cover} />
+              <SetArt set={p} tracks={pTracks} accent={setAccent(p, i, AMBIENTS)} size={56} />
               <div className="min-w-0 flex-1">
                 <div className="text-[13px] font-bold text-white truncate">{p.name}</div>
                 <div className="text-[11px] text-neutral-400">{pTracks.length} titres</div>

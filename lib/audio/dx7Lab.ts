@@ -119,7 +119,8 @@ export class Dx7Lab extends JamModule {
     const feedback = new GainNode(engine.ctx, { gain: 0.35 });
     lowpass.connect(feedback);
     feedback.connect(this.delay);
-    onJamTick(engine, (d, from, to) => this.tick(d, from, to));
+    this.gateModule("dx7");
+    onJamTick(engine, (d, from, to) => { if (this.active) this.tick(d, from, to); });
   }
 
   setLevel(v: number) {

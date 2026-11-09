@@ -1,3 +1,4 @@
+import { moduleOpen } from "./moduleGate";
 import type { DJEngine } from "./engine";
 import type { Deck } from "./Deck";
 import { chordAt, onJamTick, songToCtx } from "./stemJam";
@@ -14,9 +15,9 @@ export function voiceNear(chord: number[], root: number): number[] {
 export class SamplerFollow {
   on = false;
   private cache = new WeakMap<object, Hit[]>();
-  constructor(private engine: DJEngine) { onJamTick(engine, (deck, from, to) => this.tick(deck, from, to)); }
+  constructor(private engine: DJEngine) { onJamTick(engine, (deck, from, to) => { if (moduleOpen("supersampler")) this.tick(deck, from, to); }); }
   private tick(deck: Deck, from: number, to: number): void {
-    if (!this.on || deck !== this.engine.masterDeck() || !deck.playing || !deck.stemNotes?.other?.length) return;
+    if (!moduleOpen("supersampler") || !this.on || deck !== this.engine.masterDeck() || !deck.playing || !deck.stemNotes?.other?.length) return;
     let hits = this.cache.get(deck.stemNotes);
     if (!hits) {
       hits = chordHits(cleanNotes(deck.stemNotes.other));

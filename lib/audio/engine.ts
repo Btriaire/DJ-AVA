@@ -1,3 +1,4 @@
+import { onModuleGate } from "./moduleGate";
 import { Deck } from "./Deck";
 import { xfGains, type XfCurve } from "./djConsole";
 import { PadVoices } from "./padVoices";
@@ -18,6 +19,7 @@ import { idbPutBlob, idbGetBlob, idbDelBlob } from "../library";
 import * as Tone from "tone";
 import { SamplePad, type PadSource } from "./SamplePad";
 import { SuperSampler } from "./SuperSampler";
+import { emitDj } from "./djEvents";
 
 // Build the AudioContext tuned for the lowest practical action latency. The
 // "interactive" hint tells the browser to pick the smallest hardware buffer it
@@ -56,6 +58,15 @@ export class DJEngine {
   readonly recorder: Recorder;
   readonly dlRecorder: Recorder; // dedicated capture for WAV download
   readonly masterFx: FXRack; // FX bus on the full mix
+  get masterBus(): GainNode { return this.master; }
+  // the instrument's way to the master: silent while its module is closed in the picker
+  private gateOut(key: string): GainNode {
+    const g = this.ctx.createGain();
+    g.connect(this.master);
+    onModuleGate(key, (open) => g.gain.setTargetAtTime(open ? 1 : 0, this.ctx.currentTime, 0.02));
+    return g;
+  }
+  get meterTap(): AnalyserNode { return this.meterAnalyser; } // the post-FX output meter, read by the Classique dynamics gauge // the mix before the limiter: ambience layers and the session timer plug in here
   private chA: GainNode;
   private chB: GainNode;
   private master: GainNode;
@@ -137,18 +148,20 @@ export class DJEngine {
     this.sampler = new Sampler(this.ctx);
     this.midi = new MidiManager(this.synth, this.sampler);
     this.soundFx = new SoundFX(this.ctx);
-    this.synth.out.connect(this.master);
-    this.sampler.output.connect(this.master); // post-limiter sampler output
+    this.synth.out.connect(this.gateOut("synth"));
+    this.sampler.output.connect(this.gateOut("sampler")); // post-limiter sampler output
     this.soundFx.output.connect(this.master); // one-shot FX sit on the master too
     this.drums = new DrumMachine(this.ctx, () => this.masterClock());
-    this.drums.out.connect(this.master);
+    this.drums.out.connect(this.gateOut("drums"));
     this.djSynth = new DjSynth(this.ctx, () => this.masterClock());
-    this.djSynth.out.connect(this.master);
+    const djSynthOut = this.gateOut("djsynth");
+    this.djSynth.out.connect(djSynthOut);
+    onModuleGate("soundfx", (open) => { if (!open) this.soundFx.stopAll(); });
     this.padVoices = new PadVoices(this.ctx, this.master);
     this.keyPad = new SamplePad(this.ctx, this.master, () => this.keySourceInfo());
-    this.superSampler = new SuperSampler(this.ctx, this.master, () => this.masterDeck()?.fxClock()?.bpm ?? 120);
-    this.deckA.setSynthRoute(this.djSynth.out, this.master);
-    this.deckB.setSynthRoute(this.djSynth.out, this.master);
+    this.superSampler = new SuperSampler(this.ctx, this.gateOut("supersampler"), () => this.masterDeck()?.fxClock()?.bpm ?? 120);
+    this.deckA.setSynthRoute(this.djSynth.out, djSynthOut);
+    this.deckB.setSynthRoute(this.djSynth.out, djSynthOut);
     this.slicerA = new Slicer(this.ctx, this.deckA);
     this.slicerB = new Slicer(this.ctx, this.deckB);
 
@@ -623,6 +636,7 @@ export class DJEngine {
 
   // equal-power crossfade, 0 = full A, 1 = full B
   setCrossfade(x: number) {
+    if (Math.abs(x - this.crossfade) > 0.3) emitDj({ kind: "fade", strength: Math.abs(x - this.crossfade) });
     this.crossfade = x;
     this.applyCrossfade();
   }

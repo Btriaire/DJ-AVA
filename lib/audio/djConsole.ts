@@ -1,6 +1,7 @@
 // What a club mixer adds around the decks: headphone pre-listen (CUE), crossfader curves, a microphone
 // with talkover, and the history of the set.
 import type { Deck } from "./Deck";
+import { emitDj } from "./djEvents";
 
 export type XfCurve = "douce" | "mix" | "scratch";
 export const XF_CURVES: [XfCurve, string, string][] = [
@@ -162,8 +163,8 @@ export class DjConsole {
       for (const v of this.buf) e += v * v;
       const db = 10 * Math.log10(e / this.buf.length + 1e-12);
       const now = performance.now();
-      if (db > -38) { this.quietSince = now; if (!this.talking) { this.talking = true; this.e.setDuck(0.32); } }
-      else if (this.talking && now - this.quietSince > 400) { this.talking = false; this.e.setDuck(1); }
+      if (db > -38) { this.quietSince = now; if (!this.talking) { this.talking = true; this.e.setDuck(0.32); emitDj({ kind: "talk", on: true }); } }
+      else if (this.talking && now - this.quietSince > 400) { this.talking = false; this.e.setDuck(1); emitDj({ kind: "talk", on: false }); }
     } else if (this.talking) {
       this.talking = false;
       this.e.setDuck(1);

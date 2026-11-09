@@ -44,7 +44,7 @@ export function buildRecipes(fx: FxMap): EqRecipe[] {
   const bassMax = Math.max(...bassRef.slice(0, 5));
   const bassGains = bassRef.map((val, i) => {
     if (i < 5) {
-      const base = [9, 8, 7, 4, 2][i];  // audible: the sub and the kick lift
+      const base = [12, 10, 7, 3, 0][i];  // audible: the sub and the kick lift
       return clampGain(base + 0.15 * (val - bassMax));
     } else if (i < 8) {
       return -1.5;
@@ -63,9 +63,9 @@ export function buildRecipes(fx: FxMap): EqRecipe[] {
   const surroundGains = mix.map((val, i) => {
     if (i >= 9) {
       const expectedSlope = -3 * (i - 8) * 1.2;
-      return clampGain(Math.max(0, expectedSlope - (val - mix[8])) * 0.5 + 1);
+      return clampGain(Math.max(0, expectedSlope - (val - mix[8])) * 1.2 + 2);
     } else if (i >= 5) {
-      return -1.5;
+      return -5;
     } else {
       return 0;
     }
@@ -75,14 +75,15 @@ export function buildRecipes(fx: FxMap): EqRecipe[] {
     label: "Surround",
     title: "Ouvre la stéréo et l'air : relève les aigus qui manquent par rapport à la pente naturelle du mix, creuse le bas-médium",
     gains: surroundGains,
-    bars: 4
+    bars: 2
   });
 
   if ("vocals" in fx.spectra) {
     const devantGains = mix.map((_, i) => {
-      if (i >= 10 && i <= 11) return 5;  // voice presence
-      if (i >= 6 && i <= 7) return -2;
-      if (i >= 1 && i <= 2) return -2;
+      if (i >= 10 && i <= 11) return 8;  // voice presence
+      if (i >= 6 && i <= 7) return -5;
+      if (i >= 1 && i <= 2) return -4;
+      if (i === 12) return 2;
       return 0;
     });
     recipes.push({
@@ -95,8 +96,9 @@ export function buildRecipes(fx: FxMap): EqRecipe[] {
   }
 
   const clairGains = mix.map((_, i) => {
-    if (i === 12 || i === 13) return 4;  // clarity
-    if (i === 11) return -1.5;
+    if (i === 12 || i === 13) return 7;  // clarity
+    if (i === 11) return -2;
+    if (i === 9 || i === 10) return 3;
     return 0;
   });
   recipes.push({
@@ -104,7 +106,7 @@ export function buildRecipes(fx: FxMap): EqRecipe[] {
     label: "Clair",
     title: "Plus de netteté sans siffler : relève 6,3 et 10 kHz un peu, adoucit 4 kHz",
     gains: clairGains,
-    bars: 4
+    bars: 2
   });
 
   recipes.push({
@@ -138,6 +140,90 @@ export function buildRecipes(fx: FxMap): EqRecipe[] {
     title: "Retire la lourdeur sans perdre l'énergie : cuvette douce dans 400 Hz et 2,5 kHz",
     gains: [clampGain(1), clampGain(1), clampGain(0), clampGain(0), clampGain(0), clampGain(0), clampGain(-2.5), clampGain(0), clampGain(0), clampGain(0), clampGain(-2), clampGain(0), clampGain(0), clampGain(0), clampGain(0)],
     bars: 8
+  });
+  recipes.push({
+    id: "boise",
+    label: "Chaleur boisée",
+    title: "Arrondit le grave-médium et allège le bas-médium, pour un piano ou une guitare plus chaud",
+    gains: [-8,-6,-3,0,2,3,0,-1.5,0,0,0,0,0,1,0],
+    bars: 4
+  });
+  recipes.push({
+    id: "corde",
+    label: "Corde claire",
+    title: "Retire les bruits graves et fait ressortir l'attaque des cordes",
+    gains: [-9,-8,-5,-2,0,0,-1.5,0,0,1.5,3,2.5,2,1.5,0],
+    bars: 2
+  });
+  recipes.push({
+    id: "salle",
+    label: "Air de salle",
+    title: "Ajoute de l'air et de la présence, comme dans une salle vivante",
+    gains: [-6,-4,-1,0,0,0,0,0,0,0,0.5,1,2.5,3,3],
+    bars: 4
+  });
+  recipes.push({
+    id: "piano-rond",
+    label: "Piano rond",
+    title: "Donne du corps et de la rondeur aux notes graves du piano",
+    gains: [-6,-3,1,2.5,2.5,1,0,0,-0.5,0,0,1,1.5,1,0],
+    bars: 4
+  });
+  recipes.push({
+    id: "handpan",
+    label: "Handpan ouvert",
+    title: "Fait chanter le corps du handpan et adoucit les harmoniques dures",
+    gains: [-8,-5,0,2,3,3,1.5,0,-1,-2,-1.5,0,2,2.5,1.5],
+    bars: 4
+  });
+  recipes.push({
+    id: "zen-doux",
+    label: "Zen doux",
+    title: "Enlève grondements et aigus pour une écoute apaisée",
+    gains: [-9,-7,-3,0,1,1.5,1,0,-1,-2,-3,-3.5,-4,-5,-6],
+    bars: 8
+  });
+  recipes.push({
+    id: "cordes",
+    label: "Cordes soyeuses",
+    title: "adoucit la stridence des violons et garde la chaleur des altos et violoncelles",
+    gains: [-8,-6,-3,0,1,1.5,0,-0.5,0,0.5,0,-1.5,-1,1,1],
+    bars: 4
+  });
+  recipes.push({
+    id: "cuivres",
+    label: "Cuivres doux",
+    title: "calme l'éclat des trompettes et trombones sans les étouffer",
+    gains: [-8,-6,-2,0,0,0,0,-1,-1.5,-2,-1.5,-2.5,-1,0,0],
+    bars: 4
+  });
+  recipes.push({
+    id: "lyrique",
+    label: "Voix lyrique",
+    title: "met en avant la voix chantée et son timbre, sans souffle ni dureté",
+    gains: [-9,-7,-4,-1,0,0,0,0.5,1,1.5,2,1,0,0.5,0.5],
+    bars: 4
+  });
+  recipes.push({
+    id: "orchestre",
+    label: "Orchestre large",
+    title: "ouvre l'image sonore de l'orchestre, du grave profond à l'air des cordes",
+    gains: [-4,-2,0,1,1.5,1,0,0,0,0,0.5,1,1.5,2,2],
+    bars: 8
+  });
+  recipes.push({
+    id: "piano-concert",
+    label: "Piano de concert",
+    title: "un piano de concert plein dans le grave, net et brillant dans l'aigu",
+    gains: [-7,-4,0,1.5,1.5,0,-1,0,0,0.5,1,1.5,1.5,1,0.5],
+    bars: 4
+  });
+  recipes.push({
+    id: "neutre",
+    label: "Neutre",
+    title: "Remet l'égalisation à plat : annule l'effet de la section précédente",
+    gains: new Array(15).fill(0),
+    bars: 4
   });
   return recipes;
 }

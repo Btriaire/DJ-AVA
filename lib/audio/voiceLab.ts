@@ -26,7 +26,7 @@ export function layerGains(looks: Set<string>, level: number): Map<string, numbe
 }
 
 // one rendered layer, kept on the song position: restarted when the deck jumps, changes speed, or drifts
-class SyncVoice {
+export class SyncVoice {
   readonly gain: GainNode;
   private src: AudioBufferSourceNode | null = null;
   private startAt = 0;
@@ -66,6 +66,17 @@ class SyncVoice {
   }
 }
 
+// one rendered layer of this song (null when it was not prepared): the crowd sings the harmonies with it
+export async function loadLayer(d: Deck, name: string): Promise<AudioBuffer | null> {
+  try {
+    const r = await fetch(`/api/stems/layers?hash=${d.stemHash}&model=${d.stemModel}${d.stemOptsQS()}&name=${name}`);
+    if (!r.ok) return null;
+    return await d.ctx.decodeAudioData(await r.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
 export class VoiceLab extends JamModule {
   looks = new Set<string>();
   level = 0.8;
@@ -78,6 +89,7 @@ export class VoiceLab extends JamModule {
 
   constructor(engine: DJEngine) {
     super(engine, "vocals");
+    this.gateModule("voicelab");
     setInterval(() => this.tick(), 50);
   }
 

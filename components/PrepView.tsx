@@ -1,18 +1,23 @@
 "use client";
 
+import { SetArt } from "./prep/SetArt";
+import { setAccent, type SetLook } from "@/lib/setLook";
 import { compatibleQuery, searchTracks } from "@/lib/trackSearch";
 import { splitTitle } from "@/lib/trackTitle";
 import { dedupeOnline, rankOnline } from "@/lib/trackRank";
-import { useState, useRef, useMemo, useSyncExternalStore, useEffect } from "react";
+import { useState, useRef, useMemo, useSyncExternalStore, useEffect, useCallback } from "react";
 import { loadLibrary, saveLibrary, uid, idbGetBlob } from "@/lib/library";
 import { enqueuePrep, getPrepState, subscribePrep, forgetPrep, cancelPrep, PREP_QS, hashesByModel, prepModelOf, getPrepModel, type PrepModel } from "@/lib/stemPrep";
 import { PrepModelSwitch } from "./prep/PrepModelSwitch";
 import { padJob, padReady, runPadNow, runStemsPad, subscribePadJob } from "@/lib/stemsPadPrep";
 import { PadPill } from "./prep/PadPill";
 import { EqPill } from "./prep/EqPill";
+import { DrumPill } from "./prep/DrumPill";
+import { VoicePill } from "./prep/VoicePill";
 import { queueAnalysis } from "@/lib/analyze";
 import { analyzeLibraryTrack } from "@/lib/analyzeTrack";
 import { Journey, buildJourney } from "./prep/Journey";
+import { SetEditor } from "./prep/SetEditor";
 import { qualityFromKbps, kbpsFromSize, QUALITY_LABEL, QUALITY_HINT, QUALITY_RANK } from "@/lib/quality";
 import { SetWizard, type WizardDest as SendDest, type SetDraft, type WizardInitial as SetStudioInitial } from "./playlist/SetWizard";
 import { pickNext } from "@/lib/setPicker";
@@ -173,6 +178,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   const [notice, setNotice] = useState<string | null>(null);
   const noticeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  const [editingSetId, setEditingSetId] = useState<string | null>(null);
   const persist = (fn: (d: LibraryData) => LibraryData) => {
     const next = fn(libRef.current);
     if (saveLibrary(next)) {
@@ -181,7 +187,9 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
     }
   };
 
-  const laterTracks = useMemo((): LibTrack[] => lib.tracks.filter(t => t.later), [lib.tracks]);
+  // a title prepared in this session has its hash in the prep state before the library knows it
+  const withHash = useCallback((t: LibTrack): LibTrack => (t.stemHash ? t : { ...t, stemHash: prepState.ready.find(r => r.trackId === t.id)?.hash }), [prepState.ready]);
+  const laterTracks = useMemo((): LibTrack[] => lib.tracks.filter(t => t.later).map(withHash), [lib.tracks, withHash]);
   const themes = useMemo(() => [...new Set(lib.tracks.map(t => t.theme ?? undefined).filter(Boolean))], [lib.tracks]);
   const groups = useMemo(() => [...new Set(lib.tracks.map(t => t.group ?? undefined).filter(Boolean))], [lib.tracks]);
 
@@ -234,6 +242,8 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   const padState = useSyncExternalStore(subscribePadJob, padJob, padJob);
   const padJobView = padState.running ? padState : null;
   // per-track pad state: which songs already have their pad samples (one request for all the tracks shown)
+  type PrepKind = "eq" | "drum" | "voice";
+  const [batch, setBatch] = useState<{ kind: PrepKind | "all"; done: number; total: number } | null>(null);
   const [padReadySet, setPadReadySet] = useState<Set<string>>(() => new Set());
   const padHashes = laterTracks.map((t) => t.stemHash).filter((h): h is string => !!h).join(",");
   useEffect(() => {
@@ -266,7 +276,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
     const t = setInterval(check, 10000);
     return () => { live = false; clearInterval(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [laterTracks.length, eqRunning]);
+  }, [laterTracks.length, eqRunning, batch?.done]);
   const eqPill = (track: LibTrack) => (
     <EqPill
       hasStems={stemOf(track.id).state === "done"}
@@ -310,25 +320,154 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
     }
     flash(`Stems Pad : ${j.ok} titre${j.ok > 1 ? "s" : ""} analysé${j.ok > 1 ? "s" : ""} en profondeur (boucles de 1, 2 et 4 mesures, coups coupés sur l'attaque, réserve pour RAFRAÎCHIR).`);
   };
+  // Prépa batterie: which songs already have their drum analysis (one request for all the tracks shown)
+  const [drumReadySet, setDrumReadySet] = useState<Set<string>>(() => new Set());
+  const [drumRunning, setDrumRunning] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    const hashes = laterTracks.map((t) => t.stemHash).filter((h): h is string => !!h);
+    const check = () => {
+      if (!hashes.length) return;
+      // one call per model: 4- and 6-track stems live in different cache folders
+      Promise.all(
+        hashesByModel(hashes).map(([model, list]) =>
+          fetch(`/api/stems/drums?status=1&model=${model}${PREP_QS}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ hashes: list }) })
+            .then((r) => r.json() as Promise<{ ready?: string[] }>)
+            .then((j) => j.ready ?? [])
+        )
+      )
+        .then((parts) => { if (live) setDrumReadySet(new Set(parts.flat())); })
+        .catch(() => undefined);
+    };
+    check();
+    const t = setInterval(check, 10000);
+    return () => { live = false; clearInterval(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [laterTracks.length, drumRunning, batch?.done]);
+  const drumPill = (track: LibTrack) => (
+    <DrumPill
+      hasStems={stemOf(track.id).state === "done"}
+      ready={!!track.stemHash && drumReadySet.has(track.stemHash)}
+      running={!!track.stemHash && drumRunning === track.stemHash}
+      onRun={() => {
+        if (!track.stemHash) return;
+        setDrumRunning(track.stemHash);
+        fetch(`/api/stems/drums?hash=${track.stemHash}&model=${prepModelOf(track.stemHash)}${PREP_QS}&bpm=${track.bpm ?? 0}`)
+          .finally(() => setDrumRunning(null));
+      }}
+    />
+  );
+  // Prépa voix: which songs already have their voice analysis (one request for all the tracks shown)
+  const [voiceReadySet, setVoiceReadySet] = useState<Set<string>>(() => new Set());
+  const [voiceRunning, setVoiceRunning] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    const hashes = laterTracks.map((t) => t.stemHash).filter((h): h is string => !!h);
+    const check = () => {
+      if (!hashes.length) return;
+      // one call per model: 4- and 6-track stems live in different cache folders
+      Promise.all(
+        hashesByModel(hashes).map(([model, list]) =>
+          fetch(`/api/stems/voice?status=1&model=${model}${PREP_QS}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ hashes: list }) })
+            .then((r) => r.json() as Promise<{ ready?: string[] }>)
+            .then((j) => j.ready ?? [])
+        )
+      )
+        .then((parts) => { if (live) setVoiceReadySet(new Set(parts.flat())); })
+        .catch(() => undefined);
+    };
+    check();
+    const t = setInterval(check, 10000);
+    return () => { live = false; clearInterval(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [laterTracks.length, voiceRunning, batch?.done]);
+  const voicePill = (track: LibTrack) => (
+    <VoicePill
+      hasStems={stemOf(track.id).state === "done"}
+      ready={!!track.stemHash && voiceReadySet.has(track.stemHash)}
+      running={!!track.stemHash && voiceRunning === track.stemHash}
+      onRun={() => {
+        if (!track.stemHash) return;
+        setVoiceRunning(track.stemHash);
+        fetch(`/api/stems/voice?hash=${track.stemHash}&model=${prepModelOf(track.stemHash)}${PREP_QS}`)
+          .finally(() => setVoiceRunning(null));
+      }}
+    />
+  );
   // 15 bandes Prep: the spectra of every prepared song (the recipes of the EQ come from them), computed once and kept
-  const [eqPrepBusy, setEqPrepBusy] = useState(false);
-  const eqPrepAll = async (tracks: LibTrack[]) => {
-    const list = tracks.filter((t) => t.stemHash && stemOf(t.id).state === "done");
-    if (!list.length) return flash("15 bandes Prep : prépare d'abord les stems de ces titres.");
-    setEqPrepBusy(true);
-    let ready = 0;
-    for (const t of list) {
-      try {
-        const r = await fetch(`/api/stems/fx?hash=${t.stemHash}&model=${prepModelOf(t.stemHash)}${PREP_QS}`);
-        const j = (await r.json()) as { fx?: unknown };
-        if (j.fx) ready++;
-      } catch {
-        /* the next song still runs */
-      }
-    }
-    setEqPrepBusy(false);
-    flash(`15 bandes Prep : ${ready}/${list.length} titre${list.length > 1 ? "s" : ""} avec leur analyse spectrale : les recettes sont prêtes dans l'égaliseur.`, 8000);
+  const PREP_KINDS: Record<PrepKind, { label: string; url: (t: LibTrack) => string; field: string; done: (ready: number, total: number) => string }> = {
+    eq: {
+      label: "15 bandes Prep",
+      url: (t) => `/api/stems/fx?hash=${t.stemHash}&model=${prepModelOf(t.stemHash)}${PREP_QS}`,
+      field: "fx",
+      done: (ready, total) => `15 bandes Prep : ${ready}/${total} titre${total > 1 ? "s" : ""} avec leur analyse spectrale : les recettes sont prêtes dans l'égaliseur.`,
+    },
+    drum: {
+      label: "Prépa batterie",
+      url: (t) => `/api/stems/drums?hash=${t.stemHash}&model=${prepModelOf(t.stemHash)}${PREP_QS}&bpm=${t.bpm ?? 0}`,
+      field: "drums",
+      done: (ready, total) => `Prépa batterie : ${ready}/${total} titre${total > 1 ? "s" : ""} avec leur analyse de batterie (kick, caisse, charley, groove, fills).`,
+    },
+    voice: {
+      label: "Prépa voix",
+      url: (t) => `/api/stems/voice?hash=${t.stemHash}&model=${prepModelOf(t.stemHash)}${PREP_QS}`,
+      field: "voice",
+      done: (ready, total) => `Prépa voix : ${ready}/${total} titre${total > 1 ? "s" : ""} avec leur analyse de voix (phrases, syllabes, sifflantes, souffles).`,
+    },
   };
+
+
+  const runPrep = async (kinds: PrepKind[], tracks: LibTrack[]) => {
+    const list = tracks.filter((t) => t.stemHash && stemOf(t.id).state === "done");
+    if (!list.length) {
+      const label = kinds.length > 1 ? "Tout préparer" : PREP_KINDS[kinds[0]].label;
+      return flash(`${label} : prépare d'abord les stems de ces titres.`);
+    }
+
+    let done = 0;
+    let allReady = 0;
+    const total = list.length * kinds.length;
+
+    for (const kind of kinds) {
+      const { url, field, done: doneMsg } = PREP_KINDS[kind];
+      let ready = 0;
+      let next = 0; // shared by the two workers: each title is run once
+
+      const workers = Array.from({ length: 2 }, async () => {
+        while (next < list.length) {
+          const t = list[next++];
+          try {
+            const r = await fetch(url(t));
+            const j = (await r.json()) as Record<string, unknown>;
+            if (j[field]) ready++;
+          } catch {
+            /* the next song still runs */
+          }
+          done++;
+          setBatch({ kind: kinds.length > 1 ? "all" : kinds[0], done, total });
+        }
+      });
+
+      await Promise.all(workers);
+      allReady += ready;
+      if (kinds.length === 1) flash(doneMsg(ready, list.length), 8000);
+    }
+
+    setBatch(null);
+    if (kinds.length > 1) {
+      flash(`Tout préparé : ${allReady}/${total} analyses (15 bandes, batterie, voix) pour ${list.length} titres.`, 8000);
+    }
+  };
+
+  const eqPrepAll = (tracks: LibTrack[]) => runPrep(["eq"], tracks);
+  const drumPrepAll = (tracks: LibTrack[]) => runPrep(["drum"], tracks);
+  const voicePrepAll = (tracks: LibTrack[]) => runPrep(["voice"], tracks);
+  const prepEverything = (tracks: LibTrack[]) => runPrep(["eq", "drum", "voice"], tracks);
+
+  const eqPrepBusy = batch?.kind === "eq";
+  const drumPrepBusy = batch?.kind === "drum";
+  const voicePrepBusy = batch?.kind === "voice";
+  const anyPrepBusy = !!batch;
   const queueStems = (tracks: LibTrack[]) => {
     const longTracks = tracks.filter(t => t.durationSec && t.durationSec > LONG_TRACK_SEC);
     const key = tracks.map(t => t.id).join(",");
@@ -598,6 +737,12 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
       ...data,
       playlists: data.playlists.filter(p => p.id !== id)
     }));
+  };
+
+  // rename a set and change its picture, at any time (the tracks and the plan stay as they are)
+  const updateSetMeta = (id: string, name: string, cover: string | undefined, look: SetLook | undefined) => {
+    persist(data => ({ ...data, playlists: data.playlists.map(p => (p.id === id ? { ...p, name, cover, look } : p)) }));
+    setEditingSetId(null);
   };
 
   const openStudio = (initial?: SetStudioInitial) => {
@@ -907,10 +1052,11 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
           <MiniKeyWheel camelot={track.camelot} size={30} label={false} />
           <KeyBadge camelot={track.camelot} />
         </span>
-        <span className="flex items-center justify-center gap-2 @4xl:justify-start">
+        <span className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 @4xl:justify-start">
           <span className="hidden @4xl:inline-flex"><StemQuad state={stemOf(track.id).state} pct={stemOf(track.id).pct} /></span>
           <StemPill info={stemOf(track.id)} onPrepare={() => queueStems([track])} />
-          <span className="inline-flex shrink-0 items-center gap-1 align-middle">{padPill(track)}{eqPill(track)}</span>
+          <button type="button" onClick={() => playOne(track)} disabled={!onLaunchSet} className="prep-btn-accent prep-tap px-2.5 py-1 text-[11px]" title="Lance ce titre seul tout de suite">Jouer</button>
+          <span className="inline-flex flex-wrap items-center gap-1 align-middle">{padPill(track)}{eqPill(track)}{drumPill(track)}{voicePill(track)}</span>
         </span>
         <span className="hidden items-center gap-2 @4xl:flex">
           <QualityBars level={track.quality} />
@@ -988,10 +1134,11 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
             <TempoRuler bpm={track.bpm} median={trayMedianBpm} />
           </div>
         </div>
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <StemQuad state={stemOf(track.id).state} pct={stemOf(track.id).pct} />
           <StemPill info={stemOf(track.id)} onPrepare={() => queueStems([track])} />
-          <span className="inline-flex shrink-0 items-center gap-1 align-middle">{padPill(track)}{eqPill(track)}</span>
+          <button type="button" onClick={() => playOne(track)} disabled={!onLaunchSet} className="prep-btn-accent prep-tap px-2.5 py-1 text-[11px]" title="Lance ce titre seul tout de suite">Jouer</button>
+          <span className="inline-flex flex-wrap items-center gap-1 align-middle">{padPill(track)}{eqPill(track)}{drumPill(track)}{voicePill(track)}</span>
         </div>
         <div className="flex min-w-0 items-center gap-1.5">
           <QualityBars level={track.quality} />
@@ -1006,9 +1153,9 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   // set card: mosaic, name, stats; accepts dropped titles; opens to show its content
   const renderListCard = (playlist: Playlist, index: number) => {
     const stats = playlistStats(playlist.trackIds);
-    const tracks = playlist.trackIds.map((id) => lib.tracks.find((t) => t.id === id)).filter((t): t is LibTrack => !!t);
+    const tracks = playlist.trackIds.map((id) => lib.tracks.find((t) => t.id === id)).filter((t): t is LibTrack => !!t).map(withHash);
     const isOpen = openPlaylistId === playlist.id;
-    const accent = LIST_ACCENTS[index % LIST_ACCENTS.length];
+    const accent = setAccent(playlist, index, LIST_ACCENTS);
     const ready = tracks.filter((t) => stemOf(t.id).state === "done").length;
     const prep = setPreps[playlist.id];
     const confirming = pendingDeleteId === playlist.id;
@@ -1033,7 +1180,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
         style={{ boxShadow: `inset 3px 0 0 ${accent}` }}
       >
         <div className="flex items-center gap-3 p-2.5 pl-3.5">
-          <Mosaic tracks={tracks} accent={accent} cover={playlist.cover} />
+          <SetArt set={playlist} tracks={tracks} accent={accent} size={52} />
           <button onClick={toggle} aria-expanded={isOpen} className="prep-tap min-w-0 flex-1 text-left">
             <p className="truncate text-[13px] font-bold text-neutral-100">{playlist.name}</p>
             <p className="text-[11px] text-neutral-500">
@@ -1060,6 +1207,14 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
               <Icon name="more" size={13} />
             </summary>
             <div className="prep-menu-panel" onClick={(e) => { (e.currentTarget.parentElement as HTMLDetailsElement).open = false; }}>
+              <button
+                onClick={() => setEditingSetId(playlist.id)}
+                className="prep-btn-ghost prep-tap flex w-full items-center gap-1.5 px-2.5 py-1.5 text-[11px]"
+                title="Changer le titre et l'image de ce set"
+              >
+                <Icon name="more" size={11} />
+                Titre et image
+              </button>
               <button
                 onClick={() => openStudio({ source: "list", listId: playlist.id, autoBuild: true })}
                 disabled={tracks.length < 2}
@@ -1101,6 +1256,20 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
             {confirming ? "Confirmer" : <Icon name="trash" size={13} />}
           </button>
         </div>
+        {editingSetId === playlist.id && (
+          <div className="border-t border-[var(--prep-line)]">
+            <SetEditor
+              name={playlist.name}
+              cover={playlist.cover}
+              look={playlist.look}
+              tracks={tracks}
+              accent={accent}
+              taken={lib.playlists.filter(p => p.id !== playlist.id).map(p => p.name)}
+              onSave={(n, c, l) => updateSetMeta(playlist.id, n, c, l)}
+              onCancel={() => setEditingSetId(null)}
+            />
+          </div>
+        )}
         {isOpen && (
           <ol className="flex max-h-72 flex-col overflow-y-auto border-t border-[var(--prep-line)] py-1">
             {tracks.length === 0 && <li className="px-3 py-3 text-[11px] text-neutral-500">Set vide : glisse des titres ici, ou coche-les puis « + coché(s) ».</li>}
@@ -1247,6 +1416,13 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
   const totalLaterSec = laterTracks.reduce((sum, t) => sum + (t.durationSec ?? 0), 0);
   const laterBpms = laterTracks.map((t) => t.bpm).filter((b): b is number => !!b);
   const trayMedianBpm = laterBpms.length ? [...laterBpms].sort((a, b) => a - b)[Math.floor(laterBpms.length / 2)] : undefined;
+const playOne = (track: LibTrack) => {
+  const setName = `Titre seul · ${track.name}`;
+  const existing = lib.playlists.find(p => p.name === setName);
+  const id = saveSet({ id: existing?.id, name: setName, trackIds: [track.id], transitionType: "cut", transitionSec: 0 });
+  onLaunchSet?.("relay", id);
+};
+
   const playFirstSet = () => {
     const set = lib.playlists.find((p) => p.trackIds.length >= 1);
     if (set) onLaunchSet?.("relay", set.id);
@@ -1379,7 +1555,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
         )}
       </section>
 
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(400px,440px)]">
         {/* étape 2 : le bac, titres mis de côté */}
         <section ref={trayRef} className="prep-card flex min-w-0 scroll-mt-4 flex-col" aria-label="Titres mis de côté">
           <div className="flex flex-wrap items-center gap-2 border-b border-[var(--prep-line)] p-3">
@@ -1394,7 +1570,7 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
               />
             </label>
             <StepBadge n={2} />
-            <h2 className="text-[12px] font-black uppercase tracking-[0.2em] text-neutral-100">Mis de côté</h2>
+            <h2 className="text-[12px] font-black uppercase tracking-[0.2em] text-neutral-100">Préparer · mis de côté</h2>
             <span className="rounded-full bg-white/5 px-2 py-px font-mono text-[10px] text-neutral-400">
               {filteredTracks.length !== laterTracks.length ? `${filteredTracks.length}/${laterTracks.length}` : laterTracks.length}
             </span>
@@ -1494,12 +1670,36 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
                   </button>
                 )}
                 <button
+                  onClick={() => void prepEverything(laterTracks)}
+                  disabled={anyPrepBusy || stemsReady === 0}
+                  className="prep-btn-accent prep-tap flex items-center gap-1.5 px-3 py-1.5 text-xs"
+                  title="Lance à la suite, pour tous les titres aux stems prêts : 15 bandes, batterie et voix (les résultats sont gardés : un titre déjà analysé repart tout de suite)"
+                >
+                  {batch?.kind === "all" ? `Tout préparer ${batch.done}/${batch.total}` : "Tout préparer"}
+                </button>
+                <button
                   onClick={() => void eqPrepAll(laterTracks)}
-                  disabled={eqPrepBusy || stemsReady === 0}
+                  disabled={anyPrepBusy || stemsReady === 0}
                   className="prep-btn-ghost prep-tap flex items-center gap-1.5 px-3 py-1.5 text-xs"
                   title="15 bandes Prep : mesure le spectre réel de chaque titre préparé (batterie, basse, voix, autres, mix). L'égaliseur 15 bandes en tire ses recettes : isoler, boost basse, surround, voix devant"
                 >
-                  {eqPrepBusy ? "15 bandes Prep…" : "15 bandes Prep"}
+                  {eqPrepBusy && batch ? `15 bandes Prep ${batch.done}/${batch.total}` : "15 bandes Prep"}
+                </button>
+                <button
+                  onClick={() => void drumPrepAll(laterTracks)}
+                  disabled={anyPrepBusy || stemsReady === 0}
+                  className="prep-btn-ghost prep-tap flex items-center gap-1.5 px-3 py-1.5 text-xs"
+                  title="Prépa batterie : classe chaque coup (kick, caisse, charley), mesure le groove (swing, micro-décalages, vélocité), le motif et les fills. Le module JAM Batterie en tire ses pads"
+                >
+                  {drumPrepBusy && batch ? `Prépa batterie ${batch.done}/${batch.total}` : "Prépa batterie"}
+                </button>
+                <button
+                  onClick={() => void voicePrepAll(laterTracks)}
+                  disabled={anyPrepBusy || stemsReady === 0}
+                  className="prep-btn-ghost prep-tap flex items-center gap-1.5 px-3 py-1.5 text-xs"
+                  title="Prépa voix : repère les phrases, découpe la voix en syllabes sur ses vraies attaques, trouve les sifflantes et les souffles. Le module JAM Voix du morceau en tire ses chops"
+                >
+                  {voicePrepBusy && batch ? `Prépa voix ${batch.done}/${batch.total}` : "Prépa voix"}
                 </button>
                 <button
                   onClick={() => void deepPads(laterTracks)}
@@ -1579,7 +1779,35 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
         </section>
 
         {/* les sets */}
-        <aside className="min-w-0 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+        <aside className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+          {/* étape 3 : créateur de set, en haut de la colonne de droite (visible dès qu'on coche des titres) (source, forme d'énergie, durée, transitions, envoi sur les platines) */}
+          <Section
+            title="Créer un set"
+            step={3}
+            hint="titres, forme, ordre, envoi sur les platines"
+            open={wizardOpen}
+            onToggle={() => setWizardOpen(!wizardOpen)}
+            sectionRef={setSectionRef}
+          >
+            <div className="p-3 pt-0">
+              <SetWizard
+                key={studio.nonce}
+                bac={laterTracks}
+                allTracks={lib.tracks}
+                checkedIds={selectedLaterIds}
+                playlists={lib.playlists}
+                initial={studio.initial}
+                poolLabel="le bac"
+                isStemReady={(id) => stemOf(id).state === "done"}
+                analyzing={analyzingIds}
+                onAnalyze={analyzeIds}
+                onPrepareStems={(ids) => queueStems(lib.tracks.filter(t => ids.includes(t.id)))}
+                onSave={saveSet}
+                onSend={(dest, id) => onLaunchSet?.(dest, id)}
+                canSend={!!onLaunchSet}
+              />
+            </div>
+          </Section>
           <Section title="Sets" count={lib.playlists.length} summary={`${lib.playlists.length} set(s)`} open={setsOpen} onToggle={() => setSetsOpen(!setsOpen)}>
             <div className="flex flex-col gap-3 p-3 pt-0">
               <div
@@ -1622,35 +1850,6 @@ export default function PrepView({ onLaunchSet }: { onLaunchSet?: (dest: SendDes
           </Section>
         </aside>
       </div>
-
-      {/* étape 3 : créateur de set (source, forme d'énergie, durée, transitions, envoi sur les platines) */}
-      <Section
-        title="Créer un set"
-        step={3}
-        hint="titres, forme, ordre, envoi sur les platines"
-        open={wizardOpen}
-        onToggle={() => setWizardOpen(!wizardOpen)}
-        sectionRef={setSectionRef}
-      >
-        <div className="p-3 pt-0">
-          <SetWizard
-            key={studio.nonce}
-            bac={laterTracks}
-            allTracks={lib.tracks}
-            checkedIds={selectedLaterIds}
-            playlists={lib.playlists}
-            initial={studio.initial}
-            poolLabel="le bac"
-            isStemReady={(id) => stemOf(id).state === "done"}
-            analyzing={analyzingIds}
-            onAnalyze={analyzeIds}
-            onPrepareStems={(ids) => queueStems(lib.tracks.filter(t => ids.includes(t.id)))}
-            onSave={saveSet}
-            onSend={(dest, id) => onLaunchSet?.(dest, id)}
-            canSend={!!onLaunchSet}
-          />
-        </div>
-      </Section>
 
       {/* barre de sélection collante : n'existe que si des titres sont cochés */}
       {selectedLaterIds.size > 0 && (

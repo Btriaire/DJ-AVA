@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { notInstalled, searchSpotify } from "@/lib/spotdl";
+import { notInstalled, searchSpotify } from "@/lib/spotifyDl";
 import { PAGE } from "@/lib/searchMore";
 
 export const runtime = "nodejs";

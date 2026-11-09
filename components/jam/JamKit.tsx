@@ -74,6 +74,20 @@ export function JamShell({
           <span className="my-auto h-1.5 w-1.5 rounded-full" style={{ background: status === "ok" ? "#34d399" : status === "nostems" ? "#fbbf24" : "#737373" }} />
           {statusText}
         </div>
+        <div role="group" aria-label="Sur quel deck jouer" className="flex items-center gap-1">
+          {([["auto","Auto"],["A","A"],["B","B"]] as const).map(([v, text]) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => onPref(v)}
+              aria-pressed={pref === v}
+              className={`text-[9px] font-black px-1.5 py-0.5 rounded ${pref === v ? "text-white" : "bg-white/5 text-[var(--jam-text-2)]"}`}
+              style={pref === v ? { backgroundColor: `color-mix(in srgb, ${color} 30%, transparent)`, boxShadow: `inset 0 0 0 1px ${color}` } : undefined}
+            >
+              {text}
+            </button>
+          ))}
+        </div>
       </div>
       {status === "nostems" && (
         <div className="flex flex-wrap items-center gap-2 rounded-md bg-[#fbbf24]/10 px-2 py-1.5 text-[11px] text-[#fbbf24]">
@@ -85,22 +99,11 @@ export function JamShell({
               <button type="button" onClick={onEnableStems} className="rounded bg-[#fbbf24] px-2 py-0.5 text-[10px] font-black tracking-wide text-[#1a1203]">ACTIVER LES STEMS</button>
             </>
           ) : (
-            <>Stems non préparés pour le morceau de ce deck : prépare-les dans Préparation ou dans le panneau des stems.</>
+            <>Stems non préparés : prépare ce morceau dans Préparation.</>
           )}
         </div>
       )}
-      {warning && <div className="rounded-md bg-white/5 px-2 py-1 text-[10px] text-[#fbbf24]">{warning}</div>}
-      <JamSeg
-        label="Sur quel deck jouer"
-        options={[
-          ["auto", "Auto"],
-          ["A", "A"],
-          ["B", "B"],
-        ]}
-        value={pref}
-        onChange={onPref}
-        color={color}
-      />
+      {warning && status !== "nostems" && <div className="rounded-md bg-white/5 px-2 py-1 text-[10px] text-[#fbbf24]">{warning}</div>}
       {children}
     </section>
   );

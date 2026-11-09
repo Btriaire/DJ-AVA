@@ -7,6 +7,13 @@ import { KEY_ROWS, keyLabel, useJamKeys, useJamKeysEnabled } from "./jamKeys";
 
 const row = (codes: string[]) => `${keyLabel(codes[0])}…${keyLabel(codes[codes.length - 1])}`;
 
+// the pad keys alone, for the pad modules shown without the macro bar (only one of the two may be mounted)
+export function JamKeysHost({ engine }: { engine: DJEngine }) {
+  const [keysOn] = useJamKeysEnabled();
+  useJamKeys(engine, keysOn);
+  return null;
+}
+
 export function JamMacroBar({ engine }: { engine: DJEngine }) {
   const [keysOn, setKeysOn] = useJamKeysEnabled();
   useJamKeys(engine, keysOn);

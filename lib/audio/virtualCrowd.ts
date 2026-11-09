@@ -3,6 +3,9 @@
 // along with the vocal stem (taken before its fader, so it still sings when the singer is muted).
 import type { Deck } from "./Deck";
 import { makeReverbImpulse } from "./Deck";
+import { onDj, type DjEvent } from "./djEvents";
+import { Fatigue, bedFloor, crowdGain, jitter, nextRise, talkDuck, variedIndex } from "./crowdBrain";
+import { SyncVoice, loadLayer } from "./voiceLab";
 import type { StemMap } from "@/lib/stemAnalysis";
 
 
@@ -137,7 +140,7 @@ export function bedLevel(map: StemMap | null, t: number): number {
   if (!map || map.energy.length === 0) return 0.35;
   const index = Math.min(map.energy.length - 1, Math.max(0, Math.floor(t / map.hop)));
   const e = map.energy[index];
-  return 0.25 + 0.75 * e;
+  return bedFloor(e);
 }
 
 export function clapSamples(sr: number, seed: number): [Float32Array, Float32Array] {
@@ -319,12 +322,21 @@ export class VirtualCrowd {
   private stopTimer: ReturnType<typeof setTimeout> | null = null;
   private lfos: OscillatorNode[] = [];
   private lfoOn = false;
+  private fatigue = new Fatigue();
+  private unsubDj: (() => void) | null = null;
+  private harmonies: SyncVoice[] = []; // the song's own third and fifth, sung by the crowd
+  private harmoniesFor = "";
+  private lastCheer = -1; // the shout played last, never twice in a row
+  private duck!: GainNode;
 
   constructor(private deck: Deck) {
     const ctx = (this.ctx = deck.ctx);
     this.out = ctx.createGain();
     this.out.gain.value = 0;
-    this.out.connect(deck.crowdInput());
+    this.duck = ctx.createGain();
+    this.duck.gain.value = 1;
+    this.out.connect(this.duck);
+    this.duck.connect(deck.crowdInput());
     // the venue: distance (low-pass) then dry + room
     this.venueIn = ctx.createGain();
     this.lowpass = ctx.createBiquadFilter();
@@ -358,6 +370,7 @@ export class VirtualCrowd {
     });
     hp.connect(lp).connect(room).connect(this.singGain).connect(this.out);
     this.applyVenue();
+    this.unsubDj = onDj((e) => this.onDjEvent(e));
   }
 
   private toBuffer([l, r]: [Float32Array, Float32Array]): AudioBuffer {
@@ -421,6 +434,30 @@ export class VirtualCrowd {
   }
 
   // follows the vocal stem: connected before its fader, re-plugged when the stems change
+  private plugHarmonies(): void {
+  const k = this.deck.stemHash ? `${this.deck.stemHash}|${this.deck.stemModel}|${this.deck.stemOptsQS()}` : "";
+  if (k !== this.harmoniesFor) {
+      this.harmonies.forEach(v => {
+          v.stop();
+          v.gain.disconnect();
+      });
+      this.harmonies = [];
+      this.harmoniesFor = k;
+      if (k) void this.loadHarmonies(k);
+  }
+  const on = this.opts.sing && this.level > 0 ? 0.5 : 0;
+  this.harmonies.forEach(v => {
+      v.setLevel(on);
+      v.sync(this.deck);
+  });
+  }
+
+  private async loadHarmonies(key: string): Promise<void> {
+  const bufs = await Promise.all(["third_up", "fifth_up"].map((n) => loadLayer(this.deck, n)));
+  if (this.harmoniesFor !== key) return;
+  this.harmonies = bufs.filter(b => b !== null).map(b => new SyncVoice(this.ctx, b!, this.singIn));
+  }
+
   private plugVoice(): void {
     const i = this.deck.stemsActive && this.deck.stemReady ? this.deck.stemIndex("vocals") : -1;
     if (i === this.singStem && (i < 0 || this.singSrc)) return;
@@ -434,7 +471,7 @@ export class VirtualCrowd {
     k = Math.min(1, Math.max(0, k));
     const was = this.level;
     this.level = k;
-    this.out.gain.setTargetAtTime(k * 0.4, this.ctx.currentTime, 0.1); // at 100 % about 4 dB under the music with the shouts (was 10: too faint)
+    this.out.gain.setTargetAtTime(crowdGain(k), this.ctx.currentTime, 0.1); // at 100 % about 4 dB under the music with the shouts (was 10: too faint)
     if (k > 0 && was === 0) {
       if (this.stopTimer) { clearTimeout(this.stopTimer); this.stopTimer = null; }
       if (!this.lfoOn) { this.lfos.forEach((o) => o.start()); this.lfoOn = true; }
@@ -480,7 +517,7 @@ export class VirtualCrowd {
 
   // a crowd clap in time: a short cut of a real applause (many hands at once), else the synthesized clap
   private clap(at: number, v: number): void {
-    const a = this.kit?.applause, rate = 0.97 + 0.06 * Math.random();
+    const a = this.kit?.applause, rate = jitter(Math.random()).rate;
     if (a) this.play(a, at, v * 2.4, rate, Math.random() * (a.duration - 0.4), 0.22, 0.003);
     else if (this.clapBufs.length) this.play(this.clapBufs[Math.floor(Math.random() * this.clapBufs.length)], at, v * 0.7, rate);
   }
@@ -489,7 +526,15 @@ export class VirtualCrowd {
   private shout(at: number, v: number): void {
     const k = this.kit;
     if (k?.cheers.length) {
-      this.play(k.cheers[Math.floor(Math.random() * k.cheers.length)], at, v * 1.2, 0.97 + 0.06 * Math.random());
+      // a different shout each time, sometimes a second voice on top
+      const i = variedIndex(k.cheers.length, this.lastCheer, Math.random());
+      this.lastCheer = i;
+      const j = jitter(Math.random());
+      this.play(k.cheers[i], at, v * 1.2 * j.gain, j.rate);
+      if (v > 0.6 && k.cheers.length > 1) {
+        const i2 = variedIndex(k.cheers.length, i, Math.random());
+        this.play(k.cheers[i2], at + 0.12 + 0.1 * Math.random(), v * 0.6, jitter(Math.random()).rate);
+      }
       this.play(k.applause, at, v * 0.8, 1, Math.random() * (k.applause.duration - 5), 4, 0.4);
       const r = this.hypeKit?.roars;
       if (r?.length) this.grain(this.pick(r), at, v * 1.1, 3 + 2 * Math.random(), 0); // a real roar of the room
@@ -521,6 +566,7 @@ export class VirtualCrowd {
   private tick(): void {
     const d = this.deck, now = this.ctx.currentTime;
     this.plugVoice();
+    this.plugHarmonies();
     if (!d.playing) {
       this.lastTo = null;
       this.bedGain.gain.setTargetAtTime(0.15 * bedLevel(d.stemMap, d.position()), now, 0.5);
@@ -545,10 +591,12 @@ export class VirtualCrowd {
     if (!h || !this.opts.cheers) return;
     const e = map?.energy.length ? map.energy[Math.min(map.energy.length - 1, Math.max(0, Math.floor(pos / map.hop)))] : 0.6;
     if (h.hype.length && Math.random() < hypeRate(e, this.opts.venue) * 0.03 * rate) {
-      this.grain(this.pick(h.hype), now + 0.03 * Math.random(), 0.45 + 0.5 * Math.random(), 0.7 + 1.1 * Math.random(), (Math.random() * 2 - 1) * 0.85, 0.96 + 0.08 * Math.random());
+      const g = this.fatigue.gain("hype", now);
+      this.fatigue.hit("hype", now);
+      this.grain(this.pick(h.hype), now + 0.03 * Math.random(), (0.45 + 0.5 * Math.random()) * g, 0.7 + 1.1 * Math.random(), (Math.random() * 2 - 1) * 0.85, 0.96 + 0.08 * Math.random());
     }
     if (h.build && map) {
-      const next = crowdCurves(map).cheers.find((c) => c > pos);
+      const next = nextRise(map.sections.filter((s) => s.kind === "peak").map((s) => s.start), crowdCurves(map).cheers, pos) ?? undefined;
       if (next !== undefined && next !== this.lastBuild) {
         const lead = Math.min(h.build.peak, 8); // the last 8 s of the crescendo, never a 40 s rumble
         const wait = (next - pos) / rate - lead;
@@ -560,9 +608,42 @@ export class VirtualCrowd {
     }
   }
 
+  // Réagit aux événements du DJ
+  onDjEvent(e: DjEvent): void {
+    if (this.level <= 0) return;
+    const now = this.ctx.currentTime;
+    if (e.kind === "talk") {
+      this.duck.gain.setTargetAtTime(talkDuck(e.on), now, 0.15);
+      return;
+    }
+    if (e.kind === "drop") {
+      const g = this.fatigue.gain("roar", now);
+      this.fatigue.hit("roar", now);
+      if (this.hypeKit?.roars.length && this.opts.cheers) {
+        this.grain(this.pick(this.hypeKit.roars), now + 0.05, 1.1 * g, 4, 0, 1);
+      }
+      if (this.opts.cheers) {
+        this.shout(now + 0.05, 0.9 * g);
+      }
+    }
+    if (e.kind === "fade" && this.opts.claps) {
+      const a = this.kit?.applause;
+      if (a) {
+        this.play(a, now + 0.02, Math.min(1, 0.5 + e.strength) * 1.6, 1, Math.random() * Math.max(0, a.duration - 3), 2, 0.2);
+      }
+    }
+    if (e.kind === "loop" && this.opts.cheers) {
+      const g = this.fatigue.gain("shout", now);
+      this.fatigue.hit("shout", now);
+      this.shout(now + 0.02, 0.5 * g);
+    }
+  }
+
   dispose(): void {
     if (this.stopTimer) clearTimeout(this.stopTimer);
     this.halt();
+    for (const v of this.harmonies) { v.stop(); v.gain.disconnect(); }
+    this.unsubDj?.();
     this.out.disconnect();
   }
 }
@@ -792,12 +873,12 @@ export async function loadHypeKit(ctx: BaseAudioContext, v: VenueId): Promise<Hy
 // how many shouts per second at this song energy (0 below the middle, up to 1.4 per second at full energy)
 export function hypeRate(energy: number, venue: VenueId): number {
   const size = venue === "stade" ? 1.4 : venue === "club" ? 0.7 : 1;
-  return Math.max(0, energy - 0.5) * 2.8 * size;
+  return Math.max(0.12, energy - 0.4) * 3.2 * size;
 }
 
 export function hypeTest(): void {
   const db = [-60, -20, -60, -60, -15, -60, -18, -60, -60, -50, -60];
   const s = hotSpots(db, 0.1, 9, 0.15);
   if (s.join() !== "0.1,0.4" && s.join() !== "0.1,0.4,0.6") throw new Error(`hype spots ${s.join()}`);
-  if (hypeRate(0.4, "salle") !== 0 || !(hypeRate(1, "stade") > hypeRate(1, "club"))) throw new Error("hype rate");
+  if (!(hypeRate(0.1, "salle") > 0) || !(hypeRate(1, "stade") > hypeRate(1, "club"))) throw new Error("hype rate");
 }

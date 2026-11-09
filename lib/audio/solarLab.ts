@@ -234,7 +234,8 @@ export class SolarLab extends JamModule {
     this.duck = 0.5;
     this.spread = 12;
     this.wave = "chaud";
-    onJamTick(engine, (d, from, to) => this.tick(d, from, to));
+    this.gateModule("solar42");
+    onJamTick(engine, (d, from, to) => { if (this.active) this.tick(d, from, to); });
   }
 
   get level(): number { return this._level; }

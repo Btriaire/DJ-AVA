@@ -10,6 +10,7 @@
 // crush, delay, reverb, limiter) stay hand-written. Two effects (voyelle formant,
 // voice isolator) are native mid-side / formant filters with no Tone equivalent.
 
+import { onModuleGate } from "./moduleGate";
 import * as Tone from "tone";
 import { buildEq, eqQ, type EqBuilt } from "./eqModule";
 
@@ -602,6 +603,7 @@ export class Rack {
     this.output.connect(this.scope);
     this.levelBuf = new Uint8Array(new ArrayBuffer(this.scope.fftSize));
     for (const id of DEFAULT_ORDER) this.slots.set(id, new RackSlot(ctx, id));
+    for (const id of DEFAULT_ORDER) onModuleGate(id, (open) => this.setSlotOpen(id, open));
     this.rewire();
   }
 
@@ -615,7 +617,7 @@ export class Rack {
 
   // read-only state accessors for the UI
   isOn(id: RackModuleId): boolean {
-    return !!this.slots.get(id)?.on;
+    return this.closedOn.get(id) ?? !!this.slots.get(id)?.on;
   }
   getMix(id: RackModuleId): number {
     return this.slots.get(id)?.mix ?? 1;
@@ -781,7 +783,21 @@ export class Rack {
     if (v !== null) s.setParam(def.sync.key, v);
   }
 
+  // a module closed in the picker is bypassed; its on/off is kept here and comes back when it is reopened
+  private closedOn = new Map<RackModuleId, boolean>();
+  private setSlotOpen(id: RackModuleId, open: boolean): void {
+    const s = this.slots.get(id);
+    if (!s) return;
+    if (!open) {
+      if (!this.closedOn.has(id)) { this.closedOn.set(id, s.on); s.setOn(false); }
+    } else if (this.closedOn.has(id)) {
+      const was = this.closedOn.get(id);
+      this.closedOn.delete(id);
+      if (was) s.setOn(true);
+    }
+  }
   setEnabled(id: RackModuleId, on: boolean) {
+    if (this.closedOn.has(id)) { this.closedOn.set(id, on); return; }
     this.slots.get(id)?.setOn(on);
   }
   setMix(id: RackModuleId, v: number) {
@@ -847,7 +863,7 @@ export class Rack {
   export(): RackPreset {
     const modules: RackPreset["modules"] = {};
     for (const [id, s] of this.slots) {
-      modules[id] = { on: s.on, mix: s.mix, params: { ...s.params }, flags: { ...s.flags }, target: s.target };
+      modules[id] = { on: this.closedOn.get(id) ?? s.on, mix: s.mix, params: { ...s.params }, flags: { ...s.flags }, target: s.target };
     }
     return {
       stemEq: this.stemEqGains.map((g) => (g && g.some((x) => Math.abs(x) > 0.05) ? [...g] : null)),
@@ -877,7 +893,7 @@ export class Rack {
         }
         for (const f of def.flags ?? []) slot.setFlag(f.key, !!m.flags?.[f.key]);
         slot.setMix(typeof m.mix === "number" ? m.mix : 1);
-        slot.setOn(!!m.on);
+        this.setEnabled(id as RackModuleId, !!m.on);
         slot.target = typeof m.target === "number" ? m.target : -1;
         this.applyDiv(id as RackModuleId);
       }

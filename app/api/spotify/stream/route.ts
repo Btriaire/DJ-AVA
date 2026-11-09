@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { audioUrlFor, downloadMp3, isSpotifyId, notInstalled } from "@/lib/spotdl";
+import { audioUrlFor, downloadMp3, isSpotifyId, notInstalled } from "@/lib/spotifyDl";
 import { createMp3Stream } from "@/lib/youtube";
 
 export const runtime = "nodejs";
