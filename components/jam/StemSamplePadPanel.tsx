@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useReducer, useState } from "react";
 import type { DJEngine } from "@/lib/audio/engine";
-import { PAD_COLS, stemSamplePad } from "@/lib/audio/stemSamplePad";
+import { LIVE_BARS, PAD_COLS, stemSamplePad } from "@/lib/audio/stemSamplePad";
 import { Knob } from "../Knob";
 import { PAD_KEYS, PAD_ROW_COLORS, SamplePadButton, usePadKeys } from "./SamplePadButton";
 import { PadFxPanel } from "./PadFxPanel";
@@ -15,6 +15,7 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
   const [, bump] = useReducer((x: number) => x + 1, 0);
   const rows = m.rows();
   const [keys, setKeys] = useState(false);
+  const [liveMsg, setLiveMsg] = useState<string | null>(null); // why the last LIVE capture could not be made
   const [fxRow, setFxRow] = useState(""); // the row whose effects are shown next to the pads // the computer keyboard plays the pads (rows 1-5, A-T, Q-G, W-B)
   usePadKeys(keys, rows.length, (r, col, down) => { const row = rows[r]; if (row?.pads[col]) { m.press(row.stem, col, down); bump(); } });
   const total = Object.values(m.samples ?? {}).reduce((acc, pool) => acc + pool.length, 0); // the whole pool, not only the pads shown
@@ -138,6 +139,20 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
         >
           RAFRAÎCHIR
         </button>
+        <div className="flex items-center gap-2" title="Sur un pad vide, ● LIVE prend les dernières mesures jouées de ce stem (seul) et en fait une boucle calée sur la grille">
+          <span className="text-[11px] font-bold">Live</span>
+          {LIVE_BARS.map((n) => (
+            <button
+              key={n}
+              className="rounded px-2 py-1 text-[11px] font-bold"
+              style={m.liveBars === n ? { background: C, color: "#0a0a0a" } : { background: "rgba(255,255,255,0.08)", color: "#d4d4d4" }}
+              aria-pressed={m.liveBars === n}
+              onClick={() => set(() => (m.liveBars = n))}
+            >
+              {n} mes.
+            </button>
+          ))}
+        </div>
         <button
           className="rounded px-2 py-1 text-[11px] font-bold bg-[rgba(255,255,255,0.08)] text-[#d4d4d4]"
           onClick={() => m.stopAll()}
@@ -156,6 +171,7 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
         </button>
       </div>
       
+      {liveMsg && <p className="text-[11px] font-bold text-amber-300" aria-live="polite">{liveMsg}</p>}
       <div className="flex flex-col gap-3 @[560px]:flex-row @[560px]:items-start">
       <div className="flex flex-col gap-1.5">
         {rows.map((row, r) => (
@@ -182,9 +198,29 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
               const pad = row.pads[col];
               const on = m.isOn(row.stem, col);
               if (!pad) {
-                return <div key={col} className="aspect-square w-full min-w-[48px] rounded-[10px] border border-dashed border-white/10" />;
+                const blocked = m.liveBlocked(row.stem);
+                return (
+                  <button
+                    key={col}
+                    type="button"
+                    disabled={!!blocked}
+                    onClick={() => {
+                      const why = m.captureLive(row.stem, col);
+                      setLiveMsg(why);
+                      if (why) setTimeout(() => setLiveMsg(null), 3500);
+                      bump();
+                    }}
+                    className="aspect-square w-full min-w-[48px] rounded-[10px] border border-dashed border-white/15 text-[10px] font-bold uppercase tracking-wider text-neutral-400 transition-colors hover:border-white/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    title={blocked ?? `Prend les ${m.liveBars} dernière(s) mesure(s) jouée(s) du stem ${STEM_FR[row.stem] ?? row.stem} (seul) et les met en boucle sur ce pad`}
+                    aria-label={`Échantillonner en direct ${m.liveBars} mesure(s) du stem ${STEM_FR[row.stem] ?? row.stem} sur ce pad`}
+                  >
+                    ● Live
+                  </button>
+                );
               }
+              const live = m.isLive(row.stem, col);
               return (
+                <div key={col} className="relative">
                 <SamplePadButton
                   key={col}
                   label={pad.label}
@@ -195,6 +231,18 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
                   keyLabel={keys ? PAD_KEYS[r]?.[col]?.label : undefined}
                   onPress={(down) => { m.press(row.stem, col, down); bump(); }}
                 />
+                {live && (
+                  <button
+                    type="button"
+                    onClick={() => { m.clearLive(row.stem, col); bump(); }}
+                    className="absolute right-0.5 top-0.5 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-[11px] font-bold text-neutral-200 hover:bg-red-500 hover:text-white"
+                    title="Retirer ce sample live (le pad redevient vide)"
+                    aria-label={`Retirer le sample live du pad ${col + 1} (${STEM_FR[row.stem] ?? row.stem})`}
+                  >
+                    ×
+                  </button>
+                )}
+                </div>
               );
             })}
           </div>

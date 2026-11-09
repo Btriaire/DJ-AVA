@@ -18,6 +18,28 @@ function reverseOf(ctx: BaseAudioContext, b: AudioBuffer): AudioBuffer {
 }
 
 export const PAD_COLS = 5;
+export const LIVE_BARS = [1, 2, 4] as const;
+
+// samples taken LIVE from a stem onto an empty pad, kept per song (stems hash) and per stem: slot -> sample
+type LiveSlots = Record<string, (PadSample | null)[]>;
+const LIVE_KEY = "djsynth.livePads.v1";
+function loadLive(): Record<string, LiveSlots> {
+  try {
+    const v = JSON.parse(localStorage.getItem(LIVE_KEY) ?? "{}");
+    return v && typeof v === "object" ? v : {};
+  } catch {
+    return {};
+  }
+}
+function saveLive(all: Record<string, LiveSlots>): void {
+  try {
+    const keys = Object.keys(all);
+    for (const k of keys.slice(0, Math.max(0, keys.length - 60))) delete all[k]; // the last 60 songs are enough
+    localStorage.setItem(LIVE_KEY, JSON.stringify(all));
+  } catch {
+    // private window or full storage: the live pads still play for this visit
+  }
+}
 
 export class StemSamplePad {
   side: "A" | "B" = "A";
@@ -30,6 +52,8 @@ export class StemSamplePad {
   private pages: Record<string, number> = {}; // the page of each stem's pool shown on its 5 pads
   private key = "";
   private voices = new Map<string, { src: AudioBufferSourceNode; gain: GainNode }>();
+  liveBars: (typeof LIVE_BARS)[number] = 1; // how many bars a LIVE capture takes
+  private liveAll: Record<string, LiveSlots> = typeof window === "undefined" ? {} : loadLive();
 
   // per row (stem): its effects chain, where it plays, and its playback modifiers
   private fx = new Map<string, PadFx>();
@@ -105,14 +129,64 @@ export class StemSamplePad {
     }
   }
 
-  rows(): { stem: string; index: number; pads: PadSample[] }[] {
+  // one row per stem: its found samples on the first pads, the LIVE ones on the pads left empty. A stem with no found
+  // sample still gets its row once its stems are loaded, so it can be sampled live.
+  rows(): { stem: string; index: number; pads: (PadSample | undefined)[] }[] {
     const d = this.deck();
-    if (!this.samples) return [];
-
+    const live = this.liveOf();
     return d.stemNames
-      .map((stem, index) => ({ stem, index, pads: this.samples?.[stem] || [] }))
-      .filter(({ pads }) => pads.length > 0)
-      .map(({ stem, index, pads }) => ({ stem, index, pads: poolPage(pads, this.pages[stem] ?? 0, PAD_COLS) }));
+      .map((stem, index) => {
+        const found = poolPage(this.samples?.[stem] ?? [], this.pages[stem] ?? 0, PAD_COLS);
+        const pads = Array.from({ length: PAD_COLS }, (_, col) => found[col] ?? live?.[stem]?.[col] ?? undefined);
+        return { stem, index, pads, loaded: !!d.getStemBuffer(index) };
+      })
+      .filter(({ pads, loaded }) => loaded || pads.some(Boolean))
+      .map(({ stem, index, pads }) => ({ stem, index, pads }));
+  }
+
+  // ---- LIVE: the last bars of a stem, cut on the grid at the playhead, onto an empty pad ----
+  private liveOf(): LiveSlots | null {
+    const h = this.deck().stemHash;
+    return h ? (this.liveAll[h] ??= {}) : null;
+  }
+  isLive(stem: string, col: number): boolean {
+    const found = poolPage(this.samples?.[stem] ?? [], this.pages[stem] ?? 0, PAD_COLS);
+    return !found[col] && !!this.liveOf()?.[stem]?.[col];
+  }
+  // why a LIVE capture cannot be made right now (null when it can)
+  liveBlocked(stem: string): string | null {
+    const d = this.deck();
+    const i = d.stemNames.indexOf(stem);
+    if (i < 0 || !d.getStemBuffer(i)) return "Les stems de ce morceau ne sont pas chargés";
+    if (!(d.bpm > 0)) return "Tempo inconnu : analyse le morceau pour caler les mesures";
+    return null;
+  }
+  // the last `liveBars` whole bars before the playhead (or from the start of the song when it has barely started)
+  captureLive(stem: string, col: number): string | null {
+    const why = this.liveBlocked(stem);
+    if (why) return why;
+    const d = this.deck();
+    const bar = (4 * 60) / d.bpm;
+    const off = d.beatGridOffset;
+    const pos = d.position();
+    const len = this.liveBars * bar;
+    let end = off + Math.floor((pos - off) / bar) * bar;
+    if (end - len < Math.max(0, off - 1e-3)) end = Math.max(off, 0) + len; // too early in the song: its first bars
+    const start = end - len;
+    if (end > d.duration) return "Trop près de la fin du morceau";
+    const slots = this.liveOf();
+    if (!slots) return "Morceau sans stems";
+    const row = (slots[stem] ??= Array(PAD_COLS).fill(null));
+    row[col] = { start, end, kind: "loop", bars: this.liveBars, score: 1, label: `Live ${this.liveBars} mes.` };
+    saveLive(this.liveAll);
+    return null;
+  }
+  clearLive(stem: string, col: number): void {
+    const row = this.liveOf()?.[stem];
+    if (!row) return;
+    this.stop(`${stem}:${col}`, this.engine.ctx.currentTime + 0.01);
+    row[col] = null;
+    saveLive(this.liveAll);
   }
 
   // REFRESH: the next 5 samples of the pool on a stem's pads (every stem when none is given); what plays keeps playing
@@ -137,7 +211,7 @@ export class StemSamplePad {
 
     const s = row.pads[col];
     const buf = d.getStemBuffer(row.index);
-    if (!buf) return;
+    if (!s || !buf) return;
 
     const key = `${stem}:${col}`;
     const out = this.rowIn(stem, (d.stemsActive ? d.stemInput(row.index) : null) ?? this.engine.masterIn);
