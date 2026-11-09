@@ -54,7 +54,7 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
                       if (why) setTimeout(() => setLiveMsg(null), 3500);
                       bump();
                     }}
-                    className="aspect-square w-full min-w-[48px] rounded-[10px] border border-dashed border-white/15 text-[10px] font-bold uppercase tracking-wider text-neutral-400 transition-colors hover:border-white/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    className="aspect-square w-full min-w-[48px] rounded-[18px] border border-dashed border-white/15 text-[13px] font-bold uppercase tracking-wider text-neutral-400 transition-colors hover:border-white/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                     title={blocked ?? `Prend les ${m.liveBars} dernière(s) mesure(s) jouée(s) du stem ${STEM_FR[row.stem] ?? row.stem} (seul) et les met en boucle sur ce pad`}
                     aria-label={`Échantillonner en direct ${m.liveBars} mesure(s) du stem ${STEM_FR[row.stem] ?? row.stem} sur ce pad`}
                   >
@@ -79,7 +79,7 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
                   <button
                     type="button"
                     onClick={() => { m.clearLive(row.stem, col); bump(); }}
-                    className="absolute right-0.5 top-0.5 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-[11px] font-bold text-neutral-200 hover:bg-red-500 hover:text-white"
+                    className="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-[11px] font-bold text-neutral-200 hover:bg-red-500 hover:text-white"
                     title="Retirer ce sample live (le pad redevient vide)"
                     aria-label={`Retirer le sample live du pad ${col + 1} (${STEM_FR[row.stem] ?? row.stem})`}
                   >
@@ -226,15 +226,11 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
       </div>
       
       {liveMsg && <p className="text-[11px] font-bold text-amber-300" aria-live="polite">{liveMsg}</p>}
-      <div className="flex flex-col gap-3 @[560px]:flex-row @[560px]:items-start">
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-3 @[1000px]:flex-row @[1000px]:items-start">
+      <div className="flex flex-col gap-4">
         {rows.map((row, r) => (
-          <div
-            key={row.stem}
-            className="grid items-stretch gap-1.5"
-            style={{ gridTemplateColumns: `5.5rem repeat(${PAD_COLS}, minmax(48px, 1fr)) 0.25rem repeat(${LIVE_COLS}, minmax(48px, 1fr))` }}
-          >
-            <div className="flex flex-col items-start gap-1 self-center">
+          <div key={row.stem} className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
               <span className="text-[11px] font-bold uppercase text-neutral-300">{STEM_FR[row.stem] ?? row.stem}</span>
               {m.pagesOf(row.stem) > 1 && (
                 <button
@@ -248,11 +244,10 @@ export function StemSamplePadPanel({ engine }: { engine: DJEngine }) {
                 </button>
               )}
             </div>
-            {Array.from({ length: PAD_COLS + LIVE_COLS }).flatMap((_, col) => {
-              // a thin gap sets the LIVE pads apart from the found ones
-              const sep = col === PAD_COLS ? [<div key="sep" aria-hidden className="w-px self-stretch justify-self-center bg-white/10" />] : [];
-              return [...sep, padCell(row, r, col)];
-            })}
+            {/* the same pads as Basse / Voix du morceau: 4 a row, up to 600 px; the 5 found pads then the 3 LIVE ones */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px", maxWidth: "600px" }}>
+              {Array.from({ length: PAD_COLS + LIVE_COLS }).map((_, col) => padCell(row, r, col))}
+            </div>
           </div>
         ))}
       </div>
