@@ -1,5 +1,7 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { setModulesOpen } from "@/lib/audio/moduleGate";
+import { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useRackSwap } from "@/components/useRackSwap";
 import { useIsClient } from "@/lib/useIsClient";
 import {
   DJEngine,
@@ -14,7 +16,11 @@ import { Fader } from "@/components/Fader";
 import { SynthPanel } from "@/components/SynthPanel";
 import { SamplerPanel } from "@/components/SamplerPanel";
 import { Dx7LabPanel } from "@/components/jam/Dx7LabPanel";
+import { VocoderPanel } from "@/components/jam/VocoderPanel";
 import { VoiceLabPanel } from "@/components/jam/VoiceLabPanel";
+import { DrumLabPanel } from "@/components/jam/DrumLabPanel";
+import { VoiceChopPanel } from "@/components/jam/VoiceChopPanel";
+import { StemSlicePanel } from "@/components/jam/StemSlicePanel";
 import { StemSamplePadPanel } from "@/components/jam/StemSamplePadPanel";
 import { ConsolePanel } from "@/components/ConsolePanel";
 import { SettingsBackup } from "@/components/SettingsBackup";
@@ -26,6 +32,9 @@ import { RhythmLinks, RhythmRunner } from "@/components/RhythmLinks";
 import { SlicerPanel } from "@/components/SlicerPanel";
 import { HarmonyPanel } from "@/components/HarmonyPanel";
 import { MediaLibrary } from "@/components/MediaLibrary";
+import { ConsoleNav } from "@/components/ConsoleNav";
+import { AcoustiquePanel } from "@/components/jam/AcoustiquePanel";
+import ModulePicker from "@/components/ModulePicker";
 import PrepView from "@/components/PrepView";
 import { BossFxPanel } from "@/components/BossFxPanel";
 import { LibraryPanel } from "@/components/LibraryPanel";
@@ -54,7 +63,7 @@ import { BassLabPanel } from "@/components/jam/BassLabPanel";
 import { VoxFxPanel } from "@/components/jam/VoxFxPanel";
 import { HarmoSynthPanel } from "@/components/jam/HarmoSynthPanel";
 import { BeatLabPanel } from "@/components/jam/BeatLabPanel";
-import { JamMacroBar } from "@/components/jam/JamMacroBar";
+import { JamMacroBar, JamKeysHost } from "@/components/jam/JamMacroBar";
 import { SuperSampler } from "@/components/SuperSampler";
 import { HoldButton } from "@/components/HoldButton";
 import { DisplayTemplate, TemplateView, loadTemplates, saveTemplates, newTemplate } from "@/lib/displayTemplates";
@@ -81,19 +90,34 @@ import {
 
 // One row of the instrument rack: up to two columns that share the row height (the last
 // module of each column stretches to it); a lone column takes the whole width.
+const RACK_SLOTS = ["samplepad", "drumlab", "voicechop", "session", "bassslice", "otherslice", "jambass", "jamvox", "vocoder", "jamsynth", "jambeat", "rhythm", "djkbd", "dance", "supersampler", "drums", "djsynth", "slicer", "harmony", "synth", "sampler", "soundfx", "dx7", "solar42", "voicelab"];
+const RackCtx = createContext<Pick<ReturnType<typeof useRackSwap>, "grip" | "dragId" | "overId"> | null>(null);
+
 function RackRow({ left, right, onClose }: { left: [string, ReactNode][]; right: [string, ReactNode][]; onClose: (id: string) => void }) {
   const cols = [
     { k: "L", mods: left.filter(([, node]) => node) },
     { k: "R", mods: right.filter(([, node]) => node) },
   ].filter((c) => c.mods.length > 0);
+  const ctx = useContext(RackCtx);
   if (!cols.length) return null;
   return (
     <div className="grid grid-cols-1 gap-4 @[1280px]:grid-cols-2">
       {cols.map((c) => (
         <div key={c.k} className={`hw-rack-col ${cols.length === 1 ? "@[1280px]:col-span-2" : ""}`}>
           {c.mods.map(([id, node]) => (
-            <div key={id} className="@container relative min-w-0">
+            <div key={id} id={`mod-${id}`} data-rackmod={id} className={`@container relative min-w-0 scroll-mt-12 rounded-lg transition ${ctx?.dragId === id ? "opacity-60" : ""} ${ctx?.overId === id ? "ring-2 ring-cyan-300" : ""}`}>
               {node}
+              {ctx && (
+                <button
+                  type="button"
+                  {...ctx.grip(id)}
+                  title="Maintenir et glisser sur un autre module pour échanger leurs places"
+                  aria-label="Déplacer ce module"
+                  className="hw-btn absolute right-10 top-2 z-20 flex h-6 w-6 select-none items-center justify-center text-[13px] leading-none"
+                >
+                  ⠿
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => onClose(id)}
@@ -288,6 +312,11 @@ export default function Home() {
     synth: boolean;
     dx7: boolean;
     voicelab: boolean;
+    drumlab: boolean;
+    voicechop: boolean;
+    bassslice: boolean;
+    otherslice: boolean;
+    session: boolean;
     samplepad: boolean;
     solar42: boolean;
     sampler: boolean;
@@ -303,6 +332,7 @@ export default function Home() {
     supersampler: boolean;
     jambass: boolean;
     jamvox: boolean;
+    vocoder: boolean;
     jamsynth: boolean;
     jambeat: boolean;
     drums: boolean;
@@ -334,6 +364,11 @@ export default function Home() {
     synth: false,
     dx7: false,
     voicelab: false,
+    drumlab: false,
+    voicechop: false,
+    bassslice: false,
+    otherslice: false,
+    session: false,
     samplepad: false,
     solar42: false,
     sampler: false,
@@ -349,6 +384,7 @@ export default function Home() {
     supersampler: false,
     jambass: true,
     jamvox: true,
+    vocoder: true,
     jamsynth: true,
     jambeat: true,
     drums: false,
@@ -396,6 +432,7 @@ export default function Home() {
       return DEFAULT_MODULES;
     }
   });
+useEffect(() => { setModulesOpen(modules); }, [modules]); // a module closed in the picker generates nothing
 const [templates, setTemplates] = useState<DisplayTemplate[]>(() => loadTemplates());
 const [templateName, setTemplateName] = useState("");
 function persistTemplates(list: DisplayTemplate[]) {
@@ -446,6 +483,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
       return next;
     });
   }
+  const MODULE_CATEGORIES = ["Stems en live", "Instruments & Sources", "Performance DJ", "Mixer & EQ", "Dynamique & Filtrage", "Distorsion & Caractère", "Espace & Modulation"] as const;
   const MODULE_DEFS: { key: keyof Modules; label: string; scope: string; category: "Stems en live" | "Instruments & Sources" | "Performance DJ" | "Mixer & EQ" | "Dynamique & Filtrage" | "Distorsion & Caractère" | "Espace & Modulation" }[] = [
     // Instruments & Sources
     { key: "stemprep", label: "Préparation des stems · Bibliothèque", scope: "global", category: "Instruments & Sources" },
@@ -460,8 +498,14 @@ const [showModulePicker, setShowModulePicker] = useState(false);
     { key: "dance", label: "Montée & Drop · Build-up sur 4, 8 ou 16 temps, drop sur le temps, pompe des stems", scope: "global", category: "Performance DJ" },
     { key: "jambass", label: "Bass Lab · Sub sur les notes de basse, pompe sur les kicks, wobble, drop", scope: "global", category: "Stems en live" },
     { key: "samplepad", label: "Stem Sample Pad · 5 samples par stem trouvés à la préparation (boucles qui se répètent, coups coupés dans les blancs)", scope: "global", category: "Stems en live" },
+    { key: "voicechop", label: "Voix du morceau · Les 8 syllabes les plus nettes en pads, bégaiement, écho à chaque fin de phrase (préparés à l'avance)", scope: "global", category: "Stems en live" },
+    { key: "bassslice", label: "Basse du morceau · Les 8 notes les plus nettes de la basse en pads, boucles à plusieurs niveaux (détectées au chargement des stems)", scope: "global", category: "Stems en live" },
+    { key: "session", label: "Acoustique · Ambiances, salle de concert, minuteur, dynamique et fondu entre morceaux pour piano, guitare, handpan, zen et classique", scope: "global", category: "Instruments & Sources" },
+    { key: "otherslice", label: "Autres du morceau · Les 8 coups les plus nets des autres sons (synthés, guitares, nappes) en pads, boucles à plusieurs niveaux", scope: "global", category: "Stems en live" },
+    { key: "drumlab", label: "Batterie du morceau · Kick, caisse et charley du morceau en pads, roulements, roll, double, demi-tempo (préparés à l'avance)", scope: "global", category: "Stems en live" },
     { key: "voicelab", label: "Voix humaines · Doublage, harmonies, octave, voix femme, homme, enfant, chuchoté, foule (préparées à l'avance)", scope: "global", category: "Stems en live" },
     { key: "jamvox", label: "Vox FX · Jets en rythme sur la voix, harmonie à la tierce", scope: "global", category: "Stems en live" },
+    { key: "vocoder", label: "Vocodeur · La voix fait parler un accord du morceau, 7 variantes (Studio, Robot, Chœur, Talk, Murmure, Cristal, Grave)", scope: "global", category: "Stems en live" },
     { key: "jamsynth", label: "Synth · Arpèges, stabs et nappes dans la tonalité du morceau", scope: "global", category: "Stems en live" },
     { key: "jambeat", label: "Beat Lab · Kick et clap sur les coups du morceau, charleston, rolls", scope: "global", category: "Stems en live" },
     { key: "djkbd", label: "Clavier DJ · Tranches du morceau, effets, drops", scope: "global", category: "Instruments & Sources" },
@@ -901,6 +945,36 @@ const [showModulePicker, setShowModulePicker] = useState(false);
     };
   }, []);
 
+  const rackNodes: Record<string, ReactNode> = !engine ? {} : {
+    samplepad: modules.samplepad && <StemSamplePadPanel key={`samplepad-${resetKey}`} engine={engine} />,
+    drumlab: modules.drumlab && <DrumLabPanel key={`drumlab-${resetKey}`} engine={engine} />,
+    voicechop: modules.voicechop && <VoiceChopPanel key={`voicechop-${resetKey}`} engine={engine} />,
+    session: modules.session && <AcoustiquePanel key={`session-${resetKey}`} engine={engine} />,
+    bassslice: modules.bassslice && <StemSlicePanel key={`bassslice-${resetKey}`} engine={engine} role="bass" />,
+    otherslice: modules.otherslice && <StemSlicePanel key={`otherslice-${resetKey}`} engine={engine} role="other" />,
+    jambass: modules.jambass && <BassLabPanel engine={engine} />,
+    jamvox: modules.jamvox && <VoxFxPanel engine={engine} />,
+    vocoder: modules.vocoder && <VocoderPanel key={`vocoder-${resetKey}`} engine={engine} />,
+    jamsynth: modules.jamsynth && <HarmoSynthPanel engine={engine} />,
+    jambeat: modules.jambeat && <BeatLabPanel engine={engine} />,
+    rhythm: modules.rhythm && <RhythmLinks engine={engine} />,
+    djkbd: modules.djkbd && <DJKeyboard engine={engine} />,
+    dance: modules.dance && <DancePanel engine={engine} />,
+    supersampler: modules.supersampler && <SuperSampler engine={engine} onLibraryChange={bumpLib} />,
+    drums: modules.drums && <DrumMachinePanel engine={engine} />,
+    djsynth: modules.djsynth && <DjSynthPanel engine={engine} />,
+    slicer: modules.slicer && <SlicerPanel engine={engine} />,
+    harmony: modules.harmony && <HarmonyPanel engine={engine} />,
+    synth: modules.synth && <SynthPanel key={`synth-${resetKey}`} engine={engine} />,
+    sampler: modules.sampler && <SamplerPanel engine={engine} />,
+    soundfx: modules.soundfx && <SoundFxPanel engine={engine} />,
+    dx7: modules.dx7 && <Dx7LabPanel key={`dx7-${resetKey}`} engine={engine} />,
+    solar42: modules.solar42 && <SolarLabPanel key={`solar42-${resetKey}`} engine={engine} />,
+    voicelab: modules.voicelab && <VoiceLabPanel key={`voicelab-${resetKey}`} engine={engine} />,
+  };
+  const rack = useRackSwap(RACK_SLOTS);
+  const S = (slot: string): [string, ReactNode] => { const id = rack.ownerOf(slot); return [id, rackNodes[id]]; };
+
   return (
     <main className="hw-body min-h-screen p-4 text-neutral-100">
       {/* silent mirror of the master mix — keeps iOS Safari from suspending
@@ -1103,7 +1177,7 @@ const [showModulePicker, setShowModulePicker] = useState(false);
                 <span>Modules</span>
               </button>
               {showModulePicker && (
-                <div className="hw-panel absolute right-0 top-full z-50 mt-2 w-80 max-h-[80vh] overflow-y-auto p-4 text-xs shadow-2xl border border-neutral-700/80">
+                <div className="hw-panel absolute right-0 top-full z-50 mt-2 w-[min(94vw,760px)] max-h-[80vh] overflow-y-auto p-4 text-xs shadow-2xl border border-neutral-700/80">
                   <div className="mb-3 flex items-center justify-between pb-2 border-b border-neutral-800">
                     <span className="text-[11px] font-black uppercase tracking-[0.2em] text-[#38bdf8]">
                       Processeurs & Modules
@@ -1116,49 +1190,12 @@ const [showModulePicker, setShowModulePicker] = useState(false);
                     </button>
                   </div>
 
-                  {(
-                    [
-                      "Stems en live",
-                      "Instruments & Sources",
-                      "Performance DJ",
-                      "Mixer & EQ",
-                      "Dynamique & Filtrage",
-                      "Distorsion & Caractère",
-                      "Espace & Modulation",
-                    ] as const
-                  ).map((cat) => {
-                    const items = MODULE_DEFS.filter((m) => m.category === cat);
-                    if (items.length === 0) return null;
-                    return (
-                      <div key={cat} className="mb-3.5">
-                        <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-neutral-400">
-                          {cat}
-                        </div>
-                        <div className="space-y-1">
-                          {items.map(({ key, label, scope }) => (
-                            <div
-                              key={key}
-                              className="flex items-center justify-between py-1 px-1.5 rounded bg-neutral-900/40 hover:bg-neutral-800/50"
-                            >
-                              <div className="flex items-center gap-2">
-                                <span className="text-[11px] text-neutral-200">{label}</span>
-                                <span className="text-[9px] uppercase px-1 py-0.2 rounded bg-neutral-800 text-neutral-400 font-mono">
-                                  {scope}
-                                </span>
-                              </div>
-                              <button
-                                onClick={() => toggleModule(key)}
-                                className={`hw-btn px-2 py-0.5 text-[10px] font-bold ${modules[key] ? "hw-btn-on" : "text-neutral-500"}`}
-                                style={{ ["--led" as string]: "#38bdf8" }}
-                              >
-                                {modules[key] ? "ON" : "OFF"}
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
+                  <ModulePicker
+                    defs={[...MODULE_DEFS].sort((x, y) => MODULE_CATEGORIES.indexOf(x.category) - MODULE_CATEGORIES.indexOf(y.category))}
+                    active={modules as unknown as Record<string, boolean>}
+                    onToggle={(k) => toggleModule(k as keyof Modules)}
+                    categories={MODULE_CATEGORIES}
+                  />
                   <div className="mt-4 pt-3 border-t border-neutral-800">
   <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-neutral-400">
     Modèles d&apos;affichage
@@ -1592,44 +1629,50 @@ const [showModulePicker, setShowModulePicker] = useState(false);
 
             {/* stem preparation queue + library of prepared stems */}
             {modules.stemprep && (
-              <div className={deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}>
+              <div id="mod-stemprep" className={`scroll-mt-12 ${deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}`}>
                 <StemPrepPanel engine={engine} />
               </div>
             )}
 
             {/* instrument rack: optional modules side by side, aligned and the same height per row */}
-            {(modules.jambass || modules.jamvox || modules.jamsynth || modules.jambeat || modules.djkbd || modules.dance || modules.supersampler || modules.drums || modules.djsynth || modules.rhythm || modules.slicer || modules.harmony || modules.synth || modules.sampler || modules.soundfx || modules.dx7 || modules.solar42 || modules.voicelab || modules.samplepad) && (
-              <div className={`hw-rack @container flex flex-col gap-4 ${deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}`}>
+            {(modules.jambass || modules.jamvox || modules.vocoder || modules.jamsynth || modules.jambeat || modules.djkbd || modules.dance || modules.supersampler || modules.drums || modules.djsynth || modules.rhythm || modules.slicer || modules.harmony || modules.synth || modules.sampler || modules.soundfx || modules.dx7 || modules.solar42 || modules.voicelab || modules.drumlab || modules.voicechop || modules.bassslice || modules.otherslice || modules.session || modules.samplepad) && (
+              <RackCtx.Provider value={{ grip: rack.grip, dragId: rack.dragId, overId: rack.overId }}><div className={`hw-rack @container flex flex-col gap-4 ${deckClosed.A || deckClosed.B ? "lg:col-span-2" : "lg:col-span-3"}`}>
+                <ConsoleNav watch={Object.entries(modules).filter(([, v]) => v === true).map(([k]) => k).join(",")} />
                 {(modules.jambass || modules.jamvox || modules.jamsynth || modules.jambeat) && <JamMacroBar engine={engine} />}
-                <RackRow onClose={closeRackModule} left={[["samplepad", modules.samplepad && <StemSamplePadPanel key={`samplepad-${resetKey}`} engine={engine} />]]} right={[]} />
-                <RackRow onClose={closeRackModule} left={[["jambass", modules.jambass && <BassLabPanel engine={engine} />]]} right={[["jamvox", modules.jamvox && <VoxFxPanel engine={engine} />]]} />
-                <RackRow onClose={closeRackModule} left={[["jamsynth", modules.jamsynth && <HarmoSynthPanel engine={engine} />]]} right={[["jambeat", modules.jambeat && <BeatLabPanel engine={engine} />]]} />
-                <RackRow onClose={closeRackModule} left={[["rhythm", modules.rhythm && <RhythmLinks engine={engine} />]]} right={[]} />
+                {(modules.drumlab || modules.voicechop || modules.bassslice || modules.otherslice) && !(modules.jambass || modules.jamvox || modules.jamsynth || modules.jambeat) && <JamKeysHost engine={engine} />}
+                <RackRow onClose={closeRackModule} left={[S("samplepad")]} right={[]} />
+                <RackRow onClose={closeRackModule} left={[S("drumlab")]} right={[S("voicechop")]} />
+                <RackRow onClose={closeRackModule} left={[S("session")]} right={[]} />
+                <RackRow onClose={closeRackModule} left={[S("bassslice")]} right={[S("otherslice")]} />
+                <RackRow onClose={closeRackModule} left={[S("jambass")]} right={[S("jamvox")]} />
+                <RackRow onClose={closeRackModule} left={[S("vocoder")]} right={[]} />
+                <RackRow onClose={closeRackModule} left={[S("jamsynth")]} right={[S("jambeat")]} />
+                <RackRow onClose={closeRackModule} left={[S("rhythm")]} right={[]} />
                 <RackRow
                   onClose={closeRackModule}
-                  left={[["djkbd", modules.djkbd && <DJKeyboard engine={engine} />], ["dance", modules.dance && <DancePanel engine={engine} />]]}
-                  right={[["supersampler", modules.supersampler && <SuperSampler engine={engine} onLibraryChange={bumpLib} />]]}
+                  left={[S("djkbd"), S("dance")]}
+                  right={[S("supersampler")]}
                 />
                 <RhythmRunner engine={engine} />
                 <RackRow
                   onClose={closeRackModule}
-                  left={[["drums", modules.drums && <DrumMachinePanel engine={engine} />]]}
-                  right={[["djsynth", modules.djsynth && <DjSynthPanel engine={engine} />]]}
+                  left={[S("drums")]}
+                  right={[S("djsynth")]}
                 />
                 <RackRow
                   onClose={closeRackModule}
-                  left={[["slicer", modules.slicer && <SlicerPanel engine={engine} />]]}
-                  right={[["harmony", modules.harmony && <HarmonyPanel engine={engine} />]]}
+                  left={[S("slicer")]}
+                  right={[S("harmony")]}
                 />
                 <RackRow
                   onClose={closeRackModule}
-                  left={[["synth", modules.synth && <SynthPanel key={`synth-${resetKey}`} engine={engine} />]]}
-                  right={[["sampler", modules.sampler && <SamplerPanel engine={engine} />], ["soundfx", modules.soundfx && <SoundFxPanel engine={engine} />]]}
+                  left={[S("synth")]}
+                  right={[S("sampler"), S("soundfx")]}
                 />
-                <RackRow onClose={closeRackModule} left={[["dx7", modules.dx7 && <Dx7LabPanel key={`dx7-${resetKey}`} engine={engine} />]]} right={[]} />
-                <RackRow onClose={closeRackModule} left={[["solar42", modules.solar42 && <SolarLabPanel key={`solar42-${resetKey}`} engine={engine} />]]} right={[]} />
-                <RackRow onClose={closeRackModule} left={[["voicelab", modules.voicelab && <VoiceLabPanel key={`voicelab-${resetKey}`} engine={engine} />]]} right={[]} />
-              </div>
+                <RackRow onClose={closeRackModule} left={[S("dx7")]} right={[]} />
+                <RackRow onClose={closeRackModule} left={[S("solar42")]} right={[]} />
+                <RackRow onClose={closeRackModule} left={[S("voicelab")]} right={[]} />
+              </div></RackCtx.Provider>
             )}
 
             {/* optional video tool — toggled in Config (⚙) */}

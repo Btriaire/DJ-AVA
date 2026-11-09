@@ -1,3 +1,4 @@
+import { onModuleGate } from "./moduleGate";
 import type { StemNotes } from "@/lib/stemNotes";
 import { alignLegacyNotes } from "./jamPrecision";
 import type { FxMap } from "../fxAnalysis";
@@ -13,6 +14,7 @@ import { PitchShifter } from "./PitchShifter";
 import { CROWD_DEFAULTS, VirtualCrowd, type CrowdOpts } from "./virtualCrowd";
 import type { ClockInfo } from "./stepClock";
 import { guess as guessBeat } from "web-audio-beat-detector";
+import { emitDj } from "./djEvents";
 
 // synthesized white-noise impulse response for the shared per-stem reverb
 // send bus — same technique as the Rack's own "reverb" module.
@@ -516,6 +518,7 @@ export class Deck {
     this.retouch.output.connect(this.fxInGate);
     this.fxInGate.connect(this.fx.input);
     this.fx.output.connect(this.rack.input);
+    onModuleGate("fxpad", (open) => { if (!open) this.fx.resetAll(); });
     this.rack.output.connect(this.volume);
     this.volume.connect(this.crowdIn);
     this.crowdOut.connect(this.analyser);
@@ -2007,6 +2010,7 @@ export class Deck {
 
   // beat loop of n beats from current position
   setBeatLoop(beats: number) {
+    emitDj({ kind: "loop" });
     if (!this.buffer || !this.bpm) return;
     const secPerBeat = 60 / this.bpm;
     const rawStart = this.position();

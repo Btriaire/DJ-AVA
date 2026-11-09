@@ -1,3 +1,4 @@
+import { moduleOpen } from "./moduleGate";
 import type { Deck } from "./Deck";
 import type { DJEngine } from "./engine";
 import type { DrumVoice } from "./DrumMachine";
@@ -265,6 +266,8 @@ export class RhythmBus {
   }
 
   private fire(r: RhythmRoute, e: Ev, at: number, dur: number) {
+    const target = r.kind === "sfx" ? "soundfx" : r.kind === "keypad" || r.kind === "keyfx" ? "djkbd" : null;
+    if (target && !moduleOpen(target)) return; // a link never plays a module closed in the picker
     let acc = 1;
     if (r.accent && this.deck.bpm > 0) {
       const spb = 60 / this.deck.bpm;

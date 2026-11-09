@@ -172,3 +172,33 @@ import { padEqTest } from "../lib/padEq";
 padEqTest(); console.log("check-rules pad eq ok");
 import { eqPrepTest } from "../lib/eqPrep";
 eqPrepTest(); console.log("check-rules 15 band prep ok");
+import { drumPrepTest } from "../lib/drumPrep";
+drumPrepTest(); console.log("check-rules drum prep ok");
+import { pickHitsTest } from "../lib/drumPrep";
+pickHitsTest(); console.log("check-rules drum kit ok");
+import { slicePeaksTest } from "../lib/drumPrep";
+slicePeaksTest(); console.log("check-rules drum wave ok");
+import { voicePrepTest } from "../lib/voicePrep";
+voicePrepTest(); console.log("check-rules voice prep ok");
+import { stemSlicesTest } from "../lib/audio/stemSlices";
+const sliceFails = stemSlicesTest(); if (sliceFails.length) { console.error(sliceFails); process.exit(1); } console.log("check-rules stem slices ok");
+import { vocoderWorkletTest } from "../lib/audio/vocoderWorkletTest";
+const vocFails = vocoderWorkletTest(); if (vocFails.length) { console.error(vocFails); process.exit(1); } console.log("check-rules vocoder ok");
+
+import { chordHarmonyTest } from "../lib/audio/chordHarmonyTest";
+const harmFails = chordHarmonyTest(); if (harmFails.length) { console.error(harmFails); process.exit(1); } console.log("check-rules harmony ok");
+
+import { moduleGateTest } from "../lib/audio/moduleGateTest";
+const gateFails = moduleGateTest(); if (gateFails.length) { console.error(gateFails); process.exit(1); } console.log("check-rules module gate ok");
+
+import { vocoderLabTest } from "../lib/audio/vocoderLabTest";
+const vocLabFails = vocoderLabTest(); if (vocLabFails.length) { console.error(vocLabFails); process.exit(1); } console.log("check-rules vocoder module ok");
+
+import { setLookTest } from "../lib/setLookTest";
+const lookFails = setLookTest(); if (lookFails.length) { console.error(lookFails); process.exit(1); } console.log("check-rules set look ok");
+
+import { spotdlTest } from "../lib/spotdlTest";
+import { lyricsPlanTest } from "../lib/lyricsPlanTest";
+import { lyricChoirNotesTest } from "../lib/audio/lyricChoirNotesTest";
+const lyrFails = [...lyricsPlanTest(), ...lyricChoirNotesTest()]; if (lyrFails.length) { console.error(lyrFails); process.exit(1); } console.log("check-rules lyrics ok");
+const spotFails = spotdlTest(); if (spotFails.length) { console.error(spotFails); process.exit(1); } console.log("check-rules spotdl ok");

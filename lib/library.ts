@@ -1,3 +1,4 @@
+import type { SetLook } from "./setLook";
 import type { VideoMeta } from "@/lib/videoMeta";
 import type { DjOptions, MixStep } from "@/lib/mixPlan";
 import type { QualityLevel } from "@/lib/quality";
@@ -44,6 +45,8 @@ export interface Playlist {
   preloadSec?: number; // seconds before a track ends to start warming the next one (fewer gaps)
   mixPlan?: MixStep[]; // how to go from each song to the next (lib/mixPlan.ts), followed by the relay when dj.auto is not false
   dj?: DjOptions; // the DJ options this set was prepared with
+  cover?: string; // the set's own picture (small JPEG data URL); the mosaic of its tracks when absent
+  look?: SetLook; // its colour, its generated cover, its title on the cover (lib/setLook.ts)
 }
 
 export interface LibraryData {

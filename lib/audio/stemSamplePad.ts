@@ -1,3 +1,4 @@
+import { onModuleGate } from "./moduleGate";
 import type { DJEngine } from "./engine";
 import type { Deck } from "./Deck";
 import { nextGrid } from "./stemJam";
@@ -63,6 +64,7 @@ export class StemSamplePad {
   constructor(private engine: DJEngine) {
     setInterval(() => { for (const f of this.fx.values()) f.tick(); }, 30); // gate pattern and tempo-synced delays
     setInterval(() => this.watch(), 500);
+    onModuleGate("samplepad", (open) => { if (!open) this.stopAll(); });
   }
 
   deck(): Deck {

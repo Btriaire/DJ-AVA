@@ -8,10 +8,12 @@ import { Fader } from "./Fader";
 import { Knob } from "./Knob";
 import { EqGraph } from "./EqGraph";
 import { EqLabControls } from "./EqLabControls";
-import { eqLabFor, linkedMove, measure, otherDeckOf } from "@/lib/audio/eqLab";
+import { bandEnergies, eqLabFor, linkedMove, measure, otherDeckOf } from "@/lib/audio/eqLab";
+import { adaptiveStep, adaptiveTarget } from "@/lib/audio/adaptiveEq";
 import { buildRecipes } from "@/lib/eqPrep";
 import { buildPlan, planAt, type EqStep } from "@/lib/eqPlan";
 import { setDeckPlan } from "@/lib/planStore";
+import { emitDj } from "@/lib/audio/djEvents";
 import { stemLabel } from "./RackGuideBlock";
 import { DigitalVU } from "./EqVisuals";
 
@@ -93,6 +95,41 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
   // the plan: the song's sections, each step applied when playback reaches it (a glide over the recipe's bars)
   const planRef = useRef<{ steps: EqStep[]; done: Set<number>; timer: ReturnType<typeof setInterval> } | null>(null);
   const [planOn, setPlanOn] = useState(false);
+  const [activeRc, setActiveRc] = useState<{ id: string; curve: number; label: string; until: number } | null>(null);
+const [adaptOn, setAdaptOn] = useState(false);
+const adaptRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+useEffect(() => {
+  return () => {
+    clearInterval(adaptRef.current ?? undefined);
+  };
+}, []);
+
+function stopAdapt() {
+  clearInterval(adaptRef.current ?? undefined);
+  adaptRef.current = null;
+  setAdaptOn(false);
+  flashLcd("ADAPTATIF arrêté");
+}
+
+function startAdapt() {
+  const view = curve === -1 ? deck.rack.eqView(-1) : deck.rack.eqView(curve);
+  adaptRef.current = setInterval(() => {
+    if (!deck.playing) return;
+    if (lab.moving(curve) !== null) return;
+    const bytes = new Uint8Array(new ArrayBuffer(view.spectrumBins));
+    view.spectrum("pre", bytes);
+    const mix = bandEnergies(bytes, deck.ctx.sampleRate);
+    const cur = Array.from({ length: 15 }, (_, i) => view.getGain(i));
+    const target = adaptiveTarget(mix, null, null);
+    const next = adaptiveStep(cur, target, 0.5);
+    next.forEach((g, i) => view.setGain(i, g));
+    rerender();
+  }, 2000);
+  setAdaptOn(true);
+  flashLcd("ADAPTATIF · actif");
+}
+
   const stopPlan = () => {
     if (planRef.current) clearInterval(planRef.current.timer);
     planRef.current = null;
@@ -116,6 +153,7 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
       const target = rc.stem ? deck.stemNames.indexOf(rc.stem) : curve;
       if (target < 0) return;
       lab.morph(target, rc.gains, rc.bars);
+      if (step.recipeId === "boost-basse") emitDj({ kind: "drop" });
       flashLcd(`PLAN · ${step.reason}`);
     }, 250);
     planRef.current = { steps, done, timer };
@@ -307,6 +345,23 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
         )}
       </div>
 
+<div className="flex flex-wrap items-center gap-1">
+  <span className="w-20 shrink-0 text-[9px] font-bold uppercase tracking-wider text-neutral-400">Adaptatif</span>
+  <button
+    type="button"
+    onClick={() => (adaptOn ? stopAdapt() : startAdapt())}
+    aria-pressed={adaptOn}
+    className="rounded px-2 py-1 text-[10px] font-bold"
+    style={{
+      backgroundColor: adaptOn ? '#fbbf24' : '',
+      color: adaptOn ? '#0a0a0a' : '',
+    }}
+    title="Mesure le mix toutes les 2 s et corrige les bandes doucement : équilibre, voix démasquée"
+  >
+    {adaptOn ? 'ADAPTATIF · actif' : 'Corriger le mix'}
+  </button>
+</div>
+
       {/* ── 15 bandes Prep: recipes computed at preparation from the song's own spectra ── */}
       {deck.fxMap && deck.stemMap && (
         <div className="flex flex-wrap items-center gap-1">
@@ -324,6 +379,15 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
         </div>
       )}
       <div className="flex flex-wrap items-center gap-1">
+        {activeRc ? (
+          <span className="text-[10px] font-bold" style={{ color: "#fbbf24" }} title="La recette est appliquée à la cible du bouton actif">
+            Actif : {activeRc.label} · appliquée
+          </span>
+        ) : (
+          <span className="text-[10px] text-neutral-400">Aucune recette 15 bandes active</span>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-1">
         <span className="w-20 shrink-0 text-[9px] font-bold uppercase tracking-wider text-neutral-400" title="Recettes calculées à la préparation, à partir des spectres réels du morceau">15 bandes Prep</span>
         {deck.fxMap ? (
           buildRecipes(deck.fxMap).map((rc) => {
@@ -338,11 +402,12 @@ export function EqRackStrip({ deck, color }: { deck: Deck; color: string }) {
                 title={rc.title}
                 onClick={() => {
                   lab.morph(target, rc.gains, rc.bars);
+                  setActiveRc({ id: rc.id, curve: target, label: rc.label, until: Date.now() + rc.bars * 4 * 60 / (deck.bpm || 120) * 1000 });
                   flashLcd(`${rc.label.toUpperCase()} · ${rc.bars} mes.`);
                   rerender();
                 }}
                 className="rounded px-2 py-1 text-[10px] font-bold disabled:opacity-40"
-                style={{ background: "rgba(255,255,255,0.08)", color: "#d4d4d4" }}
+                style={activeRc?.id === rc.id && activeRc.curve === target ? { background: "#fbbf24", color: "#0a0a0a", boxShadow: "0 0 0 2px rgba(251,191,36,0.35)" } : { background: "rgba(255,255,255,0.08)", color: "#d4d4d4" }}
               >
                 {rc.label}
               </button>

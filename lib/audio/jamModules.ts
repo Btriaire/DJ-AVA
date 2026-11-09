@@ -22,11 +22,11 @@ import { degreeNames } from "./stemJam";
 import { captureBars } from "./jamCapture";
 import { degreeShifts } from "./jamMelody";
 import { nextSungAt } from "./jamVoiceNext";
-import { Vocoder } from "./jamVocoder";
 import { harmonyNotes, type HarmonyMode } from "./jamHarmony";
 import { voiceNotes, type VoiceNote } from "./jamVoiceNotes";
 import { chordHits, cleanNotes, monoBass } from "./jamReplay";
 import { envelope, levelAt, percentile } from "./jamPrecision";
+import { onModuleGate } from "./moduleGate";
 import { chordAt, chordDegreeAt, degreeChord, heardShift, voiceLead, type ChordColor, jamDeck, jamScale, jamStem, nextGrid, onJamTick, snapToScale, songToCtx, spb, type JamDeckPref, type JamRole } from "./stemJam";
 
 export const beatIdx = (div: number) => Math.max(0, BEAT_DIVS.indexOf(div));
@@ -76,6 +76,23 @@ export abstract class JamModule {
   }
 
   deck(): Deck { return jamDeck(this.engine, this.pref); }
+  // closed in the module picker: nothing is scheduled, the output is silent, the stems it took over come back; the settings stay
+  active = true;
+  protected gateModule(key: string): void { onModuleGate(key, (open) => this.setActive(open)); }
+  setActive(open: boolean): void {
+    if (open === this.active) return;
+    this.active = open;
+    if (!open) {
+      if (this.swapped) this.toggleSwap();
+      if (this.soft) this.setSoft(false);
+      for (const id of [...this.pressed]) this.press(id, false);
+      this.pressed.clear();
+      this.closed();
+    }
+    this.out.gain.setTargetAtTime(open ? 1 : 0, this.engine.ctx.currentTime, 0.03);
+    jamChanged();
+  }
+  protected closed(): void {}
   // the panels change a setting through this (React's compiler does not let a render value be assigned to)
   set<K extends keyof this>(key: K, value: this[K]) { this[key] = value; }
   stem(deck = this.deck()): number { return jamStem(deck, this.role); }
@@ -262,7 +279,7 @@ export abstract class JamModule {
   restore(o: Record<string, unknown> | undefined) {
     if (!o) return;
     for (const k of ["pref", ...this.keep()]) if (k in o && typeof o[k] === typeof (this as unknown as Record<string, unknown>)[k]) (this as unknown as Record<string, unknown>)[k] = o[k];
-    if (typeof o.soft === "boolean") this.setSoft(o.soft);
+    if (typeof o.soft === "boolean" && o.soft !== this.soft) this.setSoft(o.soft); // unchanged: no panel update (restore runs while a panel renders)
   }
   // RÀZ: every held effect off, every setting back to its default
   reset() {
@@ -391,7 +408,8 @@ export class BassLab extends JamModule {
     this.lineSynth.out.connect(this.linePump).connect(this.bus);
     this.sampledBass = new SampledInstrument(engine.ctx);
     this.sampledBass.out.connect(this.linePump);
-    onJamTick(engine, (deck, from, to) => this.tick(deck, from, to));
+    this.gateModule("jambass");
+    onJamTick(engine, (deck, from, to) => { if (this.active) this.tick(deck, from, to); });
   }
   setSub(v: number) { this.subLevel = v; this.sub.out.gain.value = 0.9 * v; }
   protected keep() { return ["subOctave", "lineLevel", "lineTone", "lineEnv", "pumpDepth", "wobbleDiv", "characterName", "fillEvery", "lineVoice"]; }
@@ -685,49 +703,10 @@ export class VoxFx extends JamModule {
   get radio(): number { const d = this.deck(); return Math.max(0, d.stemFilterX[this.stem(d)] ?? 0); }
   setRadio(v: number) { const d = this.deck(); d.setStemFilter(this.stem(d), v * 0.85); }
 
-  vocoder: Vocoder;
-  vocoderOn = false;
-  vocoderLevel = 0.8;
   harmonyMode: HarmonyMode = "third";
-  private vocTap: AudioNode | null = null;
-  private vocChord: number[] | null = null;
   private played: { start: number; end: number; midi: number }[] = [];
 
 
-  private wireVocoder(deck: Deck) {
-    const i = this.stem(deck);
-    const tap = i >= 0 ? deck.stemPreTap(i) : null;
-    if (tap === this.vocTap) return;
-    if (this.vocTap) this.vocTap.disconnect(this.vocoder.mod);
-    this.vocTap = tap;
-    if (tap) tap.connect(this.vocoder.mod);
-  }
-
-  setVocoder(on: boolean) {
-    this.vocoderOn = on;
-    this.route(this.deck());
-    if (on) {
-      this.wireVocoder(this.deck());
-      this.vocoder.start();
-      this.vocoder.setLevel(this.vocoderLevel);
-      const d = this.deck();
-      if (!this.vocChord) {
-        const line = d.position();
-        this.vocChord = voiceLead(null, degreeChord(d, chordDegreeAt(d, line), 60, "seventh"));
-      }
-      this.vocoder.setChord(this.vocChord, d.ctx.currentTime);
-    } else {
-      this.vocoder.stop(this.deck().ctx.currentTime);
-      if (this.vocTap) this.vocTap.disconnect(this.vocoder.mod);
-      this.vocTap = null;
-    }
-    jamChanged();
-  }
-
-  setVocoderLevel(v: number) {
-    this.vocoderLevel = v;
-    if (this.vocoderOn) this.vocoder.setLevel(v);
-  }
 
 
 
@@ -761,7 +740,7 @@ export class VoxFx extends JamModule {
     return notes;
   }
 
-  protected keep() { return ["harmonyMode", "chopBeats", "harmonyVoice", "chopMode", "vocoderLevel", "harmonyLevel"]; }
+  protected keep() { return ["harmonyMode", "chopBeats", "harmonyVoice", "chopMode", "harmonyLevel"]; }
 
   protected resetFields() {
     this.harmony = false;
@@ -771,8 +750,6 @@ export class VoxFx extends JamModule {
     this.chopMode = "slices";
     this.melodySlice = 0;
     this.harmonyVoice = "choir_aahs";
-    if (this.vocoderOn) this.setVocoder(false);
-    this.vocoderLevel = 0.8;
     if (this.doubled) { this.doubled = false; this.fx("double", false, undefined, 0, 0); }
     this.setLevel(1);
     this.setSpace(0);
@@ -790,9 +767,8 @@ export class VoxFx extends JamModule {
     this.choir.out.connect(this.harmBus);
     this.sampledChoir.out.connect(this.harmBus);
     this.harmBus.connect(this.bus);
-    this.vocoder = new Vocoder(engine.ctx);
-    this.vocoder.out.connect(this.bus);
-    onJamTick(engine, (deck, from, to) => this.tick(deck, from, to));
+    this.gateModule("jamvox");
+    onJamTick(engine, (deck, from, to) => { if (this.active) this.tick(deck, from, to); });
   }
 
   setHarmonyLevel(v: number) {
@@ -823,20 +799,6 @@ export class VoxFx extends JamModule {
     if (deck !== this.deck() || this.stem(deck) < 0) return;
     if (this.appliedLevel !== this.harmonyLevel) {
       this.setHarmonyLevel(this.harmonyLevel);
-    }
-    if (this.vocoderOn) {
-      this.wireVocoder(deck);
-      this.route(deck);
-      if (deck.bpm) {
-        const beatLen = 60 / deck.bpm;
-        for (let b = Math.ceil((from - deck.beatGridOffset) / beatLen); b * beatLen + deck.beatGridOffset < to; b++) {
-          const line = deck.beatGridOffset + b * beatLen;
-          const chord = voiceLead(this.vocChord, degreeChord(deck, chordDegreeAt(deck, line), 60, "seventh"));
-          this.vocChord = chord;
-          this.vocoder.setChord(chord, songToCtx(deck, line));
-          this.hit(songToCtx(deck, line));
-        }
-      }
     }
     if (!this.harmony) return;
     const segments = this.segs(deck);
@@ -940,7 +902,8 @@ export class HarmoSynth extends JamModule {
     const fb = new GainNode(ctx, { gain: 0.38 }), tone = new BiquadFilterNode(ctx, { type: "lowpass", frequency: 3200 });
     this.pumpGain.connect(this.echoIn).connect(this.delay).connect(tone).connect(fb).connect(this.delay);
     tone.connect(this.bus);
-    onJamTick(engine, (deck, from, to) => this.tick(deck, from, to));
+    this.gateModule("jamsynth");
+    onJamTick(engine, (deck, from, to) => { if (this.active) this.tick(deck, from, to); });
   }
   get level(): number { return this.synth.out.gain.value / 0.5; }
   setLevel(v: number) { this.synth.out.gain.value = 0.5 * v; }
@@ -1217,7 +1180,8 @@ export class BeatLab extends JamModule {
     this.kit.out.connect(this.bus);
     this.sampledKit = new SampledKit(engine.ctx);
     this.sampledKit.out.connect(this.bus);
-    onJamTick(engine, (deck, from, to) => this.tick(deck, from, to));
+    this.gateModule("jambeat");
+    onJamTick(engine, (deck, from, to) => { if (this.active) this.tick(deck, from, to); });
   }
   get level(): number { const d = this.deck(); return d.stemVol[this.stem(d)] ?? 1; }
   setLevel(v: number) { const d = this.deck(); d.setStemVol(this.stem(d), v); }

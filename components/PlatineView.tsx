@@ -455,7 +455,7 @@ function DeckColumn({
           <div className="tt-label absolute left-1/2 top-1/2 aspect-square w-[38%] -translate-x-1/2 -translate-y-1/2 rounded-full overflow-hidden">
             {deck.coverArt ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img loading="lazy" decoding="async" src={deck.coverArt} alt="" className="h-full w-full object-cover rounded-full" />
+              <img loading="lazy" decoding="async" referrerPolicy="no-referrer" src={deck.coverArt} alt="" className="h-full w-full object-cover rounded-full" />
             ) : (
               <div className="flex h-full w-full flex-col items-center justify-end gap-[6%] bg-[#e9e3d6] pb-[22%]">
                 <span className="h-[3%] w-[46%] rounded-full bg-[#8a857a]" />

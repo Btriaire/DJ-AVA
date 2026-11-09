@@ -1,50 +1,11 @@
 import type { StemSection } from "@/lib/stemAnalysis";
 import type { EqRecipe } from "@/lib/eqPrep";
 
-export interface EqStep { t: number; recipeId: string; bars: number; reason: string }
-
-export function buildPlan(sections: StemSection[], recipes: EqRecipe[], bpm: number, duration: number): EqStep[] {
-  const steps: EqStep[] = [];
-  const recipeIds = new Set(recipes.map(recipe => recipe.id));
-
-  for (let i = 0; i < sections.length; i++) {
-    const section = sections[i];
-    if (section.end - section.start < 4) continue;
-
-    const t = section.start;
-    if (t > duration - 2) break;
-
-    let step: EqStep | null = null;
-
-    switch (section.kind) {
-      case "peak":
-        if (recipeIds.has("boost-basse")) {
-          step = { t, recipeId: "boost-basse", bars: recipes.find(r => r.id === "boost-basse")!.bars, reason: "Drop : le grave prend la place" };
-        }
-        break;
-      case "blank":
-        if (recipeIds.has("surround")) {
-          step = { t, recipeId: "surround", bars: recipes.find(r => r.id === "surround")!.bars, reason: "Break : la stéréo s'ouvre" };
-        }
-        break;
-      case "slow":
-        if (section.vocals > 0.5 && recipeIds.has("devant")) {
-          step = { t, recipeId: "devant", bars: recipes.find(r => r.id === "devant")!.bars, reason: "Partie chantée : la voix passe devant" };
-        }
-        break;
-      case "normal":
-        if (i > 0 && sections[i - 1].kind === "peak" && recipeIds.has("clair")) {
-          step = { t, recipeId: "clair", bars: recipes.find(r => r.id === "clair")!.bars, reason: "Retour : on remet de la netteté" };
-        }
-        break;
-    }
-
-    if (step) {
-      steps.push(step);
-    }
-  }
-
-  return steps.sort((a, b) => a.t - b.t);
+export interface EqStep {
+  t: number;
+  recipeId: string;
+  bars: number;
+  reason: string;
 }
 
 export function planAt(steps: EqStep[], t: number, done: Set<number>): EqStep | null {
@@ -57,33 +18,72 @@ export function planAt(steps: EqStep[], t: number, done: Set<number>): EqStep | 
   return null;
 }
 
-export function planTest(): void {
-  const sections: StemSection[] = [
-    { start: 0, end: 20, kind: "normal", drums: 0, vocals: 0, level: 0 },
-    { start: 20, end: 40, kind: "peak", drums: 0, vocals: 0, level: 0 },
-    { start: 40, end: 60, kind: "blank", drums: 0, vocals: 0, level: 0 },
-  ];
-  const recipes: EqRecipe[] = [
-    { id: "boost-basse", label: "Boost basse", title: "", gains: [], bars: 4 },
-    { id: "surround", label: "Surround", title: "", gains: [], bars: 4 },
-    { id: "devant", label: "Voix devant", title: "", gains: [], bars: 4 },
-  ];
-  const bpm = 120;
-  const duration = 60;
+export function buildPlan(sections: StemSection[], recipes: EqRecipe[], bpm: number, duration: number): EqStep[] {
+  const steps: EqStep[] = [];
+  let lastRecipeId: string | null = null;
 
-  const steps = buildPlan(sections, recipes, bpm, duration);
-  if (steps.length !== 2) throw new Error("eqPlan steps count");
-  if (steps[0].t !== 20 || steps[0].recipeId !== "boost-basse") throw new Error("eqPlan step 1");
-  if (steps[1].t !== 40 || steps[1].recipeId !== "surround") throw new Error("eqPlan step 2");
+  for (const section of sections) {
+    const sectionDuration = section.end - section.start;
+    if (sectionDuration < 4 || section.start > duration - 2) {
+      continue;
+    }
 
-  const noSurround = buildPlan(sections, [{ id: "boost-basse", label: "Boost basse", title: "", gains: [], bars: 4 }], bpm, duration);
-  if (noSurround.length !== 1) throw new Error("eqPlan no surround");
+    let recipeId: string | null = null;
+    let reason: string = "";
 
-  const done = new Set<number>();
-  const step1 = planAt(steps, 25, done);
-  if (!step1 || step1.recipeId !== "boost-basse") throw new Error("eqPlan planAt 1");
-  const step2 = planAt(steps, 25, done);
-  if (step2 !== null) throw new Error("eqPlan planAt 2");
+    if (section.kind === "peak" || (section.drums >= 0.6 && section.level >= 0.7)) {
+      recipeId = "boost-basse";
+      reason = "Drop : le grave prend la place";
+    } else if (section.kind === "blank") {
+      recipeId = "surround";
+      reason = "Break : la stéréo s'ouvre";
+    } else if (section.vocals >= 0.5) {
+      recipeId = "devant";
+      reason = "Partie chantée : la voix passe devant";
+    } else if (section.kind === "normal" && section.drums < 0.3 && section.vocals < 0.3) {
+      recipeId = "clair";
+      reason = "Passage calme : netteté";
+    } else {
+      recipeId = "neutre";
+      reason = "Retour à plat";
+    }
+
+    if (recipeId && recipeId !== lastRecipeId) {
+      const recipe = recipes.find(r => r.id === recipeId);
+      if (recipe) {
+        steps.push({
+          t: section.start,
+          recipeId,
+          bars: recipe.bars,
+          reason
+        });
+        lastRecipeId = recipeId;
+      }
+    }
+  }
+
+  steps.sort((a, b) => a.t - b.t);
+  return steps;
 }
 
-import type { FxMap } from "@/lib/fxAnalysis";
+export function planTest(): void {
+  const sections: StemSection[] = [
+    { start: 0, end: 20, kind: "normal", drums: 0, vocals: 0, level: 0.2 },
+    { start: 20, end: 40, kind: "peak", drums: 0, vocals: 0, level: 0 },
+    { start: 40, end: 60, kind: "blank", drums: 0, vocals: 0, level: 0 }
+  ];
+
+  const recipes = [
+    { id: "boost-basse", bars: 4 },
+    { id: "surround", bars: 4 },
+    { id: "clair", bars: 4 },
+    { id: "neutre", bars: 4 }
+  ] as EqRecipe[];
+
+  const plan = buildPlan(sections, recipes, 120, 60);
+  const recipeIds = plan.map(step => step.recipeId);
+  console.assert(recipeIds.length === 3, "Expected 3 steps");
+  console.assert(recipeIds[0] === "clair", "Expected 'clair' first");
+  console.assert(recipeIds[1] === "boost-basse", "Expected 'boost-basse' second");
+  console.assert(recipeIds[2] === "surround", "Expected 'surround' third");
+}
